@@ -1,0 +1,418 @@
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { createFileTreeNodes, type FileTreeNode } from "@/features/workspace/file-tree-store";
+import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
+import type { UsageResult } from "@/features/workspace/usage-search";
+import {
+  createWorkspaceStore,
+  getPathBasename,
+  normalizePath,
+  type WorkspaceOpenInput
+} from "@/features/workspace/workspace-store";
+
+export type WorkspaceSnapshot = {
+  rootName: string;
+  rootPath: string;
+  files: string[];
+};
+
+export type WorkspaceViewModel = {
+  rootName: string;
+  rootPath: string;
+  visibleFiles: string[];
+  fileTree: FileTreeNode[];
+};
+
+export type ValidationProblem = {
+  source: "lint" | "format" | "language";
+  severity: "error" | "warning";
+  path: string;
+  line: number;
+  column: number;
+  message: string;
+};
+
+export type EnvironmentTool = {
+  name: string;
+  available: boolean;
+  detail: string;
+};
+
+export type EnvironmentReport = {
+  tools: EnvironmentTool[];
+};
+
+export type TerminalRunRequest = {
+  runId: string;
+  command: string;
+  cwd: string | null;
+  source: "preset" | "manual";
+};
+
+export type TerminalRunResult = {
+  runId: string;
+  command: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  durationMs: number;
+  stopped: boolean;
+};
+
+export type LanguageQueryRequest = {
+  path: string;
+  line: number;
+  column: number;
+};
+
+export type LanguageServiceReport = {
+  provider: string;
+  running: boolean;
+  hover: boolean;
+  definition: boolean;
+  completion: boolean;
+  detail: string;
+};
+
+export type HoverResponse = {
+  contents: string;
+};
+
+export type DefinitionTarget = {
+  path: string;
+  line: number;
+  column: number;
+};
+
+export type LanguageCompletionItem = {
+  label: string;
+  detail: string;
+  kind: string;
+};
+
+export type WorkspaceApi = {
+  pickWorkspaceRoot(): Promise<string | null>;
+  openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
+  openDemoWorkspace(): Promise<WorkspaceSnapshot>;
+  openFile(path: string): Promise<string>;
+  saveFile(path: string, content: string): Promise<void>;
+  runValidation(path: string, content: string): Promise<ValidationProblem[]>;
+  loadDiff(rootPath: string | null): Promise<string>;
+  inspectEnvironment(): Promise<EnvironmentReport>;
+  inspectLanguageService?(): Promise<LanguageServiceReport>;
+  hoverSymbol?(request: LanguageQueryRequest): Promise<HoverResponse | null>;
+  gotoDefinition?(request: LanguageQueryRequest): Promise<DefinitionTarget | null>;
+  completeSymbol?(request: LanguageQueryRequest): Promise<LanguageCompletionItem[]>;
+  findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
+  loadSettings(): Promise<AppSettings>;
+  saveSettings(settings: AppSettings): Promise<void>;
+  runTerminalCommand(request: TerminalRunRequest): Promise<TerminalRunResult>;
+  stopTerminalCommand(runId: string): Promise<void>;
+};
+
+const demoWorkspace: WorkspaceSnapshot = {
+  rootName: "DemoWorkspace",
+  rootPath: "C:/samples/DemoWorkspace",
+  files: [
+    "C:/samples/DemoWorkspace/src/main.ets",
+    "C:/samples/DemoWorkspace/AppScope/app.json5",
+    "C:/samples/DemoWorkspace/node_modules/react/index.js"
+  ]
+};
+
+function hasTauriRuntime() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function joinPath(base: string, ...segments: string[]) {
+  const separator = base.includes("\\") ? "\\" : "/";
+  return [base.replace(/[\\/]+$/g, ""), ...segments].join(separator);
+}
+
+function isDemoWorkspacePath(path: string) {
+  return normalizePath(path).startsWith(normalizePath(demoWorkspace.rootPath));
+}
+
+async function loadWorkspaceSnapshot(rootPath: string) {
+  if (hasTauriRuntime()) {
+    return invoke<WorkspaceSnapshot>("open_workspace", { rootPath });
+  }
+
+  const normalized = normalizePath(rootPath);
+  if (normalized === normalizePath(demoWorkspace.rootPath)) {
+    return demoWorkspace;
+  }
+
+  const rootName = getPathBasename(normalized) || "Workspace";
+  return {
+    rootName,
+    rootPath: normalized,
+    files: [
+      joinPath(normalized, "AppScope", "app.json5"),
+      joinPath(normalized, "src", "main.ets"),
+      joinPath(normalized, "src", "pages", "Index.ets"),
+    ],
+  };
+}
+
+export const defaultWorkspaceApi: WorkspaceApi = {
+  async pickWorkspaceRoot() {
+    if (!hasTauriRuntime()) {
+      return null;
+    }
+
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Open ArkTS Project",
+    });
+
+    return typeof selected === "string" ? normalizePath(selected) : null;
+  },
+  async openWorkspace(rootPath) {
+    return loadWorkspaceSnapshot(rootPath);
+  },
+  async openDemoWorkspace() {
+    return loadWorkspaceSnapshot(demoWorkspace.rootPath);
+  },
+  async openFile(path) {
+    if (hasTauriRuntime()) {
+      return invoke<string>("open_text_document", { path });
+    }
+
+    const normalized = normalizePath(path);
+
+    if (normalized.endsWith("main.ets")) {
+      return "@Entry\n@Component\nstruct Index {}";
+    }
+
+    if (normalized.endsWith("app.json5")) {
+      return "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}";
+    }
+
+    return "";
+  },
+  async saveFile(path, content) {
+    if (hasTauriRuntime()) {
+      await invoke("save_text_document", { path, content });
+      return;
+    }
+
+    void path;
+    void content;
+  },
+  async runValidation(path, content) {
+    if (hasTauriRuntime()) {
+      return invoke<ValidationProblem[]>("validate_text_document", { path, content });
+    }
+
+    const diagnostics: ValidationProblem[] = [];
+    const lines = content.split(/\r?\n/);
+
+    lines.forEach((line, index) => {
+      if (line.includes("\t")) {
+        diagnostics.push({
+          source: "format",
+          severity: "warning",
+          path,
+          line: index + 1,
+          column: line.indexOf("\t") + 1,
+          message: "Replace tabs with spaces",
+        });
+      }
+
+      if (line.trimStart().startsWith("console.log(")) {
+        diagnostics.push({
+          source: "lint",
+          severity: "warning",
+          path,
+          line: index + 1,
+          column: line.indexOf("console.log(") + 1,
+          message: "Remove console.log before committing",
+        });
+      }
+    });
+
+    if (!content.endsWith("\n")) {
+      diagnostics.push({
+        source: "format",
+        severity: "warning",
+        path,
+        line: lines.length,
+        column: lines.at(-1)?.length ?? 1,
+        message: "File should end with a newline",
+      });
+    }
+
+    return diagnostics;
+  },
+  async loadDiff(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<string>("load_workspace_diff", { rootPath });
+    }
+
+    void rootPath;
+    return `diff --git a/src/main.ets b/src/main.ets
+--- a/src/main.ets
++++ b/src/main.ets
+@@ -1,2 +1,3 @@
+ @Entry
+-struct Index {}
++struct Index {
++}`;
+  },
+  async inspectEnvironment() {
+    if (hasTauriRuntime()) {
+      return invoke<EnvironmentReport>("inspect_environment");
+    }
+
+    return {
+      tools: [
+        { name: "git", available: true, detail: "git version 2.x" },
+        { name: "rg", available: false, detail: "Bundled ripgrep not configured yet" },
+        { name: "lintCommand", available: false, detail: "arklint: not configured on this machine" },
+        { name: "formatCommand", available: false, detail: "arkfmt: not configured on this machine" },
+        { name: "arktsLanguageServer", available: false, detail: "Not bundled yet" },
+        { name: "webview2", available: true, detail: "Installer enforces minimum version on Windows" },
+      ],
+    };
+  },
+  async inspectLanguageService() {
+    if (hasTauriRuntime()) {
+      return invoke<LanguageServiceReport>("inspect_language_service");
+    }
+
+    return {
+      provider: "mock",
+      running: true,
+      hover: true,
+      definition: true,
+      completion: true,
+      detail: "Mock ArkTS language service for demo and integration-shell wiring",
+    };
+  },
+  async hoverSymbol(request) {
+    if (hasTauriRuntime()) {
+      return invoke<HoverResponse | null>("hover_symbol", { request });
+    }
+
+    if (!isDemoWorkspacePath(request.path)) {
+      return null;
+    }
+
+    return {
+      contents: request.line <= 2
+        ? "@Entry decorates the HarmonyOS application entry component."
+        : "Index is the root component in this demo ArkTS file.",
+    };
+  },
+  async gotoDefinition(request) {
+    if (hasTauriRuntime()) {
+      return invoke<DefinitionTarget | null>("goto_definition", { request });
+    }
+
+    if (!isDemoWorkspacePath(request.path)) {
+      return null;
+    }
+
+    return {
+      path: normalizePath(request.path),
+      line: request.line <= 2 ? 1 : 3,
+      column: 1,
+    };
+  },
+  async completeSymbol(request) {
+    if (hasTauriRuntime()) {
+      return invoke<LanguageCompletionItem[]>("complete_symbol", { request });
+    }
+
+    if (!isDemoWorkspacePath(request.path)) {
+      return [];
+    }
+
+    return [
+      { label: "@Entry", detail: "ArkTS decorator", kind: "keyword" },
+      { label: "@Component", detail: "ArkTS decorator", kind: "keyword" },
+      { label: "build()", detail: "Component lifecycle method", kind: "method" },
+    ];
+  },
+  async findUsages(request) {
+    if (hasTauriRuntime()) {
+      return invoke<UsageResult[]>("find_usages", { request });
+    }
+
+    if (!isDemoWorkspacePath(request.path)) {
+      return [];
+    }
+
+    return [
+      {
+        path: normalizePath(request.path),
+        line: 1,
+        column: 1,
+        preview: "@Entry",
+      },
+      {
+        path: normalizePath(request.path),
+        line: 3,
+        column: 8,
+        preview: "struct Index {}",
+      },
+    ];
+  },
+  async loadSettings() {
+    if (hasTauriRuntime()) {
+      return invoke<AppSettings>("load_settings");
+    }
+
+    return defaultSettings();
+  },
+  async saveSettings(settings) {
+    if (hasTauriRuntime()) {
+      await invoke("save_settings", { settings });
+      return;
+    }
+
+    void settings;
+  },
+  async runTerminalCommand(request) {
+    if (hasTauriRuntime()) {
+      return invoke<TerminalRunResult>("run_terminal_command", { request });
+    }
+
+    return {
+      runId: request.runId,
+      command: request.command,
+      stdout: `${request.command} ok`,
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    };
+  },
+  async stopTerminalCommand(runId) {
+    if (hasTauriRuntime()) {
+      await invoke("stop_terminal_command", { runId });
+      return;
+    }
+
+    void runId;
+  }
+};
+
+export function toWorkspaceViewModel(snapshot: WorkspaceSnapshot): WorkspaceViewModel {
+  const store = createWorkspaceStore();
+  const input: WorkspaceOpenInput = {
+    rootPath: snapshot.rootPath,
+    files: snapshot.files
+  };
+
+  store.openWorkspace(input);
+
+  return {
+    rootName: snapshot.rootName,
+    rootPath: normalizePath(snapshot.rootPath),
+    visibleFiles: store.state.visibleFiles,
+    fileTree: createFileTreeNodes(store.state.visibleFiles)
+  };
+}

@@ -1,0 +1,30 @@
+:root {
+  color-scheme: dark;
+  --bg-app: #17181b;
+  --bg-chrome: #2f3136;
+  --bg-panel: #313338;
+  --bg-surface: #3a3d42;
+  --bg-surface-hover: #43464c;
+  --bg-tab: #2a2c31;
+  --bg-tab-active: #3a3d42;
+  --bg-editor: #1f2023;
+  --border: #45484e;
+  --border-subtle: #3f4248;
+  --text-primary: #d7dae0;
+  --text-secondary: #a8afb8;
+  --text-muted: #8d949d;
+  --accent: #4d78cc;
+  --accent-muted: rgb(77 120 204 / 18%);
+  --danger: #df6b75;
+  --warning: #d6b25e;
+  --success: #73c991;
+  --font-ui: "Segoe UI", "Inter", sans-serif;
+  --font-code: "Cascadia Code", "JetBrains Mono", "Consolas", monospace;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --radius-1: 3px;
+  --shadow-overlay: 0 18px 40px rgb(0 0 0 / 34%);
+}

@@ -1,0 +1,43 @@
+import { buildCommandPaletteItems } from "@/components/layout/search-overlay-model";
+
+export function parseGoToLineQuery(query: string) {
+  const match = query.trim().match(/^(\d+)(?::(\d+))?$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    line: Number.parseInt(match[1] ?? "1", 10),
+    column: Number.parseInt(match[2] ?? "1", 10),
+  };
+}
+
+type CommandPaletteAction = {
+  openProject: () => void | Promise<void>;
+  openDemoWorkspace: () => void;
+  openRecentProjects: () => void;
+  openGoToLine: () => void;
+  goToDefinition: () => void | Promise<void>;
+  findUsages: () => void | Promise<void>;
+  openCompletion: () => void | Promise<void>;
+  runLint: () => void;
+  formatActiveDocument: () => void;
+  loadDiff: () => void;
+  openSettings: () => void;
+};
+
+export function buildAppShellCommandPaletteItems(query: string, actions: CommandPaletteAction) {
+  return buildCommandPaletteItems(query, [
+    { id: "open-project", label: "Open Project", action: actions.openProject },
+    { id: "open-demo", label: "Open Demo Workspace", action: actions.openDemoWorkspace },
+    { id: "recent-projects", label: "Recent Projects", action: actions.openRecentProjects },
+    { id: "go-to-line", label: "Go to Line...", action: actions.openGoToLine },
+    { id: "go-to-definition", label: "Go to Definition", action: actions.goToDefinition },
+    { id: "find-usages", label: "Find Usages", action: actions.findUsages },
+    { id: "completion", label: "Code Completion", action: actions.openCompletion },
+    { id: "run-validation", label: "Run Lint", action: actions.runLint },
+    { id: "format-active-document", label: "Format Active Document", action: actions.formatActiveDocument },
+    { id: "load-diff", label: "Load Diff", action: actions.loadDiff },
+    { id: "open-settings", label: "Open Settings", action: actions.openSettings },
+  ]);
+}

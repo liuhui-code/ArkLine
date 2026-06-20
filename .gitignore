@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+target/
+src-tauri/target/
+.superpowers/
+*.tsbuildinfo
+.DS_Store

@@ -1,0 +1,26 @@
+[package]
+name = "arkline"
+version = "0.1.0"
+description = "ArkLine desktop host"
+authors = ["liuhui"]
+license = "UNLICENSED"
+repository = ""
+default-run = "arkline"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "arkline_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+[dev-dependencies]
+pretty_assertions = "1"

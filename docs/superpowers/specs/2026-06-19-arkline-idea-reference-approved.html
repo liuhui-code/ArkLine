@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ArkLine IDEA Reference</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --page: #17181b;
+        --panel: #2b2d30;
+        --panel-2: #313338;
+        --panel-3: #1f2023;
+        --panel-4: #2f3136;
+        --panel-5: #3a3d42;
+        --line: #3f4248;
+        --line-soft: #35383d;
+        --text: #d7dae0;
+        --text-2: #a8afb8;
+        --text-3: #8d949d;
+        --accent: #4d78cc;
+        --accent-soft: #3a4b6b;
+        --green: #73c991;
+        --red: #df6b75;
+        --yellow: #d6b25e;
+        --blue: #5ca9ff;
+        --radius: 6px;
+        --shadow: 0 0 0 1px rgba(255,255,255,0.02), 0 12px 30px rgba(0,0,0,0.28);
+        --font-ui: Inter, "Segoe UI", system-ui, sans-serif;
+        --font-code: "JetBrains Mono", Consolas, monospace;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: var(--font-ui);
+        background: radial-gradient(circle at top, #212329 0, var(--page) 28%);
+        color: var(--text);
+      }
+
+      .page {
+        max-width: 1560px;
+        margin: 0 auto;
+        padding: 28px 24px 48px;
+      }
+
+      .header {
+        margin-bottom: 22px;
+      }
+
+      .eyebrow {
+        color: var(--text-3);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      h1 {
+        margin: 8px 0 8px;
+        font-size: 28px;
+        font-weight: 650;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--text-2);
+        max-width: 980px;
+        line-height: 1.6;
+      }
+
+      .choice-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 22px;
+      }
+
+      .choice {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #202226;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        cursor: pointer;
+      }
+
+      .choice:hover {
+        border-color: #575c64;
+      }
+
+      .choice-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line-soft);
+        background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0));
+      }
+
+      .choice-title {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .badge {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 700;
+        background: var(--panel-5);
+        color: #fff;
+      }
+
+      .choice-title h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 650;
+      }
+
+      .choice-meta {
+        color: var(--text-3);
+        font-size: 12px;
+      }
+
+      .choice-copy {
+        padding: 14px 16px 0;
+        color: var(--text-2);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .ide {
+        margin: 14px 16px 16px;
+        border: 1px solid #45484e;
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.38);
+      }
+
+      .window-bar {
+        height: 12px;
+        background: #25272b;
+        border-bottom: 1px solid #303238;
+      }
+
+      .topbar {
+        height: 40px;
+        background: var(--panel-4);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 12px;
+        gap: 16px;
+      }
+
+      .top-left, .top-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-right: 8px;
+        margin-right: 4px;
+      }
+
+      .logo {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        background: linear-gradient(135deg, #ff7a45, #ff3d6e 55%, #8b5cf6);
+      }
+
+      .brand strong {
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .workspace-pill {
+        min-width: 0;
+        max-width: 220px;
+        padding: 0 9px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        color: var(--text-2);
+        background: rgba(255,255,255,0.02);
+        font-size: 12px;
+      }
+
+      .tb-btn {
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-2);
+        font-size: 12px;
+        background: transparent;
+      }
+
+      .tb-btn.active {
+        background: rgba(255,255,255,0.06);
+        border-color: #4a4d52;
+        color: var(--text);
+      }
+
+      .tb-btn.primary {
+        background: rgba(77,120,204,0.18);
+        border-color: rgba(92,169,255,0.28);
+        color: #dce8ff;
+      }
+
+      .ide-body {
+        display: grid;
+        grid-template-columns: 46px 272px 1fr;
+        min-height: 560px;
+      }
+
+      .rail {
+        background: #2a2c31;
+        border-right: 1px solid var(--line);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 0 8px;
+        gap: 8px;
+      }
+
+      .rail-btn {
+        width: 30px;
+        height: 30px;
+        border-radius: 7px;
+        border: 1px solid transparent;
+        background: transparent;
+        position: relative;
+      }
+
+      .rail-btn.active {
+        background: rgba(255,255,255,0.06);
+        border-color: #4a4d52;
+      }
+
+      .rail-btn.active::before {
+        content: "";
+        position: absolute;
+        left: -1px;
+        top: 5px;
+        width: 3px;
+        height: 18px;
+        border-radius: 999px;
+        background: var(--blue);
+      }
+
+      .icon {
+        width: 14px;
+        height: 14px;
+        margin: 7px auto 0;
+        border-radius: 3px;
+        background: #9ba2ac;
+        opacity: 0.9;
+      }
+
+      .side {
+        background: var(--panel-2);
+        border-right: 1px solid var(--line);
+        display: grid;
+        grid-template-rows: 30px 1fr;
+      }
+
+      .pane-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 10px 0 12px;
+        border-bottom: 1px solid var(--line);
+        background: #303238;
+      }
+
+      .pane-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .pane-title span {
+        font-size: 10px;
+        text-transform: uppercase;
+        color: var(--text-3);
+      }
+
+      .pane-title strong {
+        font-size: 12px;
+        font-weight: 650;
+      }
+
+      .pane-tools {
+        display: flex;
+        gap: 6px;
+      }
+
+      .pane-tools i {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        background: #757c86;
+        opacity: 0.65;
+        display: inline-block;
+      }
+
+      .tree {
+        padding: 8px 6px 12px;
+        font-size: 12px;
+        line-height: 1.75;
+      }
+
+      .tree-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 22px;
+        padding: 0 8px;
+        border-radius: 4px;
+        color: #c7ccd3;
+      }
+
+      .tree-row.selected {
+        background: #43464c;
+        color: #f3f5f7;
+      }
+
+      .tree-row.dim {
+        color: #a8afb8;
+      }
+
+      .indent-1 { padding-left: 24px; }
+      .indent-2 { padding-left: 40px; }
+      .indent-3 { padding-left: 56px; }
+
+      .caret {
+        width: 8px;
+        color: #8f97a1;
+        flex: 0 0 auto;
+      }
+
+      .file-dot, .folder-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        flex: 0 0 auto;
+      }
+
+      .folder-dot { background: #d6b25e; }
+      .file-dot { background: #5ca9ff; }
+
+      .editor {
+        display: grid;
+        grid-template-rows: 32px 1fr 168px 22px;
+        background: var(--panel-3);
+      }
+
+      .tabs {
+        display: flex;
+        align-items: end;
+        gap: 2px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--line);
+        background: #2a2c31;
+      }
+
+      .tab {
+        height: 28px;
+        padding: 0 12px;
+        border: 1px solid transparent;
+        border-radius: 6px 6px 0 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--text-3);
+        font-size: 12px;
+      }
+
+      .tab.active {
+        color: var(--text);
+        background: #383b40;
+        border-color: #4a4d52;
+        border-bottom-color: #383b40;
+      }
+
+      .dirty {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--blue);
+      }
+
+      .editor-main {
+        background: #1f2023;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .editor-content {
+        font-family: var(--font-code);
+        font-size: 13px;
+        line-height: 1.8;
+        color: #d7dae0;
+        padding: 18px 0 24px;
+      }
+
+      .code-line {
+        display: grid;
+        grid-template-columns: 48px 1fr;
+        padding: 0 18px 0 0;
+      }
+
+      .ln {
+        color: #5f6670;
+        text-align: right;
+        padding-right: 16px;
+        user-select: none;
+      }
+
+      .kw { color: #56b6c2; }
+      .ann { color: #c678dd; }
+      .name { color: #e5c07b; }
+      .str { color: #98c379; }
+      .cm { color: #6b727c; }
+
+      .bottom {
+        display: grid;
+        grid-template-rows: 31px 1fr;
+        border-top: 1px solid var(--line);
+        background: #2a2c31;
+      }
+
+      .bottom-tabs {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--line);
+        background: #303238;
+      }
+
+      .btab {
+        height: 25px;
+        padding: 0 10px;
+        border-radius: 5px 5px 0 0;
+        display: inline-flex;
+        align-items: center;
+        color: var(--text-3);
+        font-size: 12px;
+      }
+
+      .btab.active {
+        color: var(--text);
+        background: #3a3d42;
+      }
+
+      .bottom-main {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        min-height: 0;
+      }
+
+      .changes {
+        border-right: 1px solid var(--line);
+        background: #2d2f34;
+        padding: 8px 6px;
+        font-size: 12px;
+      }
+
+      .change-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 24px;
+        padding: 0 8px;
+        border-radius: 4px;
+        color: #c7ccd3;
+      }
+
+      .change-row.selected {
+        background: #43464c;
+        color: #f4f6f8;
+      }
+
+      .chip {
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.06);
+        color: var(--text-2);
+      }
+
+      .chip.m { color: var(--yellow); }
+      .chip.a { color: var(--green); }
+
+      .diff {
+        background: #1f2023;
+        font-family: var(--font-code);
+        font-size: 12px;
+        line-height: 1.7;
+        padding: 10px 0 12px;
+      }
+
+      .diff-line {
+        display: grid;
+        grid-template-columns: 58px 1fr;
+        padding-right: 18px;
+      }
+
+      .diff-ln {
+        color: #606772;
+        text-align: right;
+        padding-right: 16px;
+      }
+
+      .add { background: rgba(115,201,145,0.08); color: #bde9cb; }
+      .del { background: rgba(223,107,117,0.08); color: #f0b0b7; }
+
+      .status {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 10px;
+        border-top: 1px solid var(--line);
+        background: #2f3136;
+        color: var(--text-3);
+        font-size: 11px;
+      }
+
+      .status-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .status-item {
+        height: 18px;
+        display: inline-flex;
+        align-items: center;
+        padding: 0 6px;
+        border-radius: 4px;
+      }
+
+      .status-item.em {
+        color: var(--text-2);
+        background: rgba(255,255,255,0.04);
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .note {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #202226;
+        padding: 14px 16px;
+      }
+
+      .note h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+
+      .note ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--text-2);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+    </style>
+    <script>
+      function postChoice(id) {
+        if (window.toggleSelect) {
+          const el = document.querySelector(`[data-choice="${id}"]`);
+          if (el) window.toggleSelect(el);
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="page">
+      <div class="header">
+        <div class="eyebrow">ArkLine / Strict Replication Preview</div>
+        <h1>Choose the reference mockup before we implement</h1>
+        <p class="subtitle">
+          This round is no longer wireframe-level. These are static, high-fidelity reference mockups for the actual desktop shell direction.
+          Click A or B to choose the replication baseline.
+        </p>
+      </div>
+
+      <div class="choice-row">
+        <section class="choice" data-choice="a" onclick="postChoice('a')">
+          <div class="choice-top">
+            <div class="choice-title">
+              <div class="badge">A</div>
+              <div>
+                <h2>Strict IDEA New UI</h2>
+                <div class="choice-meta">Recommended · closest to your requested one-to-one direction</div>
+              </div>
+            </div>
+            <div class="choice-meta">Dense / thin / desktop-first</div>
+          </div>
+          <div class="choice-copy">
+            Toolbar buttons are explicit, activity rail is tighter, Project tree is denser, tabs are thinner, Git is a proper bottom tool window, and the status bar is deliberately weak.
+          </div>
+          <div class="ide">
+            <div class="window-bar"></div>
+            <div class="topbar">
+              <div class="top-left">
+                <div class="brand"><div class="logo"></div><strong>ArkLine</strong></div>
+                <div class="tb-btn">File</div>
+                <div class="tb-btn">Edit</div>
+                <div class="tb-btn">View</div>
+                <div class="workspace-pill">ArkDemoWorkspace</div>
+                <div class="tb-btn active">Open</div>
+                <div class="tb-btn">Search</div>
+                <div class="tb-btn">Quick Open</div>
+                <div class="tb-btn">Run Lint</div>
+                <div class="tb-btn">Format</div>
+              </div>
+              <div class="top-right">
+                <div class="tb-btn">Git</div>
+                <div class="tb-btn">Terminal</div>
+                <div class="tb-btn primary">Settings</div>
+              </div>
+            </div>
+            <div class="ide-body">
+              <aside class="rail">
+                <div class="rail-btn active"><div class="icon"></div></div>
+                <div class="rail-btn"><div class="icon"></div></div>
+                <div class="rail-btn"><div class="icon"></div></div>
+                <div class="rail-btn"><div class="icon"></div></div>
+              </aside>
+              <section class="side">
+                <div class="pane-head">
+                  <div class="pane-title"><span>Files</span><strong>Project</strong></div>
+                  <div class="pane-tools"><i></i><i></i><i></i></div>
+                </div>
+                <div class="tree">
+                  <div class="tree-row"><span class="caret">▾</span><span class="folder-dot"></span><span>ArkDemo</span></div>
+                  <div class="tree-row indent-1"><span class="caret">▾</span><span class="folder-dot"></span><span>src</span></div>
+                  <div class="tree-row indent-2 selected"><span class="caret"></span><span class="file-dot"></span><span>main.ets</span></div>
+                  <div class="tree-row indent-2 dim"><span class="caret"></span><span class="file-dot"></span><span>route_map.json</span></div>
+                  <div class="tree-row indent-1 dim"><span class="caret"></span><span class="file-dot"></span><span>app.json5</span></div>
+                  <div class="tree-row indent-1 dim"><span class="caret"></span><span class="folder-dot"></span><span>oh_modules</span></div>
+                  <div class="tree-row"><span class="caret">▸</span><span class="folder-dot"></span><span>resources</span></div>
+                </div>
+              </section>
+              <section class="editor">
+                <div class="tabs">
+                  <div class="tab active"><div class="dirty"></div><span>main.ets</span></div>
+                  <div class="tab"><span>app.json5</span></div>
+                  <div class="tab"><span>hvigorfile.ts</span></div>
+                </div>
+                <div class="editor-main">
+                  <div class="editor-content">
+                    <div class="code-line"><div class="ln">1</div><div><span class="ann">@Entry</span></div></div>
+                    <div class="code-line"><div class="ln">2</div><div><span class="ann">@Component</span></div></div>
+                    <div class="code-line"><div class="ln">3</div><div><span class="kw">struct</span> <span class="name">Index</span> {</div></div>
+                    <div class="code-line"><div class="ln">4</div><div>  build() {</div></div>
+                    <div class="code-line"><div class="ln">5</div><div>    Column() {</div></div>
+                    <div class="code-line"><div class="ln">6</div><div>      Text(<span class="str">"ArkLine"</span>)</div></div>
+                    <div class="code-line"><div class="ln">7</div><div>        .fontSize(20)</div></div>
+                    <div class="code-line"><div class="ln">8</div><div>        .fontWeight(FontWeight.Medium)</div></div>
+                    <div class="code-line"><div class="ln">9</div><div>    }</div></div>
+                    <div class="code-line"><div class="ln">10</div><div>  }</div></div>
+                    <div class="code-line"><div class="ln">11</div><div>}</div></div>
+                    <div class="code-line"><div class="ln">12</div><div class="cm">// lint: Expected trailing semicolon</div></div>
+                  </div>
+                </div>
+                <div class="bottom">
+                  <div class="bottom-tabs">
+                    <div class="btab">Problems</div>
+                    <div class="btab">Terminal</div>
+                    <div class="btab active">Git</div>
+                  </div>
+                  <div class="bottom-main">
+                    <div class="changes">
+                      <div class="change-row selected"><span>src/main.ets</span><span class="chip m">M</span></div>
+                      <div class="change-row"><span>AppShell.tsx</span><span class="chip m">M</span></div>
+                      <div class="change-row"><span>tokens.css</span><span class="chip a">A</span></div>
+                    </div>
+                    <div class="diff">
+                      <div class="diff-line"><div class="diff-ln">18</div><div>@@ -18,7 +18,8 @@</div></div>
+                      <div class="diff-line del"><div class="diff-ln">19</div><div>- Text("ArkLine")</div></div>
+                      <div class="diff-line add"><div class="diff-ln">19</div><div>+ Text("ArkLine IDE")</div></div>
+                      <div class="diff-line add"><div class="diff-ln">20</div><div>+   .fontColor('#5ca9ff')</div></div>
+                      <div class="diff-line"><div class="diff-ln">21</div><div>  .fontSize(20)</div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="status">
+                  <div class="status-group">
+                    <div class="status-item em">Workspace: ArkDemo</div>
+                    <div class="status-item">main.ets</div>
+                  </div>
+                  <div class="status-group">
+                    <div class="status-item">UTF-8</div>
+                    <div class="status-item">ArkTS</div>
+                    <div class="status-item em">Ready</div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
+        <section class="choice" data-choice="b" onclick="postChoice('b')">
+          <div class="choice-top">
+            <div class="choice-title">
+              <div class="badge">B</div>
+              <div>
+                <h2>IDEA Structure + Better Reading Air</h2>
+                <div class="choice-meta">Same shell, slightly looser reading density</div>
+              </div>
+            </div>
+            <div class="choice-meta">Softer / calmer / review-first</div>
+          </div>
+          <div class="choice-copy">
+            Keeps the exact same structural language, but loosens editor line rhythm, softens the chrome, and makes code review a little less compressed.
+          </div>
+          <div class="ide">
+            <div class="window-bar"></div>
+            <div class="topbar" style="height:42px;background:#32353b;">
+              <div class="top-left">
+                <div class="brand"><div class="logo"></div><strong>ArkLine</strong></div>
+                <div class="tb-btn active">Project</div>
+                <div class="tb-btn">Search</div>
+                <div class="workspace-pill" style="max-width:250px;">ArkDemoWorkspace</div>
+                <div class="tb-btn">Lint</div>
+                <div class="tb-btn">Format</div>
+                <div class="tb-btn">Run</div>
+              </div>
+              <div class="top-right">
+                <div class="tb-btn">Problems</div>
+                <div class="tb-btn">Git</div>
+                <div class="tb-btn primary">Preferences</div>
+              </div>
+            </div>
+            <div class="ide-body" style="grid-template-columns:50px 280px 1fr;">
+              <aside class="rail" style="background:#2d3036;">
+                <div class="rail-btn active"><div class="icon"></div></div>
+                <div class="rail-btn"><div class="icon"></div></div>
+                <div class="rail-btn"><div class="icon"></div></div>
+              </aside>
+              <section class="side" style="background:#343840;">
+                <div class="pane-head">
+                  <div class="pane-title"><span>Files</span><strong>Project</strong></div>
+                  <div class="pane-tools"><i></i><i></i></div>
+                </div>
+                <div class="tree" style="line-height:1.9;">
+                  <div class="tree-row"><span class="caret">▾</span><span class="folder-dot"></span><span>ArkDemo</span></div>
+                  <div class="tree-row indent-1"><span class="caret">▾</span><span class="folder-dot"></span><span>src</span></div>
+                  <div class="tree-row indent-2 selected" style="background:#4b5058;"><span class="caret"></span><span class="file-dot"></span><span>main.ets</span></div>
+                  <div class="tree-row indent-2 dim"><span class="caret"></span><span class="file-dot"></span><span>detail.ets</span></div>
+                  <div class="tree-row indent-1 dim"><span class="caret"></span><span class="file-dot"></span><span>app.json5</span></div>
+                </div>
+              </section>
+              <section class="editor" style="grid-template-rows:34px 1fr 160px 22px;">
+                <div class="tabs" style="background:#2d3036;">
+                  <div class="tab active" style="background:#41464f;"><div class="dirty"></div><span>main.ets</span></div>
+                  <div class="tab"><span>detail.ets</span></div>
+                </div>
+                <div class="editor-main" style="background:#202328;">
+                  <div class="editor-content" style="font-size:14px;line-height:1.95;padding-top:22px;">
+                    <div class="code-line"><div class="ln">1</div><div><span class="ann">@Entry</span></div></div>
+                    <div class="code-line"><div class="ln">2</div><div><span class="ann">@Component</span></div></div>
+                    <div class="code-line"><div class="ln">3</div><div><span class="kw">struct</span> <span class="name">Index</span> {</div></div>
+                    <div class="code-line"><div class="ln">4</div><div>  build() {</div></div>
+                    <div class="code-line"><div class="ln">5</div><div>    Column({ space: 12 }) {</div></div>
+                    <div class="code-line"><div class="ln">6</div><div>      Text(<span class="str">"HarmonyOS"</span>)</div></div>
+                    <div class="code-line"><div class="ln">7</div><div>      Text(<span class="str">"ArkLine Review Mode"</span>)</div></div>
+                    <div class="code-line"><div class="ln">8</div><div>    }</div></div>
+                    <div class="code-line"><div class="ln">9</div><div>  }</div></div>
+                    <div class="code-line"><div class="ln">10</div><div>}</div></div>
+                  </div>
+                </div>
+                <div class="bottom">
+                  <div class="bottom-tabs">
+                    <div class="btab active">Problems</div>
+                    <div class="btab">Terminal</div>
+                    <div class="btab">Git</div>
+                  </div>
+                  <div class="bottom-main" style="grid-template-columns:1fr;">
+                    <div class="diff" style="padding-top:12px;">
+                      <div class="diff-line"><div class="diff-ln">3:1</div><div><span style="color:#df6b75;">error</span> Expected trailing semicolon</div></div>
+                      <div class="diff-line"><div class="diff-ln">1:1</div><div><span style="color:#d6b25e;">warn</span> File is not formatted</div></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="status">
+                  <div class="status-group">
+                    <div class="status-item em">Review Mode</div>
+                    <div class="status-item">main.ets</div>
+                  </div>
+                  <div class="status-group">
+                    <div class="status-item">UTF-8</div>
+                    <div class="status-item">2 spaces</div>
+                    <div class="status-item em">Ready</div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <h3>A will replicate these details</h3>
+          <ul>
+            <li>顶部工具栏按钮显式可见，并且是桌面 IDE 的弱按钮样式</li>
+            <li>左侧活动栏、Project 树、tab、底部 Git 全部按紧凑密度处理</li>
+            <li>更接近你说的“一比一复刻 IDEA”目标</li>
+          </ul>
+        </div>
+        <div class="note">
+          <h3>B will replicate these details</h3>
+          <ul>
+            <li>保持 IDEA 架构，但给代码阅读稍多呼吸感</li>
+            <li>更适合长时间审查代码，但严格度略低于 A</li>
+            <li>如果你更重视阅读舒适而不是极致贴近，可选它</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

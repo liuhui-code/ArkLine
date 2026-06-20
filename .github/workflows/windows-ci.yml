@@ -1,0 +1,52 @@
+name: windows-ci
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+  pull_request:
+
+jobs:
+  verify-and-package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8.3.1
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend tests
+        run: pnpm test
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build desktop bundle
+        run: pnpm package:windows
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-windows-bundle
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: warn
