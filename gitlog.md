@@ -48,3 +48,4 @@
 - 2026-06-20: Tightened first-push repository hygiene by ignoring TypeScript build-info cache files before creating the initial GitHub snapshot.
 - 2026-06-20: Tightened first-push repository hygiene again by excluding local `.superpowers/` brainstorming artifacts from source control while keeping the approved design/spec documents under `docs/superpowers/`.
 - 2026-06-20: Reshaped the README into a GitHub-ready project homepage with clearer positioning, first-use flow, shortcut summary, architecture snapshot, repository map, and near-term roadmap for external readers.
+- 2026-06-20: Added first-release publication materials, including a `v0.1.0` release draft and a concrete screenshot capture checklist so the repository can move from code snapshot to publishable project presentation.

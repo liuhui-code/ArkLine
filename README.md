@@ -171,6 +171,8 @@ Important constraints in the current codebase:
 - MVP execution notes: [docs/mvp-execution-plan.md](/Users/liuhui/Documents/code/ArkLine/docs/mvp-execution-plan.md)
 - MVP implementation plan: [docs/mvp-implementation-plan.md](/Users/liuhui/Documents/code/ArkLine/docs/mvp-implementation-plan.md)
 - Editor capability matrix: [docs/editor-capability-matrix.md](/Users/liuhui/Documents/code/ArkLine/docs/editor-capability-matrix.md)
+- Release draft: [docs/releases/v0.1.0-draft.md](/Users/liuhui/Documents/code/ArkLine/docs/releases/v0.1.0-draft.md)
+- Screenshot checklist: [docs/releases/screenshot-checklist.md](/Users/liuhui/Documents/code/ArkLine/docs/releases/screenshot-checklist.md)
 - Development log: [gitlog.md](/Users/liuhui/Documents/code/ArkLine/gitlog.md)
 
 ## Near-term roadmap
