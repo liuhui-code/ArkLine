@@ -10,7 +10,22 @@ ArkLine is a lightweight ArkTS IDE focused on four things:
 The product target is Windows desktop. macOS is currently used as a development
 and validation environment.
 
-## MVP scope
+## Why ArkLine
+
+ArkLine is not trying to be a full generic IDE.
+
+The first version is intentionally narrow:
+
+- keep the traditional editor experience that developers already rely on
+- keep code reading and file navigation efficient
+- keep `lint` / `format` close at hand
+- keep Git review inside the same shell
+- avoid the weight and complexity of a large all-in-one IDE before the ArkTS query stack is truly ready
+
+The direction is a Windows-first, IDEA-inspired ArkTS workspace that stays light,
+fast to search, and comfortable for long reading sessions.
+
+## Current MVP
 
 This repository currently includes:
 
@@ -23,6 +38,15 @@ This repository currently includes:
 - `Ctrl+B`, `Ctrl+Click`, `Ctrl+Space`, and `Alt+F7` MVP wiring for code query flows
 - lint / format command configuration and validation entry points
 - Windows packaging and CI baseline
+
+## Product status
+
+ArkLine is currently an engineering MVP.
+
+- the shell and editor workflow are already usable
+- project opening, file browsing, search flows, editing, and Git diff review are in place
+- ArkTS semantic capabilities are partially wired but not yet strong enough to claim IntelliJ-class behavior
+- packaging is designed for Windows first, with macOS used mainly for development verification
 
 ## Quick start
 
@@ -98,7 +122,7 @@ Notes:
 - Use macOS mainly to verify frontend, shell interaction, and workspace loading.
 - The first packaged end-user experience should still be treated as Windows-first.
 
-## How to use ArkLine
+## First-use flow
 
 1. Open a project from `File -> Open Project...`
 2. Select an ArkTS workspace directory
@@ -106,6 +130,56 @@ Notes:
 4. Open search flows with the top toolbar or keyboard shortcuts
 5. Run lint / format from the Terminal presets or configured actions
 6. Review changed files in the bottom Git tool window
+
+## Core shortcuts
+
+The shell is intentionally aligned toward IntelliJ IDEA habits.
+
+| Action | Shortcut |
+| --- | --- |
+| Search Everywhere | `Shift` twice / toolbar search |
+| Quick Open | `Ctrl+P` |
+| Find Action | `Ctrl+Shift+A` |
+| Save | `Ctrl+S` |
+| Go to Definition | `Ctrl+B` |
+| Code Completion | `Ctrl+Space` |
+| Find Usages | `Alt+F7` |
+| Project tool window | `Alt+1` |
+| Git tool window | `Alt+9` |
+| Terminal tool window | `Alt+F12` |
+| Hide active tool window | `Shift+Esc` |
+| Editor-only mode toggle | `Ctrl+Shift+F12` |
+
+## Architecture snapshot
+
+ArkLine is split into a small desktop host and a web-based UI shell:
+
+- `src-tauri/`: Tauri v2 host, filesystem commands, settings, terminal runner, language-service adapter skeleton
+- `src/`: React shell, CodeMirror editor, tool windows, query overlays, workspace state
+- `tests/frontend/`: editor and shell interaction regression coverage
+- `docs/`: MVP plan, editor capability matrix, performance notes, and approved shell specs
+
+Important constraints in the current codebase:
+
+- SQLite is not part of ArkLine; this project is a desktop IDE shell, not a backend service
+- large “god files” are intentionally avoided, and shell code has already been split to keep major files under control
+- ArkTS SDK dependence should stay isolated behind service boundaries rather than spreading through UI code
+
+## Repository map
+
+- Product brief: [Agent.md](/Users/liuhui/Documents/code/ArkLine/Agent.md)
+- MVP execution notes: [docs/mvp-execution-plan.md](/Users/liuhui/Documents/code/ArkLine/docs/mvp-execution-plan.md)
+- MVP implementation plan: [docs/mvp-implementation-plan.md](/Users/liuhui/Documents/code/ArkLine/docs/mvp-implementation-plan.md)
+- Editor capability matrix: [docs/editor-capability-matrix.md](/Users/liuhui/Documents/code/ArkLine/docs/editor-capability-matrix.md)
+- Development log: [gitlog.md](/Users/liuhui/Documents/code/ArkLine/gitlog.md)
+
+## Near-term roadmap
+
+1. Replace MVP semantic fallbacks with a stable ArkTS language-service integration
+2. Raise click-through navigation, completion quality, and usages accuracy toward IDEA expectations
+3. Strengthen Git workflows beyond diff viewing into a more complete IDEA-like daily flow
+4. Validate Windows packaging on a real target machine and publish a first usable installer
+5. Continue tightening shell density, readability, and keyboard ergonomics
 
 ## Current limitations
 
@@ -116,7 +190,7 @@ Notes:
 - Git history, branches, staging, and merge tooling are still much lighter than real IDEA Git support.
 - Windows installer and portable executable still need final validation on a real Windows machine.
 
-## Development commands
+## Development
 
 ```bash
 pnpm install
