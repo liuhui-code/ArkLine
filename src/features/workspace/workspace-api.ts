@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createFileTreeNodes, type FileTreeNode } from "@/features/workspace/file-tree-store";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
+import {
+  collectFallbackCompletions,
+  collectFallbackDocumentSymbols,
+} from "@/features/workspace/fallback-symbols";
 import type { UsageResult } from "@/features/workspace/usage-search";
 import {
   createWorkspaceStore,
@@ -59,6 +63,31 @@ export type TerminalRunResult = {
   stopped: boolean;
 };
 
+export type TerminalSessionStatus = "starting" | "idle" | "running" | "closed" | "error";
+
+export type TerminalSessionSummary = {
+  id: string;
+  title: string;
+  cwd: string;
+  shell: string;
+  status: TerminalSessionStatus;
+};
+
+export type CreateTerminalSessionRequest = {
+  cwd: string | null;
+};
+
+export type TerminalInputWriteRequest = {
+  sessionId: string;
+  data: string;
+};
+
+export type TerminalResizeRequest = {
+  sessionId: string;
+  cols: number;
+  rows: number;
+};
+
 export type LanguageQueryRequest = {
   path: string;
   line: number;
@@ -67,10 +96,13 @@ export type LanguageQueryRequest = {
 
 export type LanguageServiceReport = {
   provider: string;
+  mode: "semantic" | "fallback" | "unavailable";
   running: boolean;
   hover: boolean;
   definition: boolean;
   completion: boolean;
+  documentSymbols: boolean;
+  findUsages: boolean;
   detail: string;
 };
 
@@ -90,6 +122,13 @@ export type LanguageCompletionItem = {
   kind: string;
 };
 
+export type DocumentSymbol = {
+  name: string;
+  kind: string;
+  line: number;
+  column: number;
+};
+
 export type WorkspaceApi = {
   pickWorkspaceRoot(): Promise<string | null>;
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
@@ -103,9 +142,16 @@ export type WorkspaceApi = {
   hoverSymbol?(request: LanguageQueryRequest): Promise<HoverResponse | null>;
   gotoDefinition?(request: LanguageQueryRequest): Promise<DefinitionTarget | null>;
   completeSymbol?(request: LanguageQueryRequest): Promise<LanguageCompletionItem[]>;
+  documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
   findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
+  createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionSummary>;
+  listTerminalSessions(): Promise<TerminalSessionSummary[]>;
+  writeTerminalInput(request: TerminalInputWriteRequest): Promise<void>;
+  resizeTerminalSession(request: TerminalResizeRequest): Promise<void>;
+  closeTerminalSession(sessionId: string): Promise<void>;
+  stopTerminalSession(sessionId: string): Promise<void>;
   runTerminalCommand(request: TerminalRunRequest): Promise<TerminalRunResult>;
   stopTerminalCommand(runId: string): Promise<void>;
 };
@@ -155,6 +201,20 @@ async function loadWorkspaceSnapshot(rootPath: string) {
   };
 }
 
+async function loadMockDocumentContent(path: string) {
+  const normalized = normalizePath(path);
+
+  if (normalized.endsWith("main.ets")) {
+    return "@Entry\n@Component\nstruct Index {}";
+  }
+
+  if (normalized.endsWith("app.json5")) {
+    return "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}";
+  }
+
+  return "";
+}
+
 export const defaultWorkspaceApi: WorkspaceApi = {
   async pickWorkspaceRoot() {
     if (!hasTauriRuntime()) {
@@ -180,17 +240,7 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       return invoke<string>("open_text_document", { path });
     }
 
-    const normalized = normalizePath(path);
-
-    if (normalized.endsWith("main.ets")) {
-      return "@Entry\n@Component\nstruct Index {}";
-    }
-
-    if (normalized.endsWith("app.json5")) {
-      return "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}";
-    }
-
-    return "";
+    return loadMockDocumentContent(path);
   },
   async saveFile(path, content) {
     if (hasTauriRuntime()) {
@@ -283,12 +333,15 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     }
 
     return {
-      provider: "mock",
+      provider: "mock-fallback",
+      mode: "fallback",
       running: true,
       hover: true,
       definition: true,
       completion: true,
-      detail: "Mock ArkTS language service for demo and integration-shell wiring",
+      documentSymbols: true,
+      findUsages: true,
+      detail: "Mock fallback ArkTS language service for demo and integration-shell wiring",
     };
   },
   async hoverSymbol(request) {
@@ -330,11 +383,20 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       return [];
     }
 
-    return [
-      { label: "@Entry", detail: "ArkTS decorator", kind: "keyword" },
-      { label: "@Component", detail: "ArkTS decorator", kind: "keyword" },
-      { label: "build()", detail: "Component lifecycle method", kind: "method" },
-    ];
+    const content = await loadMockDocumentContent(request.path);
+    return collectFallbackCompletions(content);
+  },
+  async documentSymbols(request) {
+    if (hasTauriRuntime()) {
+      return invoke<DocumentSymbol[]>("document_symbols", { request });
+    }
+
+    if (!isDemoWorkspacePath(request.path)) {
+      return [];
+    }
+
+    const content = await loadMockDocumentContent(request.path);
+    return collectFallbackDocumentSymbols(content);
   },
   async findUsages(request) {
     if (hasTauriRuntime()) {
@@ -374,6 +436,58 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     }
 
     void settings;
+  },
+  async createTerminalSession(request) {
+    if (hasTauriRuntime()) {
+      return invoke<TerminalSessionSummary>("create_terminal_session", { request });
+    }
+
+    return {
+      id: "session-1",
+      title: "pwsh",
+      cwd: normalizePath(request.cwd ?? demoWorkspace.rootPath),
+      shell: "pwsh",
+      status: "idle",
+    };
+  },
+  async listTerminalSessions() {
+    if (hasTauriRuntime()) {
+      return invoke<TerminalSessionSummary[]>("list_terminal_sessions");
+    }
+
+    return [];
+  },
+  async writeTerminalInput(request) {
+    if (hasTauriRuntime()) {
+      await invoke("write_terminal_input", { request });
+      return;
+    }
+
+    void request;
+  },
+  async resizeTerminalSession(request) {
+    if (hasTauriRuntime()) {
+      await invoke("resize_terminal_session", { request });
+      return;
+    }
+
+    void request;
+  },
+  async closeTerminalSession(sessionId) {
+    if (hasTauriRuntime()) {
+      await invoke("close_terminal_session", { sessionId });
+      return;
+    }
+
+    void sessionId;
+  },
+  async stopTerminalSession(sessionId) {
+    if (hasTauriRuntime()) {
+      await invoke("stop_terminal_session", { sessionId });
+      return;
+    }
+
+    void sessionId;
   },
   async runTerminalCommand(request) {
     if (hasTauriRuntime()) {

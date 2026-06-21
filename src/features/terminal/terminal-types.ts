@@ -1,6 +1,20 @@
 import type { TerminalRunRequest, TerminalRunResult } from "@/features/workspace/workspace-api";
 
 export type TerminalPreset = "lint" | "format" | "gitStatus";
+export type TerminalSessionStatus = "starting" | "idle" | "running" | "closed" | "error";
+
+export type TerminalSessionSummary = {
+  id: string;
+  title: string;
+  cwd: string;
+  shell: string;
+  status: TerminalSessionStatus;
+};
+
+export type TerminalTabsState = {
+  sessions: TerminalSessionSummary[];
+  activeSessionId: string | null;
+};
 
 export type TerminalEntryStatus = "success" | "error" | "stopped";
 
