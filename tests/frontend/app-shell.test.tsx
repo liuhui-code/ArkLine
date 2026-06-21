@@ -15,7 +15,7 @@ async function openProject(user: ReturnType<typeof userEvent.setup>, path = "C:/
 }
 
 describe("App shell", () => {
-  it("renders the approved shell regions", () => {
+  it("renders the approved shell regions", async () => {
     render(<App />);
 
     expect(screen.getByLabelText("Editor")).toHaveClass("editor-surface--empty");
@@ -27,22 +27,21 @@ describe("App shell", () => {
     expect(screen.getByText("Open a HarmonyOS workspace to start reviewing and editing ArkTS files.")).toHaveClass(
       "workspace-empty__description",
     );
+    expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
   });
 
-  it("renders the primary IDE regions", () => {
+  it("renders the primary IDE regions", async () => {
     render(<App />);
 
     const header = screen.getByRole("banner", { name: "Application Header" });
     expect(screen.getByRole("region", { name: "Files" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Search" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Editor")).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "File" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "View" })).toBeInTheDocument();
-    expect(within(header).getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Run Lint" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Format" })).toBeInTheDocument();
-    expect(within(header).getByRole("button", { name: "Git" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Problems" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Git" })).toBeInTheDocument();
@@ -56,19 +55,24 @@ describe("App shell", () => {
     expect(within(screen.getByLabelText("Files")).getByText("Project")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
     expect(within(header).getByRole("button", { name: "Settings" })).toHaveClass("toolbar__button--primary");
+    expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
   });
 
-  it("opens search everywhere and terminal from the top bar", async () => {
+  it("shows fallback semantic mode in the status bar", async () => {
+    render(<AppShell />);
+
+    expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
+  });
+
+  it("opens terminal from the top bar", async () => {
     const user = userEvent.setup();
     render(<App />);
     const header = screen.getByRole("banner", { name: "Application Header" });
 
-    await user.click(within(header).getByRole("button", { name: "Search" }));
-    expect(await screen.findByLabelText("Search Everywhere Query")).toBeVisible();
-
     await user.click(within(header).getByRole("button", { name: "Terminal" }));
     expect(await screen.findByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByLabelText("Terminal Command")).toBeVisible();
+    expect(await screen.findByRole("tab", { name: "pwsh" })).toBeVisible();
+    expect(await screen.findByLabelText("Terminal Viewport")).toBeVisible();
   });
 
   it("opens the top menu actions for file edit and view", async () => {
@@ -142,14 +146,30 @@ describe("App shell", () => {
     render(<App />);
     const toolRail = screen.getByLabelText("Primary Tool Window Rail");
 
-    const searchPane = screen.getByRole("region", { name: "Search" });
+    await user.click(within(toolRail).getByRole("button", { name: "Search" }));
+    const searchPane = await screen.findByRole("region", { name: "Search" });
     expect(searchPane).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
 
     await user.click(within(toolRail).getByRole("button", { name: "Search" }));
-    expect(searchPane).not.toBeVisible();
+    expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
+  });
+
+  it("switches between project and search in the same left pane", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const toolRail = screen.getByLabelText("Primary Tool Window Rail");
+
+    expect(screen.getByRole("region", { name: "Files" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
 
     await user.click(within(toolRail).getByRole("button", { name: "Search" }));
-    expect(searchPane).toBeVisible();
+    expect(await screen.findByRole("region", { name: "Search" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
+
+    await user.click(within(toolRail).getByRole("button", { name: "Project" }));
+    expect(await screen.findByRole("region", { name: "Files" })).toBeVisible();
+    expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
   });
 
   it("loads a workspace into the files pane", async () => {
@@ -199,8 +219,8 @@ describe("App shell", () => {
     render(<App />);
 
     await openProject(user);
-    const header = screen.getByRole("banner", { name: "Application Header" });
-    await user.click(within(header).getByRole("button", { name: "Search" }));
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Search Everywhere" }));
 
     const query = await screen.findByLabelText("Search Everywhere Query");
     await user.type(query, "app");
@@ -548,7 +568,8 @@ describe("App shell", () => {
 
     render(<AppShell workspaceApi={workspaceApi} />);
     const header = screen.getByRole("banner", { name: "Application Header" });
-    await user.click(within(header).getByRole("button", { name: "Git" }));
+    await user.click(within(header).getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Git" }));
 
     expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("button", { name: "src/main.ets M Modified" })).toBeVisible();
@@ -741,7 +762,8 @@ describe("App shell", () => {
     await user.click(screen.getByRole("button", { name: "Index.ets" }));
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index {}");
 
-    await user.click(within(header).getByRole("button", { name: "Git" }));
+    await user.click(within(header).getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Git" }));
     expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: /entry\/src\/main\/ets\/pages\/Index\.ets .* Modified/ })).toBeVisible();
     expect(screen.getByText("+ }")).toBeVisible();

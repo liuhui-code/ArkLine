@@ -12,7 +12,7 @@ import { ShellSidebar } from "@/components/layout/ShellSidebar";
 import type { ShellCommand } from "@/components/layout/shell-keymap";
 import { SearchOverlayContent } from "@/components/layout/SearchOverlayContent";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
-import { TerminalPanel } from "@/components/layout/TerminalPanel";
+import { TerminalToolWindow } from "@/components/layout/TerminalToolWindow";
 import { TopBar } from "@/components/layout/TopBar";
 import { UsagesPanel } from "@/components/layout/UsagesPanel";
 import { useShellHotkeys } from "@/components/layout/useShellHotkeys";
@@ -24,10 +24,11 @@ import { createDocumentStore } from "@/features/documents/document-store";
 import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
 import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
 import { createProblemsStore, type ProblemItem } from "@/features/problems/problems-store";
+import { useSemanticState } from "@/features/semantic/use-semantic-state";
 import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettingsPatch } from "@/features/settings/settings-store";
-import { useTerminalSession } from "@/features/terminal/use-terminal-session";
-import { findLocalDefinition } from "@/features/workspace/local-definition";
+import { useTerminalToolWindow } from "@/features/terminal/use-terminal-tool-window";
+import { findWorkspaceDefinition } from "@/features/workspace/local-definition";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
@@ -37,7 +38,7 @@ type AppShellProps = { workspaceApi?: WorkspaceApi };
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
-  const [searchVisible, setSearchVisible] = useState(true);
+  const [searchVisible, setSearchVisible] = useState(false);
   const [bottomVisible, setBottomVisible] = useState(true);
   const [activeLeftTool, setActiveLeftTool] = useState<LeftToolKey>("project");
   const [activeBottomTool, setActiveBottomTool] = useState<BottomToolKey>("problems");
@@ -69,46 +70,43 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const searchPaneRef = useRef<HTMLDivElement | null>(null);
   const editorSurfaceRef = useRef<HTMLElement | null>(null);
   const bottomToolWindowRef = useRef<HTMLElement | null>(null);
-  const {
-    terminalInputRef,
-    terminalState,
-    focusTerminalInput,
-    setInput: setTerminalInput,
-    navigateHistory: navigateTerminalHistory,
-    clearOutput: clearTerminalOutput,
-    runPresetTerminalCommand,
-    runManualTerminalCommand,
-    rerunLastTerminalCommand,
-    stopRunningTerminalCommand,
-  } = useTerminalSession({
-    settings: settingsRef.current.state.settings,
+  const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
+  const terminalToolWindow = useTerminalToolWindow({
     workspaceApi,
     workspaceRootPath: workspace?.rootPath ?? null,
     onStatusChange: setStatusText,
   });
-
   function focusEditor() { const editor = editorSurfaceRef.current?.querySelector<HTMLElement>('[aria-label="Editor Content"]'); if (editor) return void editor.focus(); editorSurfaceRef.current?.focus(); }
   function focusEditorSoon() { requestAnimationFrame(() => focusEditor()); }
   function setDefinitionDebug(message: string) { setDefinitionDebugText(message); }
-
   function setOverlay(overlay: Exclude<OverlayKey, "none">) { setActiveOverlay(overlay); setQuickOpenQuery(""); setStatusText(getOverlayLabel(overlay)); }
 
-  function toggleSidebarPane(setter: typeof setFilesVisible, label: "Project" | "Search") {
-    setter((visible) => { const nextVisible = !visible; setStatusText(nextVisible ? label : "Editor"); return nextVisible; });
-  }
   function showLeftTool(tool: LeftToolKey) {
+    if (tool === "project") {
+      const nextVisible = activeLeftTool !== "project" || !filesVisible;
+      setActiveLeftTool("project");
+      setFilesVisible(nextVisible);
+      setSearchVisible(false);
+      setStatusText(nextVisible ? "Project" : "Editor");
+      return;
+    }
+    if (tool === "search") {
+      const nextVisible = activeLeftTool !== "search" || !searchVisible;
+      setActiveLeftTool("search");
+      setSearchVisible(nextVisible);
+      setFilesVisible(false);
+      setStatusText(nextVisible ? "Search" : "Editor");
+      return;
+    }
     setActiveLeftTool(tool);
-    if (tool === "project") return toggleSidebarPane(setFilesVisible, "Project");
-    if (tool === "search") return toggleSidebarPane(setSearchVisible, "Search");
     setBottomVisible(true); setActiveBottomTool(tool === "git" ? "git" : "problems"); setStatusText(tool === "git" ? "Git" : "Problems");
   }
-
   function showBottomTool(tool: BottomToolKey) {
     setBottomVisible(true);
     setActiveBottomTool(tool);
     setStatusText(tool === "terminal" ? "Terminal" : tool === "git" ? "Git" : tool === "usages" ? "Usages" : "Problems");
     if (tool === "terminal") {
-      focusTerminalInput();
+      void terminalToolWindow.ensureSession();
     }
   }
 
@@ -194,6 +192,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setDiffFiles([]);
     setCompletionItems([]);
     setUsageSearch(idleUsageSearchState());
+    terminalToolWindow.resetSessions();
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
     setSelectionTarget(null);
@@ -206,6 +205,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       const snapshot = await workspaceApi.openWorkspace(rootPath);
       applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot));
       resetWorkspaceUi(snapshot.rootName);
+      await refreshSemanticState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setProjectPathInput(rootPath);
@@ -273,11 +273,22 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setDefinitionDebug(`Ctrl+Click query fired at ${getPathBasename(activePath)}:${request.line}:${request.column}. Waiting for language lookup...`);
     }
     const target = await workspaceApi.gotoDefinition(request);
-    const resolvedTarget = target ?? findLocalDefinition({
+    const resolvedTarget = target ?? await findWorkspaceDefinition({
       path: activePath,
       content: documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent,
       line: request.line,
       column: request.column,
+      workspaceFiles: workspace?.visibleFiles ?? [activePath],
+      readFile: async (path) => {
+        if (normalizePath(path) === normalizePath(activePath)) {
+          return documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
+        }
+        try {
+          return await workspaceApi.openFile(path);
+        } catch {
+          return null;
+        }
+      },
     });
     if (!resolvedTarget) {
       if (source === "modifierClick") setDefinitionDebug("Ctrl+Click query ran, but both the language service and same-file fallback returned no definition target.");
@@ -460,7 +471,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <EnvironmentPanel report={environmentReport} visible={settingsVisible} />
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} onSelectTool={showBottomTool} visible={bottomVisible} problemsPanel={<ProblemsPanel problems={problems} />}
-        terminalPanel={<TerminalPanel commandInput={terminalState.input} entries={terminalState.entries} isRunning={terminalState.isRunning} inputRef={terminalInputRef} onChangeInput={setTerminalInput} onRunCommand={() => void runManualTerminalCommand()} onRunPreset={(preset) => void runPresetTerminalCommand(preset)} onRerun={() => void rerunLastTerminalCommand()} onStop={() => void stopRunningTerminalCommand()} onClear={clearTerminalOutput} onHistoryKey={navigateTerminalHistory} />}
+        terminalPanel={<TerminalToolWindow sessions={terminalToolWindow.sessions} activeSessionId={terminalToolWindow.activeSessionId} focusToken={terminalToolWindow.focusToken} onCreateSession={() => void terminalToolWindow.createSession()} onCloseSession={(sessionId) => void terminalToolWindow.closeSession(sessionId)} onSetActiveSession={terminalToolWindow.setActiveSession} onClearSession={terminalToolWindow.clearSession} onStopSession={() => void terminalToolWindow.stopSession()} />}
         gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
         usagesPanel={<UsagesPanel state={usageSearch} onOpenUsage={(item) => void openUsageResult(item)} />}
       />
@@ -472,7 +483,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       >
         {definitionDebugText}
       </div>
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={terminalState.isRunning} />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} />
     </div>
   );
 }
