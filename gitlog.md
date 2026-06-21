@@ -1,5 +1,11 @@
 # ArkLine Development Log
 
+- 2026-06-21: Replaced the old single-run terminal panel with an IDEA-style PTY-backed terminal tool window: added tabbed terminal sessions, frontend xterm-based viewport/input wiring, Tauri session lifecycle and output streaming, removed the obsolete terminal-panel path, and reran the full 77-test frontend suite plus the Rust terminal regression.
+- 2026-06-21: Reworked ArkLine's semantic query path into a dual-provider shape: added deterministic frontend fallback symbol/completion helpers, implemented same-file Rust fallback definition/completion/document-symbols/usages behavior, introduced ArkTS provider discovery with truthful fallback health messaging, and surfaced the active semantic mode in the status bar with passing frontend and Rust regression coverage.
+- 2026-06-21: Replaced the previous generated app icon work with a hand-authored final `Twin Pillar` SVG mark, then regenerated the full Tauri icon set so the project now ships a strict white-background, black-symbol icon across `png` and `icns` assets.
+- 2026-06-21: Replaced the ArkLine app icon source with a transparency-safe variant and regenerated the full Tauri icon set so the rounded tile no longer picks up the previous dark corner matte.
+- 2026-06-21: Fixed the first ArkLine application-icon integration gap by declaring the generated Tauri desktop icon set explicitly in `tauri.conf.json` and adding a macOS-only startup helper that sets the Dock icon during `tauri dev`, because Tao does not support runtime window icons on macOS.
+- 2026-06-21: Landed the approved `C1` ArkLine application icon into the repository, saved the high-fidelity source under `docs/assets/`, and generated the full Tauri icon set (`png`/`ico`/`icns`/store assets) so the app and Windows installer can share the same branded identity.
 - 2026-06-18: Bootstrapped the Tauri v2 workspace skeleton with frontend and Rust smoke tests.
 - 2026-06-18: Added the first IDEA-inspired application shell with collapsible panes, shared design tokens, and shell tests.
 - 2026-06-19: Added workspace and document state stores plus Rust workspace scanning and the first open_workspace command with tests.
@@ -49,3 +55,4 @@
 - 2026-06-20: Tightened first-push repository hygiene again by excluding local `.superpowers/` brainstorming artifacts from source control while keeping the approved design/spec documents under `docs/superpowers/`.
 - 2026-06-20: Reshaped the README into a GitHub-ready project homepage with clearer positioning, first-use flow, shortcut summary, architecture snapshot, repository map, and near-term roadmap for external readers.
 - 2026-06-20: Added first-release publication materials, including a `v0.1.0` release draft and a concrete screenshot capture checklist so the repository can move from code snapshot to publishable project presentation.
+- 2026-06-20: Added a Windows preflight-and-build PowerShell helper that checks Node, pnpm, Rust, MSVC tooling, and WebView2 presence before running the ArkLine Windows build flow, and documented its usage in the README.

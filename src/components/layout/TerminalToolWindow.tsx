@@ -5,6 +5,8 @@ type TerminalToolWindowProps = {
   sessions: TerminalSessionSummary[];
   activeSessionId: string | null;
   focusToken: number;
+  output: string;
+  onInput: (data: string) => void;
   onCreateSession: () => void;
   onCloseSession: (sessionId: string) => void;
   onSetActiveSession: (sessionId: string) => void;
@@ -16,6 +18,8 @@ export function TerminalToolWindow({
   sessions,
   activeSessionId,
   focusToken,
+  output,
+  onInput,
   onCreateSession,
   onCloseSession,
   onSetActiveSession,
@@ -55,7 +59,7 @@ export function TerminalToolWindow({
           <button type="button" className="terminal-tool-window__action" onClick={onClearSession}>Clear</button>
           <button type="button" className="terminal-tool-window__action" onClick={onStopSession}>Stop</button>
         </div>
-        <TerminalViewport focusToken={focusToken} sessionId={activeSessionId} />
+        <TerminalViewport focusToken={focusToken} output={output} sessionId={activeSessionId} onInput={onInput} />
       </div>
     </section>
   );

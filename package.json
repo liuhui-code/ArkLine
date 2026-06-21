@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "check:windows-build": "powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1",
     "package:windows": "pnpm build && tauri build --bundles nsis",
     "preview": "vite preview",
     "test": "vitest run",
@@ -19,6 +20,8 @@
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/language": "^6.12.3",
     "@codemirror/search": "^6.7.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/view": "^6.43.1",
     "@tauri-apps/plugin-dialog": "^2.0.0",

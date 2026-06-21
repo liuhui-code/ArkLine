@@ -1,19 +1,23 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::models::terminal::{
     CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalResizeRequest,
     TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
 };
 use crate::services::terminal_service::{
-    close_session, create_session, list_sessions, run_command, stop_command, TerminalRuntime,
+    close_session, create_session, list_sessions, resize_active_session, run_command,
+    start_output_forwarder, stop_active_session, stop_command, write_input, TerminalRuntime,
 };
 
 #[tauri::command]
 pub fn create_terminal_session(
+    app: AppHandle,
     runtime: State<TerminalRuntime>,
     request: CreateTerminalSessionRequest,
 ) -> Result<TerminalSessionSummary, String> {
-    create_session(runtime.inner(), request)
+    let session = create_session(runtime.inner(), request)?;
+    start_output_forwarder(app, runtime.inner(), &session.id)?;
+    Ok(session)
 }
 
 #[tauri::command]
@@ -28,9 +32,7 @@ pub fn write_terminal_input(
     runtime: State<TerminalRuntime>,
     request: TerminalInputWriteRequest,
 ) -> Result<(), String> {
-    let _ = runtime;
-    let _ = request;
-    Ok(())
+    write_input(runtime.inner(), &request)
 }
 
 #[tauri::command]
@@ -38,9 +40,7 @@ pub fn resize_terminal_session(
     runtime: State<TerminalRuntime>,
     request: TerminalResizeRequest,
 ) -> Result<(), String> {
-    let _ = runtime;
-    let _ = request;
-    Ok(())
+    resize_active_session(runtime.inner(), &request)
 }
 
 #[tauri::command]
@@ -53,9 +53,7 @@ pub fn close_terminal_session(
 
 #[tauri::command]
 pub fn stop_terminal_session(runtime: State<TerminalRuntime>, session_id: String) -> Result<(), String> {
-    let _ = runtime;
-    let _ = session_id;
-    Ok(())
+    stop_active_session(runtime.inner(), &session_id)
 }
 
 #[tauri::command]

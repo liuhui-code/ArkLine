@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArkTsEditor } from "@/editor/ArkTsEditor";
 import { defaultSettings } from "@/features/settings/settings-store";
+import { EditorView } from "@codemirror/view";
+import { vi } from "vitest";
 
 describe("ArkTsEditor", () => {
   it("renders the initial document and reports edits", async () => {
@@ -196,5 +198,31 @@ describe("ArkTsEditor", () => {
     await user.keyboard("X");
 
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("X");
+  });
+
+  it("forwards Ctrl+Click document position into the definition trigger", async () => {
+    const onDefinitionTrigger = vi.fn();
+    const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(7);
+
+    render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"@Entry\nstruct Index {}"}
+        onChange={() => undefined}
+        onDefinitionTrigger={onDefinitionTrigger}
+      />,
+    );
+
+    const editor = screen.getByLabelText("Editor Content");
+    fireEvent.mouseDown(editor, {
+      ctrlKey: true,
+      button: 0,
+      clientX: 24,
+      clientY: 24,
+    });
+
+    expect(onDefinitionTrigger).toHaveBeenCalledWith({ line: 2, column: 1 });
+    posAtCoords.mockRestore();
   });
 });

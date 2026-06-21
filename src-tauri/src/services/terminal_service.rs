@@ -8,12 +8,14 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::models::terminal::{
-    CreateTerminalSessionRequest, TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
+    CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalResizeRequest,
+    TerminalOutputChunk, TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
 };
-use crate::services::terminal_io_service::session_status;
+use crate::services::terminal_io_service::{resize_session, session_status, stop_session, write_session_input};
 use crate::services::terminal_session_service::{
     spawn_terminal_session, TerminalSessionHandle,
 };
+use tauri::{AppHandle, Emitter};
 
 pub struct TerminalRuntime {
     children: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
@@ -123,6 +125,77 @@ pub fn close_session(runtime: &TerminalRuntime, session_id: &str) -> Result<(), 
     }
 
     Ok(())
+}
+
+pub fn start_output_forwarder(
+    app_handle: AppHandle,
+    runtime: &TerminalRuntime,
+    session_id: &str,
+) -> Result<(), String> {
+    let handle = runtime
+        .sessions
+        .lock()
+        .expect("terminal session lock")
+        .get(session_id)
+        .cloned()
+        .ok_or_else(|| format!("Unknown terminal session: {session_id}"))?;
+    let mut reader = handle
+        .master
+        .lock()
+        .expect("terminal master lock")
+        .try_clone_reader()
+        .map_err(|error| error.to_string())?;
+    let session_id = session_id.to_string();
+
+    thread::spawn(move || {
+        let mut buffer = [0u8; 4096];
+
+        loop {
+            let size = match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(size) => size,
+                Err(_) => break,
+            };
+
+            let data = String::from_utf8_lossy(&buffer[..size]).to_string();
+            let _ = app_handle.emit(
+                "terminal-output",
+                TerminalOutputChunk {
+                    session_id: session_id.clone(),
+                    data,
+                },
+            );
+        }
+    });
+
+    Ok(())
+}
+
+pub fn write_input(runtime: &TerminalRuntime, request: &TerminalInputWriteRequest) -> Result<(), String> {
+    let sessions = runtime.sessions.lock().expect("terminal session lock");
+    let handle = sessions
+        .get(&request.session_id)
+        .ok_or_else(|| format!("Unknown terminal session: {}", request.session_id))?;
+
+    write_session_input(handle, &request.data)
+}
+
+pub fn resize_active_session(runtime: &TerminalRuntime, request: &TerminalResizeRequest) -> Result<(), String> {
+    let sessions = runtime.sessions.lock().expect("terminal session lock");
+    let handle = sessions
+        .get(&request.session_id)
+        .ok_or_else(|| format!("Unknown terminal session: {}", request.session_id))?;
+
+    resize_session(handle, request.cols, request.rows)
+}
+
+pub fn stop_active_session(runtime: &TerminalRuntime, session_id: &str) -> Result<(), String> {
+    let sessions = runtime.sessions.lock().expect("terminal session lock");
+    let handle = sessions
+        .get(session_id)
+        .ok_or_else(|| format!("Unknown terminal session: {session_id}"))?;
+
+    stop_session(handle)
 }
 
 pub fn run_command(

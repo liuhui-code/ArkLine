@@ -37,43 +37,45 @@ export function ShellSidebar({
   return (
     <aside className="sidebar">
       <LeftToolRail activeTool={activeTool} onSelectTool={onSelectTool} />
-      <div ref={filesPaneRef}>
-        <ToolWindow ariaLabel="Files" title="Project" caption="Files" visible={filesVisible} className="tool-window">
-          {workspace ? (
-            <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} />
-          ) : (
-            <p>Workspace files will appear here.</p>
-          )}
-        </ToolWindow>
-      </div>
-      <div ref={searchPaneRef}>
-        <ToolWindow ariaLabel="Search" title="Search" caption="Workspace" visible={searchVisible} className="tool-window">
-          <div className="search-panel">
-            <input
-              aria-label="Search Query"
-              className="panel-input"
-              value={searchQuery}
-              placeholder="Search paths"
-              onChange={(event) => onSearchQueryChange(event.target.value)}
-            />
-            {searchResults.length > 0 ? (
-              <div className="search-results" role="list" aria-label="Search Results">
-                {searchResults.map((result) => (
-                  <button
-                    key={result.path}
-                    type="button"
-                    className="search-result"
-                    onClick={() => onOpenFile(result.path)}
-                  >
-                    {result.path}
-                  </button>
-                ))}
-              </div>
+      <div className="sidebar__panes">
+        <div ref={filesPaneRef} className="sidebar__pane">
+          <ToolWindow ariaLabel="Files" title="Project" caption="Files" visible={filesVisible} className="tool-window">
+            {workspace ? (
+              <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} />
             ) : (
-              <p>Type a path fragment to filter the workspace.</p>
+              <p>Workspace files will appear here.</p>
             )}
-          </div>
-        </ToolWindow>
+          </ToolWindow>
+        </div>
+        <div ref={searchPaneRef} className="sidebar__pane">
+          <ToolWindow ariaLabel="Search" title="Search" caption="Workspace" visible={searchVisible} className="tool-window">
+            <div className="search-panel">
+              <input
+                aria-label="Search Query"
+                className="panel-input"
+                value={searchQuery}
+                placeholder="Search paths"
+                onChange={(event) => onSearchQueryChange(event.target.value)}
+              />
+              {searchResults.length > 0 ? (
+                <div className="search-results" role="list" aria-label="Search Results">
+                  {searchResults.map((result) => (
+                    <button
+                      key={result.path}
+                      type="button"
+                      className="search-result"
+                      onClick={() => onOpenFile(result.path)}
+                    >
+                      {result.path}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p>Type a path fragment to filter the workspace.</p>
+              )}
+            </div>
+          </ToolWindow>
+        </div>
       </div>
     </aside>
   );

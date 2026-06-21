@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::process::Command;
 
+use crate::services::semantic::arkts_lsp_provider::ArkTsLspProvider;
 use crate::services::settings_store::AppSettings;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -24,11 +25,7 @@ pub fn inspect_environment(settings: &AppSettings) -> EnvironmentReport {
             detect_command("rg", &["--version"]),
             detect_command_label("lintCommand", &settings.validation.lint_command, &["--version"]),
             detect_command_label("formatCommand", &settings.validation.format_command, &["--version"]),
-            ToolStatus {
-                name: "arktsLanguageServer".to_string(),
-                available: false,
-                detail: "Not bundled yet".to_string(),
-            },
+            detect_arkts_language_server(),
             ToolStatus {
                 name: "webview2".to_string(),
                 available: true,
@@ -75,6 +72,16 @@ fn detect_command(command: &str, args: &[&str]) -> ToolStatus {
             available: false,
             detail: error.to_string(),
         },
+    }
+}
+
+fn detect_arkts_language_server() -> ToolStatus {
+    let discovery = ArkTsLspProvider::discovery();
+
+    ToolStatus {
+        name: "arktsLanguageServer".to_string(),
+        available: discovery.binary_path.is_some(),
+        detail: discovery.detail,
     }
 }
 

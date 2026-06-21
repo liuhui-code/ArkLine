@@ -18,12 +18,15 @@ describe("language service api skeleton", () => {
 
   it("reports the mock language-service capabilities outside Tauri", async () => {
     await expect(inspectLanguageService()).resolves.toEqual({
-      provider: "mock",
+      provider: "mock-fallback",
+      mode: "fallback",
       running: true,
       hover: true,
       definition: true,
       completion: true,
-      detail: "Mock ArkTS language service for demo and integration-shell wiring",
+      documentSymbols: true,
+      findUsages: true,
+      detail: "Mock fallback ArkTS language service for demo and integration-shell wiring",
     });
   });
 

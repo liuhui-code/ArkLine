@@ -85,9 +85,24 @@ pnpm build
 pnpm package:windows
 ```
 
+Run a Windows dependency check plus build flow:
+
+```powershell
+pnpm check:windows-build
+```
+
+Useful flags:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1 -SkipInstall
+powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1 -SkipFrontendBuild
+powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1 -SkipBundle
+```
+
 Relevant files:
 
 - CI workflow: [.github/workflows/windows-ci.yml](/Users/liuhui/Documents/code/ArkLine/.github/workflows/windows-ci.yml)
+- Windows preflight helper: [scripts/check-windows-build.ps1](/Users/liuhui/Documents/code/ArkLine/scripts/check-windows-build.ps1)
 - Packaging script: [scripts/package-windows.ps1](/Users/liuhui/Documents/code/ArkLine/scripts/package-windows.ps1)
 
 ### macOS

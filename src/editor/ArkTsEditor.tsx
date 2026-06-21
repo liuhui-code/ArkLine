@@ -57,7 +57,7 @@ export function ArkTsEditor({
         appearance,
         (nextValue) => onChangeRef.current(nextValue),
         (selection) => onSelectionChangeRef.current?.(selection),
-        () => onDefinitionTriggerRef.current?.(),
+        (selection) => onDefinitionTriggerRef.current?.(selection),
       ),
     });
 

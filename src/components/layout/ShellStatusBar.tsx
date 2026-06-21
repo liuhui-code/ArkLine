@@ -1,8 +1,11 @@
+import { SemanticModeBadge } from "@/components/layout/SemanticModeBadge";
+import type { SemanticState } from "@/features/semantic/semantic-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 
 type ShellStatusBarProps = {
   activeBottomTool: "problems" | "terminal" | "git";
   activePath: string | null;
+  semanticState: SemanticState;
   statusText: string;
   workspaceName: string | null;
   terminalRunning: boolean;
@@ -11,6 +14,7 @@ type ShellStatusBarProps = {
 export function ShellStatusBar({
   activeBottomTool,
   activePath,
+  semanticState,
   statusText,
   workspaceName,
   terminalRunning,
@@ -20,6 +24,7 @@ export function ShellStatusBar({
       <div aria-label="Status Bar Left" className="status-bar__group status-bar__group--left">
         <span className="status-pill status-pill--em">{`Workspace: ${workspaceName ?? "none"}`}</span>
         <span className="status-pill">{activePath ? getPathBasename(activePath) : "No file selected"}</span>
+        <SemanticModeBadge semanticState={semanticState} />
       </div>
       <div aria-label="Status Bar Right" className="status-bar__group status-bar__group--right">
         <span className="status-pill status-pill--em">{activeBottomTool === "terminal" && terminalRunning ? "Running" : "Ready"}</span>

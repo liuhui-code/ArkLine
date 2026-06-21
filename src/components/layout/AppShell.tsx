@@ -471,7 +471,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <EnvironmentPanel report={environmentReport} visible={settingsVisible} />
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} onSelectTool={showBottomTool} visible={bottomVisible} problemsPanel={<ProblemsPanel problems={problems} />}
-        terminalPanel={<TerminalToolWindow sessions={terminalToolWindow.sessions} activeSessionId={terminalToolWindow.activeSessionId} focusToken={terminalToolWindow.focusToken} onCreateSession={() => void terminalToolWindow.createSession()} onCloseSession={(sessionId) => void terminalToolWindow.closeSession(sessionId)} onSetActiveSession={terminalToolWindow.setActiveSession} onClearSession={terminalToolWindow.clearSession} onStopSession={() => void terminalToolWindow.stopSession()} />}
+        terminalPanel={<TerminalToolWindow sessions={terminalToolWindow.sessions} activeSessionId={terminalToolWindow.activeSessionId} focusToken={terminalToolWindow.focusToken} output={terminalToolWindow.outputBySession[terminalToolWindow.activeSessionId ?? ""] ?? ""} onInput={(data) => void terminalToolWindow.writeInput(data)} onCreateSession={() => void terminalToolWindow.createSession()} onCloseSession={(sessionId) => void terminalToolWindow.closeSession(sessionId)} onSetActiveSession={terminalToolWindow.setActiveSession} onClearSession={terminalToolWindow.clearSession} onStopSession={() => void terminalToolWindow.stopSession()} />}
         gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
         usagesPanel={<UsagesPanel state={usageSearch} onOpenUsage={(item) => void openUsageResult(item)} />}
       />

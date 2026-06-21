@@ -107,14 +107,12 @@ export function TopBar({
         </div>
         <span className="topbar__workspace" title={workspaceName ?? "No workspace open"}>{workspaceName ?? "No workspace open"}</span>
         <div className="toolbar" role="toolbar" aria-label="Primary">
-          <button type="button" className={`toolbar__button${activeOverlay === "searchEverywhere" ? " toolbar__button--active" : ""}`} onClick={onOpenSearchEverywhere}><span className="toolbar__icon toolbar__icon--search" aria-hidden="true" />Search</button>
           <button type="button" aria-label="Run Lint" className="toolbar__button" onClick={onRunLint}><span className="toolbar__icon toolbar__icon--lint" aria-hidden="true" />Run Lint</button>
           <button type="button" aria-label="Format" className="toolbar__button" onClick={onFormat}><span className="toolbar__icon toolbar__icon--format" aria-hidden="true" />Format</button>
         </div>
       </div>
       <div className="topbar__group topbar__group--right">
         <div className="toolbar toolbar--utility" role="toolbar" aria-label="Secondary">
-          <button type="button" aria-label="Git" className={`toolbar__button${activeBottomTool === "git" ? " toolbar__button--active" : ""}`} onClick={onLoadDiff}><span className="toolbar__icon toolbar__icon--git" aria-hidden="true" />Git</button>
           <button type="button" className={`toolbar__button${activeBottomTool === "terminal" ? " toolbar__button--active" : ""}`} onClick={onOpenTerminal}><span className="toolbar__icon toolbar__icon--terminal" aria-hidden="true" />Terminal</button>
           <button type="button" className={`toolbar__button toolbar__button--primary${settingsOpen ? " toolbar__button--active" : ""}`} onClick={onOpenSettings}><span className="toolbar__icon toolbar__icon--settings" aria-hidden="true" />Settings</button>
         </div>

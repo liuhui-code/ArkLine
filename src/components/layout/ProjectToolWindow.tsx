@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import { getPathBasename, normalizePath, splitPathSegments } from "@/features/workspace/workspace-store";
 
@@ -13,6 +14,7 @@ type TreeEntry = {
   kind: "directory" | "file";
   label: string;
   path: string;
+  expanded?: boolean;
 };
 
 type InternalNode = {
@@ -39,7 +41,7 @@ function commonRoot(paths: string[]) {
   return prefix;
 }
 
-function buildEntries(tree: FileTreeNode[]) {
+function buildTree(tree: FileTreeNode[]) {
   const paths = tree.map((node) => node.path);
   const splitPaths = paths.map(splitPathSegments);
   let rootSegments = commonRoot(paths);
@@ -88,18 +90,24 @@ function buildEntries(tree: FileTreeNode[]) {
     });
   }
 
+  return root;
+}
+
+function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
   const entries: TreeEntry[] = [];
 
   function walk(node: InternalNode, depth: number) {
+    const expanded = node.kind === "directory" ? expandedDirectories.has(node.path) : undefined;
     entries.push({
       key: `${node.kind}:${node.path}`,
       depth,
       kind: node.kind,
       label: node.label,
-      path: node.path
+      path: node.path,
+      expanded,
     });
 
-    if (node.kind === "file") {
+    if (node.kind === "file" || !expanded) {
       return;
     }
 
@@ -123,23 +131,57 @@ export function ProjectToolWindow({
   activePath,
   onOpen
 }: ProjectToolWindowProps) {
-  const entries = buildEntries(tree);
+  const root = useMemo(() => buildTree(tree), [tree]);
+  const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
+  const expandedDirectories = useMemo(() => {
+    const expanded = new Set<string>();
+
+    function visit(node: InternalNode) {
+      if (node.kind !== "directory") {
+        return;
+      }
+
+      if (!collapsedDirectories.has(node.path)) {
+        expanded.add(node.path);
+        node.children.forEach((child) => visit(child));
+      }
+    }
+
+    visit(root);
+    return expanded;
+  }, [collapsedDirectories, root]);
+  const entries = useMemo(() => buildEntries(root, expandedDirectories), [expandedDirectories, root]);
+
+  function toggleDirectory(path: string) {
+    setCollapsedDirectories((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="project-tree" role="tree" aria-label="Workspace File Tree">
       {entries.map((entry) =>
         entry.kind === "directory" ? (
-          <div
+          <button
             key={entry.key}
+            type="button"
             className="project-tree__row project-tree__row--directory"
             style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
+            aria-expanded={entry.expanded ? "true" : "false"}
+            onClick={() => toggleDirectory(entry.path)}
           >
             <span className="project-tree__caret" aria-hidden="true">
-              {entry.depth === 0 ? "▾" : "▸"}
+              {entry.expanded ? "▾" : "▸"}
             </span>
             <span className="project-tree__icon project-tree__icon--directory" aria-hidden="true" />
             <span className="project-tree__label">{entry.label}</span>
-          </div>
+          </button>
         ) : (
           <button
             key={entry.key}
