@@ -56,6 +56,26 @@ export function createEditorTabsStore(documents: DocumentStore) {
       state.activePath = normalized;
       state.recentFiles = dedupeMostRecent(state.recentFiles, normalized);
       syncDirtyState(normalized);
+    },
+    closeTab(path?: string) {
+      const targetPath = normalizePath(path ?? state.activePath ?? "");
+      if (!targetPath) {
+        return;
+      }
+
+      const closingIndex = state.openTabs.findIndex((entry) => entry.path === targetPath);
+      if (closingIndex < 0) {
+        return;
+      }
+
+      state.openTabs.splice(closingIndex, 1);
+
+      if (state.activePath !== targetPath) {
+        return;
+      }
+
+      const nextActiveTab = state.openTabs[closingIndex] ?? state.openTabs[closingIndex - 1] ?? null;
+      state.activePath = nextActiveTab?.path ?? null;
     }
   };
 }

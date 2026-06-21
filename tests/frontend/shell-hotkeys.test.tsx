@@ -75,4 +75,22 @@ describe("Shell hotkeys", () => {
 
     expect(await screen.findByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
   });
+
+  it("closes the active editor tab with Ctrl+W instead of closing the window", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}p{/Control}");
+    await user.click(await screen.findByRole("button", { name: "C:\\samples\\DemoWorkspace\\AppScope\\app.json5" }));
+
+    expect(await screen.findByRole("button", { name: "app.json5", pressed: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: "main.ets", pressed: false })).toBeVisible();
+
+    await user.keyboard("{Control>}w{/Control}");
+
+    expect(screen.queryByRole("button", { name: "app.json5", pressed: true })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
+  });
 });

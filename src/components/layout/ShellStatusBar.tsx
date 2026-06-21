@@ -1,9 +1,10 @@
+import type { BottomToolKey } from "@/components/layout/shell-state";
 import { SemanticModeBadge } from "@/components/layout/SemanticModeBadge";
 import type { SemanticState } from "@/features/semantic/semantic-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 
 type ShellStatusBarProps = {
-  activeBottomTool: "problems" | "terminal" | "git";
+  activeBottomTool: BottomToolKey;
   activePath: string | null;
   semanticState: SemanticState;
   statusText: string;

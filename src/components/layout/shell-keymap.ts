@@ -1,5 +1,6 @@
 export type ShellCommand =
   | "closeTransientUi"
+  | "closeActiveFile"
   | "hideActiveToolWindow"
   | "toggleEditorOnly"
   | "openQuickOpen"
@@ -32,6 +33,10 @@ export function resolveShellCommand(event: KeyboardEvent): ShellCommand | null {
 
   if (event.key === "Escape") {
     return "closeTransientUi";
+  }
+
+  if (isPrimaryModifier(event) && key === "w" && !event.shiftKey) {
+    return "closeActiveFile";
   }
 
   if (event.altKey && key === "f7" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {

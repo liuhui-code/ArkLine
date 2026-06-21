@@ -116,7 +116,7 @@ Write-Ok "Windows environment detected"
 
 Write-Step "Checking required commands"
 Require-Command -CommandName "node" -InstallHint "Install Node.js 20+."
-Require-Command -CommandName "pnpm" -InstallHint "Install pnpm, for example with 'npm install -g pnpm'."
+Require-Command -CommandName "pnpm" -InstallHint "Enable Corepack and activate pnpm 10.x, for example with 'corepack enable' and 'corepack prepare pnpm@10.12.1 --activate'."
 Require-Command -CommandName "rustc" -InstallHint "Install the Rust stable toolchain from https://rustup.rs/."
 Require-Command -CommandName "cargo" -InstallHint "Install the Rust stable toolchain from https://rustup.rs/."
 

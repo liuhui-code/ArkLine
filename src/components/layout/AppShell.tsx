@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import { EnvironmentPanel } from "@/components/layout/EnvironmentPanel";
 import { GitToolWindow } from "@/components/layout/GitToolWindow";
+import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
 import { OverlaySurface } from "@/components/layout/OverlaySurface";
 import { ProblemsPanel } from "@/components/layout/ProblemsPanel";
@@ -15,6 +16,7 @@ import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import { TerminalToolWindow } from "@/components/layout/TerminalToolWindow";
 import { TopBar } from "@/components/layout/TopBar";
 import { UsagesPanel } from "@/components/layout/UsagesPanel";
+import { useProjectOpening } from "@/components/layout/use-project-opening";
 import { useShellHotkeys } from "@/components/layout/useShellHotkeys";
 import { buildAppShellCommandPaletteItems, parseGoToLineQuery } from "@/components/layout/app-shell-helpers";
 import { useHydratedSettings } from "@/components/layout/use-hydrated-settings";
@@ -34,7 +36,6 @@ import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
-
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
@@ -46,9 +47,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [openTabs, setOpenTabs] = useState<{ path: string; title: string; isDirty: boolean }[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null), [editorContent, setEditorContent] = useState("");
   const [searchQuery, setSearchQuery] = useState(""), [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
-  const [quickOpenQuery, setQuickOpenQuery] = useState(""), [projectPathInput, setProjectPathInput] = useState("");
-  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
-  const [projectOpenError, setProjectOpenError] = useState<string | null>(null);
+  const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]), [recentProjects, setRecentProjects] = useState<string[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -71,11 +70,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const editorSurfaceRef = useRef<HTMLElement | null>(null);
   const bottomToolWindowRef = useRef<HTMLElement | null>(null);
   const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
-  const terminalToolWindow = useTerminalToolWindow({
-    workspaceApi,
-    workspaceRootPath: workspace?.rootPath ?? null,
-    onStatusChange: setStatusText,
-  });
+  const terminalToolWindow = useTerminalToolWindow({ workspaceApi, workspaceRootPath: workspace?.rootPath ?? null, onStatusChange: setStatusText });
+  const projectOpening = useProjectOpening({ canUseNativeProjectPicker, hasWorkspace: workspace !== null, workspaceApi, workspaceRootPath: workspace?.rootPath ?? null, openWorkspace, focusEditorSoon, onBeforeProjectOpen: () => setActiveOverlay("none"), onStatusChange: setStatusText });
   function focusEditor() { const editor = editorSurfaceRef.current?.querySelector<HTMLElement>('[aria-label="Editor Content"]'); if (editor) return void editor.focus(); editorSurfaceRef.current?.focus(); }
   function focusEditorSoon() { requestAnimationFrame(() => focusEditor()); }
   function setDefinitionDebug(message: string) { setDefinitionDebugText(message); }
@@ -109,7 +105,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       void terminalToolWindow.ensureSession();
     }
   }
-
   function openUsagesToolWindow() {
     setBottomVisible(true);
     setActiveBottomTool("usages");
@@ -122,8 +117,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       focusEditor();
       return true;
     }
-    if (projectPickerVisible) {
-      setProjectPickerVisible(false);
+    if (projectOpening.projectPickerVisible) {
+      projectOpening.closeProjectPicker();
+      focusEditor();
+      return true;
+    }
+    if (projectOpening.projectDecisionVisible) {
+      projectOpening.cancelPendingProjectOpen();
       focusEditor();
       return true;
     }
@@ -133,6 +133,20 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return true;
     }
     return false;
+  }
+
+  function closeActiveFile() {
+    if (!tabsRef.current.state.activePath) {
+      return;
+    }
+    tabsRef.current.closeTab(tabsRef.current.state.activePath);
+    syncTabs();
+    setActiveDocument(tabsRef.current.state.activePath);
+    setCompletionItems([]);
+    setInsertTextTarget(null);
+    setSelectionTarget(null);
+    setStatusText(tabsRef.current.state.activePath ? `Closed ${getPathBasename(activePath ?? "")}` : "Closed file");
+    focusEditorSoon();
   }
 
   function hideActiveToolWindow() {
@@ -162,11 +176,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
 
   function syncTabs() { setOpenTabs([...tabsRef.current.state.openTabs]); }
-
   function syncEditor(path: string | null) { setEditorContent(path ? documentsRef.current.getDocument(path)?.currentContent ?? "" : ""); }
-
   function setActiveDocument(path: string | null) { setActivePath(path); syncEditor(path); }
-
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     setWorkspace(snapshot);
     setRecentProjects((items) => {
@@ -184,9 +195,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveDocument(null);
     setSearchQuery("");
     setQuickOpenQuery("");
-    setProjectPickerVisible(false);
-    setProjectPathInput("");
-    setProjectOpenError(null);
+    projectOpening.closeProjectPicker();
+    projectOpening.setProjectPathInput("");
     setActiveOverlay("none");
     setProblems([]);
     setDiffFiles([]);
@@ -208,28 +218,22 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       await refreshSemanticState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setProjectPathInput(rootPath);
-      setProjectPickerVisible(true);
-      setProjectOpenError(message);
+      projectOpening.setProjectPathInput(rootPath);
+      projectOpening.setProjectOpenError(message);
       setStatusText(`Open Project failed: ${message}`);
     }
   }
   async function openDemoWorkspace() { const snapshot = await workspaceApi.openDemoWorkspace(); applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot)); resetWorkspaceUi(snapshot.rootName); }
-  async function openProjectPicker() {
-    setActiveOverlay("none");
-    setStatusText("Open Project");
-    setProjectOpenError(null);
-    if (canUseNativeProjectPicker) {
-      const rootPath = await workspaceApi.pickWorkspaceRoot();
-      if (rootPath) {
-        await openWorkspace(rootPath);
-      }
-      return;
-    }
-    setProjectPathInput(workspace?.rootPath ?? "");
-    setProjectPickerVisible(true);
-  }
-  async function confirmOpenProject() { const rootPath = projectPathInput.trim(); if (rootPath) await openWorkspace(rootPath); }
+  useEffect(() => {
+    let disposed = false;
+    if (workspace) return;
+    void (async () => {
+      const launchRootPath = await workspaceApi.getLaunchWorkspacePath?.();
+      if (!launchRootPath || disposed) return;
+      await openWorkspace(launchRootPath);
+    })();
+    return () => { disposed = true; };
+  }, [workspace, workspaceApi]);
 
   async function openFile(path: string) {
     const content = await workspaceApi.openFile(path);
@@ -430,7 +434,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
   useShellHotkeys({ onCommand(command: ShellCommand) {
     const handlers: Partial<Record<ShellCommand, () => void>> = {
-      closeTransientUi, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode,
+      closeTransientUi, closeActiveFile, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode,
       openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => setOverlay("searchEverywhere"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(),
       showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(),
     };
@@ -445,26 +449,33 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const recentFileResults = filterRecentFileResults(tabsRef.current.state.recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery);
   const recentProjectResults = filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery);
   const completionResults = completionItems.filter((item) => { const query = quickOpenQuery.trim().toLowerCase(); return !query || item.label.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query); });
-  const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, { openProject: openProjectPicker, openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), openGoToLine: () => setOverlay("goToLine"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), openCompletion: () => void openCompletionFromEditor(), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), openSettings: () => void openSettings() });
+  const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, { openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), openGoToLine: () => setOverlay("goToLine"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), openCompletion: () => void openCompletionFromEditor(), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), openSettings: () => void openSettings() });
   const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell">
-      <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
+      <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div className="shell-grid">
         <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} searchQuery={searchQuery} searchResults={searchResults} searchVisible={searchVisible} workspace={workspace} filesPaneRef={filesPaneRef} searchPaneRef={searchPaneRef} onOpenFile={(path) => void openFile(path)} onSearchQueryChange={setSearchQuery} onSelectTool={showLeftTool} />
         <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onSelectTab={setActiveDocument} />
       </div>
       <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel}>
-        <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereResults={searchEverywhereResults} onChangeQuery={setQuickOpenQuery} onOpenFile={(path) => void openFile(path)} onOpenProject={(path) => void openWorkspace(path)} onInsertCompletion={insertCompletion} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
+        <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereResults={searchEverywhereResults} onChangeQuery={setQuickOpenQuery} onOpenFile={(path) => void openFile(path)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
       </OverlaySurface>
 
       <OpenProjectDialog
-        open={projectPickerVisible}
-        errorMessage={projectOpenError}
-        projectPath={projectPathInput}
-        onChangeProjectPath={setProjectPathInput}
-        onClose={() => { setProjectPickerVisible(false); setProjectOpenError(null); }}
-        onOpenProject={() => void confirmOpenProject()}
+        open={projectOpening.projectPickerVisible}
+        errorMessage={projectOpening.projectOpenError}
+        projectPath={projectOpening.projectPathInput}
+        onChangeProjectPath={projectOpening.setProjectPathInput}
+        onClose={projectOpening.closeProjectPicker}
+        onOpenProject={() => void projectOpening.confirmOpenProject()}
+      />
+      <OpenProjectDecisionDialog
+        open={projectOpening.projectDecisionVisible}
+        projectName={getPathBasename(projectOpening.pendingProjectPath ?? "") || "Project"}
+        onChooseThisWindow={() => void projectOpening.openPendingProjectInThisWindow()}
+        onChooseNewWindow={() => void projectOpening.openPendingProjectInNewWindow()}
+        onCancel={projectOpening.cancelPendingProjectOpen}
       />
 
       <SettingsDialog open={settingsVisible} settings={settingsRef.current.state.settings} onClose={() => setSettingsVisible(false)} onChange={updateSettings} />

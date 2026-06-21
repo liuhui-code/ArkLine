@@ -66,7 +66,7 @@ This is the main target platform.
 Prerequisites:
 
 - Node.js 20+
-- `pnpm`
+- Corepack-enabled `pnpm` 10.x
 - Rust stable toolchain
 - Microsoft C++ Build Tools
 - WebView2 Runtime
@@ -74,6 +74,8 @@ Prerequisites:
 Run:
 
 ```bash
+corepack enable
+corepack prepare pnpm@10.12.1 --activate
 pnpm install
 pnpm tauri dev
 ```
@@ -113,13 +115,15 @@ development and interaction testing.
 Prerequisites:
 
 - Node.js 20+
-- `pnpm`
+- Corepack-enabled `pnpm` 10.x
 - Rust stable toolchain
 - Xcode Command Line Tools
 
 Run locally:
 
 ```bash
+corepack enable
+corepack prepare pnpm@10.12.1 --activate
 pnpm install
 pnpm tauri dev
 ```
@@ -210,6 +214,8 @@ Important constraints in the current codebase:
 ## Development
 
 ```bash
+corepack enable
+corepack prepare pnpm@10.12.1 --activate
 pnpm install
 pnpm test
 cargo test --manifest-path src-tauri/Cargo.toml

@@ -1,3 +1,5 @@
+import type { FitAddon } from "@xterm/addon-fit";
+import type { Terminal as XTermTerminal } from "@xterm/xterm";
 import type { KeyboardEvent } from "react";
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
@@ -11,14 +13,8 @@ type TerminalViewportProps = {
 
 export function TerminalViewport({ focusToken, onInput, output, sessionId }: TerminalViewportProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<{
-    write(data: string): void;
-    dispose(): void;
-    open(element: HTMLElement): void;
-    loadAddon(addon: { fit(): void }): void;
-    onData(callback: (data: string) => void): { dispose(): void };
-  } | null>(null);
-  const fitAddonRef = useRef<{ fit(): void } | null>(null);
+  const terminalRef = useRef<XTermTerminal | null>(null);
+  const fitAddonRef = useRef<FitAddon | null>(null);
   const fallbackBufferRef = useRef("");
   const renderedOutputRef = useRef("");
 

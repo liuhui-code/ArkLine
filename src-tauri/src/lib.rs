@@ -4,6 +4,7 @@ mod commands {
     pub mod language;
     pub mod settings;
     pub mod terminal;
+    pub mod windowing;
     pub mod workspace;
 }
 
@@ -39,6 +40,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .manage(services::language_service::LanguageRuntime::default())
+        .manage(commands::windowing::LaunchWorkspaceState::default())
         .manage(services::terminal_service::TerminalRuntime::default())
         .invoke_handler(tauri::generate_handler![
             commands::workspace::open_workspace,
@@ -62,7 +64,9 @@ pub fn run() {
             commands::terminal::close_terminal_session,
             commands::terminal::stop_terminal_session,
             commands::terminal::run_terminal_command,
-            commands::terminal::stop_terminal_command
+            commands::terminal::stop_terminal_command,
+            commands::windowing::open_workspace_in_new_window,
+            commands::windowing::get_launch_workspace_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running ArkLine");

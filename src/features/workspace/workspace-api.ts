@@ -27,6 +27,10 @@ export type WorkspaceViewModel = {
   fileTree: FileTreeNode[];
 };
 
+export type WorkspaceLaunchContext = {
+  rootPath: string | null;
+};
+
 export type ValidationProblem = {
   source: "lint" | "format" | "language";
   severity: "error" | "warning";
@@ -132,6 +136,8 @@ export type DocumentSymbol = {
 export type WorkspaceApi = {
   pickWorkspaceRoot(): Promise<string | null>;
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
+  openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
+  getLaunchWorkspacePath?(): Promise<string | null>;
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;
   openFile(path: string): Promise<string>;
   saveFile(path: string, content: string): Promise<void>;
@@ -231,6 +237,21 @@ export const defaultWorkspaceApi: WorkspaceApi = {
   },
   async openWorkspace(rootPath) {
     return loadWorkspaceSnapshot(rootPath);
+  },
+  async openWorkspaceInNewWindow(rootPath) {
+    if (hasTauriRuntime()) {
+      await invoke("open_workspace_in_new_window", { rootPath });
+      return;
+    }
+
+    void rootPath;
+  },
+  async getLaunchWorkspacePath() {
+    if (hasTauriRuntime()) {
+      return invoke<string | null>("get_launch_workspace_path");
+    }
+
+    return null;
   },
   async openDemoWorkspace() {
     return loadWorkspaceSnapshot(demoWorkspace.rootPath);

@@ -6,12 +6,62 @@ import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { vi } from "vitest";
 
-async function openProject(user: ReturnType<typeof userEvent.setup>, path = "C:/samples/DemoWorkspace") {
+async function openProject(
+  user: ReturnType<typeof userEvent.setup>,
+  path = "C:/samples/DemoWorkspace",
+  decision: "This Window" | "New Window" | "Cancel" | null = "This Window",
+) {
   await user.click(screen.getByRole("button", { name: "File" }));
   await user.click(await screen.findByRole("menuitem", { name: "Open Project..." }));
   await user.clear(await screen.findByLabelText("Project Path"));
   await user.type(screen.getByLabelText("Project Path"), path);
   await user.click(screen.getByRole("button", { name: "Open Project" }));
+  if (decision) {
+    const decisionButton = screen.queryByRole("button", { name: decision });
+    if (decisionButton) {
+      await user.click(decisionButton);
+    }
+  }
+}
+
+function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi {
+  return {
+    pickWorkspaceRoot: async () => null,
+    openWorkspace: async (rootPath: string) => ({
+      rootName: rootPath.split("/").at(-1) ?? "Workspace",
+      rootPath,
+      files: [`${rootPath}/src/main.ets`, `${rootPath}/AppScope/app.json5`],
+    }),
+    openDemoWorkspace: async () => ({
+      rootName: "DemoWorkspace",
+      rootPath: "C:/samples/DemoWorkspace",
+      files: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/AppScope/app.json5"],
+    }),
+    openFile: async (path: string) => path.endsWith("app.json5")
+      ? "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}"
+      : "@Entry\n@Component\nstruct Index {}",
+    saveFile: async () => undefined,
+    runValidation: async () => [],
+    loadDiff: async () => "",
+    inspectEnvironment: async () => ({ tools: [] }),
+    loadSettings: async () => defaultSettings(),
+    saveSettings: async () => undefined,
+    createTerminalSession: async () => ({
+      id: "session-1",
+      title: "pwsh",
+      cwd: "C:/samples/DemoWorkspace",
+      shell: "pwsh",
+      status: "idle",
+    }),
+    listTerminalSessions: async () => [],
+    writeTerminalInput: async () => undefined,
+    resizeTerminalSession: async () => undefined,
+    closeTerminalSession: async () => undefined,
+    stopTerminalSession: async () => undefined,
+    runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
+    stopTerminalCommand: async () => undefined,
+    ...overrides,
+  };
 }
 
 describe("App shell", () => {
@@ -93,10 +143,100 @@ describe("App shell", () => {
     expect(await screen.findByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("opens a second project in a new window when the current window is already occupied", async () => {
+    const user = userEvent.setup();
+    const openWorkspaceInNewWindow = vi.fn(async () => undefined);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async (rootPath: string) => ({
+        rootName: rootPath.split("/").at(-1) ?? "Workspace",
+        rootPath,
+        files: [`${rootPath}/src/main.ets`, `${rootPath}/AppScope/app.json5`],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/AppScope/app.json5"],
+      }),
+      ...( { openWorkspaceInNewWindow } as Partial<WorkspaceApi> ),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user, "C:/samples/DemoWorkspace");
+    expect(screen.getByText("Workspace: DemoWorkspace")).toBeVisible();
+
+    await openProject(user, "C:/samples/ArkDemo", "New Window");
+
+    expect(openWorkspaceInNewWindow).toHaveBeenCalledWith("C:/samples/ArkDemo");
+    expect(screen.getByText("Workspace: DemoWorkspace")).toBeVisible();
+  });
+
+  it("opens a project directly in the current window when no workspace is loaded", async () => {
+    const user = userEvent.setup();
+    const openWorkspace = vi.fn(async (rootPath: string) => ({
+      rootName: rootPath.split("/").at(-1) ?? "Workspace",
+      rootPath,
+      files: [`${rootPath}/src/main.ets`],
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ openWorkspace })} />);
+
+    await openProject(user, "C:/samples/ArkDemo");
+
+    expect(screen.queryByRole("dialog", { name: "Open Project Decision" })).not.toBeInTheDocument();
+    expect(openWorkspace).toHaveBeenCalledWith("C:/samples/ArkDemo");
+  });
+
+  it("asks whether to use this window or a new window when a workspace is already loaded", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await openProject(user, "C:/samples/DemoWorkspace");
+    await openProject(user, "C:/samples/ArkDemo", null);
+
+    expect(await screen.findByRole("dialog", { name: "Open Project Decision" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "This Window" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "New Window" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
+  });
+
+  it("keeps the current workspace unchanged when project-open decision is cancelled", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await openProject(user, "C:/samples/DemoWorkspace");
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await openProject(user, "C:/samples/ArkDemo", "Cancel");
+
+    expect(screen.getByText("Workspace: DemoWorkspace")).toBeVisible();
+    expect(await screen.findByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+  });
+
+  it("replaces the current workspace when This Window is selected", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await openProject(user, "C:/samples/DemoWorkspace");
+    await openProject(user, "C:/samples/ArkDemo");
+
+    expect(await screen.findByText("Workspace: ArkDemo")).toBeVisible();
+  });
+
+  it("auto-opens the launch workspace path when the window boots with one", async () => {
+    render(
+      <AppShell
+        workspaceApi={createWorkspaceApi({
+          getLaunchWorkspacePath: async () => "C:/samples/ArkDemo",
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("Workspace: ArkDemo")).toBeVisible();
+  });
+
   it("opens a native-project fallback dialog from File -> Open Project", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -114,9 +254,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 
@@ -244,11 +382,28 @@ describe("App shell", () => {
 
     await user.click(screen.getByRole("button", { name: "File" }));
     await user.click(await screen.findByRole("menuitem", { name: "Recent Projects" }));
-    await user.click(await screen.findByRole("button", { name: /AlphaWorkspace/ }));
+    const results = await screen.findByRole("list", { name: "Recent Projects Results" });
+    await user.click(within(results).getByRole("button", { name: "AlphaWorkspace C:\\samples\\AlphaWorkspace" }));
+    await user.click(await screen.findByRole("button", { name: "This Window" }));
 
     expect(screen.queryByLabelText("Recent Projects Overlay")).not.toBeInTheDocument();
     expect(await screen.findByText("Workspace: AlphaWorkspace")).toBeVisible();
     expect(await screen.findByRole("button", { name: "main.ets" })).toBeVisible();
+  });
+
+  it("asks for this window or new window when reopening a recent project from an occupied window", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await openProject(user, "C:/samples/DemoWorkspace");
+    await openProject(user, "C:/samples/ArkDemo");
+
+    await user.click(screen.getByRole("button", { name: "File" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Recent Projects" }));
+    const results = await screen.findByRole("list", { name: "Recent Projects Results" });
+    await user.click(within(results).getByRole("button", { name: "DemoWorkspace C:\\samples\\DemoWorkspace" }));
+
+    expect(await screen.findByRole("dialog", { name: "Open Project Decision" })).toBeVisible();
   });
 
   it("moves the caret with Go to Line from the command palette", async () => {
@@ -272,8 +427,7 @@ describe("App shell", () => {
 
   it("jumps to a definition from the current editor caret", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -296,9 +450,7 @@ describe("App shell", () => {
       })),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 
@@ -325,8 +477,7 @@ describe("App shell", () => {
 
   it("opens completion from the editor and inserts the selected item", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -348,9 +499,7 @@ describe("App shell", () => {
       ]),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 
@@ -378,8 +527,7 @@ describe("App shell", () => {
 
   it("finds usages from the editor and opens the selected result", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -413,9 +561,7 @@ describe("App shell", () => {
       ]),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 
@@ -478,8 +624,7 @@ describe("App shell", () => {
 
   it("saves through the workspace api and refreshes lint/format problems", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -514,9 +659,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
     const header = screen.getByRole("banner", { name: "Application Header" });
@@ -538,8 +681,7 @@ describe("App shell", () => {
 
   it("loads diff content into the review panel", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -562,9 +704,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
     const header = screen.getByRole("banner", { name: "Application Header" });
@@ -580,8 +720,7 @@ describe("App shell", () => {
 
   it("formats the active document from the top bar", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -612,9 +751,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
     const header = screen.getByRole("banner", { name: "Application Header" });
@@ -644,8 +781,7 @@ describe("App shell", () => {
   it("loads persisted settings and saves updates through the workspace api", async () => {
     const user = userEvent.setup();
     const settings = defaultSettings();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
         rootPath: "C:/samples/DemoWorkspace",
@@ -669,9 +805,7 @@ describe("App shell", () => {
         },
       }),
       saveSettings: vi.fn(async () => undefined),
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
     const header = screen.getByRole("banner", { name: "Application Header" });
@@ -697,8 +831,7 @@ describe("App shell", () => {
 
   it("supports the approved ArkTS sample workflow across project, git, and editor-only modes", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "ArkDemo",
         rootPath: "C:/samples/ArkDemo",
@@ -746,9 +879,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
     const header = screen.getByRole("banner", { name: "Application Header" });
@@ -790,15 +921,16 @@ describe("App shell", () => {
 
     await user.click(within(header).getByRole("button", { name: "File" }));
     await user.click(await screen.findByRole("menuitem", { name: "Recent Projects" }));
-    await user.click(await screen.findByRole("button", { name: "ArkDemoWorkspace C:\\samples\\ArkDemoWorkspace" }));
+    const results = await screen.findByRole("list", { name: "Recent Projects Results" });
+    await user.click(within(results).getByRole("button", { name: "ArkDemoWorkspace C:\\samples\\ArkDemoWorkspace" }));
+    await user.click(await screen.findByRole("button", { name: "This Window" }));
 
     expect(await screen.findByText("Workspace: ArkDemoWorkspace")).toBeVisible();
   });
 
   it("shows a project-open error instead of failing silently", async () => {
     const user = userEvent.setup();
-    const workspaceApi: WorkspaceApi = {
-      pickWorkspaceRoot: async () => null,
+    const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => {
         throw new Error("Workspace path is not a directory");
       },
@@ -814,9 +946,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
-      runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
-      stopTerminalCommand: async () => undefined,
-    };
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 

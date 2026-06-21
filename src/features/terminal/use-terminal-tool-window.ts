@@ -25,7 +25,7 @@ export function useTerminalToolWindow({
     }
 
     let disposed = false;
-    let teardown = () => undefined;
+    let teardown: () => void = () => {};
 
     void (async () => {
       const unlisten = await listen<{ sessionId: string; data: string }>("terminal-output", (event) => {
