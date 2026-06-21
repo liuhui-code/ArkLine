@@ -55,6 +55,12 @@ pub fn run() {
             commands::language::complete_symbol,
             commands::language::document_symbols,
             commands::language::find_usages,
+            commands::terminal::create_terminal_session,
+            commands::terminal::list_terminal_sessions,
+            commands::terminal::write_terminal_input,
+            commands::terminal::resize_terminal_session,
+            commands::terminal::close_terminal_session,
+            commands::terminal::stop_terminal_session,
             commands::terminal::run_terminal_command,
             commands::terminal::stop_terminal_command
         ])
