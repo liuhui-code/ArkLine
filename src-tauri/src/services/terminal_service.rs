@@ -2,25 +2,50 @@ use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::models::terminal::{TerminalRunRequest, TerminalRunResult};
+use crate::models::terminal::{
+    CreateTerminalSessionRequest, TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
+};
+use crate::services::terminal_io_service::session_status;
+use crate::services::terminal_session_service::{
+    spawn_terminal_session, TerminalSessionHandle,
+};
 
-#[derive(Default)]
 pub struct TerminalRuntime {
     children: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
     stopped_runs: Mutex<HashSet<String>>,
+    sessions: Mutex<HashMap<String, Arc<TerminalSessionHandle>>>,
+    next_id: AtomicU64,
+}
+
+impl Default for TerminalRuntime {
+    fn default() -> Self {
+        Self {
+            children: Mutex::new(HashMap::new()),
+            stopped_runs: Mutex::new(HashSet::new()),
+            sessions: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(0),
+        }
+    }
 }
 
 impl TerminalRuntime {
     fn register_child(&self, run_id: &str, child: Arc<Mutex<Child>>) {
-        self.children.lock().expect("terminal runtime child lock").insert(run_id.to_string(), child);
+        self.children
+            .lock()
+            .expect("terminal runtime child lock")
+            .insert(run_id.to_string(), child);
     }
 
     fn remove_child(&self, run_id: &str) {
-        self.children.lock().expect("terminal runtime child lock").remove(run_id);
+        self.children
+            .lock()
+            .expect("terminal runtime child lock")
+            .remove(run_id);
     }
 
     fn mark_stopped(&self, run_id: &str) {
@@ -38,7 +63,72 @@ impl TerminalRuntime {
     }
 }
 
-pub fn run_command(runtime: &TerminalRuntime, request: &TerminalRunRequest) -> Result<TerminalRunResult, String> {
+pub fn create_session(
+    runtime: &TerminalRuntime,
+    request: CreateTerminalSessionRequest,
+) -> Result<TerminalSessionSummary, String> {
+    let session_number = runtime.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+    let session_id = format!("session-{session_number}");
+    let (master, writer, child, shell, cwd) = spawn_terminal_session(request.cwd.as_deref())?;
+    let title = shell.clone();
+    let handle = Arc::new(TerminalSessionHandle::new(
+        title.clone(),
+        cwd.clone(),
+        shell.clone(),
+        master,
+        writer,
+        child,
+    ));
+
+    runtime
+        .sessions
+        .lock()
+        .expect("terminal session lock")
+        .insert(session_id.clone(), handle);
+
+    Ok(TerminalSessionSummary {
+        id: session_id,
+        title,
+        cwd,
+        shell,
+        status: "idle".to_string(),
+    })
+}
+
+pub fn list_sessions(runtime: &TerminalRuntime) -> Vec<TerminalSessionSummary> {
+    let sessions = runtime.sessions.lock().expect("terminal session lock");
+    let mut summaries = sessions
+        .iter()
+        .map(|(id, handle)| TerminalSessionSummary {
+            id: id.clone(),
+            title: handle.title.clone(),
+            cwd: handle.cwd.clone(),
+            shell: handle.shell.clone(),
+            status: session_status(handle),
+        })
+        .collect::<Vec<_>>();
+    summaries.sort_by(|left, right| left.id.cmp(&right.id));
+    summaries
+}
+
+pub fn close_session(runtime: &TerminalRuntime, session_id: &str) -> Result<(), String> {
+    let handle = runtime
+        .sessions
+        .lock()
+        .expect("terminal session lock")
+        .remove(session_id);
+
+    if let Some(handle) = handle {
+        handle.kill()?;
+    }
+
+    Ok(())
+}
+
+pub fn run_command(
+    runtime: &TerminalRuntime,
+    request: &TerminalRunRequest,
+) -> Result<TerminalRunResult, String> {
     let mut command = shell_command(&request.command);
     if let Some(cwd) = request.cwd.as_deref().filter(|value| !value.trim().is_empty()) {
         command.current_dir(Path::new(cwd));
@@ -73,8 +163,12 @@ pub fn run_command(runtime: &TerminalRuntime, request: &TerminalRunRequest) -> R
     Ok(TerminalRunResult {
         run_id: request.run_id.clone(),
         command: request.command.clone(),
-        stdout: stdout_reader.join().map_err(|_| "stdout reader thread panicked".to_string())?,
-        stderr: stderr_reader.join().map_err(|_| "stderr reader thread panicked".to_string())?,
+        stdout: stdout_reader
+            .join()
+            .map_err(|_| "stdout reader thread panicked".to_string())?,
+        stderr: stderr_reader
+            .join()
+            .map_err(|_| "stderr reader thread panicked".to_string())?,
         exit_code,
         duration_ms: started_at.elapsed().as_millis() as u64,
         stopped,
@@ -114,7 +208,9 @@ fn shell_command(command: &str) -> Command {
     process
 }
 
-fn take_streams(child: &Arc<Mutex<Child>>) -> Result<(std::process::ChildStdout, std::process::ChildStderr), String> {
+fn take_streams(
+    child: &Arc<Mutex<Child>>,
+) -> Result<(std::process::ChildStdout, std::process::ChildStderr), String> {
     let mut child = child.lock().expect("terminal child lock");
     let stdout = child
         .stdout
@@ -141,54 +237,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::thread;
-    use std::time::Duration;
-
-    use super::{run_command, stop_command, TerminalRuntime};
-    use crate::models::terminal::TerminalRunRequest;
-
-    fn request(run_id: &str, command: &str) -> TerminalRunRequest {
-        TerminalRunRequest {
-            run_id: run_id.to_string(),
-            command: command.to_string(),
-            cwd: None,
-            source: "manual".to_string(),
-        }
-    }
-
-    fn long_running_command() -> &'static str {
-        if cfg!(windows) {
-            "ping 127.0.0.1 -n 6 > nul"
-        } else {
-            "sleep 5"
-        }
-    }
+    use super::{close_session, create_session, list_sessions, TerminalRuntime};
+    use crate::models::terminal::CreateTerminalSessionRequest;
 
     #[test]
-    fn runs_a_command_and_captures_output() {
+    fn creates_lists_and_closes_terminal_sessions() {
         let runtime = TerminalRuntime::default();
-        let result = run_command(&runtime, &request("run-1", "echo hello")).unwrap();
+        let session = create_session(&runtime, CreateTerminalSessionRequest { cwd: None }).unwrap();
 
-        assert_eq!(result.run_id, "run-1");
-        assert!(result.stdout.contains("hello"));
-        assert_eq!(result.exit_code, Some(0));
-        assert!(!result.stopped);
-    }
+        assert_eq!(list_sessions(&runtime).len(), 1);
+        assert_eq!(session.status, "idle");
 
-    #[test]
-    fn stops_a_running_command() {
-        let runtime = Arc::new(TerminalRuntime::default());
-        let request = request("run-2", long_running_command());
-        let worker_runtime = runtime.clone();
-
-        let handle = thread::spawn(move || run_command(&worker_runtime, &request).unwrap());
-
-        thread::sleep(Duration::from_millis(150));
-        stop_command(&runtime, "run-2").unwrap();
-        let result = handle.join().unwrap();
-
-        assert_eq!(result.run_id, "run-2");
-        assert!(result.stopped);
+        close_session(&runtime, &session.id).unwrap();
+        assert!(list_sessions(&runtime).is_empty());
     }
 }

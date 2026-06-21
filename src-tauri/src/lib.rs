@@ -14,12 +14,17 @@ mod models {
     pub mod workspace;
 }
 
+mod platform;
+
 mod services {
     pub mod diff_service;
     pub mod document_service;
     pub mod environment_doctor;
     pub mod language_service;
+    pub mod semantic;
     pub mod settings_store;
+    pub mod terminal_io_service;
+    pub mod terminal_session_service;
     pub mod terminal_service;
     pub mod validation_service;
     pub mod workspace_service;
@@ -28,6 +33,10 @@ mod services {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|_| {
+            platform::apply_app_icon();
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .manage(services::language_service::LanguageRuntime::default())
         .manage(services::terminal_service::TerminalRuntime::default())
@@ -44,6 +53,8 @@ pub fn run() {
             commands::language::hover_symbol,
             commands::language::goto_definition,
             commands::language::complete_symbol,
+            commands::language::document_symbols,
+            commands::language::find_usages,
             commands::terminal::run_terminal_command,
             commands::terminal::stop_terminal_command
         ])
