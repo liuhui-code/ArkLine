@@ -666,9 +666,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     const title =
       field === "harmonySdkPath" ? "Select HarmonyOS / ArkTS SDK Path"
       : field === "semanticWorkerPath" ? "Select ArkTS LSP / Semantic Worker Path"
-      : "Select Node Path";
+      : "Select Node Directory";
     const selectedPath = await workspaceApi.pickPath?.({
-      directory: field !== "nodePath",
+      directory: field !== "semanticWorkerPath",
       title,
     });
     return selectedPath ?? null;

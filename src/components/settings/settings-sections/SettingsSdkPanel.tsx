@@ -10,6 +10,47 @@ type SettingsSdkPanelProps = {
   onRefreshEnvironment: () => void;
 };
 
+type PathHint = { tone: "neutral" | "warning" | "ready"; text: string };
+
+function sdkPathHint(settings: AppSettings): PathHint {
+  if (settings.sdk.harmonySdkPath.trim()) {
+    return {
+      tone: "warning",
+      text: "SDK path has not been verified yet. Apply and check Environment Status for the authoritative result.",
+    };
+  }
+
+  if (settings.sdk.autoDetect) {
+    return {
+      tone: "neutral",
+      text: "ArkLine will try to auto-detect the SDK.",
+    };
+  }
+
+  return {
+    tone: "warning",
+    text: "SDK path is empty and auto-detect is off; semantic features may use fallback.",
+  };
+}
+
+function nodePathHint(settings: AppSettings): PathHint {
+  if (settings.sdk.nodePath.trim()) {
+    return {
+      tone: "warning",
+      text: "Node directory has not been verified yet. Apply and check Environment Status for the authoritative result.",
+    };
+  }
+
+  return {
+    tone: "neutral",
+    text: "ArkLine will resolve node from PATH.",
+  };
+}
+
+function SettingsHint({ hint }: { hint: PathHint }) {
+  return <span className={`settings-field__hint settings-field__hint--${hint.tone}`}>{hint.text}</span>;
+}
+
 export function SettingsSdkPanel({
   environmentReport,
   onPickPath,
@@ -81,6 +122,7 @@ export function SettingsSdkPanel({
               Browse...
             </button>
           </div>
+          <SettingsHint hint={sdkPathHint(settings)} />
         </label>
       </section>
 
@@ -140,6 +182,7 @@ export function SettingsSdkPanel({
               Browse...
             </button>
           </div>
+          <SettingsHint hint={nodePathHint(settings)} />
         </label>
       </section>
 

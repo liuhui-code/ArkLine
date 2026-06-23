@@ -1504,6 +1504,42 @@ describe("App shell", () => {
     expect(screen.getByText("Bundled ripgrep not configured yet")).toBeVisible();
   });
 
+  it("warns about suspicious SDK paths without blocking Apply", async () => {
+    const user = userEvent.setup();
+    const saveSettings = vi.fn(async () => undefined);
+    const workspaceApi = createWorkspaceApi({ saveSettings });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    await user.clear(await screen.findByLabelText("HarmonyOS / ArkTS SDK Path"));
+    await user.type(screen.getByLabelText("HarmonyOS / ArkTS SDK Path"), "Z:/missing-sdk");
+
+    expect(screen.getByText(/SDK path has not been verified yet/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(saveSettings).toHaveBeenCalled());
+  });
+
+  it("uses a directory picker for Node Path", async () => {
+    const user = userEvent.setup();
+    const pickPath = vi.fn(async () => "C:/Program Files/nodejs");
+    const workspaceApi = createWorkspaceApi({ pickPath });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    await user.click(screen.getAllByRole("button", { name: "Browse..." })[2]);
+
+    expect(pickPath).toHaveBeenCalledWith({
+      directory: true,
+      title: "Select Node Directory",
+    });
+  });
+
   it("keeps settings edits as a draft until Apply and discards them on Cancel", async () => {
     const user = userEvent.setup();
     const savedSettings = defaultSettings();
