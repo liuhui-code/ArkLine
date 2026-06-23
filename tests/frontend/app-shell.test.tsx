@@ -1313,6 +1313,135 @@ describe("App shell", () => {
     expect(within(panel).getByText("File").parentElement).toHaveTextContent("src/main.ets");
   });
 
+  it("opens Git Trace from an inline blame label click", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "abc1234",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-23T10:00:00Z",
+          relativeTime: "2h ago",
+          summary: "Mark ArkTS entry component",
+        },
+      ],
+      getCommitTrace: async () => ({
+        commit: "abc1234",
+        shortCommit: "abc1234",
+        author: "Jane Doe",
+        email: "jane@example.com",
+        authoredAt: "2026-06-23T10:00:00Z",
+        subject: "Mark ArkTS entry component",
+        relativePath: "src/main.ets",
+        selectedLine: 1,
+        sourceLine: 1,
+        patch: `diff --git a/src/main.ets b/src/main.ets
+--- a/src/main.ets
++++ b/src/main.ets
+@@ -1,1 +1,2 @@
+ @Entry
++@Component`,
+      }),
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const blameButton = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>(".cm-git-trace-marker");
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    expect(blameButton).toHaveAttribute(
+      "aria-label",
+      "Git Trace Line 1 Jane Doe 2h ago Mark ArkTS entry component",
+    );
+    await user.click(blameButton);
+
+    expect(await screen.findByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
+  });
+
+  it("shows a clear message when the file is not tracked by Git", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      getFileBlame: async () => ({
+        kind: "unavailable",
+        reason: "notTracked",
+        message: "File is not tracked by Git",
+      }),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+
+    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("File is not tracked by Git");
+  });
+
+  it("shows a clear message when Git is unavailable", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      getFileBlame: async () => ({
+        kind: "unavailable",
+        reason: "gitUnavailable",
+        message: "Git is unavailable on this machine",
+      }),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+
+    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Git is unavailable on this machine");
+  });
+
+  it("asks to save the current file before loading Git Trace", async () => {
+    const user = userEvent.setup();
+    const getFileBlame = vi.fn(async () => [
+      {
+        line: 1,
+        commit: "abc1234",
+        sourceLine: 1,
+        author: "Jane Doe",
+        authoredAt: "2026-06-23T10:00:00Z",
+        relativeTime: "2h ago",
+        summary: "Mark ArkTS entry component",
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({ getFileBlame });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{End}\n// dirty");
+    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+
+    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Save the current file to inspect Git Trace.");
+    expect(getFileBlame).toHaveBeenCalledTimes(1);
+  });
+
   it("formats the active document from the top bar", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

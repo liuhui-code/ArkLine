@@ -1,3 +1,4 @@
+import { isGitTraceUnavailable } from "@/features/git/git-trace-model";
 import {
   defaultWorkspaceApi,
   type LanguageQueryRequest,
@@ -88,5 +89,23 @@ describe("language service api skeleton", () => {
 
     expect(blame).toBeDefined();
     expect(detail).toBeDefined();
+  });
+
+  it("returns typed unavailable git trace responses for unknown workspaces", async () => {
+    const blame = await getFileBlame("C:/other/project/src/other.ets");
+    const detail = await getCommitTrace("C:/other/project/src/other.ets", "deadbeef", 1);
+
+    expect(isGitTraceUnavailable(blame)).toBe(true);
+    expect(isGitTraceUnavailable(detail)).toBe(true);
+    expect(blame).toMatchObject({
+      kind: "unavailable",
+      reason: "notTracked",
+      message: "File is not tracked by Git",
+    });
+    expect(detail).toMatchObject({
+      kind: "unavailable",
+      reason: "detailUnavailable",
+      message: "Commit details unavailable",
+    });
   });
 });

@@ -6,10 +6,18 @@ import {
   appearanceCompartment,
   appearanceExtensionForSettings,
   createEditorExtensions,
+  gitTraceCompartment,
   languageCompartment,
   languageExtensionForPath,
 } from "@/editor/editor-extensions";
-import type { EditorLineColumn } from "@/editor/editor-events";
+import {
+  resolveDefinitionTokenRange,
+  setJumpRevealEffect,
+  type DefinitionHoverState,
+  type EditorLineColumn,
+} from "@/editor/editor-events";
+import { createGitTraceGutter } from "@/editor/git-trace-decorations";
+import type { GitBlameLine } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 
 type ArkTsEditorProps = {
@@ -22,6 +30,11 @@ type ArkTsEditorProps = {
   onChange: (value: string) => void;
   onSelectionChange?: (selection: { line: number; column: number }) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
+  onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
+  onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  blameLines?: GitBlameLine[];
+  selectedBlameLine?: number | null;
+  onGitTraceLineClick?: (line: number) => void;
 };
 
 export function ArkTsEditor({
@@ -34,16 +47,26 @@ export function ArkTsEditor({
   onChange,
   onSelectionChange,
   onDefinitionTrigger,
+  onDefinitionHoverChange,
+  onTypingCompletionTrigger,
+  blameLines = [],
+  selectedBlameLine = null,
+  onGitTraceLineClick,
 }: ArkTsEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onDefinitionTriggerRef = useRef(onDefinitionTrigger);
+  const onDefinitionHoverChangeRef = useRef(onDefinitionHoverChange);
+  const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
+  const jumpRevealTimeoutRef = useRef<number | null>(null);
 
   onChangeRef.current = onChange;
   onSelectionChangeRef.current = onSelectionChange;
   onDefinitionTriggerRef.current = onDefinitionTrigger;
+  onDefinitionHoverChangeRef.current = onDefinitionHoverChange;
+  onTypingCompletionTriggerRef.current = onTypingCompletionTrigger;
 
   useEffect(() => {
     if (!hostRef.current || viewRef.current) {
@@ -58,6 +81,13 @@ export function ArkTsEditor({
         (nextValue) => onChangeRef.current(nextValue),
         (selection) => onSelectionChangeRef.current?.(selection),
         (selection) => onDefinitionTriggerRef.current?.(selection),
+        (state) => onDefinitionHoverChangeRef.current?.(state),
+        (selection) => onTypingCompletionTriggerRef.current?.(selection),
+        {
+          blameLines,
+          selectedLine: selectedBlameLine,
+          onSelectLine: onGitTraceLineClick,
+        },
       ),
     });
 
@@ -67,6 +97,9 @@ export function ArkTsEditor({
     });
 
     return () => {
+      if (jumpRevealTimeoutRef.current != null) {
+        window.clearTimeout(jumpRevealTimeoutRef.current);
+      }
       viewRef.current?.destroy();
       viewRef.current = null;
     };
@@ -115,6 +148,23 @@ export function ArkTsEditor({
 
   useEffect(() => {
     const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+
+    view.dispatch({
+      effects: gitTraceCompartment.reconfigure(
+        createGitTraceGutter({
+          blameLines,
+          selectedLine: selectedBlameLine,
+          onSelectLine: onGitTraceLineClick,
+        }),
+      ),
+    });
+  }, [blameLines, onGitTraceLineClick, selectedBlameLine]);
+
+  useEffect(() => {
+    const view = viewRef.current;
     if (!view || !selectionTarget) {
       return;
     }
@@ -123,12 +173,32 @@ export function ArkTsEditor({
     const line = view.state.doc.line(targetLine);
     const targetColumn = Math.max(selectionTarget.column, 1);
     const position = Math.min(line.from + targetColumn - 1, line.to);
+    const revealRange = resolveDefinitionTokenRange(view, position);
 
     view.dispatch({
       selection: EditorSelection.cursor(position),
-      scrollIntoView: true,
+      effects: [
+        EditorView.scrollIntoView(position, { y: "center" }),
+        setJumpRevealEffect.of(revealRange),
+      ],
     });
     view.focus();
+
+    if (jumpRevealTimeoutRef.current != null) {
+      window.clearTimeout(jumpRevealTimeoutRef.current);
+    }
+
+    jumpRevealTimeoutRef.current = window.setTimeout(() => {
+      const currentView = viewRef.current;
+      if (!currentView) {
+        return;
+      }
+
+      currentView.dispatch({
+        effects: setJumpRevealEffect.of(null),
+      });
+      jumpRevealTimeoutRef.current = null;
+    }, 1200);
   }, [selectionTarget]);
 
   useEffect(() => {
@@ -137,7 +207,18 @@ export function ArkTsEditor({
       return;
     }
 
-    view.dispatch(view.state.replaceSelection(insertTextTarget.text));
+    const selection = view.state.selection.main;
+    const replaceBefore = Math.max(insertTextTarget.replaceBefore ?? 0, 0);
+    const from = Math.max(0, selection.head - replaceBefore);
+
+    view.dispatch({
+      changes: {
+        from,
+        to: selection.head,
+        insert: insertTextTarget.text,
+      },
+      selection: EditorSelection.cursor(from + insertTextTarget.text.length),
+    });
     view.focus();
   }, [insertTextTarget]);
 

@@ -1,4 +1,5 @@
-import type { EditorLineColumn } from "@/editor/editor-events";
+import type { DefinitionHoverState, EditorLineColumn } from "@/editor/editor-events";
+import type { GitBlameLine } from "@/features/git/git-trace-model";
 import type { RefObject } from "react";
 import { LazyArkTsEditor } from "@/editor/LazyArkTsEditor";
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
@@ -12,6 +13,7 @@ export type EditorSelectionTarget = {
 
 export type EditorInsertTextTarget = {
   text: string;
+  replaceBefore?: number;
   nonce: number;
 };
 
@@ -34,6 +36,12 @@ type EditorSurfaceProps = {
   onChange: (value: string) => void;
   onSelectionChange: (selection: { line: number; column: number }) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
+  onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
+  onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  blameLines?: GitBlameLine[];
+  selectedBlameLine?: number | null;
+  onGitTraceLineClick?: (line: number) => void;
+  definitionHoverActive?: boolean;
   onSelectTab: (path: string) => void;
 };
 
@@ -50,11 +58,22 @@ export function EditorSurface({
   onChange,
   onSelectionChange,
   onDefinitionTrigger,
+  onDefinitionHoverChange,
+  onTypingCompletionTrigger,
+  blameLines = [],
+  selectedBlameLine = null,
+  onGitTraceLineClick,
+  definitionHoverActive = false,
   onSelectTab,
 }: EditorSurfaceProps) {
   const surfaceStateClass = activePath ? "editor-surface--active" : "editor-surface--empty";
   return (
-    <main aria-label="Editor" className={`editor-surface ${surfaceStateClass}`} ref={surfaceRef} tabIndex={-1}>
+    <main
+      aria-label="Editor"
+      className={`editor-surface ${surfaceStateClass}${definitionHoverActive ? " editor-surface--definition-hover" : ""}`}
+      ref={surfaceRef}
+      tabIndex={-1}
+    >
       <div className="editor-tabs">
         {openTabs.length > 0 ? (
           openTabs.map((tab) => {
@@ -90,7 +109,12 @@ export function EditorSurface({
           value={content}
           onChange={onChange}
           onDefinitionTrigger={onDefinitionTrigger}
+          onDefinitionHoverChange={onDefinitionHoverChange}
           onSelectionChange={onSelectionChange}
+          onTypingCompletionTrigger={onTypingCompletionTrigger}
+          blameLines={blameLines}
+          selectedBlameLine={selectedBlameLine}
+          onGitTraceLineClick={onGitTraceLineClick}
         />
       ) : (
         <MainWorkspaceView workspaceName={workspaceName} />

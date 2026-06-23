@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import type { EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
-import type { EditorLineColumn } from "@/editor/editor-events";
+import type { DefinitionHoverState, EditorLineColumn } from "@/editor/editor-events";
+import type { GitBlameLine } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 
 const ArkTsEditor = lazy(async () => {
@@ -18,6 +19,11 @@ type LazyArkTsEditorProps = {
   onChange: (value: string) => void;
   onSelectionChange?: (selection: { line: number; column: number }) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
+  onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
+  onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  blameLines?: GitBlameLine[];
+  selectedBlameLine?: number | null;
+  onGitTraceLineClick?: (line: number) => void;
 };
 
 export function LazyArkTsEditor(props: LazyArkTsEditorProps) {

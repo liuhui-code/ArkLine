@@ -9,16 +9,30 @@ import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 type UseGitTraceArgs = {
   activeLine: number;
   activePath: string | null;
+  isActiveFileDirty: boolean;
   activeTool: "problems" | "terminal" | "git" | "gitTrace" | "usages";
   workspaceApi: WorkspaceApi;
 };
 
-export function useGitTrace({ activeLine, activePath, activeTool, workspaceApi }: UseGitTraceArgs) {
+export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeTool, workspaceApi }: UseGitTraceArgs) {
   const [state, setState] = useState<GitTraceState>(createDefaultGitTraceState);
 
   useEffect(() => {
     if (!activePath || !workspaceApi.getFileBlame) {
       setState(createDefaultGitTraceState());
+      return;
+    }
+
+    if (isActiveFileDirty) {
+      setState({
+        blameStatus: "unavailable",
+        blameLines: [],
+        selectedLine: null,
+        selectedCommit: null,
+        detailStatus: "unavailable",
+        detail: null,
+        message: "Save the current file to inspect Git Trace.",
+      });
       return;
     }
 
@@ -79,7 +93,7 @@ export function useGitTrace({ activeLine, activePath, activeTool, workspaceApi }
     return () => {
       cancelled = true;
     };
-  }, [activeLine, activePath, workspaceApi]);
+  }, [activeLine, activePath, isActiveFileDirty, workspaceApi]);
 
   useEffect(() => {
     if (

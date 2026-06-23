@@ -35,6 +35,7 @@ This repository currently includes:
 - File menu, recent projects, recent files, Search Everywhere, Quick Open, and Find Action
 - keyboard flows aligned toward IntelliJ IDEA habits
 - bottom Terminal, Problems, Git, and Usages surfaces
+- line-level Git Trace for saved Git-tracked files, with inline blame labels and a bottom commit-trace panel
 - `Ctrl+B`, `Ctrl+Click`, `Ctrl+Space`, and `Alt+F7` MVP wiring for code query flows
 - lint / format command configuration and validation entry points
 - Windows packaging and CI baseline
@@ -45,6 +46,7 @@ ArkLine is currently an engineering MVP.
 
 - the shell and editor workflow are already usable
 - project opening, file browsing, search flows, editing, and Git diff review are in place
+- saved Git-tracked files can already show inline blame plus commit detail in the bottom Git Trace tool
 - ArkTS semantic capabilities are partially wired but not yet strong enough to claim IntelliJ-class behavior
 - packaging is designed for Windows first, with macOS used mainly for development verification
 
@@ -56,7 +58,7 @@ This is the main target platform.
 
 #### Fastest way for users
 
-1. Download the packaged ArkLine installer or `.exe` from the GitHub release or CI artifact.
+1. Download either the packaged ArkLine installer or the portable `ArkLine.exe` from the GitHub release or CI artifact.
 2. Install Microsoft WebView2 Runtime if the machine does not already have it.
 3. Launch ArkLine.
 4. Use `File -> Open Project...` to select an ArkTS workspace folder.
@@ -80,12 +82,33 @@ pnpm install
 pnpm tauri dev
 ```
 
-Build a distributable Windows package:
+Build the standard Windows installer:
 
 ```bash
 pnpm build
 pnpm package:windows
 ```
+
+Build a portable `.exe` that can be launched directly:
+
+```bash
+pnpm build
+pnpm package:windows:portable
+```
+
+Build a native macOS binary:
+
+```bash
+pnpm build
+pnpm package:mac
+```
+
+Output paths on Windows:
+
+- Installer: `src-tauri/target/release/bundle/nsis/`
+- Portable executable on Windows host: `src-tauri/target/release/arkline.exe`
+- Portable executable when cross-compiled from macOS/Linux: `src-tauri/target/x86_64-pc-windows-msvc/release/arkline.exe`
+- Native macOS binary: `src-tauri/target/release/arkline`
 
 Run a Windows dependency check plus build flow:
 
@@ -99,6 +122,7 @@ Useful flags:
 powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1 -SkipInstall
 powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1 -SkipFrontendBuild
 powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1 -SkipBundle
+powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 -Portable
 ```
 
 Relevant files:
@@ -139,6 +163,8 @@ pnpm build
 Notes:
 
 - Use macOS mainly to verify frontend, shell interaction, and workspace loading.
+- `pnpm package:mac` builds the native macOS binary at `src-tauri/target/release/arkline`.
+- `pnpm package:windows:portable` cross-compiles a Windows `.exe` and requires the Rust target `x86_64-pc-windows-msvc`.
 - The first packaged end-user experience should still be treated as Windows-first.
 
 ## First-use flow
@@ -149,6 +175,7 @@ Notes:
 4. Open search flows with the top toolbar or keyboard shortcuts
 5. Run lint / format from the Terminal presets or configured actions
 6. Review changed files in the bottom Git tool window
+7. Inspect saved tracked lines through the bottom `Git Trace` tool window
 
 ## Core shortcuts
 
@@ -210,6 +237,7 @@ Important constraints in the current codebase:
 - Terminal is intentionally narrow-scope MVP, not a full PTY terminal emulator with tabs and splits.
 - Git history, branches, staging, and merge tooling are still much lighter than real IDEA Git support.
 - Windows installer and portable executable still need final validation on a real Windows machine.
+- The portable `.exe` is direct-launch, but it still depends on Microsoft WebView2 Runtime being present.
 
 ## Development
 
@@ -222,4 +250,5 @@ cargo test --manifest-path src-tauri/Cargo.toml
 pnpm build
 pnpm tauri dev
 pnpm package:windows
+pnpm package:windows:portable
 ```

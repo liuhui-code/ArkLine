@@ -13,12 +13,25 @@ import {
   lineNumbers,
   rectangularSelection,
 } from "@codemirror/view";
-import { createDefinitionTriggerHandler, createDocumentChangeListener, createSelectionChangeListener, type EditorLineColumn } from "@/editor/editor-events";
+import {
+  createDefinitionHoverHandler,
+  createDefinitionTriggerHandler,
+  createDocumentChangeListener,
+  createSelectionChangeListener,
+  createTypingCompletionTriggerListener,
+  definitionHoverDecorationField,
+  jumpRevealDecorationField,
+  type DefinitionHoverState,
+  type EditorLineColumn,
+} from "@/editor/editor-events";
+import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import { arkLineSyntaxTheme, createArkLineEditorTheme } from "@/editor/theme";
+import type { GitBlameLine } from "@/features/git/git-trace-model";
 import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
 
 export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
+export const gitTraceCompartment = new Compartment();
 
 export function appearanceExtensionForSettings(appearance: EditorAppearance): Extension {
   return createArkLineEditorTheme(appearance);
@@ -62,6 +75,13 @@ export function createEditorExtensions(
   onChange: (value: string) => void,
   onSelectionChange?: (selection: { line: number; column: number }) => void,
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void,
+  onDefinitionHoverChange?: (state: DefinitionHoverState) => void,
+  onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,
+  gitTrace?: {
+    blameLines: GitBlameLine[];
+    selectedLine: number | null;
+    onSelectLine?: (line: number) => void;
+  },
 ): Extension[] {
   return [
     EditorView.contentAttributes.of({
@@ -77,6 +97,8 @@ export function createEditorExtensions(
     indentOnInput(),
     bracketMatching(),
     highlightActiveLine(),
+    definitionHoverDecorationField,
+    jumpRevealDecorationField,
     keymap.of([
       indentWithTab,
       ...defaultKeymap,
@@ -87,8 +109,11 @@ export function createEditorExtensions(
     createDocumentChangeListener(onChange),
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),
+    ...(onDefinitionHoverChange ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
+    ...(onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
     languageCompartment.of(languageExtensionForPath(path)),
+    gitTraceCompartment.of(gitTrace ? createGitTraceGutter(gitTrace) : []),
   ];
 }
