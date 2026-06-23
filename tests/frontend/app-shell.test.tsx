@@ -1514,7 +1514,7 @@ describe("App shell", () => {
       inspectEnvironment: vi.fn(async () => ({ tools: [] })),
       inspectLanguageService: vi.fn(async () => ({
         provider: "mock-fallback",
-        mode: "fallback",
+        mode: "fallback" as const,
         running: true,
         hover: true,
         definition: true,
