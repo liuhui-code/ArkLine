@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { createFileTreeNodes, type FileTreeNode } from "@/features/workspace/file-tree-store";
+import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
 import {
   collectFallbackCompletions,
@@ -29,6 +30,11 @@ export type WorkspaceViewModel = {
 
 export type WorkspaceLaunchContext = {
   rootPath: string | null;
+};
+
+export type PathPickOptions = {
+  directory?: boolean;
+  title: string;
 };
 
 export type ValidationProblem = {
@@ -120,6 +126,13 @@ export type DefinitionTarget = {
   column: number;
 };
 
+export type DefinitionCandidate = {
+  path: string;
+  line: number;
+  column: number;
+  preview: string;
+};
+
 export type LanguageCompletionItem = {
   label: string;
   detail: string;
@@ -135,6 +148,7 @@ export type DocumentSymbol = {
 
 export type WorkspaceApi = {
   pickWorkspaceRoot(): Promise<string | null>;
+  pickPath?(options: PathPickOptions): Promise<string | null>;
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
   openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
   getLaunchWorkspacePath?(): Promise<string | null>;
@@ -147,9 +161,12 @@ export type WorkspaceApi = {
   inspectLanguageService?(): Promise<LanguageServiceReport>;
   hoverSymbol?(request: LanguageQueryRequest): Promise<HoverResponse | null>;
   gotoDefinition?(request: LanguageQueryRequest): Promise<DefinitionTarget | null>;
+  gotoDefinitionCandidates?(request: LanguageQueryRequest): Promise<DefinitionCandidate[]>;
   completeSymbol?(request: LanguageQueryRequest): Promise<LanguageCompletionItem[]>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
   findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
+  getFileBlame?(path: string): Promise<GitBlameLine[] | GitTraceUnavailable>;
+  getCommitTrace?(path: string, commit: string, line: number): Promise<GitCommitTrace | GitTraceUnavailable>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
   createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionSummary>;
@@ -231,6 +248,19 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       directory: true,
       multiple: false,
       title: "Open ArkTS Project",
+    });
+
+    return typeof selected === "string" ? normalizePath(selected) : null;
+  },
+  async pickPath(options) {
+    if (!hasTauriRuntime()) {
+      return null;
+    }
+
+    const selected = await open({
+      directory: options.directory ?? false,
+      multiple: false,
+      title: options.title,
     });
 
     return typeof selected === "string" ? normalizePath(selected) : null;
@@ -395,6 +425,13 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       column: 1,
     };
   },
+  async gotoDefinitionCandidates(request) {
+    if (hasTauriRuntime()) {
+      return invoke<DefinitionCandidate[]>("goto_definition_candidates", { request });
+    }
+
+    return [];
+  },
   async completeSymbol(request) {
     if (hasTauriRuntime()) {
       return invoke<LanguageCompletionItem[]>("complete_symbol", { request });
@@ -442,6 +479,77 @@ export const defaultWorkspaceApi: WorkspaceApi = {
         preview: "struct Index {}",
       },
     ];
+  },
+  async getFileBlame(path) {
+    if (hasTauriRuntime()) {
+      return invoke<GitBlameLine[] | GitTraceUnavailable>("get_file_blame", { path });
+    }
+
+    if (!isDemoWorkspacePath(path)) {
+      return {
+        kind: "unavailable",
+        reason: "notTracked",
+        message: "File is not tracked by Git",
+      };
+    }
+
+    return [
+      {
+        line: 1,
+        commit: "abc1234",
+        sourceLine: 1,
+        author: "Jane Doe",
+        authoredAt: "2026-06-23T10:00:00Z",
+        relativeTime: "2h ago",
+        summary: "Mark ArkTS entry component",
+      },
+      {
+        line: 2,
+        commit: "abc1234",
+        sourceLine: 2,
+        author: "Jane Doe",
+        authoredAt: "2026-06-23T10:00:00Z",
+        relativeTime: "2h ago",
+        summary: "Mark ArkTS entry component",
+      },
+      {
+        line: 3,
+        commit: "def5678",
+        sourceLine: 3,
+        author: "Alex Chen",
+        authoredAt: "2026-06-22T15:30:00Z",
+        relativeTime: "1d ago",
+        summary: "Add root Index struct",
+      },
+    ];
+  },
+  async getCommitTrace(path, commit, line) {
+    if (hasTauriRuntime()) {
+      return invoke<GitCommitTrace | GitTraceUnavailable>("get_commit_trace", { path, commit, line });
+    }
+
+    if (!isDemoWorkspacePath(path)) {
+      return {
+        kind: "unavailable",
+        reason: "detailUnavailable",
+        message: "Commit details unavailable",
+      };
+    }
+
+    return {
+      commit,
+      shortCommit: commit.slice(0, 7),
+      author: commit === "abc1234" ? "Jane Doe" : "Alex Chen",
+      email: commit === "abc1234" ? "jane@example.com" : "alex@example.com",
+      authoredAt: commit === "abc1234" ? "2026-06-23T10:00:00Z" : "2026-06-22T15:30:00Z",
+      subject: commit === "abc1234" ? "Mark ArkTS entry component" : "Add root Index struct",
+      relativePath: normalizePath(path).replace(/^.*DemoWorkspace[\\/]/, "").replace(/\\/g, "/"),
+      selectedLine: line,
+      sourceLine: line,
+      patch: commit === "abc1234"
+        ? "@@ -1,2 +1,2 @@\n+@Entry\n @Component"
+        : "@@ -1,3 +1,3 @@\n @Entry\n @Component\n+struct Index {}",
+    };
   },
   async loadSettings() {
     if (hasTauriRuntime()) {
