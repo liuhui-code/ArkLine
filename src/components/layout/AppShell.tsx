@@ -519,6 +519,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }, 120);
   }
   async function findUsagesFromEditor() {
+    if (settingsApplying) {
+      setStatusText("SDK settings are still applying");
+      return;
+    }
     openUsagesToolWindow();
     if (!activePath || !workspaceApi.findUsages) {
       setUsageSearch({ status: "error", items: [], message: "Find Usages unavailable" });

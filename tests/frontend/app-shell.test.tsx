@@ -553,7 +553,15 @@ describe("App shell", () => {
     const completeSymbol = vi.fn(async () => [
       { label: "build", detail: "Component lifecycle method", kind: "method" },
     ]);
-    const workspaceApi = createWorkspaceApi({ saveSettings, gotoDefinition, completeSymbol });
+    const findUsages = vi.fn(async () => [
+      {
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 1,
+        column: 1,
+        preview: "@Entry",
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({ saveSettings, gotoDefinition, completeSymbol, findUsages });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 
@@ -573,10 +581,12 @@ describe("App shell", () => {
     await user.keyboard("{Control>}b{/Control}");
     expect(await screen.findByText("SDK settings are still applying")).toBeVisible();
     await user.keyboard("{Control>} {/Control}");
+    await user.keyboard("{Alt>}{F7}{/Alt}");
     await new Promise((resolve) => window.setTimeout(resolve, 160));
 
     expect(gotoDefinition).not.toHaveBeenCalled();
     expect(completeSymbol).not.toHaveBeenCalled();
+    expect(findUsages).not.toHaveBeenCalled();
 
     finishSave();
     await waitFor(() => expect(screen.getByText("SDK settings applied")).toBeVisible());
@@ -1673,6 +1683,52 @@ describe("App shell", () => {
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Applying..." })).not.toBeInTheDocument();
     expect(saveSettings).toHaveBeenCalledTimes(1);
+    expect(inspectLanguageService).toHaveBeenCalled();
+  });
+
+  it("keeps the settings dialog locked while apply refresh is still running", async () => {
+    const user = userEvent.setup();
+    let finishEnvironment!: () => void;
+    const saveSettings = vi.fn(async () => undefined);
+    const inspectEnvironment = vi.fn(() => new Promise<{ tools: [] }>((resolve) => {
+      finishEnvironment = () => resolve({ tools: [] });
+    }));
+    const inspectLanguageService = vi.fn(async () => ({
+      provider: "mock-fallback",
+      mode: "fallback" as const,
+      running: true,
+      hover: true,
+      definition: true,
+      completion: true,
+      documentSymbols: true,
+      findUsages: true,
+      detail: "ready",
+    }));
+    const workspaceApi = createWorkspaceApi({
+      saveSettings,
+      inspectEnvironment,
+      inspectLanguageService,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    await user.clear(await screen.findByLabelText("HarmonyOS / ArkTS SDK Path"));
+    await user.type(screen.getByLabelText("HarmonyOS / ArkTS SDK Path"), "D:/HarmonyOS/Sdk");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(inspectEnvironment).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Applying..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByText("SDK settings applying...")).toBeVisible();
+
+    finishEnvironment();
+
+    await waitFor(() => expect(screen.getByText("SDK settings applied")).toBeVisible());
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     expect(inspectLanguageService).toHaveBeenCalled();
   });
 

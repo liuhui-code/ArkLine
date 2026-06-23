@@ -53,7 +53,13 @@ export function SettingsDialog({
       setApplyError("");
       setIsApplying(false);
     }
-  }, [open, settings]);
+  }, [open]);
+
+  useEffect(() => {
+    if (open && !isApplying) {
+      setDraftSettings(settings);
+    }
+  }, [open, settings, isApplying]);
 
   function updateDraft(update: AppSettingsPatch) {
     setDraftSettings((current) => mergeDraftSettings(current, update));
