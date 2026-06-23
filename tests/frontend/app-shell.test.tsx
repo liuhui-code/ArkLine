@@ -1546,11 +1546,13 @@ describe("App shell", () => {
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
     await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
-    expect(saveSettings).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        editor: expect.objectContaining({ fontSize: 17 }),
-      }),
-    );
+    expect(saveSettings).toHaveBeenLastCalledWith({
+      ...savedSettings,
+      editor: {
+        ...savedSettings.editor,
+        fontSize: 17,
+      },
+    });
   });
 
   it("loads persisted settings and saves updates through the workspace api", async () => {
