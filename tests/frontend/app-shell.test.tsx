@@ -539,6 +539,56 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
   });
 
+  it("blocks definition and completion while settings are applying", async () => {
+    const user = userEvent.setup();
+    let finishSave!: () => void;
+    const saveSettings = vi.fn(() => new Promise<void>((resolve) => {
+      finishSave = resolve;
+    }));
+    const gotoDefinition = vi.fn(async () => ({
+      path: "C:/samples/DemoWorkspace/src/main.ets",
+      line: 1,
+      column: 1,
+    }));
+    const completeSymbol = vi.fn(async () => [
+      { label: "build", detail: "Component lifecycle method", kind: "method" },
+    ]);
+    const workspaceApi = createWorkspaceApi({ saveSettings, gotoDefinition, completeSymbol });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    await user.clear(await screen.findByLabelText("HarmonyOS / ArkTS SDK Path"));
+    await user.type(screen.getByLabelText("HarmonyOS / ArkTS SDK Path"), "D:/HarmonyOS/Sdk");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("SDK settings applying...")).toBeVisible();
+
+    await user.click(editor);
+    await user.keyboard("{Control>}b{/Control}");
+    expect(await screen.findByText("SDK settings are still applying")).toBeVisible();
+    await user.keyboard("{Control>} {/Control}");
+    await new Promise((resolve) => window.setTimeout(resolve, 160));
+
+    expect(gotoDefinition).not.toHaveBeenCalled();
+    expect(completeSymbol).not.toHaveBeenCalled();
+
+    finishSave();
+    await waitFor(() => expect(screen.getByText("SDK settings applied")).toBeVisible());
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(editor);
+    await user.keyboard("{Control>}b{/Control}");
+    await waitFor(() => expect(gotoDefinition).toHaveBeenCalled());
+    await user.keyboard("{Control>} {/Control}");
+    await waitFor(() => expect(completeSymbol).toHaveBeenCalled());
+  });
+
   it("auto-opens completion while typing without stealing editor focus", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

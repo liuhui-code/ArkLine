@@ -66,6 +66,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]), [recentProjects, setRecentProjects] = useState<string[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [settingsSaveState, setSettingsSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [settingsApplyState, setSettingsApplyState] = useState<"idle" | "applying" | "applied" | "failed">("idle");
   const [environmentReport, setEnvironmentReport] = useState<EnvironmentReport | null>(null);
   const [editorAppearance, setEditorAppearance] = useState(createSettingsStore().state.settings.editor);
   const [editorFocusToken, setEditorFocusToken] = useState(0);
@@ -94,6 +95,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const settingsSaveResetTimerRef = useRef<number | null>(null);
   const typingCompletionTimerRef = useRef<number | null>(null);
   const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
+  const settingsApplying = settingsApplyState === "applying";
   const activeTab = activePath
     ? openTabs.find((tab) => normalizePath(tab.path) === normalizePath(activePath))
     : null;
@@ -358,6 +360,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText("Ctrl+Click received, but editor position could not be resolved");
       return;
     }
+    if (settingsApplying) {
+      if (source === "modifierClick") {
+        setDefinitionDebug("Ctrl+Click is paused while SDK settings are applying.");
+      }
+      setStatusText("SDK settings are still applying");
+      return;
+    }
     if (!activePath || !workspaceApi.gotoDefinition) {
       if (source === "modifierClick") setDefinitionDebug("Ctrl+Click reached AppShell, but definition lookup is unavailable for the current workspace.");
       setStatusText("Go to Definition unavailable");
@@ -469,6 +478,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     trigger: "manual" | "typing",
     selectionOverride?: { line: number; column: number },
   ) {
+    if (settingsApplying) {
+      setStatusText("SDK settings are still applying");
+      return;
+    }
     if (!activePath || !workspaceApi.completeSymbol) return void setStatusText("Completion unavailable");
     const selection = {
       line: selectionOverride?.line ?? editorSelection.line,
@@ -497,6 +510,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function triggerTypingCompletion(selection: { line: number; column: number }) {
     clearTypingCompletionTimer();
+    if (settingsApplying) {
+      setStatusText("SDK settings are still applying");
+      return;
+    }
     typingCompletionTimerRef.current = window.setTimeout(() => {
       void requestCompletion("typing", selection);
     }, 120);
@@ -675,14 +692,17 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
 
   async function applySettings(nextSettings: AppSettings) {
+    setSettingsApplyState("applying");
     setSettingsSaveState("saving");
     setStatusText("SDK settings applying...");
     clearSettingsSaveResetTimer();
+    clearTypingCompletionTimer();
     try {
       await workspaceApi.saveSettings(nextSettings);
     } catch (error) {
+      setSettingsApplyState("failed");
       setSettingsSaveState("idle");
-      setStatusText("SDK settings save failed");
+      setStatusText(`SDK settings apply failed: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
 
@@ -694,11 +714,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       await refreshEnvironmentReport();
       await refreshSemanticState();
     } catch (error) {
+      setSettingsApplyState("failed");
       setSettingsSaveState("idle");
-      setStatusText("SDK settings refresh failed");
+      setStatusText(`SDK settings apply failed: ${error instanceof Error ? error.message : String(error)}`);
       throw error;
     }
 
+    setSettingsApplyState("applied");
     setSettingsSaveState("saved");
     setStatusText("SDK settings applied");
     settingsSaveResetTimerRef.current = window.setTimeout(() => {
