@@ -712,7 +712,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
     try {
       await refreshEnvironmentReport();
-      await refreshSemanticState();
+      await refreshSemanticState({ throwOnError: true });
     } catch (error) {
       setSettingsApplyState("failed");
       setSettingsSaveState("idle");

@@ -1648,6 +1648,34 @@ describe("App shell", () => {
     });
   });
 
+  it("reports apply failure when semantic refresh fails", async () => {
+    const user = userEvent.setup();
+    const saveSettings = vi.fn(async () => undefined);
+    const inspectLanguageService = vi.fn(async () => {
+      throw new Error("semantic refresh failed");
+    });
+    const workspaceApi = createWorkspaceApi({
+      saveSettings,
+      inspectEnvironment: vi.fn(async () => ({ tools: [] })),
+      inspectLanguageService,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    await user.clear(await screen.findByLabelText("HarmonyOS / ArkTS SDK Path"));
+    await user.type(screen.getByLabelText("HarmonyOS / ArkTS SDK Path"), "D:/HarmonyOS/Sdk");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("SDK settings apply failed: semantic refresh failed")).toBeVisible();
+    expect(screen.queryByText("SDK settings applied")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Applying..." })).not.toBeInTheDocument();
+    expect(saveSettings).toHaveBeenCalledTimes(1);
+    expect(inspectLanguageService).toHaveBeenCalled();
+  });
+
   it("loads persisted settings and saves updates through the workspace api", async () => {
     const user = userEvent.setup();
     const settings = defaultSettings();

@@ -5,7 +5,7 @@ import { defaultSemanticState, loadSemanticState } from "@/features/semantic/sem
 export function useSemanticState(workspaceApi: WorkspaceApi) {
   const [semanticState, setSemanticState] = useState(defaultSemanticState);
 
-  async function refreshSemanticState() {
+  async function refreshSemanticState(options: { throwOnError?: boolean } = {}) {
     try {
       setSemanticState(await loadSemanticState(workspaceApi));
     } catch (error) {
@@ -15,6 +15,9 @@ export function useSemanticState(workspaceApi: WorkspaceApi) {
         mode: "unavailable",
         detail,
       });
+      if (options.throwOnError) {
+        throw new Error(detail);
+      }
     }
   }
 
