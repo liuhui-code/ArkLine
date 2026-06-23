@@ -298,6 +298,7 @@ fn extract_payload<'a>(payload: &'a Value, key: &str) -> &'a Value {
 mod tests {
     use std::fs;
     use std::path::PathBuf;
+    #[cfg(any(unix, windows))]
     use std::process::Command;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -330,6 +331,27 @@ rl.on("line", (line) => {
         )
         .unwrap();
         path
+    }
+
+    #[cfg(unix)]
+    fn assert_process_exited(pid: u32) {
+        let output = Command::new("ps")
+            .args(["-p", &pid.to_string()])
+            .output()
+            .expect("ps should run");
+
+        assert!(!output.status.success());
+    }
+
+    #[cfg(windows)]
+    fn assert_process_exited(pid: u32) {
+        let output = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output()
+            .expect("tasklist should run");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        assert!(!stdout.contains(&pid.to_string()));
     }
 
     #[test]
@@ -371,12 +393,7 @@ rl.on("line", (line) => {
 
         drop(session);
 
-        let output = Command::new("ps")
-            .args(["-p", &pid.to_string()])
-            .output()
-            .expect("ps should run");
-
-        assert!(!output.status.success());
+        assert_process_exited(pid);
         fs::remove_file(entry_path).unwrap();
     }
 }
