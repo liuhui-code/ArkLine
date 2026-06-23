@@ -1,6 +1,7 @@
 mod commands {
     pub mod documents;
     pub mod environment;
+    pub mod git_trace;
     pub mod language;
     pub mod settings;
     pub mod terminal;
@@ -21,8 +22,10 @@ mod services {
     pub mod diff_service;
     pub mod document_service;
     pub mod environment_doctor;
+    pub mod git_trace_service;
     pub mod language_service;
     pub mod semantic;
+    pub mod semantic_host;
     pub mod settings_store;
     pub mod terminal_io_service;
     pub mod terminal_session_service;
@@ -54,9 +57,12 @@ pub fn run() {
             commands::language::inspect_language_service,
             commands::language::hover_symbol,
             commands::language::goto_definition,
+            commands::language::goto_definition_candidates,
             commands::language::complete_symbol,
             commands::language::document_symbols,
             commands::language::find_usages,
+            commands::git_trace::get_file_blame,
+            commands::git_trace::get_commit_trace,
             commands::terminal::create_terminal_session,
             commands::terminal::list_terminal_sessions,
             commands::terminal::write_terminal_input,

@@ -38,6 +38,15 @@ pub struct DefinitionTarget {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct DefinitionCandidate {
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CompletionItem {
     pub label: String,
     pub detail: String,
@@ -60,4 +69,53 @@ pub struct UsageResult {
     pub line: u32,
     pub column: u32,
     pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitTraceUnavailable {
+    pub kind: String,
+    pub reason: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBlameLine {
+    pub line: usize,
+    pub commit: String,
+    pub source_line: usize,
+    pub author: String,
+    pub authored_at: String,
+    pub relative_time: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitTrace {
+    pub commit: String,
+    pub short_commit: String,
+    pub author: String,
+    pub email: Option<String>,
+    pub authored_at: String,
+    pub subject: String,
+    pub relative_path: String,
+    pub selected_line: usize,
+    pub source_line: usize,
+    pub patch: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum GitBlameResponse {
+    Lines(Vec<GitBlameLine>),
+    Unavailable(GitTraceUnavailable),
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum GitCommitTraceResponse {
+    Trace(GitCommitTrace),
+    Unavailable(GitTraceUnavailable),
 }
