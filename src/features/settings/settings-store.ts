@@ -3,6 +3,13 @@ export type AppSettings = {
     fontFamily: string;
     fontSize: number;
     lineHeight: number;
+    letterSpacing: number;
+  };
+  sdk: {
+    harmonySdkPath: string;
+    semanticWorkerPath: string;
+    nodePath: string;
+    autoDetect: boolean;
   };
   validation: {
     formatOnSave: boolean;
@@ -15,6 +22,7 @@ export type AppSettings = {
 
 export type AppSettingsPatch = {
   editor?: Partial<AppSettings["editor"]>;
+  sdk?: Partial<AppSettings["sdk"]>;
   validation?: Partial<AppSettings["validation"]>;
   recentProjects?: string[];
 };
@@ -23,8 +31,15 @@ export function defaultSettings(): AppSettings {
   return {
     editor: {
       fontFamily: "Cascadia Code, JetBrains Mono, Consolas, monospace",
-      fontSize: 13,
-      lineHeight: 1.6,
+      fontSize: 14,
+      lineHeight: 1.65,
+      letterSpacing: 0,
+    },
+    sdk: {
+      harmonySdkPath: "",
+      semanticWorkerPath: "",
+      nodePath: "",
+      autoDetect: true,
     },
     validation: {
       formatOnSave: true,
@@ -41,6 +56,10 @@ function mergeSettings(current: AppSettings, update: AppSettingsPatch): AppSetti
     editor: {
       ...current.editor,
       ...update.editor,
+    },
+    sdk: {
+      ...current.sdk,
+      ...update.sdk,
     },
     validation: {
       ...current.validation,
