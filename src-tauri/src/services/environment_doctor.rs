@@ -2,6 +2,9 @@ use serde::Serialize;
 use std::process::Command;
 
 use crate::services::semantic::arkts_lsp_provider::ArkTsLspProvider;
+use crate::services::semantic_host::config::SemanticHostConfig;
+use crate::services::semantic_host::manager::SemanticHostReadiness;
+use crate::services::semantic_host::sdk::{discover_harmony_sdk, SdkDiscovery};
 use crate::services::settings_store::AppSettings;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -25,7 +28,9 @@ pub fn inspect_environment(settings: &AppSettings) -> EnvironmentReport {
             detect_command("rg", &["--version"]),
             detect_command_label("lintCommand", &settings.validation.lint_command, &["--version"]),
             detect_command_label("formatCommand", &settings.validation.format_command, &["--version"]),
-            detect_arkts_language_server(),
+            detect_harmony_sdk(settings),
+            detect_semantic_worker(settings),
+            detect_arkts_language_server(settings),
             ToolStatus {
                 name: "webview2".to_string(),
                 available: true,
@@ -75,8 +80,34 @@ fn detect_command(command: &str, args: &[&str]) -> ToolStatus {
     }
 }
 
-fn detect_arkts_language_server() -> ToolStatus {
-    let discovery = ArkTsLspProvider::discovery();
+fn detect_harmony_sdk(settings: &AppSettings) -> ToolStatus {
+    let config = SemanticHostConfig::from_settings(settings);
+    match discover_harmony_sdk(config.harmony_sdk_env_value().as_deref()) {
+        SdkDiscovery::Ready(path) => ToolStatus {
+            name: "harmonySdk".to_string(),
+            available: true,
+            detail: format!("HarmonyOS SDK ready at {}", path.display()),
+        },
+        SdkDiscovery::Missing => ToolStatus {
+            name: "harmonySdk".to_string(),
+            available: false,
+            detail: "Set ARKLINE_HARMONY_SDK_PATH to your HarmonyOS SDK root".to_string(),
+        },
+    }
+}
+
+fn detect_semantic_worker(settings: &AppSettings) -> ToolStatus {
+    let readiness = SemanticHostReadiness::discover(SemanticHostConfig::from_settings(settings));
+
+    ToolStatus {
+        name: "semanticWorker".to_string(),
+        available: readiness.worker.entry_path.is_some() && readiness.worker.node_path.is_some(),
+        detail: readiness.worker.detail,
+    }
+}
+
+fn detect_arkts_language_server(settings: &AppSettings) -> ToolStatus {
+    let discovery = ArkTsLspProvider::discovery(SemanticHostConfig::from_settings(settings));
 
     ToolStatus {
         name: "arktsLanguageServer".to_string(),
@@ -99,6 +130,8 @@ mod tests {
         assert!(report.tools.iter().any(|tool| tool.name == "rg"));
         assert!(report.tools.iter().any(|tool| tool.name == "lintCommand"));
         assert!(report.tools.iter().any(|tool| tool.name == "formatCommand"));
+        assert!(report.tools.iter().any(|tool| tool.name == "harmonySdk"));
+        assert!(report.tools.iter().any(|tool| tool.name == "semanticWorker"));
         assert!(report.tools.iter().any(|tool| tool.name == "webview2"));
     }
 }

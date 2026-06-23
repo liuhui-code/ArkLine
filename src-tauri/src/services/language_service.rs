@@ -1,61 +1,160 @@
 use crate::models::language::{
-    CompletionItem, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, UsageResult,
+    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
+    LanguageQueryRequest, LanguageServiceReport, UsageResult,
 };
+use crate::services::document_service::read_text_file;
 use crate::services::semantic::router::SemanticRouter;
+use crate::services::semantic_host::config::SemanticHostConfig;
+use crate::services::settings_store::AppSettings;
+use std::path::Path;
+use std::sync::Mutex;
 
-#[derive(Default)]
 pub struct LanguageRuntime {
+    state: Mutex<LanguageRuntimeState>,
+}
+
+struct LanguageRuntimeState {
+    config: SemanticHostConfig,
     router: SemanticRouter,
 }
 
-pub fn inspect_runtime(runtime: &LanguageRuntime) -> LanguageServiceReport {
-    runtime.router.active().report()
+impl Default for LanguageRuntime {
+    fn default() -> Self {
+        let config = SemanticHostConfig::default();
+        Self {
+            state: Mutex::new(LanguageRuntimeState {
+                config: config.clone(),
+                router: SemanticRouter::new(config),
+            }),
+        }
+    }
 }
 
-pub fn hover_symbol(runtime: &LanguageRuntime, request: &LanguageQueryRequest) -> Option<HoverResponse> {
-    runtime.router.active().hover(request)
+impl LanguageRuntime {
+    fn with_router<T>(&self, settings: &AppSettings, callback: impl FnOnce(&SemanticRouter) -> T) -> T {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let next_config = SemanticHostConfig::from_settings(settings);
+        if state.config != next_config {
+            next_config.apply_to_process_env();
+            state.config = next_config.clone();
+            state.router = SemanticRouter::new(next_config);
+        }
+
+        callback(&state.router)
+    }
 }
 
-pub fn goto_definition(
+pub fn goto_definition_candidates(
     runtime: &LanguageRuntime,
+    settings: &AppSettings,
     request: &LanguageQueryRequest,
-) -> Option<DefinitionTarget> {
-    runtime.router.active().definition(request)
+) -> Vec<DefinitionCandidate> {
+    runtime.with_router(settings, |router| {
+        router
+            .active()
+            .definition_candidates(request)
+            .into_iter()
+            .map(hydrate_definition_candidate_preview)
+            .collect()
+    })
+}
+
+fn hydrate_definition_candidate_preview(mut candidate: DefinitionCandidate) -> DefinitionCandidate {
+    if !candidate.preview.is_empty() {
+        return candidate;
+    }
+
+    candidate.preview = read_text_file(Path::new(&candidate.path))
+        .ok()
+        .and_then(|content| {
+            content
+                .lines()
+                .nth(candidate.line.saturating_sub(1) as usize)
+                .map(|line| line.trim().to_string())
+        })
+        .unwrap_or_default();
+
+    candidate
 }
 
 pub fn complete_symbol(
     runtime: &LanguageRuntime,
+    settings: &AppSettings,
     request: &LanguageQueryRequest,
 ) -> Vec<CompletionItem> {
-    runtime.router.active().completion(request)
+    runtime.with_router(settings, |router| router.active().completion(request))
 }
 
 pub fn list_document_symbols(
     runtime: &LanguageRuntime,
+    settings: &AppSettings,
     request: &LanguageQueryRequest,
 ) -> Vec<DocumentSymbol> {
-    runtime.router.active().document_symbols(request)
+    runtime.with_router(settings, |router| router.active().document_symbols(request))
 }
 
 pub fn find_usages(
     runtime: &LanguageRuntime,
+    settings: &AppSettings,
     request: &LanguageQueryRequest,
 ) -> Vec<UsageResult> {
-    runtime.router.active().usages(request)
+    runtime.with_router(settings, |router| router.active().usages(request))
+}
+
+pub fn inspect_runtime(runtime: &LanguageRuntime, settings: &AppSettings) -> LanguageServiceReport {
+    runtime.with_router(settings, |router| router.active().report())
+}
+
+pub fn hover_symbol(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+) -> Option<HoverResponse> {
+    runtime.with_router(settings, |router| router.active().hover(request))
+}
+
+pub fn goto_definition(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+) -> Option<DefinitionTarget> {
+    runtime.with_router(settings, |router| router.active().definition(request))
 }
 
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{Mutex, MutexGuard};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        complete_symbol, find_usages, goto_definition, hover_symbol, inspect_runtime,
-        list_document_symbols, LanguageRuntime,
+        complete_symbol, find_usages, goto_definition, goto_definition_candidates, hover_symbol,
+        inspect_runtime, list_document_symbols, LanguageRuntime,
     };
     use crate::models::language::LanguageQueryRequest;
+    use crate::services::semantic_host::sdk::HARMONY_SDK_PATH_ENV;
+    use crate::services::settings_store::default_settings;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    
+    struct ScopedSdkEnv {
+        _guard: MutexGuard<'static, ()>,
+        previous: Option<String>,
+    }
+
+    impl Drop for ScopedSdkEnv {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.take() {
+                std::env::set_var(HARMONY_SDK_PATH_ENV, value);
+            } else {
+                std::env::remove_var(HARMONY_SDK_PATH_ENV);
+            }
+        }
+    }
 
     fn request(path: &str, line: u32, column: u32) -> LanguageQueryRequest {
         LanguageQueryRequest {
@@ -73,123 +172,238 @@ mod tests {
         std::env::temp_dir().join(format!("arkline-language-{name}-{suffix}.ets"))
     }
 
-    #[test]
-    fn reports_skeleton_language_runtime() {
-        let runtime = LanguageRuntime::default();
-        let report = inspect_runtime(&runtime);
+    fn missing_sdk_settings() -> crate::services::settings_store::AppSettings {
+        let mut settings = default_settings();
+        settings.sdk.auto_detect = false;
+        settings.sdk.harmony_sdk_path = "/tmp/arkline-missing-sdk".to_string();
+        settings
+    }
 
-        assert_eq!(report.provider, "fallback");
-        assert_eq!(report.mode, "fallback");
-        assert!(report.running);
-        assert!(!report.hover);
-        assert!(report.definition);
-        assert!(report.completion);
-        assert!(report.document_symbols);
-        assert!(report.find_usages);
+    fn sdk_settings(path: &str) -> crate::services::settings_store::AppSettings {
+        let mut settings = default_settings();
+        settings.sdk.auto_detect = false;
+        settings.sdk.harmony_sdk_path = path.to_string();
+        settings
+    }
+
+    fn with_missing_sdk_env<T>(callback: impl FnOnce() -> T) -> T {
+        let guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let scoped_env = ScopedSdkEnv {
+            _guard: guard,
+            previous: std::env::var(HARMONY_SDK_PATH_ENV).ok(),
+        };
+        std::env::set_var(HARMONY_SDK_PATH_ENV, "/tmp/arkline-missing-sdk");
+        let result = callback();
+        drop(scoped_env);
+        result
+    }
+
+    fn with_valid_sdk_env<T>(callback: impl FnOnce(&std::path::Path) -> T) -> T {
+        let guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let temp_sdk_root = std::env::temp_dir().join(format!(
+            "arkline-valid-sdk-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock should be after unix epoch")
+                .as_nanos()
+        ));
+        fs::create_dir_all(temp_sdk_root.join("ets")).unwrap();
+        fs::create_dir_all(temp_sdk_root.join("toolchains")).unwrap();
+        let scoped_env = ScopedSdkEnv {
+            _guard: guard,
+            previous: std::env::var(HARMONY_SDK_PATH_ENV).ok(),
+        };
+        std::env::set_var(HARMONY_SDK_PATH_ENV, temp_sdk_root.to_string_lossy().to_string());
+        let result = callback(&temp_sdk_root);
+        fs::remove_dir_all(temp_sdk_root).unwrap();
+        drop(scoped_env);
+        result
     }
 
     #[test]
-    fn resolves_same_file_semantic_queries_in_fallback_mode() {
-        let runtime = LanguageRuntime::default();
-        let path = unique_temp_path("fallback-runtime");
-        fs::write(
-            &path,
-            "@Entry\n@Component\nstruct Index {}\nfunction submit() {\n  Index;\n  submit();\n}\n",
-        )
-        .unwrap();
-        let path_text = path.to_string_lossy().to_string();
+    fn reports_skeleton_language_runtime() {
+        with_missing_sdk_env(|| {
+            let runtime = LanguageRuntime::default();
+            let report = inspect_runtime(&runtime, &missing_sdk_settings());
 
-        assert!(hover_symbol(&runtime, &request(&path_text, 3, 9)).is_none());
-        assert_eq!(
-            goto_definition(&runtime, &request(&path_text, 5, 4)),
-            Some(crate::models::language::DefinitionTarget {
-                path: path_text.clone(),
-                line: 3,
-                column: 8,
-            })
-        );
-        assert_eq!(
-            complete_symbol(&runtime, &request(&path_text, 1, 1)),
-            vec![
-                crate::models::language::CompletionItem {
-                    label: "@Entry".to_string(),
-                    detail: "ArkTS decorator".to_string(),
-                    kind: "keyword".to_string(),
-                },
-                crate::models::language::CompletionItem {
-                    label: "@Component".to_string(),
-                    detail: "ArkTS decorator".to_string(),
-                    kind: "keyword".to_string(),
-                },
-                crate::models::language::CompletionItem {
-                    label: "build()".to_string(),
-                    detail: "Component lifecycle method".to_string(),
-                    kind: "method".to_string(),
-                },
-                crate::models::language::CompletionItem {
-                    label: "submit()".to_string(),
-                    detail: "Fallback function".to_string(),
-                    kind: "function".to_string(),
-                },
-            ]
-        );
-        assert_eq!(
-            list_document_symbols(&runtime, &request(&path_text, 1, 1)),
-            vec![
-                crate::models::language::DocumentSymbol {
-                    name: "Index".to_string(),
-                    kind: "struct".to_string(),
+            assert_eq!(report.provider, "semantic-host");
+            assert_eq!(report.mode, "semantic");
+            assert!(report.running);
+            assert!(!report.hover);
+            assert!(report.definition);
+            assert!(report.completion);
+            assert!(report.document_symbols);
+            assert!(report.find_usages);
+            assert!(report.detail.contains("independent semantic worker"));
+        });
+    }
+
+    #[test]
+    fn resolves_same_file_semantic_queries_without_sdk() {
+        with_missing_sdk_env(|| {
+            let runtime = LanguageRuntime::default();
+            let path = unique_temp_path("fallback-runtime");
+            fs::write(
+                &path,
+                "@Entry\n@Component\nstruct Index {}\nfunction submit() {\n  Index;\n  submit();\n}\n",
+            )
+            .unwrap();
+            let path_text = path.to_string_lossy().to_string();
+
+            let settings = missing_sdk_settings();
+            assert!(hover_symbol(&runtime, &settings, &request(&path_text, 3, 9)).is_none());
+            assert_eq!(
+                goto_definition(&runtime, &settings, &request(&path_text, 5, 4)),
+                Some(crate::models::language::DefinitionTarget {
+                    path: path_text.clone(),
                     line: 3,
                     column: 8,
-                },
-                crate::models::language::DocumentSymbol {
-                    name: "submit".to_string(),
-                    kind: "function".to_string(),
-                    line: 4,
-                    column: 10,
-                },
-            ]
-        );
-        assert_eq!(
-            find_usages(&runtime, &request(&path_text, 5, 4)),
-            vec![
-                crate::models::language::UsageResult {
+                })
+            );
+            assert_eq!(
+                goto_definition_candidates(&runtime, &settings, &request(&path_text, 5, 4)),
+                vec![crate::models::language::DefinitionCandidate {
                     path: path_text.clone(),
                     line: 3,
                     column: 8,
                     preview: "struct Index {}".to_string(),
-                },
-                crate::models::language::UsageResult {
-                    path: path_text.clone(),
-                    line: 5,
-                    column: 3,
-                    preview: "Index;".to_string(),
-                },
-            ]
-        );
+                }]
+            );
+            let completions = complete_symbol(&runtime, &settings, &request(&path_text, 1, 1));
+            assert!(completions.iter().any(|item| item.label == "@Entry" && item.kind == "keyword"));
+            assert!(completions.iter().any(|item| item.label == "@Component" && item.kind == "keyword"));
+            assert!(completions.iter().any(|item| item.label == "build()" && item.kind == "method"));
+            assert!(completions.iter().any(|item| item.label == "submit()" && item.kind == "function"));
+            assert_eq!(
+                list_document_symbols(&runtime, &settings, &request(&path_text, 1, 1)),
+                vec![
+                    crate::models::language::DocumentSymbol {
+                        name: "Index".to_string(),
+                        kind: "struct".to_string(),
+                        line: 3,
+                        column: 8,
+                    },
+                    crate::models::language::DocumentSymbol {
+                        name: "submit".to_string(),
+                        kind: "function".to_string(),
+                        line: 4,
+                        column: 10,
+                    },
+                ]
+            );
+            assert_eq!(
+                find_usages(&runtime, &settings, &request(&path_text, 5, 4)),
+                vec![
+                    crate::models::language::UsageResult {
+                        path: path_text.clone(),
+                        line: 3,
+                        column: 8,
+                        preview: "struct Index {}".to_string(),
+                    },
+                    crate::models::language::UsageResult {
+                        path: path_text.clone(),
+                        line: 5,
+                        column: 3,
+                        preview: "Index;".to_string(),
+                    },
+                ]
+            );
 
-        fs::remove_file(path).unwrap();
+            fs::remove_file(path).unwrap();
+        });
     }
 
     #[test]
-    fn reports_fallback_mode_when_no_sdk_provider_is_available() {
-        let runtime = LanguageRuntime::default();
-        let report = inspect_runtime(&runtime);
+    fn keeps_semantic_mode_available_when_sdk_is_missing() {
+        with_missing_sdk_env(|| {
+            let runtime = LanguageRuntime::default();
+            let report = inspect_runtime(&runtime, &missing_sdk_settings());
 
-        assert_eq!(report.mode, "fallback");
-        assert_eq!(report.provider, "fallback");
-        assert!(report.definition);
-        assert!(report.completion);
-        assert!(report.detail.contains("SDK"));
+            assert_eq!(report.mode, "semantic");
+            assert_eq!(report.provider, "semantic-host");
+            assert!(report.definition);
+            assert!(report.completion);
+            assert!(report.detail.contains("independent semantic worker"));
+        });
     }
 
     #[test]
-    fn keeps_fallback_active_when_sdk_discovery_fails() {
-        let runtime = LanguageRuntime::default();
-        let report = inspect_runtime(&runtime);
+    fn keeps_semantic_worker_active_when_sdk_discovery_fails() {
+        with_missing_sdk_env(|| {
+            let runtime = LanguageRuntime::default();
+            let report = inspect_runtime(&runtime, &missing_sdk_settings());
 
-        assert_eq!(report.mode, "fallback");
-        assert!(report.detail.contains("ArkTS"));
-        assert!(report.detail.contains("ARKLINE_ARKTS_LSP_PATH"));
+            assert_eq!(report.mode, "semantic");
+            assert!(report.detail.contains("HarmonyOS SDK"));
+            assert!(report.detail.contains("independent semantic worker"));
+        });
+    }
+
+    #[test]
+    fn reports_semantic_mode_when_sdk_and_worker_are_available() {
+        with_valid_sdk_env(|temp_sdk_root| {
+            let runtime = LanguageRuntime::default();
+            let settings = sdk_settings(&temp_sdk_root.to_string_lossy());
+            let report = inspect_runtime(&runtime, &settings);
+
+            assert_eq!(report.provider, "semantic-host");
+            assert_eq!(report.mode, "semantic");
+            assert!(report.running);
+            assert!(report.definition);
+            assert!(report.completion);
+            assert!(report.document_symbols);
+            assert!(report.find_usages);
+            assert!(report.detail.contains("Semantic worker active"));
+            assert!(report.detail.contains("SDK ready"));
+        });
+    }
+
+    #[test]
+    fn resolves_cross_file_queries_in_semantic_mode() {
+        with_valid_sdk_env(|temp_sdk_root| {
+            let workspace_root = std::env::temp_dir().join(format!(
+                "arkline-semantic-workspace-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("clock should be after unix epoch")
+                    .as_nanos()
+            ));
+            let pages_dir = workspace_root.join("entry/src/main/ets/pages");
+            let components_dir = workspace_root.join("entry/src/main/ets/components");
+            fs::create_dir_all(&pages_dir).unwrap();
+            fs::create_dir_all(&components_dir).unwrap();
+
+            let shared_path = components_dir.join("Shared.ets");
+            let index_path = pages_dir.join("Index.ets");
+            fs::write(&shared_path, "export function sharedSubmit() {\n  return 1;\n}\n").unwrap();
+            fs::write(
+                &index_path,
+                "import { sharedSubmit } from '../components/Shared';\n\nfunction buildPage() {\n  sharedSubmit();\n}\n",
+            )
+            .unwrap();
+
+            let runtime = LanguageRuntime::default();
+            let index_text = index_path.to_string_lossy().to_string();
+            let shared_text = shared_path.to_string_lossy().to_string();
+            let settings = sdk_settings(&temp_sdk_root.to_string_lossy());
+
+            assert_eq!(
+                goto_definition(&runtime, &settings, &request(&index_text, 4, 5)),
+                Some(crate::models::language::DefinitionTarget {
+                    path: shared_text,
+                    line: 1,
+                    column: 17,
+                })
+            );
+            assert!(complete_symbol(&runtime, &settings, &request(&index_text, 1, 1))
+                .iter()
+                .any(|item| item.label == "sharedSubmit()"));
+
+            fs::remove_dir_all(workspace_root).unwrap();
+        });
     }
 }
