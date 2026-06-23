@@ -1513,10 +1513,17 @@ describe("App shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
-    await user.clear(await screen.findByLabelText("HarmonyOS / ArkTS SDK Path"));
-    await user.type(screen.getByLabelText("HarmonyOS / ArkTS SDK Path"), "Z:/missing-sdk");
+    const sdkPath = await screen.findByLabelText("HarmonyOS / ArkTS SDK Path");
+    const nodePath = screen.getByLabelText("Node Path");
 
-    expect(screen.getByText(/SDK path has not been verified yet/i)).toBeVisible();
+    expect(sdkPath).toHaveAttribute("aria-describedby", "harmony-sdk-path-hint");
+    expect(nodePath).toHaveAttribute("aria-describedby", "node-path-hint");
+    expect(screen.getByText("ArkLine will resolve node from PATH.")).toHaveAttribute("id", "node-path-hint");
+
+    await user.clear(sdkPath);
+    await user.type(sdkPath, "Z:/missing-sdk");
+
+    expect(screen.getByText(/SDK path has not been verified yet/i)).toHaveAttribute("id", "harmony-sdk-path-hint");
     expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Apply" }));
@@ -1532,7 +1539,7 @@ describe("App shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
-    await user.click(screen.getAllByRole("button", { name: "Browse..." })[2]);
+    await user.click(screen.getByRole("button", { name: "Browse Node Path" }));
 
     expect(pickPath).toHaveBeenCalledWith({
       directory: true,
@@ -1645,7 +1652,7 @@ describe("App shell", () => {
     const sdkPath = await screen.findByLabelText("HarmonyOS / ArkTS SDK Path");
     await user.clear(sdkPath);
     await user.type(sdkPath, "D:/HarmonyOS/Sdk");
-    await user.click(screen.getAllByRole("button", { name: "Browse..." })[0]);
+    await user.click(screen.getByRole("button", { name: "Browse HarmonyOS / ArkTS SDK Path" }));
     await user.click(screen.getByRole("tab", { name: "Validation" }));
     const lintCommand = screen.getByLabelText("Lint Command");
     await user.clear(lintCommand);

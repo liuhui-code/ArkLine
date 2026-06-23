@@ -47,8 +47,8 @@ function nodePathHint(settings: AppSettings): PathHint {
   };
 }
 
-function SettingsHint({ hint }: { hint: PathHint }) {
-  return <span className={`settings-field__hint settings-field__hint--${hint.tone}`}>{hint.text}</span>;
+function SettingsHint({ hint, id }: { hint: PathHint; id: string }) {
+  return <span id={id} className={`settings-field__hint settings-field__hint--${hint.tone}`}>{hint.text}</span>;
 }
 
 export function SettingsSdkPanel({
@@ -103,6 +103,7 @@ export function SettingsSdkPanel({
           <div className="settings-input-row">
             <input
               aria-label="HarmonyOS / ArkTS SDK Path"
+              aria-describedby="harmony-sdk-path-hint"
               className="panel-input"
               value={settings.sdk.harmonySdkPath}
               placeholder="C:/Huawei/DevEco Studio/sdk"
@@ -115,6 +116,7 @@ export function SettingsSdkPanel({
               }
             />
             <button
+              aria-label="Browse HarmonyOS / ArkTS SDK Path"
               type="button"
               className="toolbar__button"
               onClick={() => onPickPath("harmonySdkPath")}
@@ -122,7 +124,7 @@ export function SettingsSdkPanel({
               Browse...
             </button>
           </div>
-          <SettingsHint hint={sdkPathHint(settings)} />
+          <SettingsHint id="harmony-sdk-path-hint" hint={sdkPathHint(settings)} />
         </label>
       </section>
 
@@ -149,6 +151,7 @@ export function SettingsSdkPanel({
               }
             />
             <button
+              aria-label="Browse ArkTS LSP / Semantic Worker Path"
               type="button"
               className="toolbar__button"
               onClick={() => onPickPath("semanticWorkerPath")}
@@ -163,6 +166,7 @@ export function SettingsSdkPanel({
           <div className="settings-input-row">
             <input
               aria-label="Node Path"
+              aria-describedby="node-path-hint"
               className="panel-input"
               value={settings.sdk.nodePath}
               placeholder="Optional override path"
@@ -175,6 +179,7 @@ export function SettingsSdkPanel({
               }
             />
             <button
+              aria-label="Browse Node Path"
               type="button"
               className="toolbar__button"
               onClick={() => onPickPath("nodePath")}
@@ -182,7 +187,7 @@ export function SettingsSdkPanel({
               Browse...
             </button>
           </div>
-          <SettingsHint hint={nodePathHint(settings)} />
+          <SettingsHint id="node-path-hint" hint={nodePathHint(settings)} />
         </label>
       </section>
 
