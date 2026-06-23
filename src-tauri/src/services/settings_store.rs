@@ -10,6 +10,21 @@ pub struct EditorSettings {
     pub font_family: String,
     pub font_size: u8,
     pub line_height: f32,
+    #[serde(default)]
+    pub letter_spacing: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SdkSettings {
+    #[serde(default)]
+    pub harmony_sdk_path: String,
+    #[serde(default)]
+    pub semantic_worker_path: String,
+    #[serde(default)]
+    pub node_path: String,
+    #[serde(default = "default_auto_detect")]
+    pub auto_detect: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -25,18 +40,35 @@ pub struct ValidationSettings {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub editor: EditorSettings,
+    #[serde(default = "default_sdk_settings")]
+    pub sdk: SdkSettings,
     pub validation: ValidationSettings,
     #[serde(default)]
     pub recent_projects: Vec<String>,
+}
+
+fn default_auto_detect() -> bool {
+    true
+}
+
+fn default_sdk_settings() -> SdkSettings {
+    SdkSettings {
+        harmony_sdk_path: String::new(),
+        semantic_worker_path: String::new(),
+        node_path: String::new(),
+        auto_detect: true,
+    }
 }
 
 pub fn default_settings() -> AppSettings {
     AppSettings {
         editor: EditorSettings {
             font_family: "Cascadia Code, JetBrains Mono, Consolas, monospace".to_string(),
-            font_size: 13,
-            line_height: 1.6,
+            font_size: 14,
+            line_height: 1.65,
+            letter_spacing: 0.0,
         },
+        sdk: default_sdk_settings(),
         validation: ValidationSettings {
             format_on_save: true,
             lint_command: "arklint".to_string(),
@@ -114,6 +146,13 @@ mod tests {
         let settings = read_settings(&path).unwrap();
 
         assert_eq!(settings, default_settings());
+        assert_eq!(settings.editor.font_size, 14);
+        assert_eq!(settings.editor.line_height, 1.65);
+        assert_eq!(settings.editor.letter_spacing, 0.0);
+        assert_eq!(settings.sdk.harmony_sdk_path, "");
+        assert_eq!(settings.sdk.semantic_worker_path, "");
+        assert_eq!(settings.sdk.node_path, "");
+        assert!(settings.sdk.auto_detect);
     }
 
     #[test]
@@ -139,6 +178,25 @@ mod tests {
         let settings = read_settings(&path).unwrap();
         assert_eq!(settings, default_settings());
         assert!(!path.with_file_name("settings.json.tmp").exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preserves_sdk_and_editor_spacing_fields() {
+        let root = unique_temp_dir("settings-sdk-write");
+        let path = root.join("settings.json");
+        let mut settings = default_settings();
+        settings.editor.letter_spacing = 0.25;
+        settings.sdk.harmony_sdk_path = "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony".to_string();
+        settings.sdk.semantic_worker_path = "/tmp/arkline-semantic-worker.mjs".to_string();
+        settings.sdk.node_path = "/usr/local/bin/node".to_string();
+        settings.sdk.auto_detect = false;
+
+        write_settings_atomically(&path, &settings).unwrap();
+
+        let loaded = read_settings(&path).unwrap();
+        assert_eq!(loaded, settings);
 
         fs::remove_dir_all(root).unwrap();
     }

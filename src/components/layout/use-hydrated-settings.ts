@@ -31,6 +31,11 @@ export function useHydratedSettings({
         current.editor.fontFamily === settings.editor.fontFamily &&
         current.editor.fontSize === settings.editor.fontSize &&
         current.editor.lineHeight === settings.editor.lineHeight &&
+        current.editor.letterSpacing === settings.editor.letterSpacing &&
+        current.sdk.harmonySdkPath === settings.sdk.harmonySdkPath &&
+        current.sdk.semanticWorkerPath === settings.sdk.semanticWorkerPath &&
+        current.sdk.nodePath === settings.sdk.nodePath &&
+        current.sdk.autoDetect === settings.sdk.autoDetect &&
         current.validation.formatOnSave === settings.validation.formatOnSave &&
         current.validation.lintCommand === settings.validation.lintCommand &&
         current.validation.formatCommand === settings.validation.formatCommand &&

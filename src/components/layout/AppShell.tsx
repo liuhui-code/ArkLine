@@ -678,12 +678,27 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setSettingsSaveState("saving");
     setStatusText("SDK settings applying...");
     clearSettingsSaveResetTimer();
-    await workspaceApi.saveSettings(nextSettings);
+    try {
+      await workspaceApi.saveSettings(nextSettings);
+    } catch (error) {
+      setSettingsSaveState("idle");
+      setStatusText("SDK settings save failed");
+      throw error;
+    }
+
     settingsRef.current.replace(nextSettings);
     setEditorAppearance({ ...nextSettings.editor });
     setRecentProjects([...nextSettings.recentProjects]);
-    await refreshEnvironmentReport();
-    await refreshSemanticState();
+
+    try {
+      await refreshEnvironmentReport();
+      await refreshSemanticState();
+    } catch (error) {
+      setSettingsSaveState("idle");
+      setStatusText("SDK settings refresh failed");
+      throw error;
+    }
+
     setSettingsSaveState("saved");
     setStatusText("SDK settings applied");
     settingsSaveResetTimerRef.current = window.setTimeout(() => {
