@@ -34,7 +34,7 @@ import {
 } from "@/features/search/workspace-text-search";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
 import { rankPaths } from "@/features/search/fuzzy-matcher";
-import { createSettingsStore, type AppSettingsPatch } from "@/features/settings/settings-store";
+import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
@@ -662,7 +662,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setEnvironmentReport(await workspaceApi.inspectEnvironment());
   }
   async function openSettings() { setSettingsVisible(true); await refreshEnvironmentReport(); setStatusText("Settings"); }
-  async function pickSettingsPath(field: "harmonySdkPath" | "semanticWorkerPath" | "nodePath") {
+  async function pickSettingsPath(field: "harmonySdkPath" | "semanticWorkerPath" | "nodePath"): Promise<string | null> {
     const title =
       field === "harmonySdkPath" ? "Select HarmonyOS / ArkTS SDK Path"
       : field === "semanticWorkerPath" ? "Select ArkTS LSP / Semantic Worker Path"
@@ -671,31 +671,25 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       directory: field !== "nodePath",
       title,
     });
-    if (!selectedPath) {
-      return;
-    }
-
-    updateSettings({
-      sdk: {
-        [field]: selectedPath,
-      },
-    });
+    return selectedPath ?? null;
   }
-  function updateSettings(update: AppSettingsPatch) {
-    settingsRef.current.update(update);
-    setEditorAppearance({ ...settingsRef.current.state.settings.editor });
+
+  async function applySettings(nextSettings: AppSettings) {
     setSettingsSaveState("saving");
+    setStatusText("SDK settings applying...");
     clearSettingsSaveResetTimer();
-    void workspaceApi.saveSettings(settingsRef.current.state.settings).then(async () => {
-      setSettingsSaveState("saved");
-      if (update.sdk) {
-        await refreshEnvironmentReport();
-      }
-      settingsSaveResetTimerRef.current = window.setTimeout(() => {
-        setSettingsSaveState("idle");
-        settingsSaveResetTimerRef.current = null;
-      }, 1200);
-    });
+    await workspaceApi.saveSettings(nextSettings);
+    settingsRef.current.replace(nextSettings);
+    setEditorAppearance({ ...nextSettings.editor });
+    setRecentProjects([...nextSettings.recentProjects]);
+    await refreshEnvironmentReport();
+    await refreshSemanticState();
+    setSettingsSaveState("saved");
+    setStatusText("SDK settings applied");
+    settingsSaveResetTimerRef.current = window.setTimeout(() => {
+      setSettingsSaveState("idle");
+      settingsSaveResetTimerRef.current = null;
+    }, 1200);
   }
   const handleHydratedSettings = useCallback((settings: ReturnType<typeof createSettingsStore>["state"]["settings"]) => { setEditorAppearance({ ...settings.editor }); setRecentProjects([...settings.recentProjects]); }, []);
   useHydratedSettings({ workspaceApi, settingsRef, onHydrated: handleHydratedSettings });
@@ -895,8 +889,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         saveStateLabel={settingsSaveState === "saving" ? "Saving..." : settingsSaveState === "saved" ? "Saved" : "Ready"}
         settings={settingsRef.current.state.settings}
         onClose={() => setSettingsVisible(false)}
-        onChange={updateSettings}
-        onPickPath={(field) => { void pickSettingsPath(field); }}
+        onApply={applySettings}
+        onPickPath={pickSettingsPath}
         onRefreshEnvironment={() => void refreshEnvironmentReport()}
       />
       <BottomToolWindow

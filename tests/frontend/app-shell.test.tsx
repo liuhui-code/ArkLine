@@ -1504,6 +1504,55 @@ describe("App shell", () => {
     expect(screen.getByText("Bundled ripgrep not configured yet")).toBeVisible();
   });
 
+  it("keeps settings edits as a draft until Apply and discards them on Cancel", async () => {
+    const user = userEvent.setup();
+    const savedSettings = defaultSettings();
+    const saveSettings = vi.fn(async () => undefined);
+    const workspaceApi = createWorkspaceApi({
+      loadSettings: async () => savedSettings,
+      saveSettings,
+      inspectEnvironment: vi.fn(async () => ({ tools: [] })),
+      inspectLanguageService: vi.fn(async () => ({
+        provider: "mock-fallback",
+        mode: "fallback",
+        running: true,
+        hover: true,
+        definition: true,
+        completion: true,
+        documentSymbols: true,
+        findUsages: true,
+        detail: "ready",
+      })),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
+    const fontSize = await screen.findByLabelText("Font Size");
+    await user.clear(fontSize);
+    await user.type(fontSize, "18");
+
+    expect(saveSettings).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
+
+    expect(await screen.findByLabelText("Font Size")).toHaveValue(14);
+
+    await user.clear(screen.getByLabelText("Font Size"));
+    await user.type(screen.getByLabelText("Font Size"), "17");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    expect(saveSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        editor: expect.objectContaining({ fontSize: 17 }),
+      }),
+    );
+  });
+
   it("loads persisted settings and saves updates through the workspace api", async () => {
     const user = userEvent.setup();
     const settings = defaultSettings();
@@ -1564,7 +1613,7 @@ describe("App shell", () => {
     await user.clear(lintCommand);
     await user.type(lintCommand, "custom-lint");
 
-    expect(workspaceApi.saveSettings).toHaveBeenCalled();
+    expect(workspaceApi.saveSettings).not.toHaveBeenCalled();
     await user.click(screen.getByRole("tab", { name: "Editor" }));
     expect(screen.getByDisplayValue("16")).toBeVisible();
     expect(screen.getByDisplayValue("0.25")).toBeVisible();
@@ -1574,6 +1623,8 @@ describe("App shell", () => {
       directory: true,
       title: "Select HarmonyOS / ArkTS SDK Path",
     });
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(workspaceApi.saveSettings).toHaveBeenCalledTimes(1));
     expect(workspaceApi.saveSettings).toHaveBeenLastCalledWith(
       expect.objectContaining({
         editor: expect.objectContaining({ fontSize: 16, letterSpacing: 0.25 }),
