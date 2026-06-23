@@ -4,6 +4,7 @@ import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { defaultSettings } from "@/features/settings/settings-store";
+import { EditorView } from "@codemirror/view";
 import { vi } from "vitest";
 
 async function openProject(
@@ -27,6 +28,7 @@ async function openProject(
 function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi {
   return {
     pickWorkspaceRoot: async () => null,
+    pickPath: async () => null,
     openWorkspace: async (rootPath: string) => ({
       rootName: rootPath.split("/").at(-1) ?? "Workspace",
       rootPath,
@@ -44,6 +46,16 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     runValidation: async () => [],
     loadDiff: async () => "",
     inspectEnvironment: async () => ({ tools: [] }),
+    getFileBlame: async () => ({
+      kind: "unavailable",
+      reason: "notTracked",
+      message: "File is not tracked by Git",
+    }),
+    getCommitTrace: async () => ({
+      kind: "unavailable",
+      reason: "detailUnavailable",
+      message: "Commit details unavailable",
+    }),
     loadSettings: async () => defaultSettings(),
     saveSettings: async () => undefined,
     createTerminalSession: async () => ({
@@ -279,34 +291,17 @@ describe("App shell", () => {
     expect(filesPane).toBeVisible();
   });
 
-  it("toggles the search pane from the toolbar", async () => {
-    const user = userEvent.setup();
+  it("does not show a left-rail search tool", async () => {
     render(<App />);
     const toolRail = screen.getByLabelText("Primary Tool Window Rail");
 
-    await user.click(within(toolRail).getByRole("button", { name: "Search" }));
-    const searchPane = await screen.findByRole("region", { name: "Search" });
-    expect(searchPane).toBeVisible();
-    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
-
-    await user.click(within(toolRail).getByRole("button", { name: "Search" }));
-    expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
+    expect(within(toolRail).queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
   });
 
-  it("switches between project and search in the same left pane", async () => {
-    const user = userEvent.setup();
+  it("keeps the files pane as the only left sidebar tool window", async () => {
     render(<App />);
-    const toolRail = screen.getByLabelText("Primary Tool Window Rail");
 
     expect(screen.getByRole("region", { name: "Files" })).toBeVisible();
-    expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
-
-    await user.click(within(toolRail).getByRole("button", { name: "Search" }));
-    expect(await screen.findByRole("region", { name: "Search" })).toBeVisible();
-    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
-
-    await user.click(within(toolRail).getByRole("button", { name: "Project" }));
-    expect(await screen.findByRole("region", { name: "Files" })).toBeVisible();
     expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
   });
 
@@ -352,7 +347,7 @@ describe("App shell", () => {
     expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
   });
 
-  it("opens a file from search everywhere and closes the overlay", async () => {
+  it("searches workspace text with regex and text options, shows relative paths, previews the selected hit, and opens the file", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -361,10 +356,24 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Search Everywhere" }));
 
     const query = await screen.findByLabelText("Search Everywhere Query");
-    await user.type(query, "app");
+    await user.type(query, "entry");
+    expect(within(screen.getByRole("list", { name: "Search Everywhere Results" })).getByText("main.ets")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Aa" }));
+    expect(within(screen.getByRole("list", { name: "Search Everywhere Results" })).getByText("No matches")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Aa" }));
+    await user.clear(query);
+    await user.type(query, "/bundleName/");
 
     const results = screen.getByRole("list", { name: "Search Everywhere Results" });
-    await user.click(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\AppScope\\app.json5" }));
+    expect(within(results).getByText("app.json5")).toBeVisible();
+    expect(within(results).getByText("AppScope/app.json5:3")).toBeVisible();
+    expect(within(results).queryByText("C:\\samples\\DemoWorkspace\\AppScope\\app.json5")).not.toBeInTheDocument();
+
+    const preview = screen.getByLabelText("Search Everywhere Preview");
+    expect(within(preview).getByText("AppScope/app.json5:3:6")).toBeVisible();
+    expect(within(preview).getByText("bundleName")).toBeVisible();
+
+    await user.click(within(results).getByRole("button", { name: /app\.json5/i }));
 
     expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.json5", pressed: true })).toBeVisible();
@@ -475,7 +484,62 @@ describe("App shell", () => {
     expect(await screen.findByText("Definition: main.ets:3:1")).toBeVisible();
   });
 
-  it("opens completion from the editor and inserts the selected item", async () => {
+  it("opens completion from the editor and replaces the typed prefix with the selected item", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "Index", detail: "Struct in current file", kind: "symbol" },
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "@Component", detail: "ArkTS decorator", kind: "keyword" },
+        { label: "sharedSubmit()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}bu");
+    await user.keyboard("{Control>} {/Control}");
+
+    await waitFor(() => {
+      expect(workspaceApi.completeSymbol).toHaveBeenLastCalledWith({
+        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+        line: 3,
+        column: 18,
+      });
+    });
+
+    const results = await screen.findByRole("list", { name: "Completion Results" });
+    const resultButtons = within(results).getAllByRole("button");
+    expect(resultButtons[0]).toHaveTextContent("build()");
+    expect(within(results).getByRole("button", { name: /sharedSubmit\(\)/ })).toBeVisible();
+    await user.click(within(results).getByRole("button", { name: /build\(\)/ }));
+
+    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
+  });
+
+  it("auto-opens completion while typing without stealing editor focus", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -495,7 +559,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
         { label: "build()", detail: "Component lifecycle method", kind: "method" },
-        { label: "@Component", detail: "ArkTS decorator", kind: "keyword" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
       ]),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
@@ -507,22 +571,336 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
-    await user.keyboard("{End}");
-    await user.keyboard("{Control>} {/Control}");
+    await user.keyboard("{Control>}{End}{/Control}b");
 
     await waitFor(() => {
-      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
-        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
-        line: 1,
-        column: 7,
-      });
+      expect(workspaceApi.completeSymbol).toHaveBeenCalled();
+    });
+    expect(await screen.findByLabelText("Completion Overlay")).toBeVisible();
+    expect(screen.getByRole("button", { name: /build\(\)/ })).toBeVisible();
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("accepts the top auto-opened completion with Tab while keeping editor focus", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
     });
 
-    const results = await screen.findByRole("list", { name: "Completion Results" });
-    await user.click(within(results).getByRole("button", { name: /build\(\)/ }));
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    await waitFor(() => {
+      expect(workspaceApi.completeSymbol).toHaveBeenCalled();
+    });
+    expect(await screen.findByLabelText("Completion Overlay")).toBeVisible();
+    await waitFor(() => expect(editor).toHaveFocus());
+
+    await user.keyboard("{Tab}");
 
     expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
-    expect(editor).toHaveTextContent("@Entrybuild()@Componentstruct Index {}");
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("moves the auto-opened completion selection with ArrowDown and accepts the highlighted item", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    const overlay = await screen.findByLabelText("Completion Overlay");
+    const results = within(overlay).getByRole("list", { name: "Completion Results" });
+    const buildButton = within(results).getByRole("button", { name: /build\(\)/ });
+    const browseButton = within(results).getByRole("button", { name: /browse\(\)/ });
+
+    expect(buildButton).toHaveAttribute("aria-selected", "true");
+    expect(browseButton).toHaveAttribute("aria-selected", "false");
+    await waitFor(() => expect(editor).toHaveFocus());
+
+    await user.keyboard("{ArrowDown}");
+
+    expect(buildButton).toHaveAttribute("aria-selected", "false");
+    expect(browseButton).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse()");
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("resets the manual completion selection to the first filtered result when the query changes", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+        { label: "button()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{Control>} {/Control}");
+
+    const completionQuery = await screen.findByLabelText("Completion Query");
+    const results = await screen.findByRole("list", { name: "Completion Results" });
+    await user.click(completionQuery);
+    await waitFor(() => expect(completionQuery).toHaveFocus());
+    const browseButton = within(results).getByRole("button", { name: /browse\(\)/ });
+
+    await user.keyboard("{ArrowDown}");
+    expect(browseButton).toHaveAttribute("aria-selected", "true");
+
+    await user.type(completionQuery, "u");
+
+    const buildButton = within(results).getByRole("button", { name: /build\(\)/ });
+    const buttonButton = within(results).getByRole("button", { name: /button\(\)/ });
+    expect(buildButton).toHaveAttribute("aria-selected", "true");
+    expect(buttonButton).toHaveAttribute("aria-selected", "false");
+
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
+  });
+
+  it("prioritizes the most recently accepted completion item on the next matching query", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "broker()", detail: "Semantic workspace function", kind: "function" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    await screen.findByLabelText("Completion Overlay");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse()");
+
+    await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
+    await user.keyboard("b");
+
+    const secondOverlay = await screen.findByLabelText("Completion Overlay");
+    const secondResults = within(secondOverlay).getByRole("list", { name: "Completion Results" });
+    const resultButtons = within(secondResults).getAllByRole("button");
+
+    expect(resultButtons[0]).toHaveTextContent("browse()");
+    expect(within(secondResults).getByRole("button", { name: /browse\(\)/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(secondResults).getByRole("button", { name: /broker\(\)/ })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("keeps the closer prefix match ahead of a merely recent completion item", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "button()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}bu");
+
+    await screen.findByLabelText("Completion Overlay");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Enter}");
+
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}button()");
+
+    await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
+    await user.keyboard("bu");
+
+    const secondOverlay = await screen.findByLabelText("Completion Overlay");
+    const secondResults = within(secondOverlay).getByRole("list", { name: "Completion Results" });
+    const resultButtons = within(secondResults).getAllByRole("button");
+
+    expect(resultButtons[0]).toHaveTextContent("build()");
+    expect(within(secondResults).getByRole("button", { name: /build\(\)/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(secondResults).getByRole("button", { name: /button\(\)/ })).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("prefers the earlier contains-match position over a merely recent non-prefix completion", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "outline()", detail: "Semantic workspace function", kind: "function" },
+        { label: "myLine()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}li");
+
+    const firstOverlay = await screen.findByLabelText("Completion Overlay");
+    const firstResults = within(firstOverlay).getByRole("list", { name: "Completion Results" });
+    await user.click(within(firstResults).getByRole("button", { name: /outline\(\)/ }));
+
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}outline()");
+    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    await user.keyboard("{Control>} {/Control}");
+
+    const manualOverlay = await screen.findByLabelText("Completion Overlay");
+    const completionQuery = await screen.findByLabelText("Completion Query");
+    await user.click(completionQuery);
+    await user.type(completionQuery, "li");
+
+    const secondResults = within(manualOverlay).getByRole("list", { name: "Completion Results" });
+    const resultButtons = within(secondResults).getAllByRole("button");
+
+    expect(resultButtons[0]).toHaveTextContent("myLine()");
+    expect(within(secondResults).getByRole("button", { name: /myLine\(\)/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(secondResults).getByRole("button", { name: /outline\(\)/ })).toHaveAttribute("aria-selected", "false");
   });
 
   it("finds usages from the editor and opens the selected result", async () => {
@@ -585,6 +963,166 @@ describe("App shell", () => {
       expect(workspaceApi.openFile).toHaveBeenLastCalledWith("C:/samples/DemoWorkspace/AppScope/app.json5");
     });
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
+  });
+
+  it("shows ambiguous fallback definition candidates in the usages panel", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: [
+          "C:/samples/DemoWorkspace/src/main.ets",
+          "C:/samples/DemoWorkspace/src/entryability/EntryAbility.ets",
+          "C:/samples/DemoWorkspace/src/mock/EntryAbility.ets",
+        ],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: [
+          "C:/samples/DemoWorkspace/src/main.ets",
+          "C:/samples/DemoWorkspace/src/entryability/EntryAbility.ets",
+          "C:/samples/DemoWorkspace/src/mock/EntryAbility.ets",
+        ],
+      }),
+      openFile: vi.fn(async (path: string) => {
+        if (/src[\\/]main\.ets$/i.test(path)) {
+          return "EntryAbility();\n";
+        }
+        if (/src[\\/]entryability[\\/]EntryAbility\.ets$/i.test(path)) {
+          return "export function EntryAbility() {}\n";
+        }
+        if (/src[\\/]mock[\\/]EntryAbility\.ets$/i.test(path)) {
+          return "export function EntryAbility() {}\n";
+        }
+
+        return "";
+      }),
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      gotoDefinition: vi.fn(async () => null),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(0);
+    fireEvent.mouseDown(editor, {
+      ctrlKey: true,
+      button: 0,
+      clientX: 24,
+      clientY: 24,
+    });
+
+    await waitFor(() => {
+      expect(workspaceApi.gotoDefinition).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
+    });
+    const usagesPanel = await screen.findByLabelText("Usages Panel");
+    await waitFor(() => {
+      expect(within(usagesPanel).getByRole("button", { name: /entryability[\\/]EntryAbility\.ets/i })).toBeVisible();
+      expect(within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i })).toBeVisible();
+    });
+    expect(
+      within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i }),
+    ).toHaveTextContent("export function EntryAbility() {}");
+
+    await user.click(within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i }));
+
+    await waitFor(() => {
+      expect(workspaceApi.openFile).toHaveBeenLastCalledWith("C:\\samples\\DemoWorkspace\\src\\mock\\EntryAbility.ets");
+    });
+    posAtCoords.mockRestore();
+  });
+
+  it("shows semantic definition candidates in the usages panel through the shared path", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: [
+          "C:/samples/DemoWorkspace/src/main.ets",
+          "C:/samples/DemoWorkspace/src/entryability/EntryAbility.ets",
+          "C:/samples/DemoWorkspace/src/mock/EntryAbility.ets",
+        ],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: [
+          "C:/samples/DemoWorkspace/src/main.ets",
+          "C:/samples/DemoWorkspace/src/entryability/EntryAbility.ets",
+          "C:/samples/DemoWorkspace/src/mock/EntryAbility.ets",
+        ],
+      }),
+      openFile: vi.fn(async (path: string) => {
+        if (/src[\\/]main\.ets$/i.test(path)) {
+          return "EntryAbility();\n";
+        }
+        if (/src[\\/]entryability[\\/]EntryAbility\.ets$/i.test(path)) {
+          return "export function EntryAbility() {}\n";
+        }
+        if (/src[\\/]mock[\\/]EntryAbility\.ets$/i.test(path)) {
+          return "export function EntryAbility() {}\n";
+        }
+
+        return "";
+      }),
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      gotoDefinition: vi.fn(async () => null),
+      gotoDefinitionCandidates: vi.fn(async () => [
+        {
+          path: "C:\\samples\\DemoWorkspace\\src\\entryability\\EntryAbility.ets",
+          line: 1,
+          column: 17,
+          preview: "export function EntryAbility() {}",
+        },
+        {
+          path: "C:\\samples\\DemoWorkspace\\src\\mock\\EntryAbility.ets",
+          line: 1,
+          column: 17,
+          preview: "export function EntryAbility() {}",
+        },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    } as Partial<WorkspaceApi>);
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(0);
+    fireEvent.mouseDown(editor, {
+      ctrlKey: true,
+      button: 0,
+      clientX: 24,
+      clientY: 24,
+    });
+
+    await waitFor(() => {
+      expect(workspaceApi.gotoDefinitionCandidates).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
+    });
+    const usagesPanel = await screen.findByLabelText("Usages Panel");
+    expect(within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i })).toBeVisible();
+    posAtCoords.mockRestore();
   });
 
   it("shows recent files in most-recent-first order from the keyboard", async () => {
@@ -718,6 +1256,63 @@ describe("App shell", () => {
     expect(screen.getByText("- old")).toBeVisible();
   });
 
+  it("opens Git Trace for the current file and shows commit summary details", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "abc1234",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-23T10:00:00Z",
+          relativeTime: "2h ago",
+          summary: "Mark ArkTS entry component",
+        },
+      ],
+      getCommitTrace: async () => ({
+        commit: "abc1234",
+        shortCommit: "abc1234",
+        author: "Jane Doe",
+        email: "jane@example.com",
+        authoredAt: "2026-06-23T10:00:00Z",
+        subject: "Mark ArkTS entry component",
+        relativePath: "src/main.ets",
+        selectedLine: 1,
+        sourceLine: 1,
+        patch: `diff --git a/src/main.ets b/src/main.ets
+--- a/src/main.ets
++++ b/src/main.ets
+@@ -1,1 +1,2 @@
+ @Entry
++@Component`,
+      }),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+
+    const panel = await screen.findByLabelText("Git Trace Panel");
+    expect(within(panel).getByText("Mark ArkTS entry component")).toBeVisible();
+    expect(within(panel).getByText("abc1234")).toBeVisible();
+    expect(within(panel).getByText(/Jane Doe/)).toBeVisible();
+    expect(within(panel).getByText("File").parentElement).toHaveTextContent("src/main.ets");
+  });
+
   it("formats the active document from the top bar", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
@@ -774,13 +1369,18 @@ describe("App shell", () => {
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
     expect(await screen.findByLabelText("Settings")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
     expect(await screen.findByLabelText("Environment Status")).toBeVisible();
+    expect(screen.getByLabelText("HarmonyOS / ArkTS SDK Path")).toBeVisible();
     expect(screen.getByText("Bundled ripgrep not configured yet")).toBeVisible();
   });
 
   it("loads persisted settings and saves updates through the workspace api", async () => {
     const user = userEvent.setup();
     const settings = defaultSettings();
+    const pickPath = vi.fn(async ({ title }: { title: string }) =>
+      title.includes("HarmonyOS") ? "E:/HarmonyOS/Sdk" : null,
+    );
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
@@ -802,8 +1402,14 @@ describe("App shell", () => {
         editor: {
           ...settings.editor,
           fontSize: 15,
+          letterSpacing: 0.1,
+        },
+        sdk: {
+          ...settings.sdk,
+          harmonySdkPath: "C:/HarmonyOS/Sdk",
         },
       }),
+      pickPath,
       saveSettings: vi.fn(async () => undefined),
     });
 
@@ -812,18 +1418,37 @@ describe("App shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
 
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
     const fontSize = await screen.findByLabelText("Font Size");
     await user.clear(fontSize);
     await user.type(fontSize, "16");
+    const letterSpacing = screen.getByLabelText("Letter Spacing");
+    await user.clear(letterSpacing);
+    await user.type(letterSpacing, "0.25");
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    const sdkPath = await screen.findByLabelText("HarmonyOS / ArkTS SDK Path");
+    await user.clear(sdkPath);
+    await user.type(sdkPath, "D:/HarmonyOS/Sdk");
+    await user.click(screen.getAllByRole("button", { name: "Browse..." })[0]);
+    await user.click(screen.getByRole("tab", { name: "Validation" }));
     const lintCommand = screen.getByLabelText("Lint Command");
     await user.clear(lintCommand);
     await user.type(lintCommand, "custom-lint");
 
     expect(workspaceApi.saveSettings).toHaveBeenCalled();
+    await user.click(screen.getByRole("tab", { name: "Editor" }));
     expect(screen.getByDisplayValue("16")).toBeVisible();
+    expect(screen.getByDisplayValue("0.25")).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    expect(screen.getByDisplayValue("E:/HarmonyOS/Sdk")).toBeVisible();
+    expect(pickPath).toHaveBeenCalledWith({
+      directory: true,
+      title: "Select HarmonyOS / ArkTS SDK Path",
+    });
     expect(workspaceApi.saveSettings).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        editor: expect.objectContaining({ fontSize: 16 }),
+        editor: expect.objectContaining({ fontSize: 16, letterSpacing: 0.25 }),
+        sdk: expect.objectContaining({ harmonySdkPath: "E:/HarmonyOS/Sdk" }),
         validation: expect.objectContaining({ lintCommand: "custom-lint" }),
       }),
     );

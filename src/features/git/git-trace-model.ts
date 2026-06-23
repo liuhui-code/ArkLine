@@ -11,6 +11,8 @@ export type GitTraceUnavailable = {
   message: string;
 };
 
+export type GitTraceUnavailableOr<T> = T | GitTraceUnavailable;
+
 export type GitBlameLine = {
   line: number;
   commit: string;
@@ -33,3 +35,29 @@ export type GitCommitTrace = {
   sourceLine: number;
   patch: string;
 };
+
+export type GitTraceState = {
+  blameStatus: "idle" | "loading" | "ready" | "unavailable" | "error";
+  blameLines: GitBlameLine[];
+  selectedLine: number | null;
+  selectedCommit: string | null;
+  detailStatus: "idle" | "loading" | "ready" | "unavailable" | "error";
+  detail: GitCommitTrace | null;
+  message?: string;
+};
+
+export function createDefaultGitTraceState(): GitTraceState {
+  return {
+    blameStatus: "idle",
+    blameLines: [],
+    selectedLine: null,
+    selectedCommit: null,
+    detailStatus: "idle",
+    detail: null,
+    message: undefined,
+  };
+}
+
+export function isGitTraceUnavailable(value: unknown): value is GitTraceUnavailable {
+  return !!value && typeof value === "object" && "kind" in value && (value as { kind?: string }).kind === "unavailable";
+}

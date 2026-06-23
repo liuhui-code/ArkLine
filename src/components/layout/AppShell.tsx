@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
 import { EditorSurface } from "@/components/layout/EditorSurface";
-import { EnvironmentPanel } from "@/components/layout/EnvironmentPanel";
 import { GitToolWindow } from "@/components/layout/GitToolWindow";
+import { GitTracePanel } from "@/components/layout/GitTracePanel";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
 import { OverlaySurface } from "@/components/layout/OverlaySurface";
@@ -13,85 +13,180 @@ import { ShellSidebar } from "@/components/layout/ShellSidebar";
 import type { ShellCommand } from "@/components/layout/shell-keymap";
 import { SearchOverlayContent } from "@/components/layout/SearchOverlayContent";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
-import { TerminalToolWindow } from "@/components/layout/TerminalToolWindow";
+import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHost";
 import { TopBar } from "@/components/layout/TopBar";
 import { UsagesPanel } from "@/components/layout/UsagesPanel";
 import { useProjectOpening } from "@/components/layout/use-project-opening";
 import { useShellHotkeys } from "@/components/layout/useShellHotkeys";
-import { buildAppShellCommandPaletteItems, parseGoToLineQuery } from "@/components/layout/app-shell-helpers";
+import { buildAppShellCommandPaletteItems, extractCompletionPrefix, parseGoToLineQuery } from "@/components/layout/app-shell-helpers";
 import { useHydratedSettings } from "@/components/layout/use-hydrated-settings";
+import { useGitTrace } from "@/components/layout/use-git-trace";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
 import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
 import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
 import { createProblemsStore, type ProblemItem } from "@/features/problems/problems-store";
+import {
+  searchWorkspaceText,
+  type WorkspaceTextSearchOptions,
+  type WorkspaceTextSearchResult,
+} from "@/features/search/workspace-text-search";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
 import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettingsPatch } from "@/features/settings/settings-store";
-import { useTerminalToolWindow } from "@/features/terminal/use-terminal-tool-window";
-import { findWorkspaceDefinition } from "@/features/workspace/local-definition";
+import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
+type NavigationLocation = { path: string; line: number; column: number };
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
-  const [searchVisible, setSearchVisible] = useState(false);
   const [bottomVisible, setBottomVisible] = useState(true);
   const [activeLeftTool, setActiveLeftTool] = useState<LeftToolKey>("project");
   const [activeBottomTool, setActiveBottomTool] = useState<BottomToolKey>("problems");
   const [workspace, setWorkspace] = useState<WorkspaceViewModel | null>(null);
   const [openTabs, setOpenTabs] = useState<{ path: string; title: string; isDirty: boolean }[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null), [editorContent, setEditorContent] = useState("");
-  const [searchQuery, setSearchQuery] = useState(""), [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
+  const [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
+  const [searchEverywhereOptions, setSearchEverywhereOptions] = useState<WorkspaceTextSearchOptions>({
+    caseSensitive: false,
+    wholeWord: false,
+  });
+  const [searchEverywhereResult, setSearchEverywhereResult] = useState<WorkspaceTextSearchResult>({
+    query: { kind: "text", query: "" },
+    matches: [],
+  });
+  const [searchEverywhereSelectedIndex, setSearchEverywhereSelectedIndex] = useState(0);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]), [recentProjects, setRecentProjects] = useState<string[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [settingsSaveState, setSettingsSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [environmentReport, setEnvironmentReport] = useState<EnvironmentReport | null>(null);
   const [editorAppearance, setEditorAppearance] = useState(createSettingsStore().state.settings.editor);
   const [editorFocusToken, setEditorFocusToken] = useState(0);
   const [selectionTarget, setSelectionTarget] = useState<{ line: number; column: number; nonce: number } | null>(null);
-  const [insertTextTarget, setInsertTextTarget] = useState<{ text: string; nonce: number } | null>(null);
+  const [insertTextTarget, setInsertTextTarget] = useState<{ text: string; replaceBefore?: number; nonce: number } | null>(null);
   const [editorSelection, setEditorSelection] = useState({ line: 1, column: 1 });
   const [completionItems, setCompletionItems] = useState<LanguageCompletionItem[]>([]);
+  const [completionReplacePrefix, setCompletionReplacePrefix] = useState("");
+  const [completionSelectedIndex, setCompletionSelectedIndex] = useState(0);
   const [usageSearch, setUsageSearch] = useState<UsageSearchState>(idleUsageSearchState());
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
+  const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
+  const [completionAutoFocus, setCompletionAutoFocus] = useState(true);
   const documentsRef = useRef(createDocumentStore());
   const tabsRef = useRef(createEditorTabsStore(documentsRef.current));
   const problemsRef = useRef(createProblemsStore());
   const settingsRef = useRef(createSettingsStore());
   const filesPaneRef = useRef<HTMLDivElement | null>(null);
-  const searchPaneRef = useRef<HTMLDivElement | null>(null);
   const editorSurfaceRef = useRef<HTMLElement | null>(null);
   const bottomToolWindowRef = useRef<HTMLElement | null>(null);
+  const navigationHistoryRef = useRef<NavigationLocation[]>([]);
+  const completionRecencyRef = useRef(new Map<string, number>());
+  const completionRecencyCounterRef = useRef(0);
+  const searchEverywhereRequestRef = useRef(0);
+  const settingsSaveResetTimerRef = useRef<number | null>(null);
+  const typingCompletionTimerRef = useRef<number | null>(null);
   const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
-  const terminalToolWindow = useTerminalToolWindow({ workspaceApi, workspaceRootPath: workspace?.rootPath ?? null, onStatusChange: setStatusText });
+  const { gitTraceState } = useGitTrace({
+    activeLine: editorSelection.line,
+    activePath,
+    activeTool: activeBottomTool,
+    workspaceApi,
+  });
   const projectOpening = useProjectOpening({ canUseNativeProjectPicker, hasWorkspace: workspace !== null, workspaceApi, workspaceRootPath: workspace?.rootPath ?? null, openWorkspace, focusEditorSoon, onBeforeProjectOpen: () => setActiveOverlay("none"), onStatusChange: setStatusText });
   function focusEditor() { const editor = editorSurfaceRef.current?.querySelector<HTMLElement>('[aria-label="Editor Content"]'); if (editor) return void editor.focus(); editorSurfaceRef.current?.focus(); }
   function focusEditorSoon() { requestAnimationFrame(() => focusEditor()); }
+  function isEditorFocused() {
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLElement)) {
+      return false;
+    }
+
+    return activeElement.getAttribute("aria-label") === "Editor Content"
+      || !!editorSurfaceRef.current?.contains(activeElement);
+  }
   function setDefinitionDebug(message: string) { setDefinitionDebugText(message); }
-  function setOverlay(overlay: Exclude<OverlayKey, "none">) { setActiveOverlay(overlay); setQuickOpenQuery(""); setStatusText(getOverlayLabel(overlay)); }
+  function setOverlay(overlay: Exclude<OverlayKey, "none">) {
+    setActiveOverlay(overlay);
+    setQuickOpenQuery("");
+    setSearchEverywhereSelectedIndex(0);
+    setStatusText(getOverlayLabel(overlay));
+  }
+  function handleOverlayQueryChange(value: string) {
+    setQuickOpenQuery(value);
+    if (activeOverlay === "completion") {
+      setCompletionSelectedIndex(0);
+    }
+  }
+  function clearTypingCompletionTimer() {
+    if (typingCompletionTimerRef.current != null) {
+      window.clearTimeout(typingCompletionTimerRef.current);
+      typingCompletionTimerRef.current = null;
+    }
+  }
+  function clearSettingsSaveResetTimer() {
+    if (settingsSaveResetTimerRef.current != null) {
+      window.clearTimeout(settingsSaveResetTimerRef.current);
+      settingsSaveResetTimerRef.current = null;
+    }
+  }
+  function rememberCurrentLocation() {
+    if (!activePath) return;
+    const next = {
+      path: activePath,
+      line: editorSelection.line,
+      column: editorSelection.column,
+    };
+    const previous = navigationHistoryRef.current.at(-1);
+    if (
+      previous &&
+      normalizePath(previous.path) === normalizePath(next.path) &&
+      previous.line === next.line &&
+      previous.column === next.column
+    ) {
+      return;
+    }
+    navigationHistoryRef.current.push(next);
+  }
+  async function navigateToLocation(
+    location: NavigationLocation,
+    statusPrefix: "Back" | "Definition" | "Usage" | "Line" = "Definition",
+  ) {
+    if (normalizePath(location.path) !== normalizePath(activePath ?? "")) {
+      await openFile(location.path);
+    }
+    setSelectionTarget({
+      line: location.line,
+      column: location.column,
+      nonce: Date.now(),
+    });
+    setEditorFocusToken((token) => token + 1);
+    setStatusText(`${statusPrefix}: ${getPathBasename(location.path)}:${location.line}:${location.column}`);
+    focusEditorSoon();
+  }
+  async function navigateBackFromHistory() {
+    const target = navigationHistoryRef.current.pop();
+    if (!target) {
+      setStatusText("Back: no previous location");
+      focusEditorSoon();
+      return;
+    }
+    await navigateToLocation(target, "Back");
+  }
 
   function showLeftTool(tool: LeftToolKey) {
     if (tool === "project") {
       const nextVisible = activeLeftTool !== "project" || !filesVisible;
       setActiveLeftTool("project");
       setFilesVisible(nextVisible);
-      setSearchVisible(false);
       setStatusText(nextVisible ? "Project" : "Editor");
-      return;
-    }
-    if (tool === "search") {
-      const nextVisible = activeLeftTool !== "search" || !searchVisible;
-      setActiveLeftTool("search");
-      setSearchVisible(nextVisible);
-      setFilesVisible(false);
-      setStatusText(nextVisible ? "Search" : "Editor");
       return;
     }
     setActiveLeftTool(tool);
@@ -100,10 +195,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   function showBottomTool(tool: BottomToolKey) {
     setBottomVisible(true);
     setActiveBottomTool(tool);
-    setStatusText(tool === "terminal" ? "Terminal" : tool === "git" ? "Git" : tool === "usages" ? "Usages" : "Problems");
-    if (tool === "terminal") {
-      void terminalToolWindow.ensureSession();
-    }
+    setStatusText(
+      tool === "terminal" ? "Terminal"
+      : tool === "git" ? "Git"
+      : tool === "gitTrace" ? "Git Trace"
+      : tool === "usages" ? "Usages"
+      : "Problems",
+    );
   }
   function openUsagesToolWindow() {
     setBottomVisible(true);
@@ -154,7 +252,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     const activeElement = document.activeElement;
     const focusTargets = [
       [bottomVisible, bottomToolWindowRef.current, () => setBottomVisible(false)],
-      [searchVisible, searchPaneRef.current, () => setSearchVisible(false)],
       [filesVisible, filesPaneRef.current, () => setFilesVisible(false)],
     ] as const;
     const focusedTarget = activeElement instanceof Node
@@ -169,7 +266,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay("none");
     setSettingsVisible(false);
     setFilesVisible(false);
-    setSearchVisible(false);
     setBottomVisible(false);
     setStatusText("Editor Only");
     focusEditor();
@@ -193,7 +289,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     tabsRef.current.state.activePath = null;
     setOpenTabs([]);
     setActiveDocument(null);
-    setSearchQuery("");
     setQuickOpenQuery("");
     projectOpening.closeProjectPicker();
     projectOpening.setProjectPathInput("");
@@ -202,7 +297,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setDiffFiles([]);
     setCompletionItems([]);
     setUsageSearch(idleUsageSearchState());
-    terminalToolWindow.resetSessions();
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
     setSelectionTarget(null);
@@ -277,13 +371,37 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setDefinitionDebug(`Ctrl+Click query fired at ${getPathBasename(activePath)}:${request.line}:${request.column}. Waiting for language lookup...`);
     }
     const target = await workspaceApi.gotoDefinition(request);
-    const resolvedTarget = target ?? await findWorkspaceDefinition({
+    const semanticCandidates = target || !workspaceApi.gotoDefinitionCandidates
+      ? []
+      : await workspaceApi.gotoDefinitionCandidates(request);
+    if (semanticCandidates.length > 1) {
+      openUsagesToolWindow();
+      setUsageSearch({
+        status: "ready",
+        items: semanticCandidates.map((item) => ({
+          path: item.path,
+          line: item.line,
+          column: item.column,
+          preview: item.preview,
+        })),
+        requestedSymbol: request,
+        message: undefined,
+      });
+      setStatusText(`Definition candidates: ${semanticCandidates.length}`);
+      if (source === "modifierClick") {
+        setDefinitionDebug(
+          `Ctrl+Click found ${semanticCandidates.length} semantic definition candidates. Choose one from the Usages panel.`,
+        );
+      }
+      return;
+    }
+    const fallbackRequest = {
       path: activePath,
       content: documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent,
       line: request.line,
       column: request.column,
       workspaceFiles: workspace?.visibleFiles ?? [activePath],
-      readFile: async (path) => {
+      readFile: async (path: string) => {
         if (normalizePath(path) === normalizePath(activePath)) {
           return documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
         }
@@ -293,14 +411,38 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           return null;
         }
       },
-    });
+    };
+    const resolvedTarget = target ?? await findWorkspaceDefinition(fallbackRequest);
     if (!resolvedTarget) {
+      const fallbackCandidates = target ? [] : await findWorkspaceDefinitionCandidates(fallbackRequest);
+      if (fallbackCandidates.length > 1) {
+        openUsagesToolWindow();
+        setUsageSearch({
+          status: "ready",
+          items: fallbackCandidates.map((item) => ({
+            path: item.path,
+            line: item.line,
+            column: item.column,
+            preview: item.preview,
+          })),
+          requestedSymbol: request,
+          message: undefined,
+        });
+        setStatusText(`Definition candidates: ${fallbackCandidates.length}`);
+        if (source === "modifierClick") {
+          setDefinitionDebug(
+            `Ctrl+Click found ${fallbackCandidates.length} fallback definition candidates. Choose one from the Usages panel.`,
+          );
+        }
+        return;
+      }
       if (source === "modifierClick") setDefinitionDebug("Ctrl+Click query ran, but both the language service and same-file fallback returned no definition target.");
       setStatusText(
         `${source === "modifierClick" ? "Ctrl+Click" : "Go to Definition"} miss: language service and local fallback returned no target`,
       );
       return;
     }
+    rememberCurrentLocation();
     if (normalizePath(resolvedTarget.path) !== normalizePath(activePath)) await openFile(resolvedTarget.path);
     setSelectionTarget({
       line: resolvedTarget.line,
@@ -319,10 +461,41 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     focusEditorSoon();
   }
 
-  async function openCompletionFromEditor() {
+  async function requestCompletion(
+    trigger: "manual" | "typing",
+    selectionOverride?: { line: number; column: number },
+  ) {
     if (!activePath || !workspaceApi.completeSymbol) return void setStatusText("Completion unavailable");
-    const results = await workspaceApi.completeSymbol({ path: activePath, line: editorSelection.line, column: editorSelection.column });
-    setCompletionItems(results); setQuickOpenQuery(""); setActiveOverlay("completion"); setStatusText(results.length > 0 ? `Completion: ${results.length} items` : "Completion empty");
+    const selection = {
+      line: selectionOverride?.line ?? editorSelection.line,
+      column: selectionOverride?.column ?? editorSelection.column,
+    };
+    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
+    const replacePrefix = extractCompletionPrefix(currentContent, selection.line, selection.column);
+    const query = trigger === "typing" ? replacePrefix : "";
+    const results = await workspaceApi.completeSymbol({ path: activePath, line: selection.line, column: selection.column });
+    setCompletionItems(results);
+    setCompletionReplacePrefix(replacePrefix);
+    setCompletionSelectedIndex(0);
+    setQuickOpenQuery(query);
+    setCompletionAutoFocus(trigger === "manual");
+    setActiveOverlay("completion");
+    setStatusText(results.length > 0 ? `Completion: ${results.length} items` : "Completion empty");
+    if (trigger === "manual") {
+      setEditorFocusToken((token) => token + 1);
+      focusEditorSoon();
+    } else {
+      focusEditorSoon();
+    }
+  }
+  async function openCompletionFromEditor() {
+    await requestCompletion("manual");
+  }
+  function triggerTypingCompletion(selection: { line: number; column: number }) {
+    clearTypingCompletionTimer();
+    typingCompletionTimerRef.current = window.setTimeout(() => {
+      void requestCompletion("typing", selection);
+    }, 120);
   }
   async function findUsagesFromEditor() {
     openUsagesToolWindow();
@@ -347,13 +520,56 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Find Usages failed: ${message}`);
     }
   }
-  function insertCompletion(label: string) { setInsertTextTarget({ text: label, nonce: Date.now() }); setCompletionItems([]); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
+  function insertCompletion(label: string) { completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(label, completionRecencyCounterRef.current); setInsertTextTarget({ text: label, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
+  function moveCompletionSelection(direction: 1 | -1, resultCount: number) {
+    if (resultCount <= 0) {
+      return;
+    }
+
+    setCompletionSelectedIndex((current) => {
+      const normalized = Math.min(Math.max(current, 0), resultCount - 1);
+      return (normalized + direction + resultCount) % resultCount;
+    });
+  }
+  function moveSearchEverywhereSelection(direction: 1 | -1) {
+    const resultCount = searchEverywhereResult.matches.length;
+    if (resultCount <= 0) {
+      return;
+    }
+
+    setSearchEverywhereSelectedIndex((current) => {
+      const normalized = Math.min(Math.max(current, 0), resultCount - 1);
+      return (normalized + direction + resultCount) % resultCount;
+    });
+  }
+  async function openSearchEverywhereResult(path: string, line: number, column: number) {
+    rememberCurrentLocation();
+    setActiveOverlay("none");
+    await navigateToLocation({ path, line, column }, "Usage");
+  }
+  async function openSelectedSearchEverywhereResult() {
+    const selected = searchEverywhereResult.matches[searchEverywhereSelectedIndex];
+    if (!selected) {
+      return;
+    }
+
+    await openSearchEverywhereResult(selected.path, selected.line, selected.column);
+  }
+  function toggleSearchEverywhereCaseSensitive() {
+    setSearchEverywhereOptions((current) => ({
+      ...current,
+      caseSensitive: !current.caseSensitive,
+    }));
+  }
+  function toggleSearchEverywhereWholeWord() {
+    setSearchEverywhereOptions((current) => ({
+      ...current,
+      wholeWord: !current.wholeWord,
+    }));
+  }
   async function openUsageResult(item: UsageResult) {
-    if (normalizePath(item.path) !== normalizePath(activePath ?? "")) await openFile(item.path);
-    setSelectionTarget({ line: item.line, column: item.column, nonce: Date.now() });
-    setEditorFocusToken((token) => token + 1);
-    setStatusText(`Usage: ${getPathBasename(item.path)}:${item.line}:${item.column}`);
-    focusEditorSoon();
+    rememberCurrentLocation();
+    await navigateToLocation({ path: item.path, line: item.line, column: item.column }, "Usage");
   }
 
   function submitGoToLine() {
@@ -364,6 +580,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
 
+    rememberCurrentLocation();
     setSelectionTarget({
       ...nextTarget,
       nonce: Date.now(),
@@ -381,6 +598,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     syncEditor(activePath);
     setStatusText("Modified");
   }
+  useEffect(() => () => {
+    clearTypingCompletionTimer();
+    clearSettingsSaveResetTimer();
+  }, []);
   async function refreshProblems(path: string, content: string) { problemsRef.current.replace(await workspaceApi.runValidation(path, content)); setProblems([...problemsRef.current.state.items]); }
 
   async function runLint() {
@@ -426,15 +647,108 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveBottomTool("git");
     setStatusText(diffText ? "Diff loaded" : "No diff");
   }
+  function openGitTraceCommitDiff(patch: string) {
+    setDiffFiles(parseUnifiedDiff(patch));
+    setBottomVisible(true);
+    setActiveBottomTool("git");
+    setStatusText(patch ? "Commit diff loaded" : "No commit diff");
+  }
 
-  async function openSettings() { setSettingsVisible(true); setEnvironmentReport(await workspaceApi.inspectEnvironment()); setStatusText("Settings"); }
-  function updateSettings(update: AppSettingsPatch) { settingsRef.current.update(update); setEditorAppearance({ ...settingsRef.current.state.settings.editor }); void workspaceApi.saveSettings(settingsRef.current.state.settings); }
+  async function refreshEnvironmentReport() {
+    setEnvironmentReport(await workspaceApi.inspectEnvironment());
+  }
+  async function openSettings() { setSettingsVisible(true); await refreshEnvironmentReport(); setStatusText("Settings"); }
+  async function pickSettingsPath(field: "harmonySdkPath" | "semanticWorkerPath" | "nodePath") {
+    const title =
+      field === "harmonySdkPath" ? "Select HarmonyOS / ArkTS SDK Path"
+      : field === "semanticWorkerPath" ? "Select ArkTS LSP / Semantic Worker Path"
+      : "Select Node Path";
+    const selectedPath = await workspaceApi.pickPath?.({
+      directory: field !== "nodePath",
+      title,
+    });
+    if (!selectedPath) {
+      return;
+    }
+
+    updateSettings({
+      sdk: {
+        [field]: selectedPath,
+      },
+    });
+  }
+  function updateSettings(update: AppSettingsPatch) {
+    settingsRef.current.update(update);
+    setEditorAppearance({ ...settingsRef.current.state.settings.editor });
+    setSettingsSaveState("saving");
+    clearSettingsSaveResetTimer();
+    void workspaceApi.saveSettings(settingsRef.current.state.settings).then(async () => {
+      setSettingsSaveState("saved");
+      if (update.sdk) {
+        await refreshEnvironmentReport();
+      }
+      settingsSaveResetTimerRef.current = window.setTimeout(() => {
+        setSettingsSaveState("idle");
+        settingsSaveResetTimerRef.current = null;
+      }, 1200);
+    });
+  }
   const handleHydratedSettings = useCallback((settings: ReturnType<typeof createSettingsStore>["state"]["settings"]) => { setEditorAppearance({ ...settings.editor }); setRecentProjects([...settings.recentProjects]); }, []);
   useHydratedSettings({ workspaceApi, settingsRef, onHydrated: handleHydratedSettings });
+
+  useEffect(() => {
+    if (activeOverlay !== "searchEverywhere") {
+      return;
+    }
+
+    const requestId = searchEverywhereRequestRef.current + 1;
+    searchEverywhereRequestRef.current = requestId;
+
+    if (!workspace) {
+      setSearchEverywhereResult({
+        query: { kind: "text", query: quickOpenQuery.trim() },
+        matches: [],
+      });
+      setSearchEverywhereSelectedIndex(0);
+      return;
+    }
+
+    void searchWorkspaceText({
+      query: quickOpenQuery,
+      rootPath: workspace.rootPath,
+      paths: workspace.visibleFiles,
+      options: searchEverywhereOptions,
+      readFile: async (path) => {
+        if (normalizePath(path) === normalizePath(activePath ?? "")) {
+          return documentsRef.current.getDocument(path)?.currentContent ?? editorContent;
+        }
+
+        const document = documentsRef.current.getDocument(path);
+        if (document) {
+          return document.currentContent;
+        }
+
+        try {
+          return await workspaceApi.openFile(path);
+        } catch {
+          return null;
+        }
+      },
+      limit: 60,
+    }).then((result) => {
+      if (searchEverywhereRequestRef.current !== requestId) {
+        return;
+      }
+
+      setSearchEverywhereResult(result);
+      setSearchEverywhereSelectedIndex(0);
+    });
+  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereOptions, workspace, workspaceApi]);
 
   useShellHotkeys({ onCommand(command: ShellCommand) {
     const handlers: Partial<Record<ShellCommand, () => void>> = {
       closeTransientUi, closeActiveFile, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode,
+      navigateBack: () => void navigateBackFromHistory(),
       openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => setOverlay("searchEverywhere"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(),
       showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(),
     };
@@ -443,23 +757,116 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     void saveActiveDocument();
   } });
 
-  const quickOpenResults = workspace ? rankPaths(workspace.visibleFiles, quickOpenQuery || searchQuery, 8) : [];
-  const searchResults = workspace ? rankPaths(workspace.visibleFiles, searchQuery, 12) : [];
-  const searchEverywhereResults = workspace ? rankPaths(workspace.visibleFiles, quickOpenQuery, 8) : [];
+  const quickOpenResults = workspace ? rankPaths(workspace.visibleFiles, quickOpenQuery, 8) : [];
   const recentFileResults = filterRecentFileResults(tabsRef.current.state.recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery);
   const recentProjectResults = filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery);
-  const completionResults = completionItems.filter((item) => { const query = quickOpenQuery.trim().toLowerCase(); return !query || item.label.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query); });
+  const completionResults = [...completionItems]
+    .filter((item) => {
+      const query = quickOpenQuery.trim().toLowerCase();
+      return !query || item.label.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query);
+    })
+    .sort((left, right) => {
+      const query = quickOpenQuery.trim().toLowerCase();
+      const rank = (item: LanguageCompletionItem) => {
+        const normalizedLabel = item.label.toLowerCase();
+        const normalizedDetail = item.detail.toLowerCase();
+        const hasPrefixMatch = query.length > 0 && normalizedLabel.startsWith(query);
+        const labelContainsIndex = query.length > 0 ? normalizedLabel.indexOf(query) : -1;
+        const detailContainsIndex = query.length > 0 ? normalizedDetail.indexOf(query) : -1;
+        const recentPriority = -(completionRecencyRef.current.get(item.label) ?? 0);
+        const kindPriority =
+          item.kind === "keyword" ? 0
+          : item.kind === "method" ? 1
+          : item.kind === "function" ? 2
+          : 3;
+        const prefixPriority = hasPrefixMatch ? 0 : 1;
+        const prefixDistancePriority = hasPrefixMatch ? normalizedLabel.length - query.length : Number.MAX_SAFE_INTEGER;
+        const containsSourcePriority =
+          hasPrefixMatch || query.length === 0 ? 0
+          : labelContainsIndex >= 0 ? 0
+          : detailContainsIndex >= 0 ? 1
+          : 2;
+        const containsPositionPriority =
+          hasPrefixMatch || query.length === 0 ? 0
+          : labelContainsIndex >= 0 ? labelContainsIndex
+          : detailContainsIndex >= 0 ? detailContainsIndex
+          : Number.MAX_SAFE_INTEGER;
+        return [
+          prefixPriority,
+          prefixDistancePriority,
+          containsSourcePriority,
+          containsPositionPriority,
+          recentPriority,
+          kindPriority,
+          normalizedLabel,
+        ] as const;
+      };
+      const leftRank = rank(left);
+      const rightRank = rank(right);
+      return leftRank[0] - rightRank[0]
+        || leftRank[1] - rightRank[1]
+        || leftRank[2] - rightRank[2]
+        || leftRank[3] - rightRank[3]
+        || leftRank[4] - rightRank[4]
+        || leftRank[5] - rightRank[5]
+        || leftRank[6].localeCompare(rightRank[6]);
+    });
+  const selectedCompletion = completionResults[Math.min(completionSelectedIndex, Math.max(completionResults.length - 1, 0))] ?? null;
+
+  useEffect(() => {
+    setCompletionSelectedIndex((current) => {
+      if (completionResults.length === 0) {
+        return 0;
+      }
+
+      return Math.min(current, completionResults.length - 1);
+    });
+  }, [completionResults.length]);
+
+  useEffect(() => {
+    function handleCompletionAcceptKey(event: KeyboardEvent) {
+      if (activeOverlay !== "completion" || completionAutoFocus || completionResults.length === 0 || !isEditorFocused()) {
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveCompletionSelection(event.key === "ArrowDown" ? 1 : -1, completionResults.length);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setActiveOverlay("none");
+        focusEditorSoon();
+        return;
+      }
+
+      if (event.key !== "Tab" && event.key !== "Enter") {
+        return;
+      }
+
+      event.preventDefault();
+      if (selectedCompletion) {
+        insertCompletion(selectedCompletion.label);
+      }
+    }
+
+    window.addEventListener("keydown", handleCompletionAcceptKey, true);
+    return () => window.removeEventListener("keydown", handleCompletionAcceptKey, true);
+  }, [activeOverlay, completionAutoFocus, completionResults, selectedCompletion]);
+
   const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, { openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), openGoToLine: () => setOverlay("goToLine"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), openCompletion: () => void openCompletionFromEditor(), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), openSettings: () => void openSettings() });
   const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell">
       <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div className="shell-grid">
-        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} searchQuery={searchQuery} searchResults={searchResults} searchVisible={searchVisible} workspace={workspace} filesPaneRef={filesPaneRef} searchPaneRef={searchPaneRef} onOpenFile={(path) => void openFile(path)} onSearchQueryChange={setSearchQuery} onSelectTool={showLeftTool} />
-        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onSelectTab={setActiveDocument} />
+        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectTool={showLeftTool} />
+        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
       </div>
       <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel}>
-        <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereResults={searchEverywhereResults} onChangeQuery={setQuickOpenQuery} onOpenFile={(path) => void openFile(path)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
+        <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} completionSelectedIndex={completionSelectedIndex} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onMoveCompletionSelection={(direction) => moveCompletionSelection(direction, completionResults.length)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onAcceptSelectedCompletion={() => { if (selectedCompletion) insertCompletion(selectedCompletion.label); }} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} completionAutoFocus={completionAutoFocus} />
       </OverlaySurface>
 
       <OpenProjectDialog
@@ -478,12 +885,21 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         onCancel={projectOpening.cancelPendingProjectOpen}
       />
 
-      <SettingsDialog open={settingsVisible} settings={settingsRef.current.state.settings} onClose={() => setSettingsVisible(false)} onChange={updateSettings} />
-      <EnvironmentPanel report={environmentReport} visible={settingsVisible} />
+      <SettingsDialog
+        environmentReport={environmentReport}
+        open={settingsVisible}
+        saveStateLabel={settingsSaveState === "saving" ? "Saving..." : settingsSaveState === "saved" ? "Saved" : "Ready"}
+        settings={settingsRef.current.state.settings}
+        onClose={() => setSettingsVisible(false)}
+        onChange={updateSettings}
+        onPickPath={(field) => { void pickSettingsPath(field); }}
+        onRefreshEnvironment={() => void refreshEnvironmentReport()}
+      />
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} onSelectTool={showBottomTool} visible={bottomVisible} problemsPanel={<ProblemsPanel problems={problems} />}
-        terminalPanel={<TerminalToolWindow sessions={terminalToolWindow.sessions} activeSessionId={terminalToolWindow.activeSessionId} focusToken={terminalToolWindow.focusToken} output={terminalToolWindow.outputBySession[terminalToolWindow.activeSessionId ?? ""] ?? ""} onInput={(data) => void terminalToolWindow.writeInput(data)} onCreateSession={() => void terminalToolWindow.createSession()} onCloseSession={(sessionId) => void terminalToolWindow.closeSession(sessionId)} onSetActiveSession={terminalToolWindow.setActiveSession} onClearSession={terminalToolWindow.clearSession} onStopSession={() => void terminalToolWindow.stopSession()} />}
+        terminalPanel={<TerminalToolWindowHost active={bottomVisible && activeBottomTool === "terminal"} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
         gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
+        gitTracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />}
         usagesPanel={<UsagesPanel state={usageSearch} onOpenUsage={(item) => void openUsageResult(item)} />}
       />
       <div
