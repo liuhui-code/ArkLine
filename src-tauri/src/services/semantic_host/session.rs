@@ -120,7 +120,10 @@ impl SemanticWorkerSession {
         parse_definition_candidate(payload).map(|candidate| vec![candidate])
     }
 
-    pub fn completion(&self, request: &LanguageQueryRequest) -> Result<Vec<CompletionItem>, String> {
+    pub fn completion(
+        &self,
+        request: &LanguageQueryRequest,
+    ) -> Result<Vec<CompletionItem>, String> {
         let response = self.send_request("completion", Some(request))?;
         let payload = extract_payload(&response.payload, "completion");
         let items = payload
@@ -186,9 +189,9 @@ impl SemanticWorkerSession {
                 .stdout
                 .lock()
                 .map_err(|_| "Semantic worker stdout lock is poisoned".to_string())?;
-            stdout
-                .read_line(&mut line)
-                .map_err(|error| format!("Failed to read semantic worker response {request_id}: {error}"))?;
+            stdout.read_line(&mut line).map_err(|error| {
+                format!("Failed to read semantic worker response {request_id}: {error}")
+            })?;
         }
 
         if line.trim().is_empty() {
@@ -220,7 +223,7 @@ impl SemanticWorkerSession {
 
         Ok(response)
     }
-    
+
     fn read_stderr_snippet(&self) -> Option<String> {
         let mut child = self.child.lock().ok()?;
         let stderr = child.stderr.as_mut()?;
@@ -230,23 +233,29 @@ impl SemanticWorkerSession {
             return None;
         }
 
-        Some(String::from_utf8_lossy(&buffer[..bytes_read]).trim().to_string())
+        Some(
+            String::from_utf8_lossy(&buffer[..bytes_read])
+                .trim()
+                .to_string(),
+        )
     }
 }
 
 fn parse_definition_target(payload: &Value) -> Result<DefinitionTarget, String> {
-        let path = payload
-            .get("path")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "Semantic worker definition response did not include a path".to_string())?;
-        let line = payload
-            .get("line")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| "Semantic worker definition response did not include a line".to_string())?;
-        let column = payload
-            .get("column")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| "Semantic worker definition response did not include a column".to_string())?;
+    let path = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Semantic worker definition response did not include a path".to_string())?;
+    let line = payload
+        .get("line")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "Semantic worker definition response did not include a line".to_string())?;
+    let column = payload
+        .get("column")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            "Semantic worker definition response did not include a column".to_string()
+        })?;
 
     Ok(DefinitionTarget {
         path: path.to_string(),
@@ -287,10 +296,41 @@ fn extract_payload<'a>(payload: &'a Value, key: &str) -> &'a Value {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::PathBuf;
     use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::SemanticWorkerSession;
+    use crate::services::semantic_host::config::SemanticHostConfig;
     use crate::services::semantic_host::process::SemanticWorkerProcessSpec;
+
+    fn unique_temp_path(name: &str, extension: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("arkline-{name}-{suffix}.{extension}"))
+    }
+
+    fn mock_worker_entry() -> PathBuf {
+        let path = unique_temp_path("mock-semantic-worker", "mjs");
+        fs::write(
+            &path,
+            r#"
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  const payload = request.method === "health" ? { health: { status: "ok" } } : {};
+  process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, error: null })}\n`);
+});
+"#,
+        )
+        .unwrap();
+        path
+    }
 
     #[test]
     fn classifies_completion_items() {
@@ -316,12 +356,18 @@ mod tests {
 
     #[test]
     fn drops_and_stops_the_worker_process() {
-        let spec = SemanticWorkerProcessSpec::discover_with_config(
-            &crate::services::semantic_host::config::SemanticHostConfig::default(),
-        )
+        let entry_path = mock_worker_entry();
+        let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+            semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+            ..SemanticHostConfig::default()
+        })
         .expect("worker spec should be discoverable");
         let session = SemanticWorkerSession::start(&spec).expect("worker session should start");
-        let pid = session.process_id().expect("worker pid should be available");
+        let pid = session
+            .process_id()
+            .expect("worker pid should be available");
+
+        assert_eq!(session.health().unwrap(), "ok");
 
         drop(session);
 
@@ -331,5 +377,6 @@ mod tests {
             .expect("ps should run");
 
         assert!(!output.status.success());
+        fs::remove_file(entry_path).unwrap();
     }
 }

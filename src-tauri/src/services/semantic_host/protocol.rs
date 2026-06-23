@@ -17,6 +17,7 @@ pub struct SemanticRequest {
 }
 
 impl SemanticRequest {
+    #[allow(dead_code)]
     pub fn goto_definition(id: String, path: String, line: u32, column: u32) -> Self {
         Self {
             id,
@@ -26,6 +27,7 @@ impl SemanticRequest {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticDefinitionTarget {
@@ -34,6 +36,7 @@ pub struct SemanticDefinitionTarget {
     pub column: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SemanticResponsePayload {
@@ -47,6 +50,7 @@ pub enum SemanticResponsePayload {
     Completion(Vec<String>),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticResponse {

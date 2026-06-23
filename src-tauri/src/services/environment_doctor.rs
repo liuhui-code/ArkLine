@@ -26,8 +26,16 @@ pub fn inspect_environment(settings: &AppSettings) -> EnvironmentReport {
         tools: vec![
             detect_command("git", &["--version"]),
             detect_command("rg", &["--version"]),
-            detect_command_label("lintCommand", &settings.validation.lint_command, &["--version"]),
-            detect_command_label("formatCommand", &settings.validation.format_command, &["--version"]),
+            detect_command_label(
+                "lintCommand",
+                &settings.validation.lint_command,
+                &["--version"],
+            ),
+            detect_command_label(
+                "formatCommand",
+                &settings.validation.format_command,
+                &["--version"],
+            ),
             detect_harmony_sdk(settings),
             detect_semantic_worker(settings),
             detect_arkts_language_server(settings),
@@ -45,12 +53,18 @@ fn detect_command_label(name: &str, command: &str, args: &[&str]) -> ToolStatus 
         Ok(output) if output.status.success() => ToolStatus {
             name: name.to_string(),
             available: true,
-            detail: format!("{command}: {}", String::from_utf8_lossy(&output.stdout).trim()),
+            detail: format!(
+                "{command}: {}",
+                String::from_utf8_lossy(&output.stdout).trim()
+            ),
         },
         Ok(output) => ToolStatus {
             name: name.to_string(),
             available: false,
-            detail: format!("{command}: {}", String::from_utf8_lossy(&output.stderr).trim()),
+            detail: format!(
+                "{command}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
         },
         Err(error) => ToolStatus {
             name: name.to_string(),
@@ -118,9 +132,20 @@ fn detect_arkts_language_server(settings: &AppSettings) -> ToolStatus {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use crate::services::settings_store::default_settings;
 
     use super::inspect_environment;
+
+    fn unique_temp_path(name: &str, extension: &str) -> std::path::PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("arkline-{name}-{suffix}.{extension}"))
+    }
 
     #[test]
     fn reports_known_tools_and_runtime_assumptions() {
@@ -131,7 +156,39 @@ mod tests {
         assert!(report.tools.iter().any(|tool| tool.name == "lintCommand"));
         assert!(report.tools.iter().any(|tool| tool.name == "formatCommand"));
         assert!(report.tools.iter().any(|tool| tool.name == "harmonySdk"));
-        assert!(report.tools.iter().any(|tool| tool.name == "semanticWorker"));
+        assert!(report
+            .tools
+            .iter()
+            .any(|tool| tool.name == "semanticWorker"));
         assert!(report.tools.iter().any(|tool| tool.name == "webview2"));
+    }
+
+    #[test]
+    fn environment_inspection_does_not_start_semantic_worker() {
+        let worker_entry = unique_temp_path("inspect-worker", "mjs");
+        let marker_path = unique_temp_path("inspect-worker-started", "txt");
+        fs::write(
+            &worker_entry,
+            format!(
+                r#"
+import fs from "node:fs";
+fs.writeFileSync({}, "started");
+"#,
+                serde_json::to_string(&marker_path.to_string_lossy()).unwrap()
+            ),
+        )
+        .unwrap();
+        let mut settings = default_settings();
+        settings.sdk.semantic_worker_path = worker_entry.to_string_lossy().to_string();
+
+        let report = inspect_environment(&settings);
+
+        assert!(report
+            .tools
+            .iter()
+            .any(|tool| tool.name == "arktsLanguageServer"));
+        assert!(!marker_path.exists());
+
+        fs::remove_file(worker_entry).unwrap();
     }
 }

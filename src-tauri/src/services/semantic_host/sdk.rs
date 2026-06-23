@@ -11,8 +11,9 @@ pub enum SdkDiscovery {
 
 pub fn discover_harmony_sdk(configured: Option<&str>) -> SdkDiscovery {
     match configured {
-        Some(value) if !value.trim().is_empty() => discover_from_configured(Some(value))
-            .map_or(SdkDiscovery::Missing, SdkDiscovery::Ready),
+        Some(value) if !value.trim().is_empty() => {
+            discover_from_configured(Some(value)).map_or(SdkDiscovery::Missing, SdkDiscovery::Ready)
+        }
         _ => discover_from_candidates(default_sdk_candidates(env::consts::OS))
             .map_or(SdkDiscovery::Missing, SdkDiscovery::Ready),
     }
@@ -45,13 +46,9 @@ fn is_valid_sdk_root(path: &Path) -> bool {
     path.exists() && path.is_dir() && path.join("ets").is_dir() && path.join("toolchains").is_dir()
 }
 
-pub fn discover_harmony_sdk_from_env() -> SdkDiscovery {
-    discover_harmony_sdk(env::var(HARMONY_SDK_PATH_ENV).ok().as_deref())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{default_sdk_candidates, discover_harmony_sdk, HARMONY_SDK_PATH_ENV, SdkDiscovery};
+    use super::{default_sdk_candidates, discover_harmony_sdk, SdkDiscovery, HARMONY_SDK_PATH_ENV};
 
     #[test]
     fn reports_missing_sdk_without_crashing() {

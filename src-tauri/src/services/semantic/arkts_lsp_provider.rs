@@ -60,20 +60,23 @@ impl ArkTsLspProvider {
     }
 
     pub fn discovery(config: SemanticHostConfig) -> ArkTsLspDiscovery {
-        match Self::discover(config) {
-            Ok(provider) => ArkTsLspDiscovery {
-                binary_path: Some(provider.binary_path.clone()),
-                node_path: Some(provider.node_path.clone()),
+        let manager = SemanticHostManager::discover(config);
+        let readiness = manager.readiness();
+
+        match (&readiness.worker.entry_path, &readiness.worker.node_path) {
+            (Some(binary_path), Some(node_path)) => ArkTsLspDiscovery {
+                binary_path: Some(binary_path.clone()),
+                node_path: Some(node_path.clone()),
                 detail: format!(
                     "Discovered ArkLine semantic worker at {} using node {}",
-                    provider.binary_path.display(),
-                    provider.node_path.display()
+                    binary_path.display(),
+                    node_path.display()
                 ),
             },
-            Err(detail) => ArkTsLspDiscovery {
+            _ => ArkTsLspDiscovery {
                 binary_path: None,
                 node_path: None,
-                detail,
+                detail: readiness.detail(),
             },
         }
     }
@@ -113,7 +116,9 @@ impl SemanticProvider for ArkTsLspProvider {
     }
 
     fn definition_candidates(&self, request: &LanguageQueryRequest) -> Vec<DefinitionCandidate> {
-        self.session.goto_definition_candidates(request).unwrap_or_default()
+        self.session
+            .goto_definition_candidates(request)
+            .unwrap_or_default()
     }
 
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem> {
@@ -144,6 +149,8 @@ mod tests {
     fn points_to_repo_local_worker_dist() {
         let candidate = default_worker_entry_candidate();
 
-        assert!(candidate.to_string_lossy().contains("semantic-worker/dist/main.js"));
+        assert!(candidate
+            .to_string_lossy()
+            .contains("semantic-worker/dist/main.js"));
     }
 }

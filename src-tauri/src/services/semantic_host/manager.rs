@@ -2,9 +2,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use super::config::SemanticHostConfig;
-use super::process::{discover_semantic_worker, SemanticWorkerDiscovery, SemanticWorkerProcessSpec};
-use super::session::SemanticWorkerSession;
+use super::process::{
+    discover_semantic_worker, SemanticWorkerDiscovery, SemanticWorkerProcessSpec,
+};
 use super::sdk::{discover_harmony_sdk, SdkDiscovery};
+use super::session::SemanticWorkerSession;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticHostReadiness {
@@ -21,9 +23,7 @@ pub struct SemanticHostManager {
 impl SemanticHostReadiness {
     pub fn discover(config: SemanticHostConfig) -> Self {
         Self {
-            sdk: discover_harmony_sdk(
-                config.harmony_sdk_env_value().as_deref(),
-            ),
+            sdk: discover_harmony_sdk(config.harmony_sdk_env_value().as_deref()),
             worker: discover_semantic_worker(&config),
             config,
         }
@@ -100,11 +100,39 @@ impl SemanticHostManager {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{SemanticHostManager, SemanticHostReadiness};
     use crate::services::semantic_host::config::SemanticHostConfig;
     use crate::services::semantic_host::sdk::HARMONY_SDK_PATH_ENV;
+
+    fn unique_temp_path(name: &str, extension: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("arkline-{name}-{suffix}.{extension}"))
+    }
+
+    fn mock_worker_entry() -> PathBuf {
+        let path = unique_temp_path("mock-semantic-worker", "mjs");
+        fs::write(
+            &path,
+            r#"
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  const payload = request.method === "health" ? { health: { status: "ok" } } : {};
+  process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, error: null })}\n`);
+});
+"#,
+        )
+        .unwrap();
+        path
+    }
 
     #[test]
     fn host_is_not_ready_without_sdk_and_worker() {
@@ -128,13 +156,17 @@ mod tests {
         ));
         fs::create_dir_all(temp_sdk_root.join("ets")).unwrap();
         fs::create_dir_all(temp_sdk_root.join("toolchains")).unwrap();
+        let worker_entry = mock_worker_entry();
         let previous = std::env::var(HARMONY_SDK_PATH_ENV).ok();
-        std::env::set_var(HARMONY_SDK_PATH_ENV, temp_sdk_root.to_string_lossy().to_string());
+        std::env::set_var(
+            HARMONY_SDK_PATH_ENV,
+            temp_sdk_root.to_string_lossy().to_string(),
+        );
 
         let manager = SemanticHostManager::discover(SemanticHostConfig {
             harmony_sdk_path: Some(temp_sdk_root.to_string_lossy().to_string()),
             harmony_sdk_auto_detect: false,
-            semantic_worker_path: None,
+            semantic_worker_path: Some(worker_entry.to_string_lossy().to_string()),
             node_path: None,
         });
         let first = manager.session().expect("first session should start");
@@ -150,5 +182,6 @@ mod tests {
             std::env::remove_var(HARMONY_SDK_PATH_ENV);
         }
         fs::remove_dir_all(temp_sdk_root).unwrap();
+        fs::remove_file(worker_entry).unwrap();
     }
 }

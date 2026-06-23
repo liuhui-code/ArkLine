@@ -31,7 +31,11 @@ impl Default for LanguageRuntime {
 }
 
 impl LanguageRuntime {
-    fn with_router<T>(&self, settings: &AppSettings, callback: impl FnOnce(&SemanticRouter) -> T) -> T {
+    fn with_router<T>(
+        &self,
+        settings: &AppSettings,
+        callback: impl FnOnce(&SemanticRouter) -> T,
+    ) -> T {
         let mut state = self
             .state
             .lock()
@@ -140,7 +144,23 @@ mod tests {
     use crate::services::settings_store::default_settings;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
-    
+
+    struct MockWorker {
+        path: PathBuf,
+    }
+
+    impl MockWorker {
+        fn path_text(&self) -> String {
+            self.path.to_string_lossy().to_string()
+        }
+    }
+
+    impl Drop for MockWorker {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+
     struct ScopedSdkEnv {
         _guard: MutexGuard<'static, ()>,
         previous: Option<String>,
@@ -172,6 +192,55 @@ mod tests {
         std::env::temp_dir().join(format!("arkline-language-{name}-{suffix}.ets"))
     }
 
+    fn unique_temp_worker_path(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("arkline-language-{name}-{suffix}.mjs"))
+    }
+
+    fn mock_worker_entry(definition_path: Option<&str>, completion_labels: &[&str]) -> MockWorker {
+        let path = unique_temp_worker_path("mock-semantic-worker");
+        let definition_json = serde_json::to_string(&definition_path).unwrap();
+        let completion_json = serde_json::to_string(&completion_labels).unwrap();
+        fs::write(
+            &path,
+            format!(
+                r#"
+import readline from "node:readline";
+
+const definitionPath = {definition_json};
+const completionLabels = {completion_json};
+const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY }});
+
+rl.on("line", (line) => {{
+  const request = JSON.parse(line);
+  let payload = {{}};
+  if (request.method === "health") {{
+    payload = {{ health: {{ status: "ok" }} }};
+  }} else if (request.method === "gotoDefinition") {{
+    const definition = definitionPath ? {{ path: definitionPath, line: 1, column: 17 }} : null;
+    payload = {{ definition, definitionCandidates: definition ? [definition] : [] }};
+  }} else if (request.method === "completion") {{
+    payload = {{
+      completion: completionLabels.map((label) => ({{
+        label,
+        detail: "Mock semantic item",
+        kind: "function",
+      }})),
+    }};
+  }}
+  process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload, error: null }})}}\n`);
+}});
+"#
+            ),
+        )
+        .unwrap();
+
+        MockWorker { path }
+    }
+
     fn missing_sdk_settings() -> crate::services::settings_store::AppSettings {
         let mut settings = default_settings();
         settings.sdk.auto_detect = false;
@@ -183,6 +252,14 @@ mod tests {
         let mut settings = default_settings();
         settings.sdk.auto_detect = false;
         settings.sdk.harmony_sdk_path = path.to_string();
+        settings
+    }
+
+    fn with_worker_settings(
+        mut settings: crate::services::settings_store::AppSettings,
+        worker: &MockWorker,
+    ) -> crate::services::settings_store::AppSettings {
+        settings.sdk.semantic_worker_path = worker.path_text();
         settings
     }
 
@@ -217,7 +294,10 @@ mod tests {
             _guard: guard,
             previous: std::env::var(HARMONY_SDK_PATH_ENV).ok(),
         };
-        std::env::set_var(HARMONY_SDK_PATH_ENV, temp_sdk_root.to_string_lossy().to_string());
+        std::env::set_var(
+            HARMONY_SDK_PATH_ENV,
+            temp_sdk_root.to_string_lossy().to_string(),
+        );
         let result = callback(&temp_sdk_root);
         fs::remove_dir_all(temp_sdk_root).unwrap();
         drop(scoped_env);
@@ -227,8 +307,10 @@ mod tests {
     #[test]
     fn reports_skeleton_language_runtime() {
         with_missing_sdk_env(|| {
+            let worker = mock_worker_entry(None, &[]);
             let runtime = LanguageRuntime::default();
-            let report = inspect_runtime(&runtime, &missing_sdk_settings());
+            let settings = with_worker_settings(missing_sdk_settings(), &worker);
+            let report = inspect_runtime(&runtime, &settings);
 
             assert_eq!(report.provider, "semantic-host");
             assert_eq!(report.mode, "semantic");
@@ -245,6 +327,7 @@ mod tests {
     #[test]
     fn resolves_same_file_semantic_queries_without_sdk() {
         with_missing_sdk_env(|| {
+            let worker = mock_worker_entry(None, &[]);
             let runtime = LanguageRuntime::default();
             let path = unique_temp_path("fallback-runtime");
             fs::write(
@@ -254,7 +337,7 @@ mod tests {
             .unwrap();
             let path_text = path.to_string_lossy().to_string();
 
-            let settings = missing_sdk_settings();
+            let settings = with_worker_settings(missing_sdk_settings(), &worker);
             assert!(hover_symbol(&runtime, &settings, &request(&path_text, 3, 9)).is_none());
             assert_eq!(
                 goto_definition(&runtime, &settings, &request(&path_text, 5, 4)),
@@ -274,10 +357,18 @@ mod tests {
                 }]
             );
             let completions = complete_symbol(&runtime, &settings, &request(&path_text, 1, 1));
-            assert!(completions.iter().any(|item| item.label == "@Entry" && item.kind == "keyword"));
-            assert!(completions.iter().any(|item| item.label == "@Component" && item.kind == "keyword"));
-            assert!(completions.iter().any(|item| item.label == "build()" && item.kind == "method"));
-            assert!(completions.iter().any(|item| item.label == "submit()" && item.kind == "function"));
+            assert!(completions
+                .iter()
+                .any(|item| item.label == "@Entry" && item.kind == "keyword"));
+            assert!(completions
+                .iter()
+                .any(|item| item.label == "@Component" && item.kind == "keyword"));
+            assert!(completions
+                .iter()
+                .any(|item| item.label == "build()" && item.kind == "method"));
+            assert!(completions
+                .iter()
+                .any(|item| item.label == "submit()" && item.kind == "function"));
             assert_eq!(
                 list_document_symbols(&runtime, &settings, &request(&path_text, 1, 1)),
                 vec![
@@ -320,8 +411,10 @@ mod tests {
     #[test]
     fn keeps_semantic_mode_available_when_sdk_is_missing() {
         with_missing_sdk_env(|| {
+            let worker = mock_worker_entry(None, &[]);
             let runtime = LanguageRuntime::default();
-            let report = inspect_runtime(&runtime, &missing_sdk_settings());
+            let settings = with_worker_settings(missing_sdk_settings(), &worker);
+            let report = inspect_runtime(&runtime, &settings);
 
             assert_eq!(report.mode, "semantic");
             assert_eq!(report.provider, "semantic-host");
@@ -334,8 +427,10 @@ mod tests {
     #[test]
     fn keeps_semantic_worker_active_when_sdk_discovery_fails() {
         with_missing_sdk_env(|| {
+            let worker = mock_worker_entry(None, &[]);
             let runtime = LanguageRuntime::default();
-            let report = inspect_runtime(&runtime, &missing_sdk_settings());
+            let settings = with_worker_settings(missing_sdk_settings(), &worker);
+            let report = inspect_runtime(&runtime, &settings);
 
             assert_eq!(report.mode, "semantic");
             assert!(report.detail.contains("HarmonyOS SDK"));
@@ -346,8 +441,10 @@ mod tests {
     #[test]
     fn reports_semantic_mode_when_sdk_and_worker_are_available() {
         with_valid_sdk_env(|temp_sdk_root| {
+            let worker = mock_worker_entry(None, &[]);
             let runtime = LanguageRuntime::default();
-            let settings = sdk_settings(&temp_sdk_root.to_string_lossy());
+            let settings =
+                with_worker_settings(sdk_settings(&temp_sdk_root.to_string_lossy()), &worker);
             let report = inspect_runtime(&runtime, &settings);
 
             assert_eq!(report.provider, "semantic-host");
@@ -379,7 +476,11 @@ mod tests {
 
             let shared_path = components_dir.join("Shared.ets");
             let index_path = pages_dir.join("Index.ets");
-            fs::write(&shared_path, "export function sharedSubmit() {\n  return 1;\n}\n").unwrap();
+            fs::write(
+                &shared_path,
+                "export function sharedSubmit() {\n  return 1;\n}\n",
+            )
+            .unwrap();
             fs::write(
                 &index_path,
                 "import { sharedSubmit } from '../components/Shared';\n\nfunction buildPage() {\n  sharedSubmit();\n}\n",
@@ -389,7 +490,9 @@ mod tests {
             let runtime = LanguageRuntime::default();
             let index_text = index_path.to_string_lossy().to_string();
             let shared_text = shared_path.to_string_lossy().to_string();
-            let settings = sdk_settings(&temp_sdk_root.to_string_lossy());
+            let worker = mock_worker_entry(Some(&shared_text), &["sharedSubmit()"]);
+            let settings =
+                with_worker_settings(sdk_settings(&temp_sdk_root.to_string_lossy()), &worker);
 
             assert_eq!(
                 goto_definition(&runtime, &settings, &request(&index_text, 4, 5)),
@@ -399,9 +502,11 @@ mod tests {
                     column: 17,
                 })
             );
-            assert!(complete_symbol(&runtime, &settings, &request(&index_text, 1, 1))
-                .iter()
-                .any(|item| item.label == "sharedSubmit()"));
+            assert!(
+                complete_symbol(&runtime, &settings, &request(&index_text, 1, 1))
+                    .iter()
+                    .any(|item| item.label == "sharedSubmit()")
+            );
 
             fs::remove_dir_all(workspace_root).unwrap();
         });
