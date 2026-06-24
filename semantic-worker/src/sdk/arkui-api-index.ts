@@ -68,12 +68,19 @@ export function completeArkuiApis(
 ): ArkuiApiEntry[] {
   const entries = loadArkuiApiIndex(sdkRoot)
   const seen = new Set<string>()
+  const matchingEntries = entries
+    .filter((entry) => !entry.component || entry.component === component)
+    .sort((left, right) => {
+      if (!component) {
+        return 0
+      }
 
-  return entries.filter((entry) => {
-    if (entry.component && entry.component !== component) {
-      return false
-    }
+      const leftExact = left.component === component ? 0 : 1
+      const rightExact = right.component === component ? 0 : 1
+      return leftExact - rightExact
+    })
 
+  return matchingEntries.filter((entry) => {
     if (seen.has(entry.name)) {
       return false
     }

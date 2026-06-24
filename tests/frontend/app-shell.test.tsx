@@ -609,7 +609,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
         { label: "Index", detail: "Struct in current file", kind: "symbol" },
-        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "build()", detail: "Component lifecycle method", kind: "method", insertText: "build(${1:value})" },
         { label: "@Component", detail: "ArkTS decorator", kind: "keyword" },
         { label: "sharedSubmit()", detail: "Semantic workspace function", kind: "function" },
       ]),
@@ -640,7 +640,7 @@ describe("App shell", () => {
     await user.click(within(results).getByRole("option", { name: /build\(\)/ }));
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
-    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build(value)");
   });
 
   it("refreshes an open completion popup once when Ctrl+Space is pressed again", async () => {
@@ -662,7 +662,7 @@ describe("App shell", () => {
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
-        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "build()", detail: "Component lifecycle method", kind: "method", insertText: "build(${1:value})" },
         { label: "browse()", detail: "Semantic workspace function", kind: "function" },
       ]),
       loadSettings: async () => defaultSettings(),

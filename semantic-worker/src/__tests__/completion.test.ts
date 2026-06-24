@@ -197,7 +197,7 @@ describe("semantic worker completion", () => {
     })
 
     expect(response.ok).toBe(true)
-    const items = response.payload as Array<Record<string, unknown>>
+    const items = response.payload as unknown as Array<Record<string, unknown>>
     expect(items).toContainEqual(expect.objectContaining({
       label: "width",
       detail: "width(value: Length): T",
@@ -207,7 +207,66 @@ describe("semantic worker completion", () => {
       source: "arkui",
       documentation: "Sets the width of the component.",
       replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
+      commitCharacters: ["("],
       definitionTarget: expect.objectContaining({ path: expect.stringContaining("common.d.ts"), line: 3, column: 5 }),
+      data: { provider: "arkui-sdk", component: null },
+    }))
+  })
+
+  it("prefers component-specific ArkUI completion metadata when names overlap", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-component-width-"))
+    tempRoots.push(root)
+    const sdkRoot = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    fs.writeFileSync(
+      path.join(sdkRoot, "ets", "component", "column.d.ts"),
+      [
+        "declare class ColumnAttribute<T> {",
+        "    /** Sets the column width. */",
+        "    width(value: ColumnLength): T;",
+        "}",
+        "",
+      ].join("\n"),
+    )
+    fs.writeFileSync(
+      path.join(sdkRoot, "ets", "build-tools", "ets-loader", "components", "column.json"),
+      JSON.stringify({ name: "Column", attrs: ["width"] }),
+    )
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Column() {",
+        "    }.",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "completion-arkui-component-width",
+      method: "completion",
+      position: { path: indexPath, line: 6, column: 7 },
+    })
+
+    expect(response.ok).toBe(true)
+    const items = response.payload as unknown as Array<Record<string, unknown>>
+    expect(items).toContainEqual(expect.objectContaining({
+      label: "width",
+      detail: "width(value: ColumnLength): T",
+      documentation: "Sets the column width.",
+      definitionTarget: expect.objectContaining({ path: expect.stringContaining("column.d.ts"), line: 3, column: 5 }),
+      data: { provider: "arkui-sdk", component: "Column" },
     }))
   })
 })

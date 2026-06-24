@@ -741,7 +741,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Find Usages failed: ${message}`);
     }
   }
-  function insertCompletion(label: string) { completionRequestRef.current += 1; completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(label, completionRecencyCounterRef.current); setInsertTextTarget({ text: label, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setCompletionStatus("empty"); setCompletionMessage(undefined); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
+  function insertCompletion(insertText: string) { const text = completionInsertTextToPlainText(insertText); completionRequestRef.current += 1; completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(text, completionRecencyCounterRef.current); setInsertTextTarget({ text, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setCompletionStatus("empty"); setCompletionMessage(undefined); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${text}`); focusEditorSoon(); }
   function moveCompletionSelection(direction: 1 | -1, resultCount: number) {
     if (resultCount <= 0) {
       return;
@@ -1235,4 +1235,10 @@ function getLineTextBeforeCursor(content: string, line: number, column: number) 
   const lines = content.split(/\r?\n/);
   const lineText = lines[Math.max(0, line - 1)] ?? "";
   return lineText.slice(0, Math.max(0, column - 1));
+}
+
+function completionInsertTextToPlainText(insertText: string) {
+  return insertText
+    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
+    .replace(/\$\d+/g, "");
 }
