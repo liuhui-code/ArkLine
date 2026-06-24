@@ -69,55 +69,53 @@ export function BottomToolWindow({
             ×
           </button>
       </div>
-      {contentVisible ? (
-        <div className="bottom-tool-window__content">
-          {activeTool === "problems" ? (
-            <div
-              id="bottom-tool-panel-problems"
-              role="tabpanel"
-              aria-labelledby="bottom-tool-tab-problems"
-            >
-              {problemsPanel}
-            </div>
-          ) : null}
-          {activeTool === "terminal" ? (
-            <div
-              id="bottom-tool-panel-terminal"
-              role="tabpanel"
-              aria-labelledby="bottom-tool-tab-terminal"
-            >
-              {terminalPanel}
-            </div>
-          ) : null}
-          {activeTool === "git" ? (
-            <div
-              id="bottom-tool-panel-git"
-              role="tabpanel"
-              aria-labelledby="bottom-tool-tab-git"
-            >
-              {gitPanel}
-            </div>
-          ) : null}
-          {activeTool === "gitTrace" ? (
-            <div
-              id="bottom-tool-panel-gitTrace"
-              role="tabpanel"
-              aria-labelledby="bottom-tool-tab-gitTrace"
-            >
-              {gitTracePanel}
-            </div>
-          ) : null}
-          {activeTool === "usages" ? (
-            <div
-              id="bottom-tool-panel-usages"
-              role="tabpanel"
-              aria-labelledby="bottom-tool-tab-usages"
-            >
-              {usagesPanel}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="bottom-tool-window__content" hidden={!contentVisible}>
+        {activeTool === "problems" ? (
+          <div
+            id="bottom-tool-panel-problems"
+            role="tabpanel"
+            aria-labelledby="bottom-tool-tab-problems"
+          >
+            {problemsPanel}
+          </div>
+        ) : null}
+        {activeTool === "terminal" ? (
+          <div
+            id="bottom-tool-panel-terminal"
+            role="tabpanel"
+            aria-labelledby="bottom-tool-tab-terminal"
+          >
+            {terminalPanel}
+          </div>
+        ) : null}
+        {activeTool === "git" ? (
+          <div
+            id="bottom-tool-panel-git"
+            role="tabpanel"
+            aria-labelledby="bottom-tool-tab-git"
+          >
+            {gitPanel}
+          </div>
+        ) : null}
+        {activeTool === "gitTrace" ? (
+          <div
+            id="bottom-tool-panel-gitTrace"
+            role="tabpanel"
+            aria-labelledby="bottom-tool-tab-gitTrace"
+          >
+            {gitTracePanel}
+          </div>
+        ) : null}
+        {activeTool === "usages" ? (
+          <div
+            id="bottom-tool-panel-usages"
+            role="tabpanel"
+            aria-labelledby="bottom-tool-tab-usages"
+          >
+            {usagesPanel}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
