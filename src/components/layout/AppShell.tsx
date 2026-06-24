@@ -1011,7 +1011,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     });
   }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereOptions, workspace, workspaceApi]);
 
-  useShellHotkeys({ onCommand(command: ShellCommand) {
+  const shellHotkeyContext = useMemo(() => ({
+    completionOpen: activeOverlay === "completion",
+    overlayOpen: activeOverlay !== "none" && activeOverlay !== "completion",
+    settingsOpen: settingsVisible,
+    settingsApplying,
+  }), [activeOverlay, settingsApplying, settingsVisible]);
+
+  useShellHotkeys({ context: shellHotkeyContext, onCommand(command: ShellCommand) {
     const handlers: Partial<Record<ShellCommand, () => void>> = {
       closeTransientUi, closeActiveFile, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode,
       navigateBack: () => void navigateBackFromHistory(),

@@ -471,11 +471,20 @@ button:disabled {
 
 .topbar-menu__item {
   width: 100%;
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 18px;
+  align-items: center;
+  justify-content: stretch;
   min-height: 28px;
   padding: 0 10px;
   border-radius: 5px;
   color: #cfd4db;
+}
+
+.topbar-menu__shortcut {
+  color: #858b94;
+  font-size: 11px;
 }
 
 .topbar-menu__item:hover {
@@ -1004,12 +1013,19 @@ button:disabled {
 .search-result {
   width: 100%;
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
   text-align: left;
   background: var(--bg-surface);
   color: var(--text-secondary);
   min-height: 26px;
   padding: 8px;
+}
+
+.search-result__shortcut {
+  color: var(--text-muted);
+  font-size: 11px;
 }
 
 .search-result--selected {
@@ -1916,6 +1932,81 @@ button:disabled {
 
 .settings-dialog--preferences .settings-status__item--warn {
   border-left: 3px solid var(--warning);
+}
+
+.settings-keymap {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.settings-keymap__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.settings-keymap__table th,
+.settings-keymap__table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.settings-keymap__table th {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.settings-keymap__table td:nth-child(2) {
+  color: var(--text-muted);
+}
+
+.settings-keymap__table td:nth-child(4) {
+  color: var(--text-muted);
+}
+
+.settings-keymap__table kbd {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.settings-keymap__empty {
+  padding: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.settings-keymap__status {
+  display: inline-flex;
+  min-height: 20px;
+  align-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.settings-keymap__status--active {
+  border: 1px solid rgba(91, 164, 112, 0.34);
+  background: rgba(91, 164, 112, 0.1);
+  color: #91c99f;
+}
+
+.settings-keymap__status--conflict {
+  border: 1px solid rgba(223, 107, 117, 0.4);
+  background: rgba(223, 107, 117, 0.1);
+  color: #df8a92;
 }
 
 @media (max-width: 760px) {

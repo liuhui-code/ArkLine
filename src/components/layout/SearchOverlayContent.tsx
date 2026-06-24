@@ -1,16 +1,11 @@
 import type { OverlayKey } from "@/components/layout/shell-state";
 import { SearchEverywherePanel } from "@/components/layout/SearchEverywherePanel";
+import type { CommandPaletteItem } from "@/components/layout/search-overlay-model";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
   WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
-
-type CommandPaletteItem = {
-  id: string;
-  label: string;
-  action: () => void;
-};
 
 type SearchOverlayContentProps = {
   activeOverlay: OverlayKey;
@@ -79,7 +74,8 @@ export function SearchOverlayContent({
                 item.action();
               }}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.shortcut ? <span className="search-result__shortcut" aria-hidden="true">{item.shortcut}</span> : null}
             </button>
           ))}
         </div>

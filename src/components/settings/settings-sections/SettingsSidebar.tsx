@@ -1,4 +1,4 @@
-type SettingsSectionKey = "sdk" | "editor" | "validation";
+type SettingsSectionKey = "sdk" | "editor" | "validation" | "keymap";
 
 type SettingsSidebarProps = {
   activeSection: SettingsSectionKey;
@@ -9,6 +9,7 @@ const sections: { key: SettingsSectionKey; label: string }[] = [
   { key: "sdk", label: "SDK & Tools" },
   { key: "editor", label: "Editor" },
   { key: "validation", label: "Validation" },
+  { key: "keymap", label: "Keymap" },
 ];
 
 export function SettingsSidebar({ activeSection, onSelectSection }: SettingsSidebarProps) {

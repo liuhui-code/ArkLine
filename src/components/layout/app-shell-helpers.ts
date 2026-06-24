@@ -1,4 +1,5 @@
 import { buildCommandPaletteItems } from "@/components/layout/search-overlay-model";
+import { getShellCommandShortcut } from "@/components/layout/shell-keymap";
 
 export function parseGoToLineQuery(query: string) {
   const match = query.trim().match(/^(\d+)(?::(\d+))?$/);
@@ -44,9 +45,9 @@ export function buildAppShellCommandPaletteItems(query: string, actions: Command
     { id: "open-demo", label: "Open Demo Workspace", action: actions.openDemoWorkspace },
     { id: "recent-projects", label: "Recent Projects", action: actions.openRecentProjects },
     { id: "go-to-line", label: "Go to Line...", action: actions.openGoToLine },
-    { id: "go-to-definition", label: "Go to Definition", action: actions.goToDefinition },
-    { id: "find-usages", label: "Find Usages", action: actions.findUsages },
-    { id: "completion", label: "Code Completion", action: actions.openCompletion },
+    { id: "go-to-definition", label: "Go to Definition", shortcut: getShellCommandShortcut("goToDefinition"), action: actions.goToDefinition },
+    { id: "find-usages", label: "Find Usages", shortcut: getShellCommandShortcut("findUsages"), action: actions.findUsages },
+    { id: "completion", label: "Code Completion", shortcut: getShellCommandShortcut("openCompletion"), action: actions.openCompletion },
     { id: "run-validation", label: "Run Lint", action: actions.runLint },
     { id: "format-active-document", label: "Format Active Document", action: actions.formatActiveDocument },
     { id: "load-diff", label: "Load Diff", action: actions.loadDiff },

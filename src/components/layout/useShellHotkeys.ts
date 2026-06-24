@@ -1,13 +1,15 @@
 import { useEffect, useRef } from "react";
 import { isBareShift, resolveShellCommand, type ShellCommand } from "@/components/layout/shell-keymap";
+import type { KeybindingContext } from "@/components/layout/keybinding-model";
 
 type UseShellHotkeysOptions = {
+  context?: KeybindingContext;
   onCommand: (command: ShellCommand) => void;
 };
 
 const DOUBLE_SHIFT_WINDOW_MS = 400;
 
-export function useShellHotkeys({ onCommand }: UseShellHotkeysOptions) {
+export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOptions) {
   const lastShiftAtRef = useRef(0);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function useShellHotkeys({ onCommand }: UseShellHotkeysOptions) {
         return;
       }
 
-      const command = resolveShellCommand(event);
+      const command = resolveShellCommand(event, context);
       if (!command) {
         return;
       }
@@ -36,5 +38,5 @@ export function useShellHotkeys({ onCommand }: UseShellHotkeysOptions) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCommand]);
+  }, [context, onCommand]);
 }

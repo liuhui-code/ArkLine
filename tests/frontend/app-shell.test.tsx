@@ -492,6 +492,36 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@EntryX@Componentstruct Index {}");
   });
 
+  it("shows shortcut hints in the command palette", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "definition");
+
+    const results = await screen.findByRole("list", { name: "Find Action Results" });
+    expect(within(results).getByRole("button", { name: "Go to Definition" })).toBeVisible();
+    expect(within(results).getByText(/^(Ctrl|Cmd)\+B$/)).toBeVisible();
+  });
+
+  it("shows shortcut hints in top bar menus", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByRole("menuitem", { name: "Command Palette" })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+A$/)).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByRole("menuitem", { name: "Search Everywhere" })).toBeVisible();
+    expect(screen.getByText("Double Shift")).toBeVisible();
+    expect(screen.getByText("Alt+F12")).toBeVisible();
+  });
+
   it("jumps to a definition from the current editor caret", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
@@ -2939,6 +2969,32 @@ describe("App shell", () => {
     expect(await screen.findByLabelText("Environment Status")).toBeVisible();
     expect(screen.getByLabelText("HarmonyOS / ArkTS SDK Path")).toBeVisible();
     expect(screen.getByText("Bundled ripgrep not configured yet")).toBeVisible();
+  });
+
+  it("shows a searchable read-only keymap in settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(await screen.findByRole("tab", { name: "Keymap" }));
+
+    expect(await screen.findByLabelText("Keyboard Shortcuts Settings")).toBeVisible();
+    expect(screen.getByRole("row", { name: /Go to Definition Navigation/i })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+B$/)).toBeVisible();
+    expect(screen.getAllByText("Default").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Active").length).toBeGreaterThan(0);
+
+    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "completion");
+
+    expect(screen.getByRole("row", { name: /Code Completion Editor .+ Default Active/i })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Space$/)).toBeVisible();
+    expect(screen.queryByRole("row", { name: /Go to Definition Navigation/i })).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Search Keyboard Shortcuts"));
+    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Alt+F7");
+
+    expect(screen.getByRole("row", { name: /Find Usages Navigation/i })).toBeVisible();
+    expect(screen.queryByRole("row", { name: /Code Completion Editor/i })).not.toBeInTheDocument();
   });
 
   it("warns about suspicious SDK paths without blocking Apply", async () => {

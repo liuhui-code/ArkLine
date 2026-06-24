@@ -1,6 +1,7 @@
-type CommandPaletteItem = {
+export type CommandPaletteItem = {
   id: string;
   label: string;
+  shortcut?: string;
   action: () => void;
 };
 

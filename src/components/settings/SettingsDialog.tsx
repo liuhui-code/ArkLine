@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppSettings, AppSettingsPatch } from "@/features/settings/settings-store";
 import type { EnvironmentReport } from "@/features/workspace/workspace-api";
 import { SettingsEditorPanel } from "@/components/settings/settings-sections/SettingsEditorPanel";
+import { SettingsKeymapPanel } from "@/components/settings/settings-sections/SettingsKeymapPanel";
 import { SettingsSdkPanel } from "@/components/settings/settings-sections/SettingsSdkPanel";
 import { SettingsSidebar, type SettingsSectionKey } from "@/components/settings/settings-sections/SettingsSidebar";
 import { SettingsValidationPanel } from "@/components/settings/settings-sections/SettingsValidationPanel";
@@ -163,6 +164,7 @@ export function SettingsDialog({
                 onChange={updateDraft}
               />
             ) : null}
+            {activeSection === "keymap" ? <SettingsKeymapPanel /> : null}
           </div>
         </div>
 

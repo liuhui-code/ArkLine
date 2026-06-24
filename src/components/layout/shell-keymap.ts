@@ -1,3 +1,10 @@
+import {
+  formatCommandShortcut,
+  resolveKeybindingCommand,
+  type CommandDescriptor,
+  type KeybindingContext,
+} from "@/components/layout/keybinding-model";
+
 export type ShellCommand =
   | "closeTransientUi"
   | "closeActiveFile"
@@ -17,82 +24,34 @@ export type ShellCommand =
   | "openCompletion"
   | "save";
 
-function isPrimaryModifier(event: KeyboardEvent) {
-  return event.ctrlKey || event.metaKey;
-}
+export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
+  { id: "hideActiveToolWindow", title: "Hide Active Tool Window", category: "Window", defaultKeybindings: [{ shift: true, key: "Escape" }] },
+  { id: "closeTransientUi", title: "Close", category: "Window", defaultKeybindings: [{ key: "Escape" }] },
+  { id: "closeActiveFile", title: "Close Active File", category: "File", defaultKeybindings: [{ mod: true, key: "w" }] },
+  { id: "navigateBack", title: "Navigate Back", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowLeft" }] },
+  { id: "findUsages", title: "Find Usages", category: "Navigation", defaultKeybindings: [{ alt: true, key: "F7" }] },
+  { id: "toggleEditorOnly", title: "Editor Only", category: "Window", defaultKeybindings: [{ mod: true, shift: true, key: "F12" }] },
+  { id: "save", title: "Save", category: "File", defaultKeybindings: [{ mod: true, key: "s" }] },
+  { id: "goToDefinition", title: "Go to Definition", category: "Navigation", defaultKeybindings: [{ mod: true, key: "b" }] },
+  { id: "openCompletion", title: "Code Completion", category: "Editor", defaultKeybindings: [{ mod: true, key: "Space" }] },
+  { id: "openQuickOpen", title: "Quick Open", category: "Navigation", defaultKeybindings: [{ mod: true, key: "p" }] },
+  { id: "openCommandPalette", title: "Command Palette", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "a" }] },
+  { id: "openRecentFiles", title: "Recent Files", category: "Navigation", defaultKeybindings: [{ mod: true, key: "e" }] },
+  { id: "showProject", title: "Project", category: "Window", defaultKeybindings: [{ alt: true, key: "1" }] },
+  { id: "showProblems", title: "Problems", category: "Window", defaultKeybindings: [{ alt: true, key: "4" }] },
+  { id: "showGit", title: "Git", category: "Window", defaultKeybindings: [{ alt: true, key: "9" }] },
+  { id: "showTerminal", title: "Terminal", category: "Window", defaultKeybindings: [{ alt: true, key: "F12" }] },
+];
 
 export function isBareShift(event: KeyboardEvent) {
   return event.key === "Shift" && !event.ctrlKey && !event.metaKey && !event.altKey;
 }
 
-export function resolveShellCommand(event: KeyboardEvent): ShellCommand | null {
-  const key = event.key.toLowerCase();
+export function resolveShellCommand(event: KeyboardEvent, context: KeybindingContext = {}): ShellCommand | null {
+  return resolveKeybindingCommand(event, shellCommandDescriptors, context);
+}
 
-  if (event.key === "Escape" && event.shiftKey) {
-    return "hideActiveToolWindow";
-  }
-
-  if (event.key === "Escape") {
-    return "closeTransientUi";
-  }
-
-  if (isPrimaryModifier(event) && key === "w" && !event.shiftKey) {
-    return "closeActiveFile";
-  }
-
-  if (isPrimaryModifier(event) && event.altKey && key === "arrowleft" && !event.shiftKey) {
-    return "navigateBack";
-  }
-
-  if (event.altKey && key === "f7" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-    return "findUsages";
-  }
-
-  if (isPrimaryModifier(event) && event.shiftKey && key === "f12") {
-    return "toggleEditorOnly";
-  }
-
-  if (isPrimaryModifier(event) && key === "s" && !event.shiftKey) {
-    return "save";
-  }
-
-  if (isPrimaryModifier(event) && key === "b" && !event.shiftKey) {
-    return "goToDefinition";
-  }
-
-  if (isPrimaryModifier(event) && event.code === "Space" && !event.shiftKey) {
-    return "openCompletion";
-  }
-
-  if (isPrimaryModifier(event) && key === "p" && !event.shiftKey) {
-    return "openQuickOpen";
-  }
-
-  if (isPrimaryModifier(event) && event.shiftKey && key === "a") {
-    return "openCommandPalette";
-  }
-
-  if (isPrimaryModifier(event) && key === "e" && !event.shiftKey) {
-    return "openRecentFiles";
-  }
-
-  if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-    if (key === "1") {
-      return "showProject";
-    }
-
-    if (key === "4") {
-      return "showProblems";
-    }
-
-    if (key === "9") {
-      return "showGit";
-    }
-
-    if (key === "f12") {
-      return "showTerminal";
-    }
-  }
-
-  return null;
+export function getShellCommandShortcut(command: ShellCommand) {
+  const descriptor = shellCommandDescriptors.find((item) => item.id === command);
+  return descriptor ? formatCommandShortcut(descriptor) : undefined;
 }

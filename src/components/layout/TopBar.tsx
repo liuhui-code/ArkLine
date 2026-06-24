@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getShellCommandShortcut } from "@/components/layout/shell-keymap";
 import type { BottomToolKey, OverlayKey } from "@/components/layout/shell-state";
 
 type TopBarProps = {
@@ -64,9 +65,18 @@ export function TopBar({
     };
   }, [activeMenu]);
 
-  function triggerMenuAction(action: () => void) {
+function triggerMenuAction(action: () => void) {
     setActiveMenu(null);
     action();
+  }
+
+  function renderMenuItem(label: string, action: () => void, shortcut?: string) {
+    return (
+      <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(action)}>
+        <span>{label}</span>
+        {shortcut ? <span className="topbar-menu__shortcut" aria-hidden="true">{shortcut}</span> : null}
+      </button>
+    );
   }
 
   return (
@@ -84,22 +94,22 @@ export function TopBar({
             <div className="topbar-menu" role="menu" aria-label={`${activeMenu} menu`}>
               {activeMenu === "file" ? (
                 <>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onOpenProject)}>Open Project...</button>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onOpenRecentProjects)}>Recent Projects</button>
+                  {renderMenuItem("Open Project...", onOpenProject)}
+                  {renderMenuItem("Recent Projects", onOpenRecentProjects)}
                 </>
               ) : null}
               {activeMenu === "edit" ? (
                 <>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onOpenCommandPalette)}>Command Palette</button>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onOpenSettings)}>Settings</button>
+                  {renderMenuItem("Command Palette", onOpenCommandPalette, getShellCommandShortcut("openCommandPalette"))}
+                  {renderMenuItem("Settings", onOpenSettings)}
                 </>
               ) : null}
               {activeMenu === "view" ? (
                 <>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onOpenSearchEverywhere)}>Search Everywhere</button>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onOpenTerminal)}>Terminal</button>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onLoadDiff)}>Git</button>
-                  <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(onToggleEditorOnly)}>Editor Only</button>
+                  {renderMenuItem("Search Everywhere", onOpenSearchEverywhere, "Double Shift")}
+                  {renderMenuItem("Terminal", onOpenTerminal, getShellCommandShortcut("showTerminal"))}
+                  {renderMenuItem("Git", onLoadDiff, getShellCommandShortcut("showGit"))}
+                  {renderMenuItem("Editor Only", onToggleEditorOnly, getShellCommandShortcut("toggleEditorOnly"))}
                 </>
               ) : null}
             </div>
