@@ -2004,7 +2004,8 @@ describe("App shell", () => {
 
     await user.keyboard("{Control>}{Shift>}{F12}{/Shift}{/Control}");
     expect(screen.getByLabelText("Files")).not.toBeVisible();
-    expect(screen.getByLabelText("Bottom Tool Window")).not.toBeVisible();
+    expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
+    expect(screen.getByLabelText("Git Panel")).not.toBeVisible();
 
     await user.keyboard("{Alt>}1{/Alt}");
     expect(screen.getByLabelText("Files")).toBeVisible();
@@ -2012,6 +2013,7 @@ describe("App shell", () => {
     await user.keyboard("{Alt>}9{/Alt}");
     expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
     expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Git Panel")).toBeVisible();
   });
 
   it("reopens a workspace from recent projects", async () => {
