@@ -507,7 +507,54 @@ describe("App shell", () => {
         column: 1,
       });
     });
-    expect(await screen.findByText("Definition: main.ets:3:1")).toBeVisible();
+  });
+
+  it("opens SDK declaration targets returned by go to definition", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: vi.fn(async (path: string) => path.endsWith("common.d.ts")
+        ? "declare class CommonMethod<T> {\n  width(value: Length): T;\n}"
+        : "@Entry\n@Component\nstruct Index {\n  build() {\n    Column() {}\n      .width(100)\n  }\n}"),
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      gotoDefinition: vi.fn(async () => ({
+        path: "C:/HarmonyOS/Sdk/ets/component/common.d.ts",
+        line: 2,
+        column: 3,
+      })),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "go to line");
+    await user.click(await screen.findByRole("button", { name: "Go to Line..." }));
+    await user.type(await screen.findByLabelText("Go to Line Query"), "6:8");
+    await user.keyboard("{Enter}");
+
+    const editor = await screen.findByLabelText("Editor Content");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("{Control>}b{/Control}");
+    await waitFor(() => {
+      expect(workspaceApi.gotoDefinition).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(workspaceApi.openFile).toHaveBeenCalledWith("C:/HarmonyOS/Sdk/ets/component/common.d.ts");
+    });
+
+    expect(await screen.findByRole("button", { name: "common.d.ts" })).toBeVisible();
+    expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("width(value: Length): T");
   });
 
   it("opens completion from the editor and replaces the typed prefix with the selected item", async () => {

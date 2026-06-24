@@ -511,4 +511,39 @@ rl.on("line", (line) => {{
             fs::remove_dir_all(workspace_root).unwrap();
         });
     }
+
+    #[test]
+    fn forwards_sdk_definition_targets_from_semantic_worker() {
+        with_valid_sdk_env(|temp_sdk_root| {
+            let sdk_common_path = temp_sdk_root.join("ets/component/common.d.ts");
+            fs::create_dir_all(sdk_common_path.parent().unwrap()).unwrap();
+            fs::write(&sdk_common_path, "declare class CommonMethod<T> {\n  width(value: Length): T;\n}\n")
+                .unwrap();
+
+            let source_path = unique_temp_path("arkui-width-source");
+            fs::write(
+                &source_path,
+                "@Entry\n@Component\nstruct Index {\n  build() {\n    Column() {}\n      .width(100)\n  }\n}\n",
+            )
+            .unwrap();
+            let source_text = source_path.to_string_lossy().to_string();
+            let sdk_common_text = sdk_common_path.to_string_lossy().to_string();
+
+            let runtime = LanguageRuntime::default();
+            let worker = mock_worker_entry(Some(&sdk_common_text), &["width"]);
+            let settings =
+                with_worker_settings(sdk_settings(&temp_sdk_root.to_string_lossy()), &worker);
+
+            assert_eq!(
+                goto_definition(&runtime, &settings, &request(&source_text, 6, 8)),
+                Some(crate::models::language::DefinitionTarget {
+                    path: sdk_common_text,
+                    line: 1,
+                    column: 17,
+                })
+            );
+
+            fs::remove_file(source_path).unwrap();
+        });
+    }
 }
