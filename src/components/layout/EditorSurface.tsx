@@ -1,4 +1,4 @@
-import type { DefinitionHoverState, EditorLineColumn } from "@/editor/editor-events";
+import type { DefinitionHoverState, EditorCaretRect, EditorLineColumn } from "@/editor/editor-events";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { RefObject } from "react";
 import { LazyArkTsEditor } from "@/editor/LazyArkTsEditor";
@@ -35,6 +35,7 @@ type EditorSurfaceProps = {
   surfaceRef: RefObject<HTMLElement | null>;
   onChange: (value: string) => void;
   onSelectionChange: (selection: { line: number; column: number }) => void;
+  onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
@@ -58,6 +59,7 @@ export function EditorSurface({
   surfaceRef,
   onChange,
   onSelectionChange,
+  onCaretRectChange,
   onDefinitionTrigger,
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
@@ -110,6 +112,7 @@ export function EditorSurface({
           selectionTarget={selectionTarget}
           value={content}
           onChange={onChange}
+          onCaretRectChange={onCaretRectChange}
           onDefinitionTrigger={onDefinitionTrigger}
           onDefinitionHoverChange={onDefinitionHoverChange}
           onSelectionChange={onSelectionChange}

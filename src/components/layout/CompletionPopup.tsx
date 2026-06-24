@@ -1,9 +1,11 @@
 import type { CompletionPresentation } from "@/components/layout/completion-model";
+import type { EditorCaretRect } from "@/editor/editor-events";
 
 type CompletionPopupProps = {
   items: CompletionPresentation[];
   selectedIndex: number;
   position: { top: number; left: number };
+  anchor: EditorCaretRect | null;
   status: "loading" | "ready" | "empty" | "error";
   message?: string;
   detailsVisible: boolean;
@@ -15,6 +17,7 @@ export function CompletionPopup({
   items,
   selectedIndex,
   position,
+  anchor,
   status,
   message,
   detailsVisible,
@@ -28,6 +31,9 @@ export function CompletionPopup({
       className="completion-popup"
       role="listbox"
       aria-label="Code Completion"
+      data-anchor={anchor ? "editor-caret" : "fallback"}
+      data-anchor-line={anchor?.line ?? 0}
+      data-anchor-column={anchor?.column ?? 0}
       style={{ top: position.top, left: position.left }}
     >
       {status === "ready" ? (

@@ -6,6 +6,13 @@ export type EditorLineColumn = {
   column: number;
 };
 
+export type EditorCaretRect = EditorLineColumn & {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+};
+
 export type DefinitionHoverState = {
   active: boolean;
   selection?: EditorLineColumn;
@@ -90,6 +97,30 @@ function toLineColumn(view: EditorView, position: number): EditorLineColumn {
   return {
     line: line.number,
     column: position - line.from + 1,
+  };
+}
+
+export function readCaretRect(view: EditorView): EditorCaretRect {
+  const head = view.state.selection.main.head;
+  const selection = toLineColumn(view, head);
+  const coordinates = view.coordsAtPos(head);
+
+  if (!coordinates) {
+    return {
+      ...selection,
+      top: 72,
+      left: 240,
+      bottom: 96,
+      right: 241,
+    };
+  }
+
+  return {
+    ...selection,
+    top: coordinates.top,
+    left: coordinates.left,
+    bottom: coordinates.bottom,
+    right: coordinates.right,
   };
 }
 

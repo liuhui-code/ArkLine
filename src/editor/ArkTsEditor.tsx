@@ -11,9 +11,11 @@ import {
   languageExtensionForPath,
 } from "@/editor/editor-extensions";
 import {
+  readCaretRect,
   resolveDefinitionTokenRange,
   setJumpRevealEffect,
   type DefinitionHoverState,
+  type EditorCaretRect,
   type EditorLineColumn,
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
@@ -29,6 +31,7 @@ type ArkTsEditorProps = {
   insertTextTarget?: EditorInsertTextTarget | null;
   onChange: (value: string) => void;
   onSelectionChange?: (selection: { line: number; column: number }) => void;
+  onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
@@ -47,6 +50,7 @@ export function ArkTsEditor({
   insertTextTarget = null,
   onChange,
   onSelectionChange,
+  onCaretRectChange,
   onDefinitionTrigger,
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
@@ -59,6 +63,7 @@ export function ArkTsEditor({
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onSelectionChangeRef = useRef(onSelectionChange);
+  const onCaretRectChangeRef = useRef(onCaretRectChange);
   const onDefinitionTriggerRef = useRef(onDefinitionTrigger);
   const onDefinitionHoverChangeRef = useRef(onDefinitionHoverChange);
   const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
@@ -66,6 +71,7 @@ export function ArkTsEditor({
 
   onChangeRef.current = onChange;
   onSelectionChangeRef.current = onSelectionChange;
+  onCaretRectChangeRef.current = onCaretRectChange;
   onDefinitionTriggerRef.current = onDefinitionTrigger;
   onDefinitionHoverChangeRef.current = onDefinitionHoverChange;
   onTypingCompletionTriggerRef.current = onTypingCompletionTrigger;
@@ -81,7 +87,13 @@ export function ArkTsEditor({
         path,
         appearance,
         (nextValue) => onChangeRef.current(nextValue),
-        (selection) => onSelectionChangeRef.current?.(selection),
+        (selection) => {
+          onSelectionChangeRef.current?.(selection);
+          const view = viewRef.current;
+          if (view) {
+            onCaretRectChangeRef.current?.(readCaretRect(view));
+          }
+        },
         (selection) => onDefinitionTriggerRef.current?.(selection),
         (state) => onDefinitionHoverChangeRef.current?.(state),
         (selection) => onTypingCompletionTriggerRef.current?.(selection),
@@ -97,6 +109,7 @@ export function ArkTsEditor({
       state,
       parent: hostRef.current,
     });
+    onCaretRectChangeRef.current?.(readCaretRect(viewRef.current));
 
     return () => {
       if (jumpRevealTimeoutRef.current != null) {

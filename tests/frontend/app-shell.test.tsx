@@ -718,6 +718,47 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
+  it("positions code completion inside the active editor surface", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
+
+    expect(completionList).toHaveAttribute("data-anchor", "editor-caret");
+    expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
+    expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+  });
+
   it("accepts the top auto-opened completion with Tab while keeping editor focus", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

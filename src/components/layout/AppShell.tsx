@@ -43,6 +43,7 @@ import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/fe
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
+import type { EditorCaretRect } from "@/editor/editor-events";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 type NavigationLocation = { path: string; line: number; column: number };
@@ -79,6 +80,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [selectionTarget, setSelectionTarget] = useState<{ line: number; column: number; nonce: number } | null>(null);
   const [insertTextTarget, setInsertTextTarget] = useState<{ text: string; replaceBefore?: number; nonce: number } | null>(null);
   const [editorSelection, setEditorSelection] = useState({ line: 1, column: 1 });
+  const [completionAnchor, setCompletionAnchor] = useState<EditorCaretRect | null>(null);
   const [completionItems, setCompletionItems] = useState<LanguageCompletionItem[]>([]);
   const [completionReplacePrefix, setCompletionReplacePrefix] = useState("");
   const [completionSelectedIndex, setCompletionSelectedIndex] = useState(0);
@@ -413,6 +415,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProblems([]);
     setDiffFiles([]);
     setCompletionItems([]);
+    setCompletionAnchor(null);
     setUsageSearch(idleUsageSearchState());
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
@@ -453,6 +456,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     syncTabs();
     setActiveDocument(path);
     setCompletionItems([]);
+    setCompletionAnchor(null);
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
     setSelectionTarget(null);
@@ -987,6 +991,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const selectedCompletionPresentation = completionPresentationResults[Math.min(completionSelectedIndex, Math.max(completionPresentationResults.length - 1, 0))] ?? null;
   const completionPopupVisible = activeOverlay === "completion" && !completionAutoFocus && completionPresentationResults.length > 0;
   const completionOverlayVisible = activeOverlay !== "completion" || completionAutoFocus || !completionPopupVisible;
+  const completionPopupPosition = completionAnchor
+    ? { top: completionAnchor.bottom + 4, left: completionAnchor.left }
+    : { top: 96, left: 280 };
 
   useEffect(() => {
     setCompletionSelectedIndex((current) => {
@@ -1065,7 +1072,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div className="shell-grid">
         <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectTool={showLeftTool} />
-        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
       </div>
       {selectedBlameAttribution ? (
         <GitBlameCard
@@ -1081,7 +1088,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         <CompletionPopup
           items={completionPresentationResults}
           selectedIndex={completionSelectedIndex}
-          position={{ top: 96, left: 280 }}
+          position={completionPopupPosition}
+          anchor={completionAnchor}
           status="ready"
           detailsVisible={false}
           onAccept={(item) => insertCompletion(item.insertText)}

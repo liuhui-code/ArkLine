@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 import type { EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
-import type { DefinitionHoverState, EditorLineColumn } from "@/editor/editor-events";
+import type { DefinitionHoverState, EditorCaretRect, EditorLineColumn } from "@/editor/editor-events";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 
@@ -18,6 +18,7 @@ type LazyArkTsEditorProps = {
   insertTextTarget?: EditorInsertTextTarget | null;
   onChange: (value: string) => void;
   onSelectionChange?: (selection: { line: number; column: number }) => void;
+  onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
