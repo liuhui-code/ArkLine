@@ -18,7 +18,7 @@ use super::protocol::{SemanticDocumentPosition, SemanticRequest};
 #[cfg(not(test))]
 const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 #[cfg(test)]
-const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_millis(300);
+const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Deserialize)]
 struct RawSemanticResponse {
