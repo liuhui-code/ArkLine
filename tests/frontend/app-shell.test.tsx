@@ -709,8 +709,13 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(workspaceApi.completeSymbol).toHaveBeenCalled();
     });
-    expect(await screen.findByLabelText("Completion Overlay")).toBeVisible();
-    expect(screen.getByRole("button", { name: /build\(\)/ })).toBeVisible();
+    const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(completionList).toBeVisible();
+    expect(screen.queryByLabelText("Completion Query")).not.toBeInTheDocument();
+    expect(within(completionList).getByRole("option", { name: /build\(\)/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await waitFor(() => expect(editor).toHaveFocus());
   });
 

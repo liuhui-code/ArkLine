@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
+import { CompletionPopup } from "@/components/layout/CompletionPopup";
+import { normalizeCompletionItems, rankCompletionItems } from "@/components/layout/completion-model";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow } from "@/components/layout/GitToolWindow";
@@ -956,17 +958,43 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         || leftRank[5] - rightRank[5]
         || leftRank[6].localeCompare(rightRank[6]);
     });
+  const completionPresentationContext = useMemo(() => {
+    const acceptedLabels = [...completionRecencyRef.current.entries()]
+      .sort((left, right) => left[1] - right[1])
+      .map(([label]) => label);
+    return {
+      prefix: quickOpenQuery.trim() || completionReplacePrefix,
+      lineTextBeforeCursor: getLineTextBeforeCursor(
+        documentsRef.current.getDocument(activePath ?? "")?.currentContent ?? editorContent,
+        editorSelection.line,
+        editorSelection.column,
+      ),
+      trigger: completionAutoFocus ? "manual" : "typing",
+      acceptedLabels,
+    } as const;
+  }, [activePath, completionAutoFocus, completionReplacePrefix, editorContent, editorSelection.column, editorSelection.line, quickOpenQuery]);
+  const completionPresentationResults = rankCompletionItems(
+    normalizeCompletionItems(completionItems, completionPresentationContext).filter((item) => {
+      const query = quickOpenQuery.trim().toLowerCase();
+      return !query || item.label.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query);
+    }),
+    completionPresentationContext,
+  );
   const selectedCompletion = completionResults[Math.min(completionSelectedIndex, Math.max(completionResults.length - 1, 0))] ?? null;
+  const selectedCompletionPresentation = completionPresentationResults[Math.min(completionSelectedIndex, Math.max(completionPresentationResults.length - 1, 0))] ?? null;
+  const completionPopupVisible = activeOverlay === "completion" && completionPresentationResults.length > 0;
+  const completionOverlayVisible = activeOverlay !== "completion" || completionAutoFocus || !completionPopupVisible;
 
   useEffect(() => {
     setCompletionSelectedIndex((current) => {
-      if (completionResults.length === 0) {
+      const resultCount = completionPresentationResults.length || completionResults.length;
+      if (resultCount === 0) {
         return 0;
       }
 
-      return Math.min(current, completionResults.length - 1);
+      return Math.min(current, resultCount - 1);
     });
-  }, [completionResults.length]);
+  }, [completionPresentationResults.length, completionResults.length]);
 
   useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
@@ -992,6 +1020,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       }
 
       event.preventDefault();
+      if (selectedCompletionPresentation) {
+        insertCompletion(selectedCompletionPresentation.insertText);
+        return;
+      }
       if (selectedCompletion) {
         insertCompletion(selectedCompletion.label);
       }
@@ -999,7 +1031,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
     window.addEventListener("keydown", handleCompletionAcceptKey, true);
     return () => window.removeEventListener("keydown", handleCompletionAcceptKey, true);
-  }, [activeOverlay, completionAutoFocus, completionResults, selectedCompletion]);
+  }, [activeOverlay, completionAutoFocus, completionResults, selectedCompletion, selectedCompletionPresentation]);
 
   const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, {
     openProject: () => void projectOpening.openProjectPicker(),
@@ -1036,9 +1068,22 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           onCopyHash={copySelectedBlameHash}
         />
       ) : null}
-      <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
-        <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} completionSelectedIndex={completionSelectedIndex} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onMoveCompletionSelection={(direction) => moveCompletionSelection(direction, completionResults.length)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onAcceptSelectedCompletion={() => { if (selectedCompletion) insertCompletion(selectedCompletion.label); }} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} completionAutoFocus={completionAutoFocus} />
-      </OverlaySurface>
+      {completionPopupVisible ? (
+        <CompletionPopup
+          items={completionPresentationResults}
+          selectedIndex={completionSelectedIndex}
+          position={{ top: 96, left: 280 }}
+          status="ready"
+          detailsVisible={false}
+          onAccept={(item) => insertCompletion(item.insertText)}
+          onSelect={setCompletionSelectedIndex}
+        />
+      ) : null}
+      {completionOverlayVisible ? (
+        <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
+          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} completionSelectedIndex={completionSelectedIndex} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onMoveCompletionSelection={(direction) => moveCompletionSelection(direction, completionResults.length)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onAcceptSelectedCompletion={() => { if (selectedCompletion) insertCompletion(selectedCompletion.label); }} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} completionAutoFocus={completionAutoFocus} />
+        </OverlaySurface>
+      ) : null}
 
       <OpenProjectDialog
         open={projectOpening.projectPickerVisible}
@@ -1104,4 +1149,10 @@ function formatCurrentLineBlame(attribution: GitBlameAttribution | null) {
   }
 
   return null;
+}
+
+function getLineTextBeforeCursor(content: string, line: number, column: number) {
+  const lines = content.split(/\r?\n/);
+  const lineText = lines[Math.max(0, line - 1)] ?? "";
+  return lineText.slice(0, Math.max(0, column - 1));
 }
