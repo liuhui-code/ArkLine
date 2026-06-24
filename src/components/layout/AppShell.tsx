@@ -1027,7 +1027,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const completionPresentationResults = rankCompletionItems(
     normalizeCompletionItems(completionItems, completionPresentationContext).filter((item) => {
       const query = quickOpenQuery.trim().toLowerCase();
-      return !query || item.label.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query);
+      return !query
+        || item.label.toLowerCase().includes(query)
+        || item.filterText.toLowerCase().includes(query)
+        || item.detail.toLowerCase().includes(query);
     }),
     completionPresentationContext,
   );

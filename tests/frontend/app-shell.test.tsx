@@ -1403,6 +1403,50 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
   });
 
+  it("keeps completion items when the query matches filter text", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        {
+          label: "setWidth(value)",
+          detail: "ArkUI universal attribute",
+          kind: "method",
+          filterText: "width",
+          source: "arkui" as const,
+        },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}wi");
+
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+
+    expect(within(results).getByRole("option", { name: /setWidth\(value\)/ })).toBeVisible();
+  });
+
   it("prioritizes the most recently accepted completion item on the next matching query", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
