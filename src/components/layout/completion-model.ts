@@ -60,12 +60,12 @@ export function normalizeCompletionItems(
   items: LanguageCompletionItem[],
   context: CompletionContext,
 ): CompletionPresentation[] {
-  return items.map((item) => {
+  return items.map((item, index) => {
     const source = inferCompletionSource(item, context);
     const kind = normalizeCompletionKind(item, source);
 
     return {
-      id: `${source}:${kind}:${item.label}`,
+      id: `${index}:${source}:${kind}:${item.label}`,
       label: item.label,
       insertText: item.label,
       detail: item.detail,
@@ -144,8 +144,8 @@ type RankTuple = [
   chainSourcePriority: number,
   containsSourcePriority: number,
   containsPositionPriority: number,
-  recentPriority: number,
   prefixDistancePriority: number,
+  recentPriority: number,
   sourcePriority: number,
   kindPriority: number,
   labelPriority: string,
@@ -164,8 +164,8 @@ function rankItem(item: CompletionPresentation, context: CompletionContext): Ran
     chainSourcePriority(item, context),
     containsSourcePriority(hasPrefixMatch, query, labelContainsIndex, detailContainsIndex),
     containsPositionPriority(hasPrefixMatch, query, labelContainsIndex, detailContainsIndex),
-    recentPriority(item, context),
     hasPrefixMatch ? normalizedLabel.length - query.length : Number.MAX_SAFE_INTEGER,
+    recentPriority(item, context),
     sourcePriority(item),
     kindPriority(item),
     normalizedLabel,

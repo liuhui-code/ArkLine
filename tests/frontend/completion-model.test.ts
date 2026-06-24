@@ -26,7 +26,7 @@ describe("completion presentation model", () => {
 
     expect(items).toEqual([
       {
-        id: "arkuiSdk:component:Column()",
+        id: "0:arkuiSdk:component:Column()",
         label: "Column()",
         insertText: "Column()",
         detail: "ArkUI component",
@@ -38,7 +38,7 @@ describe("completion presentation model", () => {
         original: backendItems[0],
       },
       {
-        id: "workspace:method:submit()",
+        id: "1:workspace:method:submit()",
         label: "submit()",
         insertText: "submit()",
         detail: "Workspace symbol",
@@ -52,7 +52,7 @@ describe("completion presentation model", () => {
     ]);
   });
 
-  it("ranks prefix matches before contains matches with recency only breaking close ties", () => {
+  it("keeps closer prefix matches ahead of recently accepted longer prefix matches", () => {
     const items = normalizeCompletionItems([
       { label: "button()", detail: "Workspace function", kind: "function" },
       { label: "build()", detail: "Workspace function", kind: "function" },
@@ -69,7 +69,20 @@ describe("completion presentation model", () => {
       acceptedLabels: ["rebuild()", "button()"],
     }).map((item) => item.label);
 
-    expect(rankedLabels).toEqual(["button()", "build()", "rebuild()"]);
+    expect(rankedLabels).toEqual(["build()", "button()", "rebuild()"]);
+  });
+
+  it("gives duplicate labels stable distinct presentation ids", () => {
+    const items = normalizeCompletionItems([
+      { label: "format()", detail: "Workspace overload string", kind: "function" },
+      { label: "format()", detail: "Workspace overload number", kind: "function" },
+    ], baseContext);
+
+    expect(items.map((item) => item.id)).toEqual([
+      "0:workspace:method:format()",
+      "1:workspace:method:format()",
+    ]);
+    expect(new Set(items.map((item) => item.id)).size).toBe(2);
   });
 
   it("prioritizes ArkUI chain modifiers after component calls", () => {
@@ -92,8 +105,8 @@ describe("completion presentation model", () => {
 
     expect(ranked.map((item) => `${item.source}:${item.label}`)).toEqual([
       "arkuiSdk:width",
-      "workspace:width()",
       "workspace:wrap()",
+      "workspace:width()",
     ]);
   });
 });
