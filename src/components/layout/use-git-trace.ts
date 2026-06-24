@@ -13,10 +13,11 @@ type UseGitTraceArgs = {
   activeText: string;
   baseText: string;
   activeTool: "problems" | "terminal" | "git" | "gitTrace" | "usages";
+  refreshToken: number;
   workspaceApi: WorkspaceApi;
 };
 
-export function useGitTrace({ activeLine, activePath, activeText, baseText, activeTool, workspaceApi }: UseGitTraceArgs) {
+export function useGitTrace({ activeLine, activePath, activeText, baseText, activeTool, refreshToken, workspaceApi }: UseGitTraceArgs) {
   const [state, setState] = useState<GitTraceState>(createDefaultGitTraceState);
 
   useEffect(() => {
@@ -85,7 +86,7 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
     return () => {
       cancelled = true;
     };
-  }, [activePath, baseText, workspaceApi]);
+  }, [activePath, baseText, refreshToken, workspaceApi]);
 
   useEffect(() => {
     if (state.blameStatus !== "ready" || state.blameLines.length === 0) {

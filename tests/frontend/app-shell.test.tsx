@@ -1649,6 +1649,78 @@ describe("App shell", () => {
     expect(container.querySelector(".cm-git-trace-marker")).toBeNull();
   });
 
+  it("refreshes Git Blame once when the status menu refresh action is selected", async () => {
+    const user = userEvent.setup();
+    const getFileBlame = vi.fn(async () => [
+      {
+        line: 1,
+        commit: "aaa1111",
+        sourceLine: 1,
+        author: "Jane Doe",
+        authoredAt: "2026-06-20T10:00:00Z",
+        relativeTime: "4d ago",
+        summary: "Add entry component",
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      getFileBlame,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await screen.findByText("Blame: Jane Doe, 4d ago");
+
+    expect(getFileBlame).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "Blame actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Refresh Blame" }));
+
+    await waitFor(() => expect(getFileBlame).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/Blame refreshed/)).toBeVisible();
+  });
+
+  it("opens the current-line blame card from the status bar menu without switching bottom tools", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ],
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(screen.getByRole("tab", { name: "Terminal" }));
+    await user.click(screen.getByRole("button", { name: "Blame actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Show Current Line Commit" }));
+
+    expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Add entry component");
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("shows a clear message when the file is not tracked by Git", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

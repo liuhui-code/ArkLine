@@ -86,6 +86,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
   const [completionAutoFocus, setCompletionAutoFocus] = useState(true);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
+  const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
+  const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
   const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
   const documentsRef = useRef(createDocumentStore());
   const tabsRef = useRef(createEditorTabsStore(documentsRef.current));
@@ -109,6 +111,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     activeText: activeDocument?.currentContent ?? editorContent,
     baseText: activeDocument?.originalContent ?? editorContent,
     activeTool: activeBottomTool,
+    refreshToken: gitBlameRefreshToken,
     workspaceApi,
   });
   const currentLineBlame = formatCurrentLineBlame(
@@ -251,6 +254,35 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   function toggleGitBlame() {
     setGitBlameVisible((visible) => !visible);
     setSelectedBlameAttribution(null);
+    setGitBlameMenuOpen(false);
+  }
+  function toggleGitBlameMenu() {
+    setGitBlameMenuOpen((open) => !open);
+  }
+  function refreshGitBlame() {
+    if (!activePath) {
+      setStatusText("Git Blame unavailable: no active file");
+      setGitBlameMenuOpen(false);
+      return;
+    }
+    setGitBlameRefreshToken((token) => token + 1);
+    setGitBlameMenuOpen(false);
+    setStatusText("Blame refreshed");
+  }
+  function closeGitBlame() {
+    setGitBlameVisible(false);
+    setSelectedBlameAttribution(null);
+    setGitBlameMenuOpen(false);
+  }
+  function showCurrentLineBlame() {
+    const attribution = gitTraceState.blameAttributions.find((item) => item.bufferLine === editorSelection.line) ?? null;
+    if (!attribution) {
+      setStatusText("Git Blame unavailable for current line");
+      setGitBlameMenuOpen(false);
+      return;
+    }
+    setSelectedBlameAttribution(attribution);
+    setGitBlameMenuOpen(false);
   }
   function selectGitBlameLine(line: number) {
     const attribution = gitTraceState.blameAttributions.find((item) => item.bufferLine === line) ?? null;
@@ -1010,7 +1042,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       >
         {definitionDebugText}
       </div>
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} onToggleGitBlame={toggleGitBlame} />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
     </div>
   );
 }
