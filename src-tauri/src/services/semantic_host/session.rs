@@ -193,12 +193,8 @@ impl SemanticWorkerSession {
         let line = self.read_response_line(&request_id)?;
 
         if line.trim().is_empty() {
-            let stderr_detail = self.read_stderr_snippet();
             return Err(format!(
-                "Semantic worker returned an empty response for {request_id}{}",
-                stderr_detail
-                    .map(|value| format!(" ({value})"))
-                    .unwrap_or_default()
+                "Semantic worker returned an empty response for {request_id}"
             ));
         }
 
@@ -243,22 +239,6 @@ impl SemanticWorkerSession {
                 "Semantic worker response channel closed for {request_id}"
             )),
         }
-    }
-
-    fn read_stderr_snippet(&self) -> Option<String> {
-        let mut child = self.child.lock().ok()?;
-        let stderr = child.stderr.as_mut()?;
-        let mut buffer = [0_u8; 256];
-        let bytes_read = std::io::Read::read(stderr, &mut buffer).ok()?;
-        if bytes_read == 0 {
-            return None;
-        }
-
-        Some(
-            String::from_utf8_lossy(&buffer[..bytes_read])
-                .trim()
-                .to_string(),
-        )
     }
 
     fn kill_worker(&self) {
@@ -399,6 +379,24 @@ setInterval(() => {}, 1000);
         path
     }
 
+    fn empty_line_worker_entry() -> PathBuf {
+        let path = unique_temp_path("empty-line-semantic-worker", "mjs");
+        fs::write(
+            &path,
+            r#"
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+rl.on("line", () => {
+  process.stdout.write("\n");
+});
+setInterval(() => {}, 1000);
+"#,
+        )
+        .unwrap();
+        path
+    }
+
     #[cfg(unix)]
     fn assert_process_exited(pid: u32) {
         let output = match Command::new("ps").args(["-p", &pid.to_string()]).output() {
@@ -477,6 +475,22 @@ setInterval(() => {}, 1000);
         let error = session.health().unwrap_err();
 
         assert!(error.contains("Timed out waiting for semantic worker response"));
+        fs::remove_file(entry_path).unwrap();
+    }
+
+    #[test]
+    fn rejects_empty_worker_response_without_blocking_on_stderr() {
+        let entry_path = empty_line_worker_entry();
+        let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+            semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+            ..SemanticHostConfig::default()
+        })
+        .expect("worker spec should be discoverable");
+        let session = SemanticWorkerSession::start(&spec).expect("worker session should start");
+
+        let error = session.health().unwrap_err();
+
+        assert!(error.contains("Semantic worker returned an empty response"));
         fs::remove_file(entry_path).unwrap();
     }
 }
