@@ -1124,10 +1124,8 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}");
     await user.keyboard("{Control>} {/Control}");
 
-    const results = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(results).toBeVisible();
-    expect(within(results).getByText("No completions")).toBeVisible();
-    expect(within(results).queryByRole("option")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("No completions");
     expect(await screen.findByText("Completion empty")).toBeVisible();
   });
 

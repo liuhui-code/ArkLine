@@ -36,18 +36,18 @@ export function CompletionPopup({
       data-anchor-column={anchor?.column ?? 0}
       style={{ top: position.top, left: position.left }}
     >
-      <div
-        className="completion-popup__list"
-        role="listbox"
-        aria-label="Code Completion"
-        aria-activedescendant={activeOptionId}
-        data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
-        data-anchor-line={anchor?.line ?? 0}
-        data-anchor-column={anchor?.column ?? 0}
-        style={{ top: position.top, left: position.left }}
-      >
-        {status === "ready" ? (
-          items.map((item, index) => (
+      {status === "ready" ? (
+        <div
+          className="completion-popup__list"
+          role="listbox"
+          aria-label="Code Completion"
+          aria-activedescendant={activeOptionId}
+          data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
+          data-anchor-line={anchor?.line ?? 0}
+          data-anchor-column={anchor?.column ?? 0}
+          style={{ top: position.top, left: position.left }}
+        >
+          {items.map((item, index) => (
             <div
               key={item.id}
               id={completionOptionId(item.id)}
@@ -68,13 +68,20 @@ export function CompletionPopup({
                 <span className="completion-popup__detail">{item.detail}</span>
               )}
             </div>
-          ))
-        ) : (
-          <div className={`completion-popup__state completion-popup__state--${status}`}>
-            {message ?? statusLabel(status)}
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div
+          className={`completion-popup__state completion-popup__state--${status}`}
+          role="status"
+          data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
+          data-anchor-line={anchor?.line ?? 0}
+          data-anchor-column={anchor?.column ?? 0}
+          style={{ top: position.top, left: position.left }}
+        >
+          {message ?? statusLabel(status)}
+        </div>
+      )}
       {detailsVisible && selectedItem ? (
         <aside
           id={detailsId}
