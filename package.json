@@ -6,11 +6,13 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "build:semantic-worker": "pnpm --dir semantic-worker build",
+    "test:semantic-worker": "pnpm --dir semantic-worker test",
+    "build": "pnpm build:semantic-worker && tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "check:windows-build": "powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1",
     "package:windows": "pnpm build && tauri build --bundles nsis",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "pnpm test:semantic-worker && vitest run",
     "test:watch": "vitest",
     "tauri": "tauri"
   },

@@ -1,6 +1,7 @@
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -14,6 +15,11 @@ use crate::models::language::{
 use super::process::SemanticWorkerProcessSpec;
 use super::protocol::{SemanticDocumentPosition, SemanticRequest};
 
+#[cfg(not(test))]
+const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+#[cfg(test)]
+const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_millis(300);
+
 #[derive(Debug, Deserialize)]
 struct RawSemanticResponse {
     id: String,
@@ -25,7 +31,7 @@ struct RawSemanticResponse {
 pub struct SemanticWorkerSession {
     child: Mutex<Child>,
     stdin: Mutex<ChildStdin>,
-    stdout: Mutex<BufReader<ChildStdout>>,
+    response_rx: Mutex<Receiver<Result<String, String>>>,
     next_request_id: AtomicU64,
 }
 
@@ -53,11 +59,12 @@ impl SemanticWorkerSession {
             .stdout
             .take()
             .ok_or_else(|| "Semantic worker stdout is unavailable".to_string())?;
+        let response_rx = spawn_stdout_reader(stdout);
 
         Ok(Self {
             child: Mutex::new(child),
             stdin: Mutex::new(stdin),
-            stdout: Mutex::new(BufReader::new(stdout)),
+            response_rx: Mutex::new(response_rx),
             next_request_id: AtomicU64::new(1),
         })
     }
@@ -183,16 +190,7 @@ impl SemanticWorkerSession {
                 })?;
         }
 
-        let mut line = String::new();
-        {
-            let mut stdout = self
-                .stdout
-                .lock()
-                .map_err(|_| "Semantic worker stdout lock is poisoned".to_string())?;
-            stdout.read_line(&mut line).map_err(|error| {
-                format!("Failed to read semantic worker response {request_id}: {error}")
-            })?;
-        }
+        let line = self.read_response_line(&request_id)?;
 
         if line.trim().is_empty() {
             let stderr_detail = self.read_stderr_snippet();
@@ -224,6 +222,29 @@ impl SemanticWorkerSession {
         Ok(response)
     }
 
+    fn read_response_line(&self, request_id: &str) -> Result<String, String> {
+        let response_rx = self
+            .response_rx
+            .lock()
+            .map_err(|_| "Semantic worker response lock is poisoned".to_string())?;
+
+        match response_rx.recv_timeout(SEMANTIC_WORKER_REQUEST_TIMEOUT) {
+            Ok(Ok(line)) => Ok(line),
+            Ok(Err(error)) => Err(format!(
+                "Failed to read semantic worker response {request_id}: {error}"
+            )),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                self.kill_worker();
+                Err(format!(
+                    "Timed out waiting for semantic worker response {request_id}"
+                ))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+                "Semantic worker response channel closed for {request_id}"
+            )),
+        }
+    }
+
     fn read_stderr_snippet(&self) -> Option<String> {
         let mut child = self.child.lock().ok()?;
         let stderr = child.stderr.as_mut()?;
@@ -239,6 +260,36 @@ impl SemanticWorkerSession {
                 .to_string(),
         )
     }
+
+    fn kill_worker(&self) {
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn spawn_stdout_reader(stdout: ChildStdout) -> Receiver<Result<String, String>> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut stdout = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match stdout.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if tx.send(Ok(line)).is_err() {
+                        break;
+                    }
+                }
+                Err(error) => {
+                    let _ = tx.send(Err(error.to_string()));
+                    break;
+                }
+            }
+        }
+    });
+    rx
 }
 
 fn parse_definition_target(payload: &Value) -> Result<DefinitionTarget, String> {
@@ -333,12 +384,28 @@ rl.on("line", (line) => {
         path
     }
 
+    fn hanging_worker_entry() -> PathBuf {
+        let path = unique_temp_path("hanging-semantic-worker", "mjs");
+        fs::write(
+            &path,
+            r#"
+import readline from "node:readline";
+
+readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+setInterval(() => {}, 1000);
+"#,
+        )
+        .unwrap();
+        path
+    }
+
     #[cfg(unix)]
     fn assert_process_exited(pid: u32) {
-        let output = Command::new("ps")
-            .args(["-p", &pid.to_string()])
-            .output()
-            .expect("ps should run");
+        let output = match Command::new("ps").args(["-p", &pid.to_string()]).output() {
+            Ok(output) => output,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return,
+            Err(error) => panic!("ps should run: {error}"),
+        };
 
         assert!(!output.status.success());
     }
@@ -394,6 +461,22 @@ rl.on("line", (line) => {
         drop(session);
 
         assert_process_exited(pid);
+        fs::remove_file(entry_path).unwrap();
+    }
+
+    #[test]
+    fn times_out_when_worker_starts_but_never_responds() {
+        let entry_path = hanging_worker_entry();
+        let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+            semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+            ..SemanticHostConfig::default()
+        })
+        .expect("worker spec should be discoverable");
+        let session = SemanticWorkerSession::start(&spec).expect("worker session should start");
+
+        let error = session.health().unwrap_err();
+
+        assert!(error.contains("Timed out waiting for semantic worker response"));
         fs::remove_file(entry_path).unwrap();
     }
 }
