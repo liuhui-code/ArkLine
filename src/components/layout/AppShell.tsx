@@ -45,7 +45,7 @@ type NavigationLocation = { path: string; line: number; column: number };
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
-  const [bottomVisible, setBottomVisible] = useState(true);
+  const [bottomContentVisible, setBottomContentVisible] = useState(true);
   const [activeLeftTool, setActiveLeftTool] = useState<LeftToolKey>("project");
   const [activeBottomTool, setActiveBottomTool] = useState<BottomToolKey>("problems");
   const [workspace, setWorkspace] = useState<WorkspaceViewModel | null>(null);
@@ -196,10 +196,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
     setActiveLeftTool(tool);
-    setBottomVisible(true); setActiveBottomTool(tool === "git" ? "git" : "problems"); setStatusText(tool === "git" ? "Git" : "Problems");
+    showBottomTool(tool === "git" ? "git" : "problems");
   }
   function showBottomTool(tool: BottomToolKey) {
-    setBottomVisible(true);
+    setBottomContentVisible(true);
     setActiveBottomTool(tool);
     setStatusText(
       tool === "terminal" ? "Terminal"
@@ -209,10 +209,20 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       : "Problems",
     );
   }
+  function toggleBottomTool(tool: BottomToolKey) {
+    if (bottomContentVisible && activeBottomTool === tool) {
+      hideBottomToolWindow();
+      return;
+    }
+    showBottomTool(tool);
+  }
+  function hideBottomToolWindow() {
+    setBottomContentVisible(false);
+    setStatusText("Editor");
+    focusEditorSoon();
+  }
   function openUsagesToolWindow() {
-    setBottomVisible(true);
-    setActiveBottomTool("usages");
-    setStatusText("Usages");
+    showBottomTool("usages");
   }
 
   function closeTransientUi() {
@@ -257,7 +267,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     if (closeTransientUi()) return;
     const activeElement = document.activeElement;
     const focusTargets = [
-      [bottomVisible, bottomToolWindowRef.current, () => setBottomVisible(false)],
+      [bottomContentVisible, bottomToolWindowRef.current, hideBottomToolWindow],
       [filesVisible, filesPaneRef.current, () => setFilesVisible(false)],
     ] as const;
     const focusedTarget = activeElement instanceof Node
@@ -272,7 +282,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay("none");
     setSettingsVisible(false);
     setFilesVisible(false);
-    setBottomVisible(false);
+    setBottomContentVisible(false);
     setStatusText("Editor Only");
     focusEditor();
   }
@@ -306,7 +316,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
     setSelectionTarget(null);
-    setBottomVisible(true);
+    setBottomContentVisible(true);
     setStatusText(`Workspace ready: ${rootName}`);
   }
 
@@ -632,8 +642,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   async function runLint() {
     if (!activePath) return;
     await refreshProblems(activePath, editorContent);
-    setBottomVisible(true);
-    setActiveBottomTool("problems");
+    showBottomTool("problems");
     setStatusText("Lint complete");
   }
 
@@ -645,8 +654,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     syncTabs();
     setEditorContent(formatted);
     await refreshProblems(activePath, formatted);
-    setBottomVisible(true);
-    setActiveBottomTool("problems");
+    showBottomTool("problems");
     setStatusText(`Formatted ${getPathBasename(activePath)}`);
   }
 
@@ -668,14 +676,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   async function loadDiff() {
     const diffText = await workspaceApi.loadDiff(workspace?.rootPath ?? null);
     setDiffFiles(parseUnifiedDiff(diffText));
-    setBottomVisible(true);
-    setActiveBottomTool("git");
+    showBottomTool("git");
     setStatusText(diffText ? "Diff loaded" : "No diff");
   }
   function openGitTraceCommitDiff(patch: string) {
     setDiffFiles(parseUnifiedDiff(patch));
-    setBottomVisible(true);
-    setActiveBottomTool("git");
+    showBottomTool("git");
     setStatusText(patch ? "Commit diff loaded" : "No commit diff");
   }
 
@@ -935,8 +941,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         onRefreshEnvironment={() => void refreshEnvironmentReport()}
       />
       <BottomToolWindow
-        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} onSelectTool={showBottomTool} visible={bottomVisible} problemsPanel={<ProblemsPanel problems={problems} />}
-        terminalPanel={<TerminalToolWindowHost active={bottomVisible && activeBottomTool === "terminal"} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
+        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} onToggleTool={toggleBottomTool} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
+        terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
         gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
         gitTracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />}
         usagesPanel={<UsagesPanel state={usageSearch} onOpenUsage={(item) => void openUsageResult(item)} />}
