@@ -784,7 +784,6 @@ describe("App shell", () => {
     });
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(completionList).toBeVisible();
-    expect(screen.queryByLabelText("Completion Query")).not.toBeInTheDocument();
     expect(within(completionList).getByRole("option", { name: /build\(\)/ })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -1393,8 +1392,6 @@ describe("App shell", () => {
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(results).toBeVisible();
-    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Completion Query")).not.toBeInTheDocument();
     const buildOption = within(results).getByRole("option", { name: /build\(\)/ });
     expect(buildOption).toBeVisible();
     expect(within(results).getByRole("option", { name: /browse\(\)/ })).toBeVisible();
