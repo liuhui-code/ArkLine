@@ -23,6 +23,22 @@ export type GitBlameLine = {
   summary: string;
 };
 
+export type GitBlameAttributionStatus = "committed" | "added" | "modified" | "unavailable";
+
+export type GitBlameAttribution = {
+  bufferLine: number;
+  sourceLine?: number;
+  status: GitBlameAttributionStatus;
+  commit?: string;
+  shortCommit?: string;
+  author?: string;
+  authoredAt?: string;
+  relativeTime?: string;
+  summary?: string;
+  originalCommit?: string;
+  originalAuthor?: string;
+};
+
 export type GitCommitTrace = {
   commit: string;
   shortCommit: string;
