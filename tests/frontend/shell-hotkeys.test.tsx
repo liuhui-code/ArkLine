@@ -39,7 +39,7 @@ describe("Shell hotkeys", () => {
     await user.keyboard("{Shift>}{Escape}{/Shift}");
 
     expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
-    expect(screen.queryByLabelText("Terminal Panel")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Terminal Panel")).not.toBeVisible();
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
@@ -58,7 +58,7 @@ describe("Shell hotkeys", () => {
     expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
-    expect(screen.queryByLabelText("Problems Panel")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Problems Panel")).not.toBeVisible();
     expect(screen.getByLabelText("Editor Content")).toHaveFocus();
 
     await user.keyboard("{Alt>}1{/Alt}");
