@@ -1,9 +1,13 @@
-import type { ReactNode, RefObject } from "react";
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 
 type BottomToolWindowProps = {
   activeTool: BottomToolKey;
   contentVisible?: boolean;
+  height: number;
+  onResizeHeight: (height: number) => void;
+  onToggleMaxHeight: () => void;
   onToggleTool: (tool: BottomToolKey) => void;
   onClose: () => void;
   containerRef?: RefObject<HTMLElement | null>;
@@ -27,6 +31,9 @@ const tabLabels: Record<BottomToolKey, string> = {
 export function BottomToolWindow({
   activeTool,
   contentVisible = true,
+  height,
+  onResizeHeight,
+  onToggleMaxHeight,
   onToggleTool,
   onClose,
   containerRef,
@@ -36,13 +43,56 @@ export function BottomToolWindow({
   gitTracePanel,
   usagesPanel,
 }: BottomToolWindowProps) {
+  const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      resizeStartRef.current = null;
+      window.removeEventListener("pointermove", handleResizePointerMove);
+      window.removeEventListener("pointerup", handleResizePointerUp);
+    };
+  }, []);
+
+  function handleResizePointerMove(event: PointerEvent) {
+    const start = resizeStartRef.current;
+    if (!start) {
+      return;
+    }
+    flushSync(() => {
+      onResizeHeight(start.height + start.y - event.clientY);
+    });
+  }
+
+  function handleResizePointerUp() {
+    resizeStartRef.current = null;
+    window.removeEventListener("pointermove", handleResizePointerMove);
+    window.removeEventListener("pointerup", handleResizePointerUp);
+  }
+
+  function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    resizeStartRef.current = { y: event.clientY, height };
+    window.addEventListener("pointermove", handleResizePointerMove);
+    window.addEventListener("pointerup", handleResizePointerUp);
+  }
+
   return (
     <section
       aria-label="Bottom Tool Window"
       className="bottom-tool-window"
       data-collapsed={contentVisible ? "false" : "true"}
       ref={containerRef}
+      style={{ height: contentVisible ? `${height}px` : "29px" }}
     >
+      {contentVisible ? (
+        <div
+          aria-label="Resize Bottom Tool Window"
+          aria-orientation="horizontal"
+          className="bottom-tool-window__resize-handle"
+          role="separator"
+          onDoubleClick={onToggleMaxHeight}
+          onPointerDown={handleResizePointerDown}
+        />
+      ) : null}
       <div className="bottom-tool-window__chrome">
         <div className="bottom-tool-window__tabs" role="tablist" aria-label="Bottom Tool Window Tabs">
           {tabOrder.map((tool) => (

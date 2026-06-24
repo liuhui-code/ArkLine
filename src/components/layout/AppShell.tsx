@@ -46,6 +46,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
   const [bottomContentVisible, setBottomContentVisible] = useState(true);
+  const [bottomToolHeight, setBottomToolHeight] = useState(280);
+  const [bottomLayoutToken, setBottomLayoutToken] = useState(0);
   const [activeLeftTool, setActiveLeftTool] = useState<LeftToolKey>("project");
   const [activeBottomTool, setActiveBottomTool] = useState<BottomToolKey>("problems");
   const [workspace, setWorkspace] = useState<WorkspaceViewModel | null>(null);
@@ -119,6 +121,21 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       || !!editorSurfaceRef.current?.contains(activeElement);
   }
   function setDefinitionDebug(message: string) { setDefinitionDebugText(message); }
+  function maxBottomToolHeight() {
+    return Math.round((typeof window === "undefined" ? 800 : window.innerHeight) * 0.7);
+  }
+  function clampBottomToolHeight(height: number) {
+    return Math.max(160, Math.min(maxBottomToolHeight(), Math.round(height)));
+  }
+  function resizeBottomToolWindow(height: number) {
+    setBottomToolHeight(clampBottomToolHeight(height));
+    setBottomLayoutToken((token) => token + 1);
+  }
+  function toggleBottomToolMaxHeight() {
+    const maxHeight = maxBottomToolHeight();
+    const nextHeight = Math.abs(bottomToolHeight - maxHeight) <= 2 ? 280 : maxHeight;
+    resizeBottomToolWindow(nextHeight);
+  }
   function setOverlay(overlay: Exclude<OverlayKey, "none">) {
     setActiveOverlay(overlay);
     setQuickOpenQuery("");
@@ -200,6 +217,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function showBottomTool(tool: BottomToolKey) {
     setBottomContentVisible(true);
+    setBottomLayoutToken((token) => token + 1);
     setActiveBottomTool(tool);
     setStatusText(
       tool === "terminal" ? "Terminal"
@@ -904,7 +922,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, { openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), openGoToLine: () => setOverlay("goToLine"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), openCompletion: () => void openCompletionFromEditor(), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), openSettings: () => void openSettings() });
   const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-bottom-layout-token={bottomLayoutToken}>
       <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div className="shell-grid">
         <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectTool={showLeftTool} />
@@ -941,7 +959,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         onRefreshEnvironment={() => void refreshEnvironmentReport()}
       />
       <BottomToolWindow
-        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} onToggleTool={toggleBottomTool} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
+        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
         gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
         gitTracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />}

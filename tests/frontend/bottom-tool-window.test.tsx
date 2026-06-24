@@ -1,6 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
+
+if (typeof window.PointerEvent === "undefined") {
+  window.PointerEvent = MouseEvent as typeof PointerEvent;
+}
 
 describe("Bottom tool window", () => {
   it("shows one active bottom tool window panel at a time", async () => {
@@ -68,5 +72,60 @@ describe("Bottom tool window", () => {
 
     await user.click(screen.getByRole("tab", { name: "Terminal" }));
     expect(within(await screen.findByLabelText("Terminal Sessions")).getByRole("tab", { name: "pwsh" })).toBeVisible();
+  });
+
+  it("resizes the bottom panel by dragging the resize separator", async () => {
+    render(<AppShell />);
+
+    const bottomPanel = screen.getByLabelText("Bottom Tool Window");
+    const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
+
+    expect(bottomPanel).toHaveStyle({ height: "280px" });
+
+    fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 420 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientY: 420 });
+
+    expect(bottomPanel).toHaveStyle({ height: "360px" });
+  });
+
+  it("clamps bottom panel resize height to min and max bounds", async () => {
+    render(<AppShell />);
+
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 800,
+    });
+
+    const bottomPanel = screen.getByLabelText("Bottom Tool Window");
+    const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
+
+    fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 800 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientY: 800 });
+    expect(bottomPanel).toHaveStyle({ height: "160px" });
+
+    fireEvent.pointerDown(separator, { pointerId: 2, clientY: 500 });
+    fireEvent.pointerMove(window, { pointerId: 2, clientY: 0 });
+    fireEvent.pointerUp(window, { pointerId: 2, clientY: 0 });
+    expect(bottomPanel).toHaveStyle({ height: "560px" });
+  });
+
+  it("toggles between default and maximum height when double-clicking the resize separator", async () => {
+    render(<AppShell />);
+
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 800,
+    });
+
+    const bottomPanel = screen.getByLabelText("Bottom Tool Window");
+    const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
+
+    fireEvent.doubleClick(separator);
+    expect(bottomPanel).toHaveStyle({ height: "560px" });
+
+    fireEvent.doubleClick(separator);
+    expect(bottomPanel).toHaveStyle({ height: "280px" });
   });
 });
