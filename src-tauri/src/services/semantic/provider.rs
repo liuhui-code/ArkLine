@@ -108,6 +108,15 @@ impl SemanticProvider for FallbackProvider {
                 label,
                 detail: detail.to_string(),
                 kind: kind.to_string(),
+                insert_text: None,
+                filter_text: None,
+                sort_text: None,
+                source: None,
+                documentation: None,
+                replacement_range: None,
+                commit_characters: Vec::new(),
+                definition_target: None,
+                data: None,
             });
         };
 
@@ -120,7 +129,11 @@ impl SemanticProvider for FallbackProvider {
         }
 
         if content.contains("struct ") || content.contains("@Component") {
-            push("build()".to_string(), "Component lifecycle method", "method");
+            push(
+                "build()".to_string(),
+                "Component lifecycle method",
+                "method",
+            );
         }
 
         for symbol in collect_document_symbols(&content) {
@@ -169,7 +182,8 @@ fn load_document_content(path: &str) -> Option<String> {
 }
 
 fn collect_document_symbols(content: &str) -> Vec<DocumentSymbol> {
-    const DECLARATION_KEYWORDS: [&str; 6] = ["struct", "class", "interface", "enum", "type", "function"];
+    const DECLARATION_KEYWORDS: [&str; 6] =
+        ["struct", "class", "interface", "enum", "type", "function"];
 
     content
         .lines()

@@ -137,16 +137,7 @@ impl SemanticWorkerSession {
             .as_array()
             .ok_or_else(|| "Semantic worker completion response was not an array".to_string())?;
 
-        Ok(items
-            .iter()
-            .filter_map(|item| {
-                Some(CompletionItem {
-                    label: item.get("label")?.as_str()?.to_string(),
-                    detail: item.get("detail")?.as_str()?.to_string(),
-                    kind: item.get("kind")?.as_str()?.to_string(),
-                })
-            })
-            .collect())
+        Ok(items.iter().filter_map(parse_completion_item).collect())
     }
 
     #[cfg(test)]
@@ -306,6 +297,59 @@ fn parse_definition_candidate(payload: &Value) -> Result<DefinitionCandidate, St
     })
 }
 
+fn parse_completion_item(item: &Value) -> Option<CompletionItem> {
+    Some(CompletionItem {
+        label: item.get("label")?.as_str()?.to_string(),
+        detail: item.get("detail")?.as_str()?.to_string(),
+        kind: item.get("kind")?.as_str()?.to_string(),
+        insert_text: item
+            .get("insertText")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        filter_text: item
+            .get("filterText")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        sort_text: item
+            .get("sortText")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        source: item
+            .get("source")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        documentation: item
+            .get("documentation")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        replacement_range: item.get("replacementRange").and_then(parse_text_range),
+        commit_characters: item
+            .get("commitCharacters")
+            .and_then(Value::as_array)
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        definition_target: item
+            .get("definitionTarget")
+            .and_then(|value| parse_definition_target(value).ok()),
+        data: item.get("data").cloned(),
+    })
+}
+
+fn parse_text_range(payload: &Value) -> Option<crate::models::language::TextRange> {
+    Some(crate::models::language::TextRange {
+        start_line: payload.get("startLine")?.as_u64()? as u32,
+        start_column: payload.get("startColumn")?.as_u64()? as u32,
+        end_line: payload.get("endLine")?.as_u64()? as u32,
+        end_column: payload.get("endColumn")?.as_u64()? as u32,
+    })
+}
+
 impl Drop for SemanticWorkerSession {
     fn drop(&mut self) {
         if let Ok(mut child) = self.child.lock() {
@@ -428,17 +472,53 @@ setInterval(() => {}, 1000);
 
         let parsed: Vec<_> = items
             .iter()
-            .filter_map(|item| {
-                Some(crate::models::language::CompletionItem {
-                    label: item.get("label")?.as_str()?.to_string(),
-                    detail: item.get("detail")?.as_str()?.to_string(),
-                    kind: item.get("kind")?.as_str()?.to_string(),
-                })
-            })
+            .filter_map(super::parse_completion_item)
             .collect();
 
         assert_eq!(parsed[0].kind, "keyword");
         assert_eq!(parsed[1].kind, "function");
+    }
+
+    #[test]
+    fn parses_completion_v2_fields() {
+        let item = serde_json::json!({
+            "label": "width",
+            "detail": "width(value: Length): T",
+            "kind": "method",
+            "insertText": "width(${1:value})",
+            "filterText": "width",
+            "sortText": "0100-width",
+            "source": "arkui",
+            "documentation": "Sets the width of the component.",
+            "replacementRange": {
+                "startLine": 8,
+                "startColumn": 6,
+                "endLine": 8,
+                "endColumn": 8
+            },
+            "commitCharacters": ["(", "."],
+            "definitionTarget": {
+                "path": "/sdk/ets/component/common.d.ts",
+                "line": 20927,
+                "column": 5
+            },
+            "data": { "provider": "arkui-sdk" }
+        });
+
+        let parsed = super::parse_completion_item(&item).expect("completion item should parse");
+
+        assert_eq!(parsed.label, "width");
+        assert_eq!(parsed.insert_text.as_deref(), Some("width(${1:value})"));
+        assert_eq!(parsed.filter_text.as_deref(), Some("width"));
+        assert_eq!(parsed.sort_text.as_deref(), Some("0100-width"));
+        assert_eq!(parsed.source.as_deref(), Some("arkui"));
+        assert_eq!(
+            parsed.documentation.as_deref(),
+            Some("Sets the width of the component.")
+        );
+        assert_eq!(parsed.commit_characters, vec!["(", "."]);
+        assert_eq!(parsed.replacement_range.unwrap().start_column, 6);
+        assert_eq!(parsed.definition_target.unwrap().line, 20927);
     }
 
     #[test]
