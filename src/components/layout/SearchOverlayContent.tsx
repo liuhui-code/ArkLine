@@ -1,4 +1,10 @@
 import type { OverlayKey } from "@/components/layout/shell-state";
+import { SearchEverywherePanel } from "@/components/layout/SearchEverywherePanel";
+import type {
+  WorkspaceTextSearchMatch,
+  WorkspaceTextSearchOptions,
+  WorkspaceTextSearchResult,
+} from "@/features/search/workspace-text-search";
 
 type CommandPaletteItem = {
   id: string;
@@ -10,34 +16,58 @@ type SearchOverlayContentProps = {
   activeOverlay: OverlayKey;
   commandPaletteItems: CommandPaletteItem[];
   completionResults: { label: string; detail: string; kind: string }[];
+  completionSelectedIndex?: number;
   quickOpenQuery: string;
   quickOpenResults: { path: string }[];
   recentFileResults: { path: string }[];
   recentProjectResults: { path: string; name: string }[];
-  searchEverywhereResults: { path: string }[];
+  searchEverywhereOptions: WorkspaceTextSearchOptions;
+  searchEverywhereResult: WorkspaceTextSearchResult;
+  searchEverywhereSelectedIndex: number;
   onChangeQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
+  onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
   onOpenProject: (path: string) => void;
   onInsertCompletion: (label: string) => void;
+  onMoveCompletionSelection?: (direction: 1 | -1) => void;
+  onMoveSearchEverywhereSelection: (direction: 1 | -1) => void;
+  onOpenSelectedSearchEverywhereResult: () => void;
+  onSelectSearchEverywhereResult: (index: number) => void;
+  onToggleSearchEverywhereCaseSensitive: () => void;
+  onToggleSearchEverywhereWholeWord: () => void;
+  onAcceptSelectedCompletion?: () => void;
   onSubmitGoToLine: () => void;
   onCloseOverlay: () => void;
+  completionAutoFocus?: boolean;
 };
 
 export function SearchOverlayContent({
   activeOverlay,
   commandPaletteItems,
   completionResults,
+  completionSelectedIndex = 0,
   quickOpenQuery,
   quickOpenResults,
   recentFileResults,
   recentProjectResults,
-  searchEverywhereResults,
+  searchEverywhereOptions,
+  searchEverywhereResult,
+  searchEverywhereSelectedIndex,
   onChangeQuery,
   onOpenFile,
+  onOpenSearchEverywhereResult,
   onOpenProject,
   onInsertCompletion,
+  onMoveCompletionSelection,
+  onMoveSearchEverywhereSelection,
+  onOpenSelectedSearchEverywhereResult,
+  onSelectSearchEverywhereResult,
+  onToggleSearchEverywhereCaseSensitive,
+  onToggleSearchEverywhereWholeWord,
+  onAcceptSelectedCompletion,
   onSubmitGoToLine,
   onCloseOverlay,
+  completionAutoFocus = true,
 }: SearchOverlayContentProps) {
   if (activeOverlay === "commandPalette") {
     return (
@@ -158,23 +188,33 @@ export function SearchOverlayContent({
       <>
         <input
           aria-label="Completion Query"
-          autoFocus
+          autoFocus={completionAutoFocus}
           className="panel-input"
           value={quickOpenQuery}
           placeholder="Filter completion items"
           onChange={(event) => onChangeQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && completionResults[0]) {
-              onInsertCompletion(completionResults[0].label);
+            if ((event.key === "ArrowDown" || event.key === "ArrowUp") && onMoveCompletionSelection) {
+              event.preventDefault();
+              onMoveCompletionSelection(event.key === "ArrowDown" ? 1 : -1);
+            }
+            if ((event.key === "Enter" || event.key === "Tab") && completionResults[0]) {
+              event.preventDefault();
+              onAcceptSelectedCompletion?.();
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onCloseOverlay();
             }
           }}
         />
         <div className="search-results" role="list" aria-label="Completion Results">
-          {completionResults.map((item) => (
+          {completionResults.map((item, index) => (
             <button
               key={`${item.kind}:${item.label}`}
               type="button"
-              className="search-result"
+              className={`search-result${index === completionSelectedIndex ? " search-result--selected" : ""}`}
+              aria-selected={index === completionSelectedIndex}
               onClick={() => onInsertCompletion(item.label)}
             >
               {item.label}
@@ -186,11 +226,29 @@ export function SearchOverlayContent({
     );
   }
 
-  const queryLabel = activeOverlay === "searchEverywhere" ? "Search Everywhere Query" : "Quick Open Query";
-  const resultsLabel = activeOverlay === "searchEverywhere" ? "Search Everywhere Results" : "Quick Open Results";
-  const placeholder =
-    activeOverlay === "searchEverywhere" ? "Search files across the workspace" : "Type a filename or path";
-  const results = activeOverlay === "searchEverywhere" ? searchEverywhereResults : quickOpenResults;
+  if (activeOverlay === "searchEverywhere") {
+    return (
+      <SearchEverywherePanel
+        options={searchEverywhereOptions}
+        query={quickOpenQuery}
+        result={searchEverywhereResult}
+        selectedIndex={searchEverywhereSelectedIndex}
+        onChangeQuery={onChangeQuery}
+        onMoveSelection={onMoveSearchEverywhereSelection}
+        onOpenSelected={onOpenSelectedSearchEverywhereResult}
+        onSelectResult={onSelectSearchEverywhereResult}
+        onOpenResult={onOpenSearchEverywhereResult}
+        onToggleCaseSensitive={onToggleSearchEverywhereCaseSensitive}
+        onToggleWholeWord={onToggleSearchEverywhereWholeWord}
+        onCloseOverlay={onCloseOverlay}
+      />
+    );
+  }
+
+  const queryLabel = "Quick Open Query";
+  const resultsLabel = "Quick Open Results";
+  const placeholder = "Type a filename or path";
+  const results = quickOpenResults;
 
   return (
     <>

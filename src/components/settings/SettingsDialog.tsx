@@ -94,16 +94,46 @@ export function SettingsDialog({
     return null;
   }
 
+  function closeIfIdle() {
+    if (isApplying) {
+      return;
+    }
+
+    onClose();
+  }
+
   return (
-    <section className="settings-dialog settings-dialog--preferences" aria-label="Settings">
-      <div className="settings-dialog__panel settings-dialog__panel--wide">
+    <section
+      className="settings-dialog settings-dialog--preferences"
+      aria-label="Settings"
+      aria-modal="true"
+      role="dialog"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          closeIfIdle();
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeIfIdle();
+        }
+      }}
+    >
+      <div className="settings-dialog__panel settings-dialog__panel--wide" onMouseDown={(event) => event.stopPropagation()}>
         <header className="settings-dialog__header">
           <div>
             <h2>Settings</h2>
             <p>Common ArkLine configuration for SDK discovery, editor readability, and validation behavior.</p>
           </div>
-          <button type="button" className="toolbar__button" disabled={isApplying} onClick={onClose}>
-            Close
+          <button
+            type="button"
+            className="settings-dialog__close"
+            aria-label="Close Settings"
+            disabled={isApplying}
+            onClick={closeIfIdle}
+          >
+            ×
           </button>
         </header>
 
@@ -137,8 +167,10 @@ export function SettingsDialog({
         </div>
 
         <footer className="settings-dialog__footer">
-          {applyError ? <span className="settings-save-state settings-save-state--error">{applyError}</span> : null}
-          <button type="button" className="toolbar__button" disabled={isApplying} onClick={onClose}>
+          <span className={`settings-save-state${applyError ? " settings-save-state--error" : ""}`}>
+            {applyError || (isApplying ? "Applying..." : isDirty ? "Unsaved changes" : saveStateLabel)}
+          </span>
+          <button type="button" className="toolbar__button" disabled={isApplying} onClick={closeIfIdle}>
             Cancel
           </button>
           <button

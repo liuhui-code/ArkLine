@@ -1163,6 +1163,7 @@ button:disabled {
 .quick-open {
   position: fixed;
   inset: 0;
+  z-index: 20;
   display: grid;
   place-items: start center;
   padding-top: 56px;
@@ -1179,9 +1180,75 @@ button:disabled {
   box-shadow: var(--shadow-overlay);
 }
 
+.quick-open--search-everywhere {
+  place-items: start center;
+  padding: clamp(48px, 9vh, 96px) 24px 24px;
+  background: rgb(8 10 14 / 38%);
+}
+
+.quick-open__panel--search-everywhere {
+  width: min(980px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 80px));
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
 .search-everywhere {
   display: grid;
-  gap: 8px;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  min-height: min(560px, calc(100vh - 120px));
+}
+
+.search-everywhere__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-everywhere__header div {
+  display: grid;
+  gap: 3px;
+}
+
+.search-everywhere__header strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.search-everywhere__header span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.search-everywhere__close,
+.settings-dialog__close {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.search-everywhere__close:hover,
+.settings-dialog__close:hover {
+  border-color: var(--border-subtle);
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text-primary);
+}
+
+.settings-dialog__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .search-everywhere__toolbar,
@@ -1192,6 +1259,7 @@ button:disabled {
 
 .search-everywhere__toolbar {
   gap: 8px;
+  padding: 12px 16px 8px;
 }
 
 .search-everywhere__controls {
@@ -1220,26 +1288,33 @@ button:disabled {
 }
 
 .search-everywhere__error {
+  padding: 0 16px 8px;
   color: #df6b75;
 }
 
 .search-everywhere__body {
-  min-height: 360px;
+  min-height: 0;
+  height: 420px;
+  max-height: calc(100vh - 248px);
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .search-everywhere .search-results {
   max-height: none;
   align-content: start;
-  padding-right: 4px;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .search-everywhere__preview {
   min-height: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border-subtle);
+  padding: 12px 14px;
+  border: 0;
   background: var(--bg-editor);
   overflow: auto;
 }
@@ -1326,38 +1401,51 @@ button:disabled {
 }
 
 .settings-dialog--preferences {
-  inset: 72px 32px 32px 32px;
+  inset: 0;
   right: auto;
   top: auto;
   display: grid;
-  place-items: start center;
-  pointer-events: none;
+  place-items: center;
+  padding: 32px;
+  background: rgb(8 10 14 / 48%);
+  pointer-events: auto;
 }
 
 .settings-dialog--preferences .settings-dialog__panel {
-  width: min(940px, calc(100vw - 96px));
-  min-height: 520px;
-  padding: 18px 18px 16px;
+  width: min(1000px, calc(100vw - 64px));
+  max-height: min(760px, calc(100vh - 64px));
+  min-height: min(640px, calc(100vh - 64px));
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
   pointer-events: auto;
 }
 
 .settings-dialog--preferences .settings-dialog__panel--wide {
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 0;
+}
+
+.settings-dialog--preferences .settings-dialog__header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .settings-dialog--preferences .settings-dialog__body {
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
-  gap: 16px;
+  gap: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .settings-dialog--preferences .settings-sidebar {
   display: grid;
   gap: 4px;
   align-content: start;
-  padding-right: 10px;
+  padding: 12px 10px;
   border-right: 1px solid var(--border-subtle);
+  background: rgb(255 255 255 / 0.015);
 }
 
 .settings-dialog--preferences .settings-sidebar__item {
@@ -1376,6 +1464,8 @@ button:disabled {
 .settings-dialog--preferences .settings-dialog__content {
   min-width: 0;
   min-height: 0;
+  padding: 16px;
+  overflow: auto;
 }
 
 .settings-dialog--preferences .settings-section {
@@ -1438,6 +1528,20 @@ button:disabled {
 .settings-dialog--preferences .settings-save-state {
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.settings-dialog--preferences .settings-save-state--error {
+  color: #df6b75;
+}
+
+.settings-dialog__footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  background: rgb(255 255 255 / 0.015);
 }
 
 .settings-dialog--preferences .settings-grid {
@@ -1523,4 +1627,61 @@ button:disabled {
 
 .settings-dialog--preferences .settings-status__item--warn {
   border-left: 3px solid var(--warning);
+}
+
+@media (max-width: 760px) {
+  .quick-open--search-everywhere {
+    padding: 24px 12px;
+  }
+
+  .quick-open__panel--search-everywhere {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 48px);
+  }
+
+  .search-everywhere {
+    min-height: min(620px, calc(100vh - 72px));
+  }
+
+  .search-everywhere__body {
+    height: auto;
+    max-height: none;
+    grid-template-columns: 1fr;
+  }
+
+  .search-everywhere .search-results {
+    max-height: 280px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .search-everywhere__preview {
+    max-height: 220px;
+  }
+
+  .settings-dialog--preferences {
+    padding: 16px;
+  }
+
+  .settings-dialog--preferences .settings-dialog__panel {
+    width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    min-height: 0;
+  }
+
+  .settings-dialog--preferences .settings-dialog__body {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-dialog--preferences .settings-sidebar {
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .settings-dialog__footer {
+    grid-template-columns: 1fr;
+  }
 }

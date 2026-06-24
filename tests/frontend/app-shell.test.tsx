@@ -357,6 +357,7 @@ describe("App shell", () => {
 
     const query = await screen.findByLabelText("Search Everywhere Query");
     await user.type(query, "entry");
+    expect(screen.getByRole("button", { name: "Close Search Everywhere" })).toBeVisible();
     expect(within(screen.getByRole("list", { name: "Search Everywhere Results" })).getByText("main.ets")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Aa" }));
     expect(within(screen.getByRole("list", { name: "Search Everywhere Results" })).getByText("No matches")).toBeVisible();
@@ -380,6 +381,31 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content");
     expect(editor).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
     await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("keeps Search Everywhere open for panel clicks and closes it from outside or close button", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Search Everywhere" }));
+
+    const overlay = await screen.findByLabelText("Search Everywhere Overlay");
+    const query = await screen.findByLabelText("Search Everywhere Query");
+    await user.type(query, "entry");
+
+    fireEvent.mouseDown(within(overlay).getByText("Search Everywhere"));
+    expect(screen.getByLabelText("Search Everywhere Overlay")).toBeVisible();
+
+    fireEvent.mouseDown(overlay);
+    expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Search Everywhere" }));
+    await user.click(await screen.findByRole("button", { name: "Close Search Everywhere" }));
+
+    expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
   });
 
   it("reopens a recent project from the File menu", async () => {
@@ -1721,7 +1747,7 @@ describe("App shell", () => {
     await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(inspectEnvironment).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Applying..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close Settings" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(screen.getByText("SDK settings applying...")).toBeVisible();
 
@@ -1730,6 +1756,52 @@ describe("App shell", () => {
     await waitFor(() => expect(screen.getByText("SDK settings applied")).toBeVisible());
     expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
     expect(inspectLanguageService).toHaveBeenCalled();
+  });
+
+  it("closes Settings from the backdrop when idle but keeps it open while applying", async () => {
+    const user = userEvent.setup();
+    let finishEnvironment!: () => void;
+    const saveSettings = vi.fn(async () => undefined);
+    const inspectEnvironment = vi.fn(() => new Promise<{ tools: [] }>((resolve) => {
+      finishEnvironment = () => resolve({ tools: [] });
+    }));
+    const workspaceApi = createWorkspaceApi({
+      saveSettings,
+      inspectEnvironment,
+      inspectLanguageService: vi.fn(async () => ({
+        provider: "mock-fallback",
+        mode: "fallback" as const,
+        running: true,
+        hover: true,
+        definition: true,
+        completion: true,
+        documentSymbols: true,
+        findUsages: true,
+        detail: "ready",
+      })),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const idleDialog = await screen.findByRole("dialog", { name: "Settings" });
+    fireEvent.mouseDown(idleDialog);
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    await user.clear(await screen.findByLabelText("HarmonyOS / ArkTS SDK Path"));
+    await user.type(screen.getByLabelText("HarmonyOS / ArkTS SDK Path"), "D:/HarmonyOS/Sdk");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(inspectEnvironment).toHaveBeenCalled());
+    const applyingDialog = screen.getByRole("dialog", { name: "Settings" });
+    fireEvent.mouseDown(applyingDialog);
+    expect(screen.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close Settings" })).toBeDisabled();
+
+    finishEnvironment();
+    await waitFor(() => expect(screen.getByText("SDK settings applied")).toBeVisible());
   });
 
   it("loads persisted settings and saves updates through the workspace api", async () => {
