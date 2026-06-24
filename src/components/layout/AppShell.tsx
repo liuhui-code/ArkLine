@@ -47,6 +47,35 @@ import type { EditorCaretRect } from "@/editor/editor-events";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 type NavigationLocation = { path: string; line: number; column: number };
+const COMPLETION_POPUP_WIDTH = 460;
+const COMPLETION_POPUP_HEIGHT = 340;
+const COMPLETION_POPUP_MARGIN = 12;
+const COMPLETION_POPUP_GAP = 4;
+const COMPLETION_POPUP_FALLBACK_POSITION = { top: 96, left: 280 };
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function getCompletionPopupPosition(anchor: EditorCaretRect | null) {
+  if (!anchor?.measured) {
+    return COMPLETION_POPUP_FALLBACK_POSITION;
+  }
+
+  if (typeof window === "undefined") {
+    return { top: anchor.bottom + COMPLETION_POPUP_GAP, left: anchor.left };
+  }
+
+  const maxLeft = window.innerWidth - COMPLETION_POPUP_WIDTH - COMPLETION_POPUP_MARGIN;
+  const left = clampNumber(anchor.left, COMPLETION_POPUP_MARGIN, maxLeft);
+  const belowTop = anchor.bottom + COMPLETION_POPUP_GAP;
+  const hasSpaceBelow = belowTop + COMPLETION_POPUP_HEIGHT + COMPLETION_POPUP_MARGIN <= window.innerHeight;
+  const preferredTop = hasSpaceBelow ? belowTop : anchor.top - COMPLETION_POPUP_HEIGHT - COMPLETION_POPUP_GAP;
+  const top = Math.max(COMPLETION_POPUP_MARGIN, preferredTop);
+
+  return { top, left };
+}
+
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
@@ -991,9 +1020,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const selectedCompletionPresentation = completionPresentationResults[Math.min(completionSelectedIndex, Math.max(completionPresentationResults.length - 1, 0))] ?? null;
   const completionPopupVisible = activeOverlay === "completion" && !completionAutoFocus && completionPresentationResults.length > 0;
   const completionOverlayVisible = activeOverlay !== "completion" || completionAutoFocus || !completionPopupVisible;
-  const completionPopupPosition = completionAnchor
-    ? { top: completionAnchor.bottom + 4, left: completionAnchor.left }
-    : { top: 96, left: 280 };
+  const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
 
   useEffect(() => {
     setCompletionSelectedIndex((current) => {

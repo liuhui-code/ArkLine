@@ -76,6 +76,27 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
   };
 }
 
+function mockEditorCaretRect(rect: { top: number; left: number; bottom: number; right: number } | null) {
+  return vi.spyOn(EditorView.prototype, "coordsAtPos").mockReturnValue(rect);
+}
+
+function mockViewportSize(width: number, height: number) {
+  const widthDescriptor = Object.getOwnPropertyDescriptor(window, "innerWidth");
+  const heightDescriptor = Object.getOwnPropertyDescriptor(window, "innerHeight");
+
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: height });
+
+  return () => {
+    if (widthDescriptor) {
+      Object.defineProperty(window, "innerWidth", widthDescriptor);
+    }
+    if (heightDescriptor) {
+      Object.defineProperty(window, "innerHeight", heightDescriptor);
+    }
+  };
+}
+
 describe("App shell", () => {
   it("renders the approved shell regions", async () => {
     render(<App />);
@@ -720,6 +741,7 @@ describe("App shell", () => {
 
   it("positions code completion inside the active editor surface", async () => {
     const user = userEvent.setup();
+    const caretRectSpy = mockEditorCaretRect({ top: 180, left: 320, bottom: 204, right: 321 });
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
@@ -755,8 +777,100 @@ describe("App shell", () => {
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
 
     expect(completionList).toHaveAttribute("data-anchor", "editor-caret");
+    expect(completionList).toHaveStyle({ top: "208px", left: "320px" });
     expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
     expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+    caretRectSpy.mockRestore();
+  });
+
+  it("positions code completion with clamped and flipped viewport edges", async () => {
+    const restoreViewport = mockViewportSize(520, 500);
+    const caretRectSpy = mockEditorCaretRect({ top: 420, left: 500, bottom: 444, right: 501 });
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
+
+    expect(completionList).toHaveAttribute("data-anchor", "editor-caret");
+    expect(completionList).toHaveStyle({ top: "76px", left: "48px" });
+    expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
+    expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+    caretRectSpy.mockRestore();
+    restoreViewport();
+  });
+
+  it("positions code completion at the fallback when the caret is unmeasured", async () => {
+    const caretRectSpy = mockEditorCaretRect(null);
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
+
+    expect(completionList).toHaveAttribute("data-anchor", "fallback");
+    expect(completionList).toHaveStyle({ top: "96px", left: "280px" });
+    expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
+    expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+    caretRectSpy.mockRestore();
   });
 
   it("accepts the top auto-opened completion with Tab while keeping editor focus", async () => {

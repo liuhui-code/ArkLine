@@ -31,7 +31,7 @@ export function CompletionPopup({
       className="completion-popup"
       role="listbox"
       aria-label="Code Completion"
-      data-anchor={anchor ? "editor-caret" : "fallback"}
+      data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
       data-anchor-line={anchor?.line ?? 0}
       data-anchor-column={anchor?.column ?? 0}
       style={{ top: position.top, left: position.left }}

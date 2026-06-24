@@ -11,6 +11,7 @@ export type EditorCaretRect = EditorLineColumn & {
   left: number;
   bottom: number;
   right: number;
+  measured: boolean;
 };
 
 export type DefinitionHoverState = {
@@ -112,6 +113,7 @@ export function readCaretRect(view: EditorView): EditorCaretRect {
       left: 240,
       bottom: 96,
       right: 241,
+      measured: false,
     };
   }
 
@@ -121,6 +123,7 @@ export function readCaretRect(view: EditorView): EditorCaretRect {
     left: coordinates.left,
     bottom: coordinates.bottom,
     right: coordinates.right,
+    measured: true,
   };
 }
 
