@@ -654,6 +654,7 @@ button:disabled {
   display: grid;
   grid-template-rows: 28px 28px minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
   background: #1e1f22;
 }
 
@@ -714,7 +715,7 @@ button:disabled {
 }
 
 .terminal-tool-window__viewport {
-  min-height: 180px;
+  min-height: 0;
   outline: none;
   background: #1e1f22;
 }
@@ -1049,12 +1050,16 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(220px, 280px) 1fr;
   gap: var(--space-2);
+  height: 100%;
+  min-height: 0;
 }
 
 .git-tool-window__sidebar,
 .git-tool-window__viewer {
   display: grid;
   gap: var(--space-2);
+  min-height: 0;
+  overflow: auto;
 }
 
 .git-tool-window__sidebar {

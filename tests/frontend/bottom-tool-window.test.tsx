@@ -91,6 +91,25 @@ describe("Bottom tool window", () => {
     expect(bottomPanel).toHaveStyle({ height: "360px" });
   });
 
+  it("keeps Git content inside the resized bottom panel", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(screen.getByRole("tab", { name: "Git" }));
+    const bottomPanel = screen.getByLabelText("Bottom Tool Window");
+    const gitPanel = screen.getByLabelText("Git Panel");
+    const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
+
+    await act(async () => {
+      fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
+      fireEvent.pointerMove(window, { pointerId: 1, clientY: 450 });
+      fireEvent.pointerUp(window, { pointerId: 1, clientY: 450 });
+    });
+
+    expect(bottomPanel).toHaveStyle({ height: "330px" });
+    expect(gitPanel).toBeVisible();
+  });
+
   it("clamps bottom panel resize height to min and max bounds", async () => {
     render(<AppShell />);
 
