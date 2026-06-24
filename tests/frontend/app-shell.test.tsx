@@ -1444,6 +1444,9 @@ describe("App shell", () => {
     expect(within(panel).getByText("abc1234")).toBeVisible();
     expect(within(panel).getByText(/Jane Doe/)).toBeVisible();
     expect(within(panel).getByText("File").parentElement).toHaveTextContent("src/main.ets");
+    expect(within(panel).getByRole("heading", { name: "Commit" })).toBeVisible();
+    expect(within(panel).getByRole("heading", { name: "Actions" })).toBeVisible();
+    expect(within(panel).getByRole("heading", { name: "Diff Preview" })).toBeVisible();
   });
 
   it("opens Git Trace from an inline blame label click", async () => {

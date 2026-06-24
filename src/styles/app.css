@@ -1239,6 +1239,18 @@ button:disabled {
   gap: 12px;
 }
 
+.git-trace-panel__section {
+  display: grid;
+  gap: 8px;
+}
+
+.git-trace-panel__section h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .git-trace-panel__header,
 .git-trace-panel__actions,
 .git-trace-panel__meta {

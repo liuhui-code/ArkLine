@@ -26,11 +26,23 @@ export function GitTracePanel({ state, onOpenCommitDiff, onOpenInEditor }: GitTr
   return (
     <section aria-label="Git Trace Panel" className="bottom-tool-window__panel bottom-tool-window__panel--git-trace">
       <div className="git-trace-panel">
-        <div className="git-trace-panel__header">
-          <div className="git-trace-panel__meta">
-            <strong>{state.detail.subject}</strong>
-            <span className="git-trace-panel__hash">{state.detail.shortCommit}</span>
+        <section className="git-trace-panel__section">
+          <h3>Commit</h3>
+          <div className="git-trace-panel__header">
+            <div className="git-trace-panel__meta">
+              <strong>{state.detail.subject}</strong>
+              <span className="git-trace-panel__hash">{state.detail.shortCommit}</span>
+            </div>
           </div>
+          <div className="git-trace-panel__summary">
+            <div><strong>Author</strong> {state.detail.author}</div>
+            <div><strong>Date</strong> {state.detail.authoredAt}</div>
+            <div><strong>File</strong> {state.detail.relativePath}</div>
+            <div><strong>Line</strong> {state.detail.selectedLine}</div>
+          </div>
+        </section>
+        <section className="git-trace-panel__section">
+          <h3>Actions</h3>
           <div className="git-trace-panel__actions">
             <button type="button" className="git-tool-window__viewer-action" onClick={onOpenInEditor}>
               Open in Editor
@@ -39,14 +51,11 @@ export function GitTracePanel({ state, onOpenCommitDiff, onOpenInEditor }: GitTr
               Open Commit Diff
             </button>
           </div>
-        </div>
-        <div className="git-trace-panel__summary">
-          <div><strong>Author</strong> {state.detail.author}</div>
-          <div><strong>Date</strong> {state.detail.authoredAt}</div>
-          <div><strong>File</strong> {state.detail.relativePath}</div>
-          <div><strong>Line</strong> {state.detail.selectedLine}</div>
-        </div>
-        <pre className="git-trace-panel__patch">{state.detail.patch}</pre>
+        </section>
+        <section className="git-trace-panel__section git-trace-panel__section--diff">
+          <h3>Diff Preview</h3>
+          <pre className="git-trace-panel__patch">{state.detail.patch}</pre>
+        </section>
       </div>
     </section>
   );
