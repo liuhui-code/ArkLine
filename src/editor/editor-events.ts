@@ -131,6 +131,10 @@ function isDefinitionTokenChar(character: string) {
   return /^[A-Za-z0-9_$@]$/.test(character);
 }
 
+function isTypingCompletionTriggerCharacter(character: string) {
+  return /^[A-Za-z0-9_$@.([{:<#]$/.test(character);
+}
+
 export function resolveDefinitionTokenRange(view: EditorView, position: number): DefinitionHoverRange | null {
   const documentLength = view.state.doc.length;
   const clampedPosition = Math.max(0, Math.min(position, documentLength));
@@ -282,18 +286,26 @@ export function createTypingCompletionTriggerListener(
       return;
     }
 
+    let changeCount = 0;
+    let disqualified = false;
     let shouldTrigger = false;
-    update.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
-      if (shouldTrigger) {
+    update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+      changeCount += 1;
+      if (changeCount > 1 || disqualified || shouldTrigger) {
+        disqualified = changeCount > 1;
         return;
       }
+
       const insertedText = inserted.toString();
-      if (/[A-Za-z0-9_$@]$/.test(insertedText) && !/\s/.test(insertedText)) {
-        shouldTrigger = true;
+      if (fromA !== toA || insertedText.length !== 1 || !isTypingCompletionTriggerCharacter(insertedText)) {
+        disqualified = true;
+        return;
       }
+
+      shouldTrigger = true;
     });
 
-    if (!shouldTrigger) {
+    if (disqualified || !shouldTrigger) {
       return;
     }
 

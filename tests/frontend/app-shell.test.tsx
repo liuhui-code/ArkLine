@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
-import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { EditorView } from "@codemirror/view";
 import { vi } from "vitest";
@@ -95,6 +95,17 @@ function mockViewportSize(width: number, height: number) {
       Object.defineProperty(window, "innerHeight", heightDescriptor);
     }
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
 }
 
 describe("App shell", () => {
@@ -779,6 +790,175 @@ describe("App shell", () => {
       "true",
     );
     await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("does not render automatic completion popup for empty typing results", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => []),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    await waitFor(() => expect(workspaceApi.completeSymbol).toHaveBeenCalledTimes(1));
+
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Completion empty")).toBeVisible();
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("shows an empty state for manual completion with no results", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => []),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{Control>} {/Control}");
+
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(results).toBeVisible();
+    expect(within(results).getByText("No completions")).toBeVisible();
+    expect(within(results).queryByRole("option")).not.toBeInTheDocument();
+    expect(await screen.findByText("Completion empty")).toBeVisible();
+  });
+
+  it("ignores stale completion responses after continued typing", async () => {
+    const user = userEvent.setup();
+    const firstCompletion = deferred<LanguageCompletionItem[]>();
+    const secondCompletion = deferred<LanguageCompletionItem[]>();
+    const completeSymbol = vi.fn()
+      .mockReturnValueOnce(firstCompletion.promise)
+      .mockReturnValueOnce(secondCompletion.promise);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol,
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+    await waitFor(() => expect(completeSymbol).toHaveBeenCalledTimes(1));
+
+    await user.keyboard("u");
+    await waitFor(() => expect(completeSymbol).toHaveBeenCalledTimes(2));
+    secondCompletion.resolve([{ label: "button()", detail: "New two-character result", kind: "function" }]);
+
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
+    expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
+
+    firstCompletion.resolve([{ label: "build()", detail: "Old one-character result", kind: "method" }]);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
+    expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
+  });
+
+  it("does not trigger automatic completion for space or delete edits", async () => {
+    const user = userEvent.setup();
+    const completeSymbol = vi.fn(async () => [
+      { label: "build()", detail: "Component lifecycle method", kind: "method" },
+    ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol,
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control} ");
+    await user.keyboard("{Backspace}");
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+
+    expect(completeSymbol).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
   });
 
   it("positions code completion inside the active editor surface", async () => {

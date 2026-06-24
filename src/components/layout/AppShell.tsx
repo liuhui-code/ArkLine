@@ -124,6 +124,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [completionReplacePrefix, setCompletionReplacePrefix] = useState("");
   const [completionSelectedIndex, setCompletionSelectedIndex] = useState(0);
   const [completionTrigger, setCompletionTrigger] = useState<"manual" | "typing">("typing");
+  const [completionStatus, setCompletionStatus] = useState<"ready" | "empty" | "error">("empty");
+  const [completionMessage, setCompletionMessage] = useState<string | undefined>();
   const [usageSearch, setUsageSearch] = useState<UsageSearchState>(idleUsageSearchState());
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
@@ -142,6 +144,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const navigationHistoryRef = useRef<NavigationLocation[]>([]);
   const completionRecencyRef = useRef(new Map<string, number>());
   const completionRecencyCounterRef = useRef(0);
+  const completionRequestRef = useRef(0);
   const searchEverywhereRequestRef = useRef(0);
   const settingsSaveResetTimerRef = useRef<number | null>(null);
   const typingCompletionTimerRef = useRef<number | null>(null);
@@ -637,20 +640,59 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
     if (!activePath || !workspaceApi.completeSymbol) return void setStatusText("Completion unavailable");
+    const requestId = completionRequestRef.current + 1;
+    completionRequestRef.current = requestId;
     const selection = {
       line: selectionOverride?.line ?? editorSelection.line,
       column: selectionOverride?.column ?? editorSelection.column,
     };
+    const path = activePath;
     const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
     const replacePrefix = extractCompletionPrefix(currentContent, selection.line, selection.column);
     const query = trigger === "typing" ? replacePrefix : "";
-    const results = await workspaceApi.completeSymbol({ path: activePath, line: selection.line, column: selection.column });
+    let results: LanguageCompletionItem[];
+    try {
+      results = await workspaceApi.completeSymbol({ path, line: selection.line, column: selection.column });
+    } catch (error) {
+      if (completionRequestRef.current !== requestId) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      setCompletionItems([]);
+      setCompletionReplacePrefix(replacePrefix);
+      setCompletionSelectedIndex(0);
+      setQuickOpenQuery(query);
+      setCompletionTrigger(trigger);
+      setCompletionStatus("error");
+      setCompletionMessage(`Completion failed: ${message}`);
+      if (trigger === "manual") {
+        setActiveOverlay("completion");
+        setEditorFocusToken((token) => token + 1);
+        focusEditorSoon();
+      } else {
+        setActiveOverlay((current) => (current === "completion" ? "none" : current));
+        focusEditorSoon();
+      }
+      setStatusText(`Completion failed: ${message}`);
+      return;
+    }
+    if (completionRequestRef.current !== requestId) {
+      return;
+    }
+
     setCompletionItems(results);
     setCompletionReplacePrefix(replacePrefix);
     setCompletionSelectedIndex(0);
     setQuickOpenQuery(query);
     setCompletionTrigger(trigger);
-    setActiveOverlay("completion");
+    setCompletionStatus(results.length > 0 ? "ready" : "empty");
+    setCompletionMessage(results.length > 0 ? undefined : "No completions");
+    if (trigger === "manual" || results.length > 0) {
+      setActiveOverlay("completion");
+    } else {
+      setActiveOverlay((current) => (current === "completion" ? "none" : current));
+    }
     setStatusText(results.length > 0 ? `Completion: ${results.length} items` : "Completion empty");
     if (trigger === "manual") {
       setEditorFocusToken((token) => token + 1);
@@ -699,7 +741,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Find Usages failed: ${message}`);
     }
   }
-  function insertCompletion(label: string) { completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(label, completionRecencyCounterRef.current); setInsertTextTarget({ text: label, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
+  function insertCompletion(label: string) { completionRequestRef.current += 1; completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(label, completionRecencyCounterRef.current); setInsertTextTarget({ text: label, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setCompletionStatus("empty"); setCompletionMessage(undefined); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
   function moveCompletionSelection(direction: 1 | -1, resultCount: number) {
     if (resultCount <= 0) {
       return;
@@ -990,7 +1032,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     completionPresentationContext,
   );
   const selectedCompletionPresentation = completionPresentationResults[Math.min(completionSelectedIndex, Math.max(completionPresentationResults.length - 1, 0))] ?? null;
-  const completionPopupVisible = activeOverlay === "completion" && completionPresentationResults.length > 0;
+  const completionPopupVisible = activeOverlay === "completion" && (completionPresentationResults.length > 0 || completionTrigger === "manual" || completionStatus === "error");
   const overlayVisible = activeOverlay !== "none" && activeOverlay !== "completion";
   const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
 
@@ -1007,7 +1049,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
   useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
-      if (activeOverlay !== "completion" || completionPresentationResults.length === 0 || !isEditorFocused()) {
+      if (activeOverlay !== "completion" || !isEditorFocused()) {
         return;
       }
 
@@ -1015,6 +1057,18 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         event.preventDefault();
         event.stopPropagation();
         void openCompletionFromEditor();
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setActiveOverlay("none");
+        focusEditorSoon();
+        return;
+      }
+
+      if (completionPresentationResults.length === 0) {
         return;
       }
 
@@ -1036,14 +1090,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         event.preventDefault();
         event.stopPropagation();
         setCompletionSelectionBoundary(event.key === "Home" ? "first" : "last", completionPresentationResults.length);
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActiveOverlay("none");
-        focusEditorSoon();
         return;
       }
 
@@ -1103,7 +1149,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           selectedIndex={completionSelectedIndex}
           position={completionPopupPosition}
           anchor={completionAnchor}
-          status="ready"
+          status={completionPresentationResults.length > 0 ? "ready" : completionStatus}
+          message={completionMessage}
           detailsVisible={false}
           onAccept={(item) => insertCompletion(item.insertText)}
           onSelect={setCompletionSelectedIndex}
