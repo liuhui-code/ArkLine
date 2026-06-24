@@ -121,16 +121,19 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
       return;
     }
 
+    const selectedCommit = selected.commit;
+    const selectedLine = selected.bufferLine;
+    const selectedSourceLine = selected.sourceLine ?? selected.bufferLine;
     let cancelled = false;
     setState((current) => ({
       ...current,
-      selectedLine: selected.bufferLine,
-      selectedCommit: selected.commit,
+      selectedLine,
+      selectedCommit,
       detailStatus: "loading",
       message: current.blameStatus === "ready" ? undefined : current.message,
     }));
 
-    void workspaceApi.getCommitTrace(activePath, selected.commit, selected.sourceLine ?? selected.bufferLine).then((result) => {
+    void workspaceApi.getCommitTrace(activePath, selectedCommit, selectedSourceLine).then((result) => {
       if (cancelled) {
         return;
       }
@@ -138,8 +141,8 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
       if (isGitTraceUnavailable(result)) {
         setState((current) => ({
           ...current,
-          selectedLine: selected.bufferLine,
-          selectedCommit: selected.commit,
+          selectedLine,
+          selectedCommit,
           detailStatus: "unavailable",
           detail: null,
           message: result.message,
@@ -149,8 +152,8 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
 
       setState((current) => ({
         ...current,
-        selectedLine: selected.bufferLine,
-        selectedCommit: selected.commit,
+        selectedLine,
+        selectedCommit,
         detailStatus: "ready",
         detail: result,
         message: undefined,
@@ -163,8 +166,8 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
       const message = error instanceof Error ? error.message : String(error);
       setState((current) => ({
         ...current,
-        selectedLine: selected.bufferLine,
-        selectedCommit: selected.commit,
+        selectedLine,
+        selectedCommit,
         detailStatus: "error",
         detail: null,
         message,
