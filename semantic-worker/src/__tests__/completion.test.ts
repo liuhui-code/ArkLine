@@ -308,4 +308,81 @@ describe("semantic worker completion", () => {
       data: { provider: "arkui-sdk", component: "Column" },
     }))
   })
+
+  it("keeps ordinary dot completion from inheriting a previous ArkUI block", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-ordinary-dot-completion-"))
+    tempRoots.push(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = createArkuiSdkFixture(root)
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Column() {",
+        "      Text(\"Hi\")",
+        "    }",
+        "",
+        "    const foo = {}",
+        "    foo.wi",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "completion-ordinary-dot-width",
+      method: "completion",
+      position: { path: indexPath, line: 10, column: 11 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).not.toContainEqual(expect.objectContaining({ label: "width", source: "arkui" }))
+  })
+
+  it("uses the block receiver for component-specific chained completion", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-block-receiver-completion-"))
+    tempRoots.push(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = createArkuiSdkFixture(root)
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Column() {",
+        "      Text(\"Hi\")",
+        "    }",
+        "    .ju",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "completion-block-receiver-justify",
+      method: "completion",
+      position: { path: indexPath, line: 8, column: 8 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toContainEqual(expect.objectContaining({
+      label: "justifyContent",
+      data: { provider: "arkui-sdk", component: "Column" },
+    }))
+  })
 })

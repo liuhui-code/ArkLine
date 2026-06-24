@@ -55,9 +55,14 @@ export function findArkuiApiDefinition(
   const componentMatch = component
     ? entries.find((entry) => entry.name === name && entry.component === component)
     : null
+  const universalMatch = entries.find((entry) => entry.name === name && entry.kind === "universalAttribute")
+
+  if (component) {
+    return componentMatch ?? universalMatch ?? null
+  }
 
   return componentMatch
-    ?? entries.find((entry) => entry.name === name && entry.kind === "universalAttribute")
+    ?? universalMatch
     ?? entries.find((entry) => entry.name === name)
     ?? null
 }

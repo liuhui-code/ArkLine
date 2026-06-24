@@ -400,4 +400,38 @@ describe("semantic worker lifecycle", () => {
     expect(response.ok).toBe(true)
     expect(response.payload).toBeNull()
   })
+
+  it("does not resolve component-specific attributes on the wrong ArkUI receiver", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-wrong-receiver-"))
+    tempRoots.push(root)
+    const { sdkRoot } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Text(\"Hi\").justifyContent(FlexAlign.Center)",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "definition-wrong-receiver-justify",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 5, column: 16 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toBeNull()
+  })
 })
