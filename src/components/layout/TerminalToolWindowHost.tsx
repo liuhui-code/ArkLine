@@ -7,6 +7,7 @@ import type { WorkspaceApi, TerminalSessionSummary as WorkspaceTerminalSessionSu
 
 type TerminalToolWindowHostProps = {
   active: boolean;
+  layoutToken: number;
   onStatusChange: (status: string) => void;
   workspaceApi: WorkspaceApi;
   workspaceRootPath: string | null;
@@ -14,6 +15,7 @@ type TerminalToolWindowHostProps = {
 
 export function TerminalToolWindowHost({
   active,
+  layoutToken,
   onStatusChange,
   workspaceApi,
   workspaceRootPath,
@@ -152,6 +154,7 @@ export function TerminalToolWindowHost({
       sessions={sessions}
       activeSessionId={activeSessionId}
       focusToken={focusToken}
+      layoutToken={layoutToken}
       onInput={(data) => void writeInput(data)}
       onCreateSession={() => void createSession()}
       onCloseSession={(sessionId) => void closeSession(sessionId)}
@@ -160,7 +163,7 @@ export function TerminalToolWindowHost({
       onStopSession={() => void stopSession()}
       viewportRef={viewportRef}
     />
-  ), [activeSessionId, clearSession, closeSession, createSession, focusToken, sessions, setActiveSession, stopSession, writeInput]);
+  ), [activeSessionId, clearSession, closeSession, createSession, focusToken, layoutToken, sessions, setActiveSession, stopSession, writeInput]);
 
   return terminalToolWindow;
 }

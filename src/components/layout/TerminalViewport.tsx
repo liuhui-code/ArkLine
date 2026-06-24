@@ -1,22 +1,30 @@
 import type { FitAddon } from "@xterm/addon-fit";
 import type { Terminal as XTermTerminal } from "@xterm/xterm";
 import type { KeyboardEvent } from "react";
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import type { TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import "@xterm/xterm/css/xterm.css";
 
 type TerminalViewportProps = {
   focusToken: number;
+  layoutToken: number;
   onInput: (data: string) => void;
-  output: string;
   sessionId: string | null;
 };
 
-export function TerminalViewport({ focusToken, onInput, output, sessionId }: TerminalViewportProps) {
+export const TerminalViewport = forwardRef<TerminalViewportHandle, TerminalViewportProps>(function TerminalViewport({
+  focusToken,
+  layoutToken,
+  onInput,
+  sessionId,
+}, ref) {
+  const xtermEnabled = supportsXtermRuntime();
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<XTermTerminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const fallbackBufferRef = useRef("");
-  const renderedOutputRef = useRef("");
+  const pendingOutputRef = useRef("");
+  const pendingFocusRef = useRef(false);
 
   function supportsXtermRuntime() {
     const hasCanvas = typeof HTMLCanvasElement !== "undefined"
@@ -27,7 +35,7 @@ export function TerminalViewport({ focusToken, onInput, output, sessionId }: Ter
   }
 
   useEffect(() => {
-    if (!viewportRef.current || terminalRef.current || !supportsXtermRuntime()) {
+    if (!viewportRef.current || terminalRef.current || !xtermEnabled) {
       return;
     }
 
@@ -53,13 +61,23 @@ export function TerminalViewport({ focusToken, onInput, output, sessionId }: Ter
       terminal.loadAddon(fitAddon);
       terminal.open(viewportRef.current);
       fitAddon.fit();
-      terminal.write("ArkLine terminal session\r\n");
       const disposable = terminal.onData((data) => {
         void onInput(data);
       });
 
       terminalRef.current = terminal;
       fitAddonRef.current = fitAddon;
+      if (pendingOutputRef.current) {
+        terminal.reset();
+        terminal.write(pendingOutputRef.current);
+      }
+      if (pendingFocusRef.current || sessionId) {
+        pendingFocusRef.current = false;
+        terminal.focus();
+      }
+      if (sessionId) {
+        terminal.focus();
+      }
       cleanup = () => {
         disposable.dispose();
         terminal.dispose();
@@ -72,39 +90,97 @@ export function TerminalViewport({ focusToken, onInput, output, sessionId }: Ter
       disposed = true;
       cleanup();
     };
-  }, [onInput]);
+  }, [onInput, sessionId, xtermEnabled]);
 
   useEffect(() => {
-    if (sessionId) {
-      if (supportsXtermRuntime()) {
-        fitAddonRef.current?.fit();
-      }
-      viewportRef.current?.focus();
+    if (!sessionId) {
+      return;
     }
+
+    if (xtermEnabled && terminalRef.current) {
+      fitAddonRef.current?.fit();
+      terminalRef.current.focus();
+      return;
+    }
+
+    if (xtermEnabled) {
+      pendingFocusRef.current = true;
+      return;
+    }
+
+    viewportRef.current?.focus();
   }, [focusToken, sessionId]);
 
   useEffect(() => {
-    if (renderedOutputRef.current === output) {
-      return;
+    if (xtermEnabled && terminalRef.current) {
+      fitAddonRef.current?.fit();
     }
+  }, [layoutToken, xtermEnabled]);
 
-    const safeOutput = output ?? "";
-    const nextChunk = safeOutput.slice(renderedOutputRef.current.length);
-    renderedOutputRef.current = safeOutput;
+  useImperativeHandle(ref, () => ({
+    clear() {
+      fallbackBufferRef.current = "";
+      pendingOutputRef.current = "";
+      if (xtermEnabled && terminalRef.current) {
+        terminalRef.current.clear();
+        return;
+      }
 
-    if (!nextChunk) {
-      return;
-    }
+      if (xtermEnabled) {
+        return;
+      }
 
-    if (supportsXtermRuntime() && terminalRef.current) {
-      terminalRef.current.write(nextChunk);
-      return;
-    }
+      if (viewportRef.current) {
+        viewportRef.current.textContent = "";
+      }
+    },
+    focus() {
+      if (xtermEnabled && terminalRef.current) {
+        terminalRef.current.focus();
+        return;
+      }
 
-    if (viewportRef.current) {
-      viewportRef.current.textContent = safeOutput;
-    }
-  }, [output]);
+      if (xtermEnabled) {
+        pendingFocusRef.current = true;
+        return;
+      }
+
+      viewportRef.current?.focus();
+    },
+    reset(output: string) {
+      pendingOutputRef.current = output;
+      if (xtermEnabled && terminalRef.current) {
+        terminalRef.current.reset();
+        if (output) {
+          terminalRef.current.write(output);
+        }
+        return;
+      }
+
+      if (xtermEnabled) {
+        return;
+      }
+
+      if (viewportRef.current) {
+        viewportRef.current.textContent = output;
+      }
+    },
+    write(data: string) {
+      pendingOutputRef.current = `${pendingOutputRef.current}${data}`;
+      if (xtermEnabled && terminalRef.current) {
+        terminalRef.current.write(data);
+        return;
+      }
+
+      if (xtermEnabled) {
+        return;
+      }
+
+      if (viewportRef.current) {
+        viewportRef.current.textContent = `${viewportRef.current.textContent ?? ""}${data}`;
+      }
+    },
+  }), [xtermEnabled]);
 
   function handleFallbackKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (supportsXtermRuntime() || !sessionId) {
@@ -141,4 +217,4 @@ export function TerminalViewport({ focusToken, onInput, output, sessionId }: Ter
       tabIndex={0}
     />
   );
-}
+});

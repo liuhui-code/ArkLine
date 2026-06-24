@@ -3,9 +3,105 @@ import { createTerminalSessionManager } from "@/features/terminal/terminal-sessi
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
+import { TerminalViewport } from "@/components/layout/TerminalViewport";
+import type { TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import { defaultSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi, WorkspaceSnapshot, EnvironmentReport } from "@/features/workspace/workspace-api";
-import { vi } from "vitest";
+import { act, waitFor } from "@testing-library/react";
+import { createRef } from "react";
+import { beforeEach, vi } from "vitest";
+
+const terminalInstances: FakeTerminal[] = [];
+
+class FakeTerminal {
+  writes: string[] = [];
+  focus = vi.fn();
+  clear = vi.fn();
+  onDataCallback: ((data: string) => void) | null = null;
+  element: HTMLElement | null = null;
+  keydownHandler: ((event: KeyboardEvent) => void) | null = null;
+
+  constructor(_options?: unknown) {
+    terminalInstances.push(this);
+  }
+
+  write(data: string) {
+    this.writes.push(data);
+  }
+
+  reset() {
+    this.writes = [];
+  }
+
+  dispose() {
+    if (this.element && this.keydownHandler) {
+      this.element.removeEventListener("keydown", this.keydownHandler);
+    }
+  }
+
+  open(element: HTMLElement) {
+    this.element = element;
+    this.keydownHandler = (event: KeyboardEvent) => {
+      if (!this.onDataCallback) {
+        return;
+      }
+
+      if (event.key === "Enter") {
+        this.onDataCallback("\r");
+        return;
+      }
+
+      if (event.key === "Backspace") {
+        this.onDataCallback("\u007f");
+        return;
+      }
+
+      if (event.key.length === 1) {
+        this.onDataCallback(event.key);
+      }
+    };
+    element.addEventListener("keydown", this.keydownHandler);
+  }
+
+  loadAddon(_addon: { fit(): void }) {}
+
+  onData(callback: (data: string) => void) {
+    this.onDataCallback = callback;
+    return { dispose() {} };
+  }
+}
+
+const fitAddonFit = vi.fn();
+
+vi.mock("@xterm/xterm", () => ({
+  Terminal: FakeTerminal,
+}));
+
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit() {
+      fitAddonFit();
+    }
+  },
+}));
+
+beforeEach(() => {
+  terminalInstances.length = 0;
+  fitAddonFit.mockClear();
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation(() => ({
+      matches: false,
+      media: "",
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 describe("terminal tabs store", () => {
   it("creates, activates, and closes terminal sessions", () => {
@@ -130,6 +226,81 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
 }
 
 describe("terminal tool window", () => {
+  it("replays buffered output through xterm after async terminal startup", async () => {
+    const ansiOutput = "\u001b[31merror\u001b[0m";
+    const viewportRef = createRef<TerminalViewportHandle>();
+
+    render(
+      <TerminalViewport
+        ref={viewportRef}
+        focusToken={0}
+        layoutToken={0}
+        onInput={() => undefined}
+        sessionId="session-1"
+      />,
+    );
+
+    viewportRef.current?.reset(ansiOutput);
+    await waitFor(() => expect(terminalInstances).toHaveLength(1));
+    expect(terminalInstances[0]?.writes).toContain(ansiOutput);
+    expect(screen.getByLabelText("Terminal Viewport").textContent).toBe("");
+  });
+
+  it("focuses the xterm instance when the terminal session becomes active", async () => {
+    const { rerender } = render(
+      <TerminalViewport
+        focusToken={0}
+        layoutToken={0}
+        onInput={() => undefined}
+        sessionId="session-1"
+      />,
+    );
+
+    await waitFor(() => expect(terminalInstances).toHaveLength(1));
+    const terminal = terminalInstances[0];
+
+    await act(async () => {
+      rerender(
+        <TerminalViewport
+          focusToken={1}
+          layoutToken={0}
+          onInput={() => undefined}
+          sessionId="session-1"
+        />,
+      );
+    });
+
+    expect(terminal?.focus).toHaveBeenCalled();
+  });
+
+  it("refits xterm when the terminal layout token changes", async () => {
+    const onInput = vi.fn();
+    const { rerender } = render(
+      <TerminalViewport
+        focusToken={0}
+        layoutToken={1}
+        onInput={onInput}
+        sessionId="session-1"
+      />,
+    );
+
+    await waitFor(() => expect(terminalInstances).toHaveLength(1));
+    const initialFitCount = fitAddonFit.mock.calls.length;
+
+    await act(async () => {
+      rerender(
+        <TerminalViewport
+          focusToken={0}
+          layoutToken={2}
+          onInput={onInput}
+          sessionId="session-1"
+        />,
+      );
+    });
+
+    expect(fitAddonFit.mock.calls.length).toBeGreaterThan(initialFitCount);
+  });
+
   it("forwards terminal keystrokes to the active session writer", async () => {
     const user = userEvent.setup();
     const writeTerminalInput = vi.fn(async () => undefined);
@@ -139,11 +310,9 @@ describe("terminal tool window", () => {
     await user.click(await screen.findByLabelText("Terminal Viewport"));
     await user.keyboard("pwd{Enter}");
 
-    expect(writeTerminalInput).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sessionId: "session-1",
-        data: expect.stringContaining("pwd"),
-      }),
-    );
+    expect(writeTerminalInput).toHaveBeenNthCalledWith(1, { sessionId: "session-1", data: "p" });
+    expect(writeTerminalInput).toHaveBeenNthCalledWith(2, { sessionId: "session-1", data: "w" });
+    expect(writeTerminalInput).toHaveBeenNthCalledWith(3, { sessionId: "session-1", data: "d" });
+    expect(writeTerminalInput).toHaveBeenNthCalledWith(4, { sessionId: "session-1", data: "\r" });
   });
 });

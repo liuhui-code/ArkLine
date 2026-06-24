@@ -1,30 +1,34 @@
 import { TerminalViewport } from "@/components/layout/TerminalViewport";
+import type { TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import type { TerminalSessionSummary } from "@/features/terminal/terminal-types";
+import type { RefObject } from "react";
 
 type TerminalToolWindowProps = {
   sessions: TerminalSessionSummary[];
   activeSessionId: string | null;
   focusToken: number;
-  output: string;
+  layoutToken: number;
   onInput: (data: string) => void;
   onCreateSession: () => void;
   onCloseSession: (sessionId: string) => void;
   onSetActiveSession: (sessionId: string) => void;
   onClearSession: () => void;
   onStopSession: () => void;
+  viewportRef: RefObject<TerminalViewportHandle | null>;
 };
 
 export function TerminalToolWindow({
   sessions,
   activeSessionId,
   focusToken,
-  output,
+  layoutToken,
   onInput,
   onCreateSession,
   onCloseSession,
   onSetActiveSession,
   onClearSession,
   onStopSession,
+  viewportRef,
 }: TerminalToolWindowProps) {
   return (
     <section aria-label="Terminal Panel" className="bottom-tool-window__panel">
@@ -59,7 +63,7 @@ export function TerminalToolWindow({
           <button type="button" className="terminal-tool-window__action" onClick={onClearSession}>Clear</button>
           <button type="button" className="terminal-tool-window__action" onClick={onStopSession}>Stop</button>
         </div>
-        <TerminalViewport focusToken={focusToken} output={output} sessionId={activeSessionId} onInput={onInput} />
+        <TerminalViewport ref={viewportRef} focusToken={focusToken} layoutToken={layoutToken} sessionId={activeSessionId} onInput={onInput} />
       </div>
     </section>
   );
