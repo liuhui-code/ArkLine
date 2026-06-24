@@ -995,18 +995,21 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
       if ((event.ctrlKey || event.metaKey) && event.code === "Space") {
         event.preventDefault();
+        event.stopPropagation();
         void openCompletionFromEditor();
         return;
       }
 
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
+        event.stopPropagation();
         moveCompletionSelection(event.key === "ArrowDown" ? 1 : -1, completionPresentationResults.length);
         return;
       }
 
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         setActiveOverlay("none");
         focusEditorSoon();
         return;
@@ -1017,6 +1020,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       }
 
       event.preventDefault();
+      event.stopPropagation();
       if (selectedCompletionPresentation) {
         insertCompletion(selectedCompletionPresentation.insertText);
       }

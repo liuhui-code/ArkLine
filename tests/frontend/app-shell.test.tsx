@@ -632,6 +632,48 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
   });
 
+  it("refreshes an open completion popup once when Ctrl+Space is pressed again", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+    await screen.findByRole("listbox", { name: "Code Completion" });
+    await waitFor(() => expect(workspaceApi.completeSymbol).toHaveBeenCalledTimes(1));
+
+    await user.keyboard("{Control>} {/Control}");
+
+    await waitFor(() => expect(workspaceApi.completeSymbol).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("listbox", { name: "Code Completion" })).toBeVisible();
+  });
+
   it("blocks definition and completion while settings are applying", async () => {
     const user = userEvent.setup();
     let finishSave!: () => void;
