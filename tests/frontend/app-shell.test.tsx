@@ -1599,6 +1599,15 @@ describe("App shell", () => {
           relativeTime: "4d ago",
           summary: "Add entry component",
         },
+        {
+          line: 2,
+          commit: "aaa1111",
+          sourceLine: 2,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
       ],
     });
 
@@ -1638,12 +1647,14 @@ describe("App shell", () => {
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     await user.click(screen.getByRole("tab", { name: "Terminal" }));
-    await user.click(await screen.findByRole("button", { name: "Toggle Git Blame" }));
+    await user.click(await screen.findByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Toggle Git Blame" }));
 
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
-    expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy();
+    await waitFor(() => expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy());
 
-    await user.click(screen.getByRole("button", { name: "Toggle Git Blame" }));
+    await user.click(screen.getByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Toggle Git Blame" }));
 
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
     expect(container.querySelector(".cm-git-trace-marker")).toBeNull();
@@ -1719,6 +1730,47 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Add entry component");
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("runs Git Blame actions from the command palette", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ],
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Command Palette" }));
+    fireEvent.change(await screen.findByLabelText("Find Action Query"), { target: { value: "Toggle Git Blame" } });
+    await user.click(await screen.findByRole("button", { name: "Toggle Git Blame" }));
+
+    await waitFor(() => expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy());
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Command Palette" }));
+    fireEvent.change(await screen.findByLabelText("Find Action Query"), { target: { value: "Show Current Line Git Blame" } });
+    await user.click(await screen.findByRole("button", { name: "Show Current Line Git Blame" }));
+
+    expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Add entry component");
   });
 
   it("shows a clear message when the file is not tracked by Git", async () => {

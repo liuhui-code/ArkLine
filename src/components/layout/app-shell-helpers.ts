@@ -32,6 +32,10 @@ type CommandPaletteAction = {
   formatActiveDocument: () => void;
   loadDiff: () => void;
   openSettings: () => void;
+  toggleGitBlame: () => void;
+  refreshGitBlame: () => void;
+  showCurrentLineBlame: () => void;
+  closeGitBlame: () => void;
 };
 
 export function buildAppShellCommandPaletteItems(query: string, actions: CommandPaletteAction) {
@@ -47,5 +51,9 @@ export function buildAppShellCommandPaletteItems(query: string, actions: Command
     { id: "format-active-document", label: "Format Active Document", action: actions.formatActiveDocument },
     { id: "load-diff", label: "Load Diff", action: actions.loadDiff },
     { id: "open-settings", label: "Open Settings", action: actions.openSettings },
+    { id: "toggle-git-blame", label: "Toggle Git Blame", action: actions.toggleGitBlame },
+    { id: "refresh-git-blame", label: "Refresh Git Blame", action: actions.refreshGitBlame },
+    { id: "show-current-line-git-blame", label: "Show Current Line Git Blame", action: actions.showCurrentLineBlame },
+    { id: "close-git-blame", label: "Close Git Blame", action: actions.closeGitBlame },
   ]);
 }

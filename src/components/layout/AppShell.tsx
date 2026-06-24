@@ -980,7 +980,23 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     return () => window.removeEventListener("keydown", handleCompletionAcceptKey, true);
   }, [activeOverlay, completionAutoFocus, completionResults, selectedCompletion]);
 
-  const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, { openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), openGoToLine: () => setOverlay("goToLine"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), openCompletion: () => void openCompletionFromEditor(), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), openSettings: () => void openSettings() });
+  const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, {
+    openProject: () => void projectOpening.openProjectPicker(),
+    openDemoWorkspace: () => void openDemoWorkspace(),
+    openRecentProjects: () => setOverlay("recentProjects"),
+    openGoToLine: () => setOverlay("goToLine"),
+    goToDefinition: () => void goToDefinitionFromEditor(),
+    findUsages: () => void findUsagesFromEditor(),
+    openCompletion: () => void openCompletionFromEditor(),
+    runLint: () => void runLint(),
+    formatActiveDocument: () => void formatActiveDocument(),
+    loadDiff: () => void loadDiff(),
+    openSettings: () => void openSettings(),
+    toggleGitBlame,
+    refreshGitBlame,
+    showCurrentLineBlame,
+    closeGitBlame,
+  });
   const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell" data-bottom-layout-token={bottomLayoutToken}>
