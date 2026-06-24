@@ -140,7 +140,11 @@ function resolveArkuiSystemAttribute(
   }
 
   const arkuiContext = findArkuiContext(content, position)
-  const entry = findArkuiApiDefinition(sdkPath, symbol, arkuiContext?.component)
+  if (!arkuiContext) {
+    return null
+  }
+
+  const entry = findArkuiApiDefinition(sdkPath, symbol, arkuiContext.component)
   if (!entry) {
     return null
   }

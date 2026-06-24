@@ -370,4 +370,34 @@ describe("semantic worker lifecycle", () => {
       column: 10,
     })
   })
+
+  it("does not resolve ordinary width calls to ArkUI system attributes", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-ordinary-width-"))
+    tempRoots.push(root)
+    const { sdkRoot } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "function run() {",
+        "  width()",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "definition-ordinary-width",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 2, column: 4 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toBeNull()
+  })
 })
