@@ -1497,7 +1497,8 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    await user.click(await screen.findByRole("button", { name: "Toggle Git Blame" }));
+    await user.click(await screen.findByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Toggle Git Blame" }));
     const blameButton = await waitFor(() => {
       const button = container.querySelector<HTMLButtonElement>(".cm-git-trace-marker");
       expect(button).toBeTruthy();
@@ -1512,10 +1513,55 @@ describe("App shell", () => {
     expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Mark ArkTS entry component");
     expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "false");
 
-    await user.click(screen.getByRole("button", { name: "Show Diff" }));
+    await user.click(screen.getByRole("button", { name: "Show Commit" }));
 
     expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
+  });
+
+  it("copies a committed blame hash from the blame card", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "abc1234567890",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-23T10:00:00Z",
+          relativeTime: "2h ago",
+          summary: "Mark ArkTS entry component",
+        },
+      ],
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Toggle Git Blame" }));
+    const blameButton = await waitFor(() => {
+      const button = container.querySelector<HTMLButtonElement>(".cm-git-trace-marker");
+      expect(button).toBeTruthy();
+      return button!;
+    });
+    await user.click(blameButton);
+    await user.click(await screen.findByRole("button", { name: "Copy Hash" }));
+
+    expect(writeText).toHaveBeenCalledWith("abc1234567890");
+    expect(await screen.findByText("Copied commit abc1234")).toBeVisible();
   });
 
   it("keeps committed blame visible around an unsaved inserted line", async () => {
@@ -1569,7 +1615,8 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     await user.click(await screen.findByLabelText("Editor Content"));
     await user.keyboard("{Home}{ArrowDown}{Enter}@Component");
-    await user.click(screen.getByRole("button", { name: "Toggle Git Blame" }));
+    await user.click(screen.getByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Toggle Git Blame" }));
 
     await waitFor(() => {
       expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy();
@@ -1578,6 +1625,64 @@ describe("App shell", () => {
     expect(container).toHaveTextContent("Uncommitted");
     expect(container).toHaveTextContent("Jane Doe");
     expect(container).toHaveTextContent("Alex Chen");
+  });
+
+  it("opens the Git diff view for a local uncommitted blame row", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      loadDiff: async () => `diff --git a/src/main.ets b/src/main.ets
+--- a/src/main.ets
++++ b/src/main.ets
+@@ -1,1 +1,2 @@
+ @Entry
++// local change`,
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+        {
+          line: 2,
+          commit: "bbb2222",
+          sourceLine: 2,
+          author: "Alex Chen",
+          authoredAt: "2026-06-21T10:00:00Z",
+          relativeTime: "3d ago",
+          summary: "Add build method",
+        },
+      ],
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Home}{Enter}// local change");
+    await user.click(await screen.findByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Show Current Line Commit" }));
+
+    expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Local uncommitted change");
+    expect(screen.queryByRole("button", { name: "Copy Hash" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Show Local Diff" }));
+
+    expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("Local Changes")).toBeVisible();
+    expect(await screen.findByLabelText("Git Diff Viewer")).toHaveTextContent("+ // local change");
+    expect(screen.queryByRole("dialog", { name: "Git Blame Details" })).not.toBeInTheDocument();
   });
 
   it("shows current-line blame while full-file blame is closed", async () => {

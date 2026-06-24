@@ -296,6 +296,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       showBottomTool("git");
     }
   }
+  function showSelectedBlameCommit() {
+    if (!selectedBlameAttribution?.commit) {
+      return;
+    }
+    showBottomTool("gitTrace");
+  }
+  async function showSelectedLocalDiff() {
+    await loadDiff();
+    setSelectedBlameAttribution(null);
+  }
   function copySelectedBlameHash() {
     if (!selectedBlameAttribution?.commit) {
       return;
@@ -1009,7 +1019,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         <GitBlameCard
           attribution={selectedBlameAttribution}
           onClose={() => setSelectedBlameAttribution(null)}
+          onShowCommit={showSelectedBlameCommit}
           onShowDiff={showSelectedBlameDiff}
+          onShowLocalDiff={() => void showSelectedLocalDiff()}
           onCopyHash={copySelectedBlameHash}
         />
       ) : null}

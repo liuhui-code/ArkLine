@@ -3,11 +3,20 @@ import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 type GitBlameCardProps = {
   attribution: GitBlameAttribution;
   onClose: () => void;
+  onShowCommit: () => void;
   onShowDiff: () => void;
+  onShowLocalDiff: () => void;
   onCopyHash: () => void;
 };
 
-export function GitBlameCard({ attribution, onClose, onShowDiff, onCopyHash }: GitBlameCardProps) {
+export function GitBlameCard({
+  attribution,
+  onClose,
+  onShowCommit,
+  onShowDiff,
+  onShowLocalDiff,
+  onCopyHash,
+}: GitBlameCardProps) {
   const isLocal = attribution.status === "added" || attribution.status === "modified";
   const title = isLocal ? "Local uncommitted change" : attribution.summary ?? "Git blame details";
   const author = attribution.author ?? attribution.originalAuthor ?? "Uncommitted";
@@ -25,8 +34,19 @@ export function GitBlameCard({ attribution, onClose, onShowDiff, onCopyHash }: G
         {attribution.shortCommit ? <code>{attribution.shortCommit}</code> : null}
       </div>
       <div className="git-blame-card__actions">
-        <button type="button" onClick={onShowDiff}>Show Diff</button>
-        <button type="button" onClick={onCopyHash} disabled={!attribution.commit}>Copy Hash</button>
+        {isLocal ? (
+          <>
+            <button type="button" onClick={onShowLocalDiff}>Show Local Diff</button>
+            <button type="button" onClick={onClose}>Close</button>
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={onShowCommit}>Show Commit</button>
+            <button type="button" onClick={onShowDiff}>Show Diff</button>
+            <button type="button" onClick={onCopyHash} disabled={!attribution.commit}>Copy Hash</button>
+            <button type="button" onClick={onClose}>Close</button>
+          </>
+        )}
       </div>
     </aside>
   );
