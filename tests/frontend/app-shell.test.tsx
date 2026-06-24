@@ -1018,7 +1018,7 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
-  it("resets the manual completion selection to the first filtered result when the query changes", async () => {
+  it("opens manual completion in the editor popup instead of the old overlay", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -1054,25 +1054,26 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}");
     await user.keyboard("{Control>} {/Control}");
 
-    const completionQuery = await screen.findByLabelText("Completion Query");
-    const results = await screen.findByRole("list", { name: "Completion Results" });
-    await user.click(completionQuery);
-    await waitFor(() => expect(completionQuery).toHaveFocus());
-    const browseButton = within(results).getByRole("button", { name: /browse\(\)/ });
+    await waitFor(() => {
+      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
+        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+        line: 3,
+        column: 16,
+      });
+    });
 
-    await user.keyboard("{ArrowDown}");
-    expect(browseButton).toHaveAttribute("aria-selected", "true");
-
-    await user.type(completionQuery, "u");
-
-    const buildButton = within(results).getByRole("button", { name: /build\(\)/ });
-    const buttonButton = within(results).getByRole("button", { name: /button\(\)/ });
-    expect(buildButton).toHaveAttribute("aria-selected", "true");
-    expect(buttonButton).toHaveAttribute("aria-selected", "false");
-
-    await user.keyboard("{Enter}");
-
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(results).toBeVisible();
     expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Completion Query")).not.toBeInTheDocument();
+    const buildOption = within(results).getByRole("option", { name: /build\(\)/ });
+    expect(buildOption).toBeVisible();
+    expect(within(results).getByRole("option", { name: /browse\(\)/ })).toBeVisible();
+
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.click(buildOption);
+
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
   });
 
@@ -1220,19 +1221,15 @@ describe("App shell", () => {
 
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}outline()");
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
-    await user.keyboard("{Control>} {/Control}");
+    await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
+    await user.keyboard("li");
 
-    const manualOverlay = await screen.findByLabelText("Completion Overlay");
-    const completionQuery = await screen.findByLabelText("Completion Query");
-    await user.click(completionQuery);
-    await user.type(completionQuery, "li");
-
-    const secondResults = within(manualOverlay).getByRole("list", { name: "Completion Results" });
-    const resultButtons = within(secondResults).getAllByRole("button");
+    const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });
+    const resultButtons = within(secondResults).getAllByRole("option");
 
     expect(resultButtons[0]).toHaveTextContent("myLine()");
-    expect(within(secondResults).getByRole("button", { name: /myLine\(\)/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(secondResults).getByRole("button", { name: /outline\(\)/ })).toHaveAttribute("aria-selected", "false");
+    expect(within(secondResults).getByRole("option", { name: /myLine\(\)/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(secondResults).getByRole("option", { name: /outline\(\)/ })).toHaveAttribute("aria-selected", "false");
   });
 
   it("finds usages from the editor and opens the selected result", async () => {

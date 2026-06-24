@@ -122,11 +122,11 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [completionItems, setCompletionItems] = useState<LanguageCompletionItem[]>([]);
   const [completionReplacePrefix, setCompletionReplacePrefix] = useState("");
   const [completionSelectedIndex, setCompletionSelectedIndex] = useState(0);
+  const [completionTrigger, setCompletionTrigger] = useState<"manual" | "typing">("typing");
   const [usageSearch, setUsageSearch] = useState<UsageSearchState>(idleUsageSearchState());
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
-  const [completionAutoFocus, setCompletionAutoFocus] = useState(true);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -195,9 +195,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function handleOverlayQueryChange(value: string) {
     setQuickOpenQuery(value);
-    if (activeOverlay === "completion") {
-      setCompletionSelectedIndex(0);
-    }
   }
   function clearTypingCompletionTimer() {
     if (typingCompletionTimerRef.current != null) {
@@ -651,7 +648,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setCompletionReplacePrefix(replacePrefix);
     setCompletionSelectedIndex(0);
     setQuickOpenQuery(query);
-    setCompletionAutoFocus(trigger === "manual");
+    setCompletionTrigger(trigger);
     setActiveOverlay("completion");
     setStatusText(results.length > 0 ? `Completion: ${results.length} items` : "Completion empty");
     if (trigger === "manual") {
@@ -952,57 +949,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const quickOpenResults = workspace ? rankPaths(workspace.visibleFiles, quickOpenQuery, 8) : [];
   const recentFileResults = filterRecentFileResults(tabsRef.current.state.recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery);
   const recentProjectResults = filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery);
-  const completionResults = [...completionItems]
-    .filter((item) => {
-      const query = quickOpenQuery.trim().toLowerCase();
-      return !query || item.label.toLowerCase().includes(query) || item.detail.toLowerCase().includes(query);
-    })
-    .sort((left, right) => {
-      const query = quickOpenQuery.trim().toLowerCase();
-      const rank = (item: LanguageCompletionItem) => {
-        const normalizedLabel = item.label.toLowerCase();
-        const normalizedDetail = item.detail.toLowerCase();
-        const hasPrefixMatch = query.length > 0 && normalizedLabel.startsWith(query);
-        const labelContainsIndex = query.length > 0 ? normalizedLabel.indexOf(query) : -1;
-        const detailContainsIndex = query.length > 0 ? normalizedDetail.indexOf(query) : -1;
-        const recentPriority = -(completionRecencyRef.current.get(item.label) ?? 0);
-        const kindPriority =
-          item.kind === "keyword" ? 0
-          : item.kind === "method" ? 1
-          : item.kind === "function" ? 2
-          : 3;
-        const prefixPriority = hasPrefixMatch ? 0 : 1;
-        const prefixDistancePriority = hasPrefixMatch ? normalizedLabel.length - query.length : Number.MAX_SAFE_INTEGER;
-        const containsSourcePriority =
-          hasPrefixMatch || query.length === 0 ? 0
-          : labelContainsIndex >= 0 ? 0
-          : detailContainsIndex >= 0 ? 1
-          : 2;
-        const containsPositionPriority =
-          hasPrefixMatch || query.length === 0 ? 0
-          : labelContainsIndex >= 0 ? labelContainsIndex
-          : detailContainsIndex >= 0 ? detailContainsIndex
-          : Number.MAX_SAFE_INTEGER;
-        return [
-          prefixPriority,
-          prefixDistancePriority,
-          containsSourcePriority,
-          containsPositionPriority,
-          recentPriority,
-          kindPriority,
-          normalizedLabel,
-        ] as const;
-      };
-      const leftRank = rank(left);
-      const rightRank = rank(right);
-      return leftRank[0] - rightRank[0]
-        || leftRank[1] - rightRank[1]
-        || leftRank[2] - rightRank[2]
-        || leftRank[3] - rightRank[3]
-        || leftRank[4] - rightRank[4]
-        || leftRank[5] - rightRank[5]
-        || leftRank[6].localeCompare(rightRank[6]);
-    });
   const completionPresentationContext = useMemo(() => {
     const acceptedLabels = [...completionRecencyRef.current.entries()]
       .sort((left, right) => left[1] - right[1])
@@ -1014,10 +960,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         editorSelection.line,
         editorSelection.column,
       ),
-      trigger: completionAutoFocus ? "manual" : "typing",
+      trigger: completionTrigger,
       acceptedLabels,
     } as const;
-  }, [activePath, completionAutoFocus, completionReplacePrefix, editorContent, editorSelection.column, editorSelection.line, quickOpenQuery]);
+  }, [activePath, completionReplacePrefix, completionTrigger, editorContent, editorSelection.column, editorSelection.line, quickOpenQuery]);
   const completionPresentationResults = rankCompletionItems(
     normalizeCompletionItems(completionItems, completionPresentationContext).filter((item) => {
       const query = quickOpenQuery.trim().toLowerCase();
@@ -1025,26 +971,25 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }),
     completionPresentationContext,
   );
-  const selectedCompletion = completionResults[Math.min(completionSelectedIndex, Math.max(completionResults.length - 1, 0))] ?? null;
   const selectedCompletionPresentation = completionPresentationResults[Math.min(completionSelectedIndex, Math.max(completionPresentationResults.length - 1, 0))] ?? null;
-  const completionPopupVisible = activeOverlay === "completion" && !completionAutoFocus && completionPresentationResults.length > 0;
-  const completionOverlayVisible = activeOverlay !== "completion" || completionAutoFocus || !completionPopupVisible;
+  const completionPopupVisible = activeOverlay === "completion" && completionPresentationResults.length > 0;
+  const overlayVisible = activeOverlay !== "none" && activeOverlay !== "completion";
   const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
 
   useEffect(() => {
     setCompletionSelectedIndex((current) => {
-      const resultCount = completionPresentationResults.length || completionResults.length;
+      const resultCount = completionPresentationResults.length;
       if (resultCount === 0) {
         return 0;
       }
 
       return Math.min(current, resultCount - 1);
     });
-  }, [completionPresentationResults.length, completionResults.length]);
+  }, [completionPresentationResults.length]);
 
   useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
-      if (activeOverlay !== "completion" || completionAutoFocus || completionResults.length === 0 || !isEditorFocused()) {
+      if (activeOverlay !== "completion" || completionPresentationResults.length === 0 || !isEditorFocused()) {
         return;
       }
 
@@ -1056,7 +1001,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
-        moveCompletionSelection(event.key === "ArrowDown" ? 1 : -1, completionResults.length);
+        moveCompletionSelection(event.key === "ArrowDown" ? 1 : -1, completionPresentationResults.length);
         return;
       }
 
@@ -1074,16 +1019,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       event.preventDefault();
       if (selectedCompletionPresentation) {
         insertCompletion(selectedCompletionPresentation.insertText);
-        return;
-      }
-      if (selectedCompletion) {
-        insertCompletion(selectedCompletion.label);
       }
     }
 
     window.addEventListener("keydown", handleCompletionAcceptKey, true);
     return () => window.removeEventListener("keydown", handleCompletionAcceptKey, true);
-  }, [activeOverlay, completionAutoFocus, completionResults, selectedCompletion, selectedCompletionPresentation]);
+  }, [activeOverlay, completionPresentationResults.length, selectedCompletionPresentation]);
 
   const commandPaletteItems = buildAppShellCommandPaletteItems(quickOpenQuery, {
     openProject: () => void projectOpening.openProjectPicker(),
@@ -1132,9 +1073,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           onSelect={setCompletionSelectedIndex}
         />
       ) : null}
-      {completionOverlayVisible ? (
+      {overlayVisible ? (
         <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
-          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} completionSelectedIndex={completionSelectedIndex} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onMoveCompletionSelection={(direction) => moveCompletionSelection(direction, completionResults.length)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onAcceptSelectedCompletion={() => { if (selectedCompletion) insertCompletion(selectedCompletion.label); }} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} completionAutoFocus={completionAutoFocus} />
+          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
       ) : null}
 

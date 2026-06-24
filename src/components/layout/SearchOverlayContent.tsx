@@ -15,8 +15,6 @@ type CommandPaletteItem = {
 type SearchOverlayContentProps = {
   activeOverlay: OverlayKey;
   commandPaletteItems: CommandPaletteItem[];
-  completionResults: { label: string; detail: string; kind: string }[];
-  completionSelectedIndex?: number;
   quickOpenQuery: string;
   quickOpenResults: { path: string }[];
   recentFileResults: { path: string }[];
@@ -28,24 +26,18 @@ type SearchOverlayContentProps = {
   onOpenFile: (path: string) => void;
   onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
   onOpenProject: (path: string) => void;
-  onInsertCompletion: (label: string) => void;
-  onMoveCompletionSelection?: (direction: 1 | -1) => void;
   onMoveSearchEverywhereSelection: (direction: 1 | -1) => void;
   onOpenSelectedSearchEverywhereResult: () => void;
   onSelectSearchEverywhereResult: (index: number) => void;
   onToggleSearchEverywhereCaseSensitive: () => void;
   onToggleSearchEverywhereWholeWord: () => void;
-  onAcceptSelectedCompletion?: () => void;
   onSubmitGoToLine: () => void;
   onCloseOverlay: () => void;
-  completionAutoFocus?: boolean;
 };
 
 export function SearchOverlayContent({
   activeOverlay,
   commandPaletteItems,
-  completionResults,
-  completionSelectedIndex = 0,
   quickOpenQuery,
   quickOpenResults,
   recentFileResults,
@@ -57,17 +49,13 @@ export function SearchOverlayContent({
   onOpenFile,
   onOpenSearchEverywhereResult,
   onOpenProject,
-  onInsertCompletion,
-  onMoveCompletionSelection,
   onMoveSearchEverywhereSelection,
   onOpenSelectedSearchEverywhereResult,
   onSelectSearchEverywhereResult,
   onToggleSearchEverywhereCaseSensitive,
   onToggleSearchEverywhereWholeWord,
-  onAcceptSelectedCompletion,
   onSubmitGoToLine,
   onCloseOverlay,
-  completionAutoFocus = true,
 }: SearchOverlayContentProps) {
   if (activeOverlay === "commandPalette") {
     return (
@@ -178,49 +166,6 @@ export function SearchOverlayContent({
           >
             {quickOpenQuery.trim() ? `Go to ${quickOpenQuery.trim()}` : "Enter a line number"}
           </button>
-        </div>
-      </>
-    );
-  }
-
-  if (activeOverlay === "completion") {
-    return (
-      <>
-        <input
-          aria-label="Completion Query"
-          autoFocus={completionAutoFocus}
-          className="panel-input"
-          value={quickOpenQuery}
-          placeholder="Filter completion items"
-          onChange={(event) => onChangeQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if ((event.key === "ArrowDown" || event.key === "ArrowUp") && onMoveCompletionSelection) {
-              event.preventDefault();
-              onMoveCompletionSelection(event.key === "ArrowDown" ? 1 : -1);
-            }
-            if ((event.key === "Enter" || event.key === "Tab") && completionResults[0]) {
-              event.preventDefault();
-              onAcceptSelectedCompletion?.();
-            }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onCloseOverlay();
-            }
-          }}
-        />
-        <div className="search-results" role="list" aria-label="Completion Results">
-          {completionResults.map((item, index) => (
-            <button
-              key={`${item.kind}:${item.label}`}
-              type="button"
-              className={`search-result${index === completionSelectedIndex ? " search-result--selected" : ""}`}
-              aria-selected={index === completionSelectedIndex}
-              onClick={() => onInsertCompletion(item.label)}
-            >
-              {item.label}
-              <span className="search-result__meta">{item.detail}</span>
-            </button>
-          ))}
         </div>
       </>
     );
