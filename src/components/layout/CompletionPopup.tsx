@@ -26,47 +26,62 @@ export function CompletionPopup({
 }: CompletionPopupProps) {
   const selectedItem = items[selectedIndex] ?? null;
   const activeOptionId = selectedItem ? completionOptionId(selectedItem.id) : undefined;
+  const detailsId = selectedItem ? completionDetailsId(selectedItem.id) : undefined;
 
   return (
     <div
       className="completion-popup"
-      role="listbox"
-      aria-label="Code Completion"
-      aria-activedescendant={activeOptionId}
       data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
       data-anchor-line={anchor?.line ?? 0}
       data-anchor-column={anchor?.column ?? 0}
       style={{ top: position.top, left: position.left }}
     >
-      {status === "ready" ? (
-        items.map((item, index) => (
-          <div
-            key={item.id}
-            id={completionOptionId(item.id)}
-            className={`completion-popup__option${index === selectedIndex ? " completion-popup__option--selected" : ""}`}
-            role="option"
-            aria-selected={index === selectedIndex}
-            onMouseEnter={() => onSelect(index)}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              onAccept(item);
-            }}
-          >
-            <span className="completion-popup__kind">{item.kindLabel}</span>
-            <span className="completion-popup__label">{item.label}</span>
-            <span className="completion-popup__source">{item.sourceLabel}</span>
-            {detailsVisible && index === selectedIndex ? null : (
-              <span className="completion-popup__detail">{item.detail}</span>
-            )}
+      <div
+        className="completion-popup__list"
+        role="listbox"
+        aria-label="Code Completion"
+        aria-activedescendant={activeOptionId}
+        data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
+        data-anchor-line={anchor?.line ?? 0}
+        data-anchor-column={anchor?.column ?? 0}
+        style={{ top: position.top, left: position.left }}
+      >
+        {status === "ready" ? (
+          items.map((item, index) => (
+            <div
+              key={item.id}
+              id={completionOptionId(item.id)}
+              className={`completion-popup__option${index === selectedIndex ? " completion-popup__option--selected" : ""}`}
+              role="option"
+              aria-selected={index === selectedIndex}
+              aria-describedby={detailsVisible && index === selectedIndex ? detailsId : undefined}
+              onMouseEnter={() => onSelect(index)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onAccept(item);
+              }}
+            >
+              <span className="completion-popup__kind">{item.kindLabel}</span>
+              <span className="completion-popup__label">{item.label}</span>
+              <span className="completion-popup__source">{item.sourceLabel}</span>
+              {detailsVisible && index === selectedIndex ? null : (
+                <span className="completion-popup__detail">{item.detail}</span>
+              )}
+            </div>
+          ))
+        ) : (
+          <div className={`completion-popup__state completion-popup__state--${status}`}>
+            {message ?? statusLabel(status)}
           </div>
-        ))
-      ) : (
-        <div className={`completion-popup__state completion-popup__state--${status}`}>
-          {message ?? statusLabel(status)}
-        </div>
-      )}
+        )}
+      </div>
       {detailsVisible && selectedItem ? (
-        <div className="completion-popup__details">
+        <aside
+          id={detailsId}
+          className="completion-popup__details"
+          aria-label="Completion Details"
+          onMouseDown={(event) => event.preventDefault()}
+        >
           <div className="completion-popup__details-signature">{selectedItem.detail}</div>
           {selectedItem.documentation ? (
             <div className="completion-popup__details-doc">{selectedItem.documentation}</div>
@@ -76,7 +91,7 @@ export function CompletionPopup({
               {`${selectedItem.definitionTarget.path.split(/[\\/]/).at(-1)}:${selectedItem.definitionTarget.line}:${selectedItem.definitionTarget.column}`}
             </div>
           ) : null}
-        </div>
+        </aside>
       ) : null}
     </div>
   );
@@ -94,4 +109,8 @@ function statusLabel(status: CompletionPopupProps["status"]) {
 
 function completionOptionId(itemId: string) {
   return `completion-option-${itemId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+}
+
+function completionDetailsId(itemId: string) {
+  return `completion-details-${itemId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 }

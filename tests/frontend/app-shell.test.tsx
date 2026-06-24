@@ -684,9 +684,61 @@ describe("App shell", () => {
     await user.keyboard("{Control>} {/Control}");
 
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(within(popup).getByText("width(value: Length): T")).toBeVisible();
-    expect(within(popup).getByText("Sets the width of the component.")).toBeVisible();
-    expect(within(popup).getByText(/common\.d\.ts:20927:5/)).toBeVisible();
+    expect(popup).toBeVisible();
+    expect(screen.getByText("width(value: Length): T")).toBeVisible();
+    expect(screen.getByText("Sets the width of the component.")).toBeVisible();
+    expect(screen.getByText(/common\.d\.ts:20927:5/)).toBeVisible();
+  });
+
+  it("keeps completion active when SDK details are clicked", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async (): Promise<LanguageCompletionItem[]> => [{
+        label: "width",
+        detail: "width(value: Length): T",
+        kind: "method",
+        insertText: "width(${1:value})",
+        filterText: "width",
+        source: "arkui",
+        documentation: "Sets the width of the component.",
+        definitionTarget: { path: "C:/HarmonyOS/Sdk/ets/component/common.d.ts", line: 20927, column: 5 },
+      }]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{Control>} {/Control}");
+
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(within(popup).getByRole("option", { name: /width/ })).toHaveAttribute("aria-describedby");
+    fireEvent.mouseDown(within(screen.getByLabelText("Completion Details")).getByText("Sets the width of the component."));
+    await user.keyboard("{Tab}");
+
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}width(value)");
+    await waitFor(() => expect(editor).toHaveFocus());
   });
 
   it("uses completion replacement ranges when accepting SDK attributes", async () => {

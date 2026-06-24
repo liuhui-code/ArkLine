@@ -281,22 +281,28 @@ button:disabled {
 
 .completion-popup__details {
   margin: 4px;
+  min-width: 0;
   padding: 8px;
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: 12px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .completion-popup__details-signature {
+  min-width: 0;
   color: var(--text-primary);
   font-family: var(--font-code);
+  overflow-wrap: anywhere;
 }
 
 .completion-popup__details-doc,
 .completion-popup__details-source {
   margin-top: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .completion-popup__details-source {
