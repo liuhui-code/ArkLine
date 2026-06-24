@@ -315,6 +315,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
 
   function closeTransientUi() {
+    if (gitBlameMenuOpen) {
+      setGitBlameMenuOpen(false);
+      focusEditor();
+      return true;
+    }
+    if (selectedBlameAttribution) {
+      setSelectedBlameAttribution(null);
+      focusEditor();
+      return true;
+    }
     if (activeOverlay !== "none") {
       setActiveOverlay("none");
       focusEditor();
@@ -758,6 +768,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     documentsRef.current.saveDocument(activePath);
     syncTabs();
     setEditorContent(content);
+    setGitBlameRefreshToken((token) => token + 1);
     await refreshProblems(activePath, content);
     setStatusText(`Saved ${getPathBasename(activePath)}`);
   }

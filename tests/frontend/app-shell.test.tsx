@@ -1837,6 +1837,100 @@ describe("App shell", () => {
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("closes the blame menu and card with Escape before broader UI handling", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ],
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByRole("button", { name: "Blame actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Show Current Line Commit" }));
+    expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Blame actions" }));
+    expect(await screen.findByRole("menu", { name: "Git Blame Actions" })).toBeVisible();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("menu", { name: "Git Blame Actions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Git Blame Details" })).toBeVisible();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "Git Blame Details" })).not.toBeInTheDocument();
+  });
+
+  it("refreshes Git Blame after saving without blocking save", async () => {
+    const user = userEvent.setup();
+    const getFileBlame = vi.fn()
+      .mockResolvedValueOnce([
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ])
+      .mockResolvedValue([
+        {
+          line: 1,
+          commit: "bbb2222",
+          sourceLine: 1,
+          author: "Alex Chen",
+          authoredAt: "2026-06-24T10:00:00Z",
+          relativeTime: "now",
+          summary: "Refresh saved entry",
+        },
+      ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry",
+      saveFile: vi.fn(async () => undefined),
+      getFileBlame,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    expect(await screen.findByText("Blame: Jane Doe, 4d ago")).toBeVisible();
+
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard("!");
+    await user.keyboard("{Control>}s{/Control}");
+
+    await waitFor(() => expect(workspaceApi.saveFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getFileBlame).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Blame: Alex Chen, now")).toBeVisible();
+  });
+
   it("runs Git Blame actions from the command palette", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
