@@ -339,6 +339,7 @@ describe("ArkTsEditor", () => {
         appearance={defaultSettings().editor}
         path="C:/demo/main.ets"
         value={"@Entry\nstruct Index {}"}
+        gitBlameVisible
         blameAttributions={[
           {
             bufferLine: 1,

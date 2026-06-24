@@ -1494,6 +1494,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByRole("button", { name: "Toggle Git Blame" }));
     const blameButton = await waitFor(() => {
       const button = container.querySelector<HTMLButtonElement>(".cm-git-trace-marker");
       expect(button).toBeTruthy();
@@ -1562,6 +1563,7 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     await user.click(await screen.findByLabelText("Editor Content"));
     await user.keyboard("{Home}{ArrowDown}{Enter}@Component");
+    await user.click(screen.getByRole("button", { name: "Toggle Git Blame" }));
 
     await waitFor(() => {
       expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy();
@@ -1570,6 +1572,75 @@ describe("App shell", () => {
     expect(container).toHaveTextContent("Uncommitted");
     expect(container).toHaveTextContent("Jane Doe");
     expect(container).toHaveTextContent("Alex Chen");
+  });
+
+  it("shows current-line blame while full-file blame is closed", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ],
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+
+    expect(await screen.findByText("Blame: Jane Doe, 4d ago")).toBeVisible();
+    expect(container.querySelector(".cm-git-trace-marker")).toBeNull();
+  });
+
+  it("toggles full-file Git Blame without closing the bottom tool window", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ],
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(screen.getByRole("tab", { name: "Terminal" }));
+    await user.click(await screen.findByRole("button", { name: "Toggle Git Blame" }));
+
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Toggle Git Blame" }));
+
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector(".cm-git-trace-marker")).toBeNull();
   });
 
   it("shows a clear message when the file is not tracked by Git", async () => {

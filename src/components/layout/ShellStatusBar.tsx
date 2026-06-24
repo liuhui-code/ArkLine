@@ -10,6 +10,9 @@ type ShellStatusBarProps = {
   statusText: string;
   workspaceName: string | null;
   terminalRunning: boolean;
+  currentLineBlame?: string | null;
+  gitBlameVisible: boolean;
+  onToggleGitBlame: () => void;
 };
 
 export function ShellStatusBar({
@@ -19,6 +22,9 @@ export function ShellStatusBar({
   statusText,
   workspaceName,
   terminalRunning,
+  currentLineBlame = null,
+  gitBlameVisible,
+  onToggleGitBlame,
 }: ShellStatusBarProps) {
   return (
     <footer aria-label="Status Bar" className="status-bar">
@@ -28,6 +34,15 @@ export function ShellStatusBar({
         <SemanticModeBadge semanticState={semanticState} />
       </div>
       <div aria-label="Status Bar Right" className="status-bar__group status-bar__group--right">
+        {currentLineBlame ? <span className="status-pill status-pill--blame">{currentLineBlame}</span> : null}
+        <button
+          type="button"
+          className={`status-pill status-pill--button${gitBlameVisible ? " status-pill--active" : ""}`}
+          aria-label="Toggle Git Blame"
+          onClick={onToggleGitBlame}
+        >
+          {gitBlameVisible ? "Blame On" : "Blame Off"}
+        </button>
         <span className="status-pill status-pill--em">{activeBottomTool === "terminal" && terminalRunning ? "Running" : "Ready"}</span>
         <span className="status-pill">{statusText}</span>
       </div>

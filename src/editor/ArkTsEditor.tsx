@@ -33,6 +33,7 @@ type ArkTsEditorProps = {
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   blameAttributions?: GitBlameAttribution[];
+  gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
 };
@@ -50,6 +51,7 @@ export function ArkTsEditor({
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
   blameAttributions = [],
+  gitBlameVisible = false,
   selectedBlameLine = null,
   onGitTraceLineClick,
 }: ArkTsEditorProps) {
@@ -84,7 +86,7 @@ export function ArkTsEditor({
         (state) => onDefinitionHoverChangeRef.current?.(state),
         (selection) => onTypingCompletionTriggerRef.current?.(selection),
         {
-          blameAttributions,
+          blameAttributions: gitBlameVisible ? blameAttributions : [],
           selectedLine: selectedBlameLine,
           onSelectLine: onGitTraceLineClick,
         },
@@ -155,13 +157,13 @@ export function ArkTsEditor({
     view.dispatch({
       effects: gitTraceCompartment.reconfigure(
         createGitTraceGutter({
-          blameAttributions,
+          blameAttributions: gitBlameVisible ? blameAttributions : [],
           selectedLine: selectedBlameLine,
           onSelectLine: onGitTraceLineClick,
         }),
       ),
     });
-  }, [blameAttributions, onGitTraceLineClick, selectedBlameLine]);
+  }, [blameAttributions, gitBlameVisible, onGitTraceLineClick, selectedBlameLine]);
 
   useEffect(() => {
     const view = viewRef.current;

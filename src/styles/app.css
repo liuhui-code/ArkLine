@@ -122,6 +122,24 @@ button:disabled {
   border-radius: 4px;
 }
 
+.status-pill--button {
+  cursor: pointer;
+  background: transparent;
+  font: inherit;
+}
+
+.status-pill--button:hover,
+.status-pill--button:focus-visible,
+.status-pill--active {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.status-pill--blame {
+  max-width: 360px;
+}
+
 .semantic-mode-badge {
   border-color: rgba(255, 255, 255, 0.08);
 }

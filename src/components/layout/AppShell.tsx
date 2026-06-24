@@ -26,6 +26,7 @@ import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
 import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
 import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
+import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import { createProblemsStore, type ProblemItem } from "@/features/problems/problems-store";
 import {
   searchWorkspaceText,
@@ -83,6 +84,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
   const [completionAutoFocus, setCompletionAutoFocus] = useState(true);
+  const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const documentsRef = useRef(createDocumentStore());
   const tabsRef = useRef(createEditorTabsStore(documentsRef.current));
   const problemsRef = useRef(createProblemsStore());
@@ -107,6 +109,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     activeTool: activeBottomTool,
     workspaceApi,
   });
+  const currentLineBlame = formatCurrentLineBlame(
+    gitTraceState.blameAttributions.find((line) => line.bufferLine === editorSelection.line) ?? null,
+  );
   const projectOpening = useProjectOpening({ canUseNativeProjectPicker, hasWorkspace: workspace !== null, workspaceApi, workspaceRootPath: workspace?.rootPath ?? null, openWorkspace, focusEditorSoon, onBeforeProjectOpen: () => setActiveOverlay("none"), onStatusChange: setStatusText });
   function focusEditor() { const editor = editorSurfaceRef.current?.querySelector<HTMLElement>('[aria-label="Editor Content"]'); if (editor) return void editor.focus(); editorSurfaceRef.current?.focus(); }
   function focusEditorSoon() { requestAnimationFrame(() => focusEditor()); }
@@ -240,6 +245,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function openUsagesToolWindow() {
     showBottomTool("usages");
+  }
+  function toggleGitBlame() {
+    setGitBlameVisible((visible) => !visible);
   }
 
   function closeTransientUi() {
@@ -925,7 +933,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div className="shell-grid">
         <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectTool={showLeftTool} />
-        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} selectedBlameLine={gitTraceState.selectedLine} onGitTraceLineClick={(line) => { setEditorSelection({ line, column: 1 }); showBottomTool("gitTrace"); }} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={gitTraceState.selectedLine} onGitTraceLineClick={(line) => { setEditorSelection({ line, column: 1 }); showBottomTool("gitTrace"); }} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
       </div>
       <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
         <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} completionSelectedIndex={completionSelectedIndex} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onMoveCompletionSelection={(direction) => moveCompletionSelection(direction, completionResults.length)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onAcceptSelectedCompletion={() => { if (selectedCompletion) insertCompletion(selectedCompletion.label); }} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} completionAutoFocus={completionAutoFocus} />
@@ -972,7 +980,27 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       >
         {definitionDebugText}
       </div>
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} onToggleGitBlame={toggleGitBlame} />
     </div>
   );
+}
+
+function formatCurrentLineBlame(attribution: GitBlameAttribution | null) {
+  if (!attribution) {
+    return null;
+  }
+
+  if (attribution.status === "added") {
+    return "Blame: Uncommitted";
+  }
+
+  if (attribution.status === "modified") {
+    return `Blame: Modified, originally ${attribution.originalAuthor ?? attribution.author ?? "Unknown"}`;
+  }
+
+  if (attribution.status === "committed") {
+    return `Blame: ${attribution.author ?? "Unknown"}${attribution.relativeTime ? `, ${attribution.relativeTime}` : ""}`;
+  }
+
+  return null;
 }

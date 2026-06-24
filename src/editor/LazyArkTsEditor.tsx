@@ -22,6 +22,7 @@ type LazyArkTsEditorProps = {
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   blameAttributions?: GitBlameAttribution[];
+  gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
 };

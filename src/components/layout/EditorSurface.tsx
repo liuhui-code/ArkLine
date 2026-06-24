@@ -39,6 +39,7 @@ type EditorSurfaceProps = {
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   blameAttributions?: GitBlameAttribution[];
+  gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
   definitionHoverActive?: boolean;
@@ -61,6 +62,7 @@ export function EditorSurface({
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
   blameAttributions = [],
+  gitBlameVisible = false,
   selectedBlameLine = null,
   onGitTraceLineClick,
   definitionHoverActive = false,
@@ -113,6 +115,7 @@ export function EditorSurface({
           onSelectionChange={onSelectionChange}
           onTypingCompletionTrigger={onTypingCompletionTrigger}
           blameAttributions={blameAttributions}
+          gitBlameVisible={gitBlameVisible}
           selectedBlameLine={selectedBlameLine}
           onGitTraceLineClick={onGitTraceLineClick}
         />
