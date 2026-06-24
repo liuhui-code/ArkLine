@@ -22,7 +22,7 @@ export interface SemanticCompletionItem {
   replacementRange?: SemanticTextRange
   commitCharacters?: string[]
   definitionTarget?: SemanticDefinitionTarget
-  data?: unknown
+  data?: Record<string, unknown>
 }
 
 export interface SemanticDefinitionTarget {

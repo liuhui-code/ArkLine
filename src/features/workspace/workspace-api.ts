@@ -152,7 +152,7 @@ export type LanguageCompletionItem = {
   replacementRange?: TextRange;
   commitCharacters?: string[];
   definitionTarget?: DefinitionTarget;
-  data?: unknown;
+  data?: Record<string, unknown>;
 };
 
 export type DocumentSymbol = {
