@@ -213,6 +213,45 @@ describe("semantic worker completion", () => {
     }))
   })
 
+  it("completes width in a multi-line ArkUI chain", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-chain-completion-"))
+    tempRoots.push(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = createArkuiSdkFixture(root)
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Text(\"Hi\")",
+        "      .fontSize(16)",
+        "      .wi",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "completion-arkui-chain-width",
+      method: "completion",
+      position: { path: indexPath, line: 7, column: 10 },
+    })
+
+    expect(response.ok).toBe(true)
+    const items = response.payload as unknown as Array<Record<string, unknown>>
+    expect(items).toContainEqual(expect.objectContaining({
+      label: "width",
+      replacementRange: { startLine: 7, startColumn: 8, endLine: 7, endColumn: 10 },
+    }))
+  })
+
   it("prefers component-specific ArkUI completion metadata when names overlap", () => {
     const session = new SemanticWorkerSession()
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-component-width-"))

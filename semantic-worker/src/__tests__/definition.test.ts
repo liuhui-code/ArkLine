@@ -297,6 +297,42 @@ describe("semantic worker lifecycle", () => {
     })
   })
 
+  it("resolves width in a multi-line ArkUI chain", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-chain-definition-"))
+    tempRoots.push(root)
+    const { sdkRoot, commonPath } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Text(\"Hi\")",
+        "      .fontSize(16)",
+        "      .width(100)",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "definition-arkui-chain-width",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 7, column: 9 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual({ path: commonPath, line: 3, column: 5 })
+  })
+
   it("keeps current document definitions ahead of ArkUI system attributes", () => {
     const session = new SemanticWorkerSession()
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-local-width-"))

@@ -2,9 +2,9 @@ import { collectDocumentSymbolsForPath } from "./document-analysis.js"
 import { loadWorkspace } from "../sdk/workspace-loader.js"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
 import { completeArkuiApis } from "../sdk/arkui-api-index.js"
+import { findArkuiContext } from "./arkui-context.js"
 
 import type {
-  SemanticTextRange,
   SemanticCompletionItem,
   SemanticDocumentPosition,
   SemanticResponsePayload,
@@ -60,11 +60,13 @@ export function resolveCompletion(
     }
   }
 
-  const component = arkuiCompletionComponent(content, position)
-  if (component) {
-    const arkuiRange = arkuiCompletionReplacementRange(content, position)
+  const arkuiContext = findArkuiContext(content, position)
+  if (arkuiContext) {
     const sdkPath = discoverHarmonySdk().path ?? undefined
-    for (const entry of completeArkuiApis(sdkPath, component)) {
+    for (const entry of completeArkuiApis(sdkPath, arkuiContext.component)) {
+      if (arkuiContext.symbolPrefix && !entry.name.toLowerCase().startsWith(arkuiContext.symbolPrefix.toLowerCase())) {
+        continue
+      }
       push({
         label: entry.name,
         detail: entry.signature || entry.detail,
@@ -74,7 +76,7 @@ export function resolveCompletion(
         sortText: `0100-${entry.name}`,
         source: "arkui",
         documentation: entry.documentation ?? entry.detail,
-        replacementRange: arkuiRange ?? undefined,
+        replacementRange: arkuiContext.replacementRange,
         commitCharacters: ["("],
         definitionTarget: { path: entry.path, line: entry.line, column: entry.column },
         data: { provider: "arkui-sdk", component: entry.component ?? null },
@@ -83,52 +85,6 @@ export function resolveCompletion(
   }
 
   return labels
-}
-
-function arkuiCompletionComponent(
-  content: string,
-  position: SemanticDocumentPosition,
-): string | null {
-  const lines = content.split(/\r?\n/)
-  const lineText = lines[position.line - 1] ?? ""
-  const before = lineText.slice(0, Math.max(position.column - 1, 0))
-  const sameLineMatch = before.match(/([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\.\s*[A-Za-z_$]*$/)
-  if (sameLineMatch?.[1]) {
-    return sameLineMatch[1]
-  }
-
-  if (!before.match(/[}.]\s*[A-Za-z_$]*$/)) {
-    return null
-  }
-
-  for (let index = position.line - 2; index >= 0; index -= 1) {
-    const candidate = lines[index]?.match(/\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*(?:\{|$)/)
-    if (candidate?.[1]) {
-      return candidate[1]
-    }
-  }
-
-  return null
-}
-
-function arkuiCompletionReplacementRange(
-  content: string,
-  position: SemanticDocumentPosition,
-): SemanticTextRange | null {
-  const lineText = content.split(/\r?\n/)[position.line - 1]
-  if (lineText === undefined) {
-    return null
-  }
-
-  const endColumn = position.column
-  const before = lineText.slice(0, Math.max(endColumn - 1, 0))
-  const prefix = before.match(/[A-Za-z_$][A-Za-z0-9_$]*$/)?.[0] ?? ""
-  return {
-    startLine: position.line,
-    startColumn: endColumn - prefix.length,
-    endLine: position.line,
-    endColumn,
-  }
 }
 
 function snippetForArkuiMethod(entry: Pick<ArkuiApiEntry, "name" | "signature">): string {
