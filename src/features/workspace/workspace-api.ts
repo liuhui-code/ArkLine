@@ -126,6 +126,13 @@ export type DefinitionTarget = {
   column: number;
 };
 
+export type TextRange = {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+};
+
 export type DefinitionCandidate = {
   path: string;
   line: number;
@@ -137,6 +144,15 @@ export type LanguageCompletionItem = {
   label: string;
   detail: string;
   kind: string;
+  insertText?: string;
+  filterText?: string;
+  sortText?: string;
+  source?: "workspace" | "arkts" | "arkui" | "sdk" | "fallback";
+  documentation?: string;
+  replacementRange?: TextRange;
+  commitCharacters?: string[];
+  definitionTarget?: DefinitionTarget;
+  data?: unknown;
 };
 
 export type DocumentSymbol = {

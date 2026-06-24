@@ -14,12 +14,28 @@ export interface SemanticCompletionItem {
   label: string
   detail: string
   kind: string
+  insertText?: string
+  filterText?: string
+  sortText?: string
+  source?: "workspace" | "arkts" | "arkui" | "sdk" | "fallback"
+  documentation?: string
+  replacementRange?: SemanticTextRange
+  commitCharacters?: string[]
+  definitionTarget?: SemanticDefinitionTarget
+  data?: unknown
 }
 
 export interface SemanticDefinitionTarget {
   path: string
   line: number
   column: number
+}
+
+export interface SemanticTextRange {
+  startLine: number
+  startColumn: number
+  endLine: number
+  endColumn: number
 }
 
 export interface SemanticDefinitionCandidate extends SemanticDefinitionTarget {}

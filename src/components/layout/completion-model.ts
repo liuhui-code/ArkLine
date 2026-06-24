@@ -2,7 +2,16 @@ import type { LanguageCompletionItem } from "@/features/workspace/workspace-api"
 
 export type CompletionSurface = "suggestionList" | "inlineGhostText";
 export type CompletionTrigger = "manual" | "typing";
-export type CompletionSource = "arkuiSdk" | "workspace" | "currentFile" | "snippet" | "fallback" | "unknown";
+export type CompletionSource =
+  | "arkuiSdk"
+  | "workspace"
+  | "currentFile"
+  | "snippet"
+  | "arkts"
+  | "arkui"
+  | "sdk"
+  | "fallback"
+  | "unknown";
 export type CompletionItemKind =
   | "method"
   | "property"
@@ -25,12 +34,17 @@ export type CompletionPresentation = {
   id: string;
   label: string;
   insertText: string;
+  filterText: string;
+  sortText?: string;
   detail: string;
   documentation?: string;
   kind: CompletionItemKind;
   kindLabel: string;
   source: CompletionSource;
   sourceLabel: string;
+  replacementRange?: LanguageCompletionItem["replacementRange"];
+  definitionTarget?: LanguageCompletionItem["definitionTarget"];
+  commitCharacters: string[];
   replacementPrefix: string;
   original: LanguageCompletionItem;
 };
@@ -52,6 +66,9 @@ const sourceLabels: Record<CompletionSource, string> = {
   workspace: "Workspace",
   currentFile: "Current File",
   snippet: "Snippet",
+  arkts: "ArkTS",
+  arkui: "ArkUI",
+  sdk: "SDK",
   fallback: "Fallback",
   unknown: "Unknown",
 };
@@ -63,18 +80,26 @@ export function normalizeCompletionItems(
   return items.map((item, index) => {
     const source = inferCompletionSource(item, context);
     const kind = normalizeCompletionKind(item, source);
+    const filterText = item.filterText ?? item.label;
+    const insertText = item.insertText ?? item.label;
 
     return {
       id: `${index}:${source}:${kind}:${item.label}`,
       label: item.label,
-      insertText: item.label,
+      insertText,
+      filterText,
       detail: item.detail,
       kind,
       kindLabel: kindLabels[kind],
       source,
       sourceLabel: sourceLabels[source],
+      commitCharacters: item.commitCharacters ?? [],
       replacementPrefix: context.prefix,
       original: item,
+      ...(item.sortText !== undefined ? { sortText: item.sortText } : {}),
+      ...(item.documentation !== undefined ? { documentation: item.documentation } : {}),
+      ...(item.replacementRange !== undefined ? { replacementRange: item.replacementRange } : {}),
+      ...(item.definitionTarget !== undefined ? { definitionTarget: item.definitionTarget } : {}),
     };
   });
 }
@@ -109,6 +134,10 @@ function isCompletionItemKind(kind: string): kind is CompletionItemKind {
 }
 
 function inferCompletionSource(item: LanguageCompletionItem, context: CompletionContext): CompletionSource {
+  if (item.source) {
+    return item.source;
+  }
+
   const detail = item.detail.toLowerCase();
   const kind = item.kind.trim().toLowerCase();
 
@@ -154,17 +183,22 @@ type RankTuple = [
 function rankItem(item: CompletionPresentation, context: CompletionContext): RankTuple {
   const query = context.prefix.trim().toLowerCase();
   const normalizedLabel = item.label.toLowerCase();
+  const normalizedFilterText = item.filterText.toLowerCase();
   const normalizedDetail = item.detail.toLowerCase();
-  const hasPrefixMatch = query.length > 0 && normalizedLabel.startsWith(query);
+  const hasPrefixMatch = query.length > 0 && (
+    normalizedLabel.startsWith(query) || normalizedFilterText.startsWith(query)
+  );
   const labelContainsIndex = query.length > 0 ? normalizedLabel.indexOf(query) : -1;
+  const filterTextContainsIndex = query.length > 0 ? normalizedFilterText.indexOf(query) : -1;
   const detailContainsIndex = query.length > 0 ? normalizedDetail.indexOf(query) : -1;
+  const completionContainsIndex = firstMatchIndex(labelContainsIndex, filterTextContainsIndex);
 
   return [
     hasPrefixMatch ? 0 : 1,
     chainSourcePriority(item, context),
-    containsSourcePriority(hasPrefixMatch, query, labelContainsIndex, detailContainsIndex),
-    containsPositionPriority(hasPrefixMatch, query, labelContainsIndex, detailContainsIndex),
-    hasPrefixMatch ? normalizedLabel.length - query.length : Number.MAX_SAFE_INTEGER,
+    containsSourcePriority(hasPrefixMatch, query, completionContainsIndex, detailContainsIndex),
+    containsPositionPriority(hasPrefixMatch, query, completionContainsIndex, detailContainsIndex),
+    hasPrefixMatch ? prefixDistancePriority(query, normalizedLabel, normalizedFilterText) : Number.MAX_SAFE_INTEGER,
     recentPriority(item, context),
     sourcePriority(item),
     kindPriority(item),
@@ -177,7 +211,20 @@ function chainSourcePriority(item: CompletionPresentation, context: CompletionCo
     return 0;
   }
 
-  return item.source === "arkuiSdk" ? 0 : 1;
+  return item.source === "arkuiSdk" || item.source === "arkui" ? 0 : 1;
+}
+
+function firstMatchIndex(...indexes: number[]) {
+  const matches = indexes.filter((index) => index >= 0);
+  return matches.length > 0 ? Math.min(...matches) : -1;
+}
+
+function prefixDistancePriority(query: string, label: string, filterText: string) {
+  const distances = [label, filterText]
+    .filter((value) => value.startsWith(query))
+    .map((value) => value.length - query.length);
+
+  return distances.length > 0 ? Math.min(...distances) : Number.MAX_SAFE_INTEGER;
 }
 
 function containsSourcePriority(
@@ -231,10 +278,13 @@ function sourcePriority(item: CompletionPresentation) {
   const priorities: Record<CompletionSource, number> = {
     currentFile: 0,
     arkuiSdk: 1,
-    workspace: 2,
-    snippet: 3,
-    fallback: 4,
-    unknown: 5,
+    arkui: 1,
+    arkts: 2,
+    sdk: 2,
+    workspace: 3,
+    snippet: 4,
+    fallback: 5,
+    unknown: 6,
   };
 
   return priorities[item.source];

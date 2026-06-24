@@ -29,11 +29,13 @@ describe("completion presentation model", () => {
         id: "0:arkuiSdk:component:Column()",
         label: "Column()",
         insertText: "Column()",
+        filterText: "Column()",
         detail: "ArkUI component",
         kind: "component",
         kindLabel: "Component",
         source: "arkuiSdk",
         sourceLabel: "ArkUI SDK",
+        commitCharacters: [],
         replacementPrefix: "Co",
         original: backendItems[0],
       },
@@ -41,11 +43,13 @@ describe("completion presentation model", () => {
         id: "1:workspace:method:submit()",
         label: "submit()",
         insertText: "submit()",
+        filterText: "submit()",
         detail: "Workspace symbol",
         kind: "method",
         kindLabel: "Method",
         source: "workspace",
         sourceLabel: "Workspace",
+        commitCharacters: [],
         replacementPrefix: "Co",
         original: backendItems[1],
       },
@@ -108,5 +112,38 @@ describe("completion presentation model", () => {
       "workspace:wrap()",
       "workspace:width()",
     ]);
+  });
+
+  it("preserves completion protocol v2 metadata for SDK items", () => {
+    const items = normalizeCompletionItems([
+      {
+        label: "width",
+        detail: "width(value: Length): T",
+        kind: "method",
+        insertText: "width(${1:value})",
+        filterText: "width",
+        sortText: "0100-width",
+        source: "arkui",
+        documentation: "Sets the width of the component.",
+        replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
+        definitionTarget: { path: "/sdk/ets/component/common.d.ts", line: 20927, column: 5 },
+      },
+    ], {
+      prefix: "wi",
+      lineTextBeforeCursor: "    .wi",
+      trigger: "typing",
+      acceptedLabels: [],
+    });
+
+    expect(items[0]).toMatchObject({
+      label: "width",
+      insertText: "width(${1:value})",
+      filterText: "width",
+      sortText: "0100-width",
+      source: "arkui",
+      documentation: "Sets the width of the component.",
+      replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
+      definitionTarget: { path: "/sdk/ets/component/common.d.ts", line: 20927, column: 5 },
+    });
   });
 });
