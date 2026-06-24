@@ -1,9 +1,89 @@
-import { EditorView, ViewUpdate } from "@codemirror/view";
+import { StateEffect, StateField } from "@codemirror/state";
+import { Decoration, EditorView, type DecorationSet, ViewUpdate } from "@codemirror/view";
 
 export type EditorLineColumn = {
   line: number;
   column: number;
 };
+
+export type DefinitionHoverState = {
+  active: boolean;
+  selection?: EditorLineColumn;
+  from?: number;
+  to?: number;
+};
+
+type DefinitionHoverRange = {
+  from: number;
+  to: number;
+};
+
+const definitionHoverDecoration = Decoration.mark({
+  class: "cm-arkline-definition-hover",
+});
+
+const setDefinitionHoverEffect = StateEffect.define<DefinitionHoverRange | null>();
+export const setJumpRevealEffect = StateEffect.define<DefinitionHoverRange | null>();
+
+export const definitionHoverDecorationField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (!effect.is(setDefinitionHoverEffect)) {
+        continue;
+      }
+
+      if (!effect.value) {
+        return Decoration.none;
+      }
+
+      return Decoration.set([
+        definitionHoverDecoration.range(effect.value.from, effect.value.to),
+      ]);
+    }
+
+    if (transaction.docChanged) {
+      return Decoration.none;
+    }
+
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const jumpRevealDecoration = Decoration.mark({
+  class: "cm-arkline-jump-reveal",
+});
+
+export const jumpRevealDecorationField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(value, transaction) {
+    for (const effect of transaction.effects) {
+      if (!effect.is(setJumpRevealEffect)) {
+        continue;
+      }
+
+      if (!effect.value) {
+        return Decoration.none;
+      }
+
+      return Decoration.set([
+        jumpRevealDecoration.range(effect.value.from, effect.value.to),
+      ]);
+    }
+
+    if (transaction.docChanged) {
+      return Decoration.none;
+    }
+
+    return value;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 function toLineColumn(view: EditorView, position: number): EditorLineColumn {
   const line = view.state.doc.lineAt(position);
@@ -11,6 +91,43 @@ function toLineColumn(view: EditorView, position: number): EditorLineColumn {
     line: line.number,
     column: position - line.from + 1,
   };
+}
+
+function isDefinitionTokenChar(character: string) {
+  return /^[A-Za-z0-9_$@]$/.test(character);
+}
+
+export function resolveDefinitionTokenRange(view: EditorView, position: number): DefinitionHoverRange | null {
+  const documentLength = view.state.doc.length;
+  const clampedPosition = Math.max(0, Math.min(position, documentLength));
+  const characterAt = (index: number) => view.state.doc.sliceString(index, index + 1);
+
+  let tokenPosition = clampedPosition;
+  if (!isDefinitionTokenChar(characterAt(tokenPosition))) {
+    tokenPosition = clampedPosition - 1;
+  }
+
+  if (tokenPosition < 0 || !isDefinitionTokenChar(characterAt(tokenPosition))) {
+    return null;
+  }
+
+  let from = tokenPosition;
+  while (from > 0 && isDefinitionTokenChar(characterAt(from - 1))) {
+    from -= 1;
+  }
+
+  let to = tokenPosition + 1;
+  while (to < documentLength && isDefinitionTokenChar(characterAt(to))) {
+    to += 1;
+  }
+
+  return from < to ? { from, to } : null;
+}
+
+function updateDefinitionHoverDecoration(view: EditorView, range: DefinitionHoverRange | null) {
+  view.dispatch({
+    effects: setDefinitionHoverEffect.of(range),
+  });
 }
 
 export function createDocumentChangeListener(onChange: (value: string) => void) {
@@ -77,5 +194,75 @@ export function createDefinitionTriggerHandler(
     contextmenu(event, view) {
       return handleModifierPointerEvent(event, view, true);
     },
+  });
+}
+
+export function createDefinitionHoverHandler(
+  onDefinitionHoverChange: (state: DefinitionHoverState) => void,
+) {
+  return EditorView.domEventHandlers({
+    mousemove(event, view) {
+      if (!(event.ctrlKey || event.metaKey)) {
+        updateDefinitionHoverDecoration(view, null);
+        onDefinitionHoverChange({ active: false });
+        return false;
+      }
+
+      const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (position == null) {
+        updateDefinitionHoverDecoration(view, null);
+        onDefinitionHoverChange({ active: false });
+        return false;
+      }
+
+      const range = resolveDefinitionTokenRange(view, position);
+      if (!range) {
+        updateDefinitionHoverDecoration(view, null);
+        onDefinitionHoverChange({ active: false });
+        return false;
+      }
+
+      updateDefinitionHoverDecoration(view, range);
+
+      onDefinitionHoverChange({
+        active: true,
+        selection: toLineColumn(view, position),
+        from: range.from,
+        to: range.to,
+      });
+      return false;
+    },
+    mouseleave(_event, view) {
+      updateDefinitionHoverDecoration(view, null);
+      onDefinitionHoverChange({ active: false });
+      return false;
+    },
+  });
+}
+
+export function createTypingCompletionTriggerListener(
+  onTypingCompletionTrigger: (selection: EditorLineColumn) => void,
+) {
+  return EditorView.updateListener.of((update: ViewUpdate) => {
+    if (!update.docChanged) {
+      return;
+    }
+
+    let shouldTrigger = false;
+    update.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
+      if (shouldTrigger) {
+        return;
+      }
+      const insertedText = inserted.toString();
+      if (/[A-Za-z0-9_$@]$/.test(insertedText) && !/\s/.test(insertedText)) {
+        shouldTrigger = true;
+      }
+    });
+
+    if (!shouldTrigger) {
+      return;
+    }
+
+    onTypingCompletionTrigger(toLineColumn(update.view, update.state.selection.main.head));
   });
 }

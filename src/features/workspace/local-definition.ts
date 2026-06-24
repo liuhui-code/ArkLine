@@ -6,6 +6,10 @@ export type DefinitionLocation = {
   column: number;
 };
 
+export type DefinitionCandidate = DefinitionLocation & {
+  preview: string;
+};
+
 type LocalDefinitionRequest = {
   path: string;
   content: string;
@@ -71,6 +75,10 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function previewDeclarationLine(content: string, line: number) {
+  return (content.split("\n")[line - 1] ?? "").trim();
+}
+
 function findDeclarationInContent(path: string, content: string, identifier: string): DefinitionLocation | null {
   const escapedIdentifier = escapeRegExp(identifier);
   const declarationMatchers = [
@@ -100,6 +108,18 @@ function findDeclarationInContent(path: string, content: string, identifier: str
   }
 
   return null;
+}
+
+function findDeclarationCandidateInContent(path: string, content: string, identifier: string): DefinitionCandidate | null {
+  const declaration = findDeclarationInContent(path, content, identifier);
+  if (!declaration) {
+    return null;
+  }
+
+  return {
+    ...declaration,
+    preview: previewDeclarationLine(content, declaration.line),
+  };
 }
 
 function isWindowsStylePath(path: string) {
@@ -264,6 +284,96 @@ async function findImportedDefinition(request: WorkspaceDefinitionRequest, ident
   return null;
 }
 
+function scoreDefinitionCandidate(referencePath: string, candidate: DefinitionCandidate) {
+  const referenceSegments = splitPathSegments(referencePath);
+  referenceSegments.pop();
+  const candidateSegments = splitPathSegments(candidate.path);
+  candidateSegments.pop();
+
+  let sharedPrefix = 0;
+  while (
+    sharedPrefix < referenceSegments.length &&
+    sharedPrefix < candidateSegments.length &&
+    referenceSegments[sharedPrefix] === candidateSegments[sharedPrefix]
+  ) {
+    sharedPrefix += 1;
+  }
+
+  const distance =
+    (referenceSegments.length - sharedPrefix) +
+    (candidateSegments.length - sharedPrefix);
+  const exported = /^\s*export\b/.test(candidate.preview);
+
+  return {
+    exported: exported ? 1 : 0,
+    distance,
+  };
+}
+
+function compareDefinitionCandidates(referencePath: string, left: DefinitionCandidate, right: DefinitionCandidate) {
+  const leftScore = scoreDefinitionCandidate(referencePath, left);
+  const rightScore = scoreDefinitionCandidate(referencePath, right);
+
+  if (leftScore.exported !== rightScore.exported) {
+    return rightScore.exported - leftScore.exported;
+  }
+
+  if (leftScore.distance !== rightScore.distance) {
+    return leftScore.distance - rightScore.distance;
+  }
+
+  if (left.line !== right.line) {
+    return left.line - right.line;
+  }
+
+  if (left.column !== right.column) {
+    return left.column - right.column;
+  }
+
+  return left.path.localeCompare(right.path);
+}
+
+async function findWorkspaceDeclarations(request: WorkspaceDefinitionRequest, identifier: string) {
+  const matches: DefinitionCandidate[] = [];
+
+  for (const workspaceFile of request.workspaceFiles) {
+    if (normalizePath(workspaceFile) === normalizePath(request.path)) {
+      continue;
+    }
+
+    const workspaceContent = await request.readFile(workspaceFile);
+    if (!workspaceContent) {
+      continue;
+    }
+
+    const declaration = findDeclarationCandidateInContent(workspaceFile, workspaceContent, identifier);
+    if (!declaration) {
+      continue;
+    }
+
+    matches.push({
+      ...declaration,
+      path: normalizePath(declaration.path),
+    });
+  }
+
+  return matches.sort((left, right) => compareDefinitionCandidates(request.path, left, right));
+}
+
+async function findUniqueWorkspaceDeclaration(request: WorkspaceDefinitionRequest, identifier: string) {
+  const matches = await findWorkspaceDeclarations(request, identifier);
+  if (matches.length !== 1) {
+    return null;
+  }
+
+  const match = matches[0]!;
+  return {
+    path: match.path,
+    line: match.line,
+    column: match.column,
+  };
+}
+
 export function findLocalDefinition(request: LocalDefinitionRequest): DefinitionLocation | null {
   const offset = getOffsetAtLineColumn(request.content, request.line, request.column);
   const identifier = getIdentifierAtOffset(request.content, offset);
@@ -288,5 +398,40 @@ export async function findWorkspaceDefinition(request: WorkspaceDefinitionReques
     return localDeclaration;
   }
 
-  return findImportedDefinition(request, identifier);
+  const importedDefinition = await findImportedDefinition(request, identifier);
+  if (importedDefinition) {
+    return importedDefinition;
+  }
+
+  return findUniqueWorkspaceDeclaration(request, identifier);
+}
+
+export async function findWorkspaceDefinitionCandidates(
+  request: WorkspaceDefinitionRequest,
+): Promise<DefinitionCandidate[]> {
+  const offset = getOffsetAtLineColumn(request.content, request.line, request.column);
+  const identifier = getIdentifierAtOffset(request.content, offset);
+
+  if (!identifier) {
+    return [];
+  }
+
+  const localDeclaration = findDeclarationInContent(request.path, request.content, identifier);
+  if (localDeclaration) {
+    return [{
+      ...localDeclaration,
+      preview: previewDeclarationLine(request.content, localDeclaration.line),
+    }];
+  }
+
+  const importedDefinition = await findImportedDefinition(request, identifier);
+  if (importedDefinition) {
+    const importedContent = await request.readFile(importedDefinition.path);
+    return [{
+      ...importedDefinition,
+      preview: importedContent ? previewDeclarationLine(importedContent, importedDefinition.line) : identifier,
+    }];
+  }
+
+  return findWorkspaceDeclarations(request, identifier);
 }

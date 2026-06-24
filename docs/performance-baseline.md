@@ -27,6 +27,59 @@ Local verification on 2026-06-19 from the macOS implementation environment:
 - Windows executable and installer: not yet verified from a Windows host or
   `windows-latest` CI run
 
+## Semantic Smoke
+
+Use the semantic-worker smoke harness before claiming local definition or
+completion behavior is working on a machine.
+
+Fixture verification:
+
+```bash
+pnpm smoke:semantic
+```
+
+Real workspace verification:
+
+```bash
+node scripts/smoke-semantic.mjs \
+  --file /absolute/path/to/Index.ets \
+  --definition-line 10 \
+  --definition-column 5 \
+  --completion-line 1 \
+  --completion-column 1 \
+  --expect-definition-path /absolute/path/to/Shared.ets \
+  --expect-definition-line 1 \
+  --expect-definition-column 17 \
+  --expect-completion-label sharedSubmit()
+```
+
+Current local machine example against `/Users/liuhui/Documents/code/browser`:
+
+```bash
+node scripts/smoke-semantic.mjs \
+  --file /Users/liuhui/Documents/code/browser/entry/src/main/ets/pages/Index.ets \
+  --definition-line 64 \
+  --definition-column 37 \
+  --completion-line 1 \
+  --completion-column 1 \
+  --expect-definition-path /Users/liuhui/Documents/code/browser/entry/src/main/ets/utils/RdbUtils.ets \
+  --expect-definition-line 4 \
+  --expect-definition-column 22 \
+  --expect-completion-label build()
+```
+
+Most recent local result on 2026-06-23 against `/Users/liuhui/Documents/code/browser` after rebuilding `semantic-worker/dist` from the latest source:
+
+- definition target: `Index.ets:64:37 -> RdbUtils.ets:4:22`
+- completion labels included: `@Entry`, `@Component`, `build()`
+- timings:
+  - `healthMs`: `156.72`
+  - `definitionMs`: `8.34`
+  - `completionMs`: `4.5`
+
+Record the reported `healthMs`, `definitionMs`, and `completionMs` when running
+against a real ArkTS project on the target machine.
+
 ## Release Gate
 
 Do not mark MVP complete until Windows measurements are captured against a real

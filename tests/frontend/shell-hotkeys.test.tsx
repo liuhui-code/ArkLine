@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
 
@@ -94,6 +94,25 @@ describe("Shell hotkeys", () => {
 
     expect(screen.queryByRole("button", { name: "app.json5", pressed: true })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
+  });
+
+  it("navigates back to the previous editor location with an IDEA-style shortcut", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "go to line");
+    await user.click(await screen.findByRole("button", { name: "Go to Line..." }));
+    await user.type(await screen.findByLabelText("Go to Line Query"), "3:1");
+    await user.keyboard("{Enter}");
+
+    fireEvent.keyDown(window, { key: "ArrowLeft", ctrlKey: true, altKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Status Bar Right").textContent).toContain("Back: main.ets:");
+    });
     expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
 });

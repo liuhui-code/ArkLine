@@ -7,14 +7,12 @@ type LeftToolRailProps = {
 
 const toolLabels: Record<LeftToolKey, string> = {
   project: "Project",
-  search: "Search",
   git: "Git",
   problems: "Problems"
 };
 
 const toolIcons: Record<LeftToolKey, string> = {
   project: "left-tool-rail__icon--project",
-  search: "left-tool-rail__icon--search",
   git: "left-tool-rail__icon--git",
   problems: "left-tool-rail__icon--problems",
 };

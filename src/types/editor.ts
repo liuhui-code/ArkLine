@@ -4,4 +4,5 @@ export type EditorAppearance = {
   fontFamily: string;
   fontSize: number;
   lineHeight: number;
+  letterSpacing: number;
 };

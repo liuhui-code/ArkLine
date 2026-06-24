@@ -2,6 +2,7 @@ export type ShellCommand =
   | "closeTransientUi"
   | "closeActiveFile"
   | "hideActiveToolWindow"
+  | "navigateBack"
   | "toggleEditorOnly"
   | "openQuickOpen"
   | "openSearchEverywhere"
@@ -37,6 +38,10 @@ export function resolveShellCommand(event: KeyboardEvent): ShellCommand | null {
 
   if (isPrimaryModifier(event) && key === "w" && !event.shiftKey) {
     return "closeActiveFile";
+  }
+
+  if (isPrimaryModifier(event) && event.altKey && key === "arrowleft" && !event.shiftKey) {
+    return "navigateBack";
   }
 
   if (event.altKey && key === "f7" && !event.ctrlKey && !event.metaKey && !event.shiftKey) {

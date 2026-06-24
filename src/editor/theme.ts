@@ -29,12 +29,23 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
     ".cm-content": {
       caretColor: "var(--text-primary)",
       padding: "0 18px 0 0",
+      letterSpacing: `${appearance.letterSpacing}px`,
       userSelect: "text",
       WebkitUserSelect: "text",
     },
     ".cm-line": {
       userSelect: "text",
       WebkitUserSelect: "text",
+    },
+    ".cm-arkline-definition-hover": {
+      textDecoration: "underline",
+      textDecorationColor: "color-mix(in srgb, var(--accent-blue, #4c8dff) 60%, transparent)",
+      textUnderlineOffset: "0.14em",
+    },
+    ".cm-arkline-jump-reveal": {
+      backgroundColor: "rgb(76 141 255 / 0.2)",
+      borderRadius: "3px",
+      boxShadow: "0 0 0 1px rgb(76 141 255 / 0.18)",
     },
     ".cm-gutters": {
       backgroundColor: "var(--bg-editor)",

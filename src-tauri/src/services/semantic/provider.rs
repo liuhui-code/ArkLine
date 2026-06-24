@@ -1,6 +1,6 @@
 use crate::models::language::{
-    CompletionItem, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, UsageResult,
+    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
+    LanguageQueryRequest, LanguageServiceReport, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;
@@ -9,6 +9,7 @@ pub trait SemanticProvider: Send + Sync {
     fn report(&self) -> LanguageServiceReport;
     fn hover(&self, request: &LanguageQueryRequest) -> Option<HoverResponse>;
     fn definition(&self, request: &LanguageQueryRequest) -> Option<DefinitionTarget>;
+    fn definition_candidates(&self, request: &LanguageQueryRequest) -> Vec<DefinitionCandidate>;
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem>;
     fn document_symbols(&self, request: &LanguageQueryRequest) -> Vec<DocumentSymbol>;
     fn usages(&self, request: &LanguageQueryRequest) -> Vec<UsageResult>;
@@ -64,6 +65,30 @@ impl SemanticProvider for FallbackProvider {
                 line: candidate.line,
                 column: candidate.column,
             })
+    }
+
+    fn definition_candidates(&self, request: &LanguageQueryRequest) -> Vec<DefinitionCandidate> {
+        let Some(content) = load_document_content(&request.path) else {
+            return Vec::new();
+        };
+        let Some(symbol) = symbol_at_position(&content, request) else {
+            return Vec::new();
+        };
+
+        collect_document_symbols(&content)
+            .into_iter()
+            .filter(|candidate| candidate.name == symbol)
+            .map(|candidate| DefinitionCandidate {
+                path: request.path.clone(),
+                line: candidate.line,
+                column: candidate.column,
+                preview: content
+                    .lines()
+                    .nth(candidate.line.saturating_sub(1) as usize)
+                    .map(|line| line.trim().to_string())
+                    .unwrap_or_default(),
+            })
+            .collect()
     }
 
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem> {

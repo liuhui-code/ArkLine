@@ -12,6 +12,14 @@ export function parseGoToLineQuery(query: string) {
   };
 }
 
+export function extractCompletionPrefix(content: string, line: number, column: number) {
+  const lines = content.split(/\r?\n/);
+  const lineText = lines[line - 1] ?? "";
+  const safeColumn = Math.max(column - 1, 0);
+  const prefix = lineText.slice(0, safeColumn).match(/[@A-Za-z0-9_$]+$/);
+  return prefix?.[0] ?? "";
+}
+
 type CommandPaletteAction = {
   openProject: () => void | Promise<void>;
   openDemoWorkspace: () => void;
