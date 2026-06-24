@@ -55,7 +55,7 @@ export function resolveCompletion(
 
   const component = arkuiCompletionComponent(content, position)
   if (component) {
-    const sdkPath = discoverHarmonySdk().path
+    const sdkPath = discoverHarmonySdk().path ?? undefined
     for (const entry of completeArkuiApis(sdkPath, component)) {
       push(entry.name, entry.signature || entry.detail, "method")
     }
