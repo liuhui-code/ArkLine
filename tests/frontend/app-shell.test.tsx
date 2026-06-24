@@ -710,6 +710,104 @@ describe("App shell", () => {
     expect(editor).not.toHaveTextContent(".wiwidth(value)");
   });
 
+  it("uses completion replacement ranges when they differ from the local prefix", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => ["@Entry", "@Component", "struct Index {", "  build() {", "    .wi"].join("\n"),
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        {
+          label: "width",
+          detail: "width(value: Length): T",
+          kind: "method",
+          insertText: ".width(${1:value})",
+          filterText: "width",
+          source: "arkui" as const,
+          replacementRange: { startLine: 5, startColumn: 5, endLine: 5, endColumn: 8 },
+        },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("{Control>} {/Control}");
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    await user.click(within(popup).getByRole("option", { name: /width/ }));
+
+    expect(editor).toHaveTextContent(/build\(\)\s*\{\s*\.width\(value\)/);
+    expect(editor).not.toHaveTextContent("..width(value)");
+  });
+
+  it("falls back to the current prefix when completion replacement ranges do not match the caret", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => ["@Entry", "@Component", "struct Index {", "  build() {", "    .wi"].join("\n"),
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        {
+          label: "width",
+          detail: "width(value: Length): T",
+          kind: "method",
+          insertText: "width(${1:value})",
+          filterText: "width",
+          source: "arkui" as const,
+          replacementRange: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 7 },
+        },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("{Control>} {/Control}");
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    await user.click(within(popup).getByRole("option", { name: /width/ }));
+
+    expect(editor).toHaveTextContent(/build\(\)\s*\{\s*\.width\(value\)/);
+    expect(editor).not.toHaveTextContent(/build\(\)\s*\{\s*width\(value\)/);
+  });
+
   it("refreshes an open completion popup once when Ctrl+Space is pressed again", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

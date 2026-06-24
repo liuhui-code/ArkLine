@@ -743,9 +743,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function insertCompletionItem(item: CompletionPresentation) {
     const text = completionInsertTextToPlainText(item.insertText);
-    const replaceBefore = item.replacementRange
-      ? Math.max(0, editorSelection.column - item.replacementRange.startColumn)
-      : completionReplacePrefix.length;
+    const replaceBefore = completionReplacementLength(item, editorSelection, documentsRef.current.getDocument(activePath ?? "")?.currentContent ?? editorContent, completionReplacePrefix);
 
     completionRequestRef.current += 1;
     completionRecencyCounterRef.current += 1;
@@ -1260,4 +1258,25 @@ function completionInsertTextToPlainText(insertText: string) {
   return insertText
     .replace(/\$\{\d+:([^}]*)\}/g, "$1")
     .replace(/\$\d+/g, "");
+}
+
+function completionReplacementLength(
+  item: CompletionPresentation,
+  selection: { line: number; column: number },
+  content: string,
+  fallbackPrefix: string,
+) {
+  const range = item.replacementRange;
+  if (
+    range
+    && range.startLine === selection.line
+    && range.endLine === selection.line
+    && range.endColumn === selection.column
+    && range.startColumn >= 1
+    && range.startColumn <= range.endColumn
+  ) {
+    return Math.max(0, selection.column - range.startColumn);
+  }
+
+  return extractCompletionPrefix(content, selection.line, selection.column).length || fallbackPrefix.length;
 }
