@@ -57,23 +57,32 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
+function constrainCompletionPopupPosition(top: number, left: number) {
+  if (typeof window === "undefined") {
+    return { top, left };
+  }
+
+  const maxLeft = window.innerWidth - COMPLETION_POPUP_WIDTH - COMPLETION_POPUP_MARGIN;
+  return {
+    top: Math.max(COMPLETION_POPUP_MARGIN, top),
+    left: clampNumber(left, COMPLETION_POPUP_MARGIN, maxLeft),
+  };
+}
+
 function getCompletionPopupPosition(anchor: EditorCaretRect | null) {
   if (!anchor?.measured) {
-    return COMPLETION_POPUP_FALLBACK_POSITION;
+    return constrainCompletionPopupPosition(COMPLETION_POPUP_FALLBACK_POSITION.top, COMPLETION_POPUP_FALLBACK_POSITION.left);
   }
 
   if (typeof window === "undefined") {
     return { top: anchor.bottom + COMPLETION_POPUP_GAP, left: anchor.left };
   }
 
-  const maxLeft = window.innerWidth - COMPLETION_POPUP_WIDTH - COMPLETION_POPUP_MARGIN;
-  const left = clampNumber(anchor.left, COMPLETION_POPUP_MARGIN, maxLeft);
   const belowTop = anchor.bottom + COMPLETION_POPUP_GAP;
   const hasSpaceBelow = belowTop + COMPLETION_POPUP_HEIGHT + COMPLETION_POPUP_MARGIN <= window.innerHeight;
   const preferredTop = hasSpaceBelow ? belowTop : anchor.top - COMPLETION_POPUP_HEIGHT - COMPLETION_POPUP_GAP;
-  const top = Math.max(COMPLETION_POPUP_MARGIN, preferredTop);
 
-  return { top, left };
+  return constrainCompletionPopupPosition(preferredTop, anchor.left);
 }
 
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {

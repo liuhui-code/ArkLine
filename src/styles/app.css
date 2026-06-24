@@ -201,7 +201,7 @@ button:disabled {
 .completion-popup {
   position: fixed;
   z-index: 45;
-  width: min(560px, calc(100vw - 32px));
+  width: min(460px, calc(100vw - 24px));
   max-height: min(340px, calc(100vh - 128px));
   overflow: auto;
   padding: 4px;
