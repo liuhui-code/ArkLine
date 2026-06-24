@@ -1506,9 +1506,12 @@ describe("App shell", () => {
     );
     await user.click(blameButton);
 
-    await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
-    });
+    expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Mark ArkTS entry component");
+    expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "false");
+
+    await user.click(screen.getByRole("button", { name: "Show Diff" }));
+
+    expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
   });
 

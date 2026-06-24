@@ -789,6 +789,66 @@ button:disabled {
   color: var(--text-primary);
 }
 
+.git-blame-card {
+  position: absolute;
+  top: 84px;
+  right: 24px;
+  z-index: 18;
+  width: min(420px, calc(100vw - 48px));
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+  color: var(--text-secondary);
+}
+
+.git-blame-card__header,
+.git-blame-card__meta,
+.git-blame-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-blame-card__header {
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.git-blame-card__header button,
+.git-blame-card__actions button {
+  min-height: 26px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font: inherit;
+}
+
+.git-blame-card__header button {
+  width: 26px;
+  padding: 0;
+}
+
+.git-blame-card__meta {
+  padding: 10px 12px 0;
+  font-size: 12px;
+}
+
+.git-blame-card__meta code {
+  color: var(--text-primary);
+}
+
+.git-blame-card__actions {
+  padding: 12px;
+}
+
+.git-blame-card__actions button {
+  padding: 0 10px;
+}
+
 .search-results {
   max-height: 240px;
   overflow: auto;

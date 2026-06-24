@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
 import { EditorSurface } from "@/components/layout/EditorSurface";
+import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow } from "@/components/layout/GitToolWindow";
 import { GitTracePanel } from "@/components/layout/GitTracePanel";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
@@ -85,6 +86,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
   const [completionAutoFocus, setCompletionAutoFocus] = useState(true);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
+  const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
   const documentsRef = useRef(createDocumentStore());
   const tabsRef = useRef(createEditorTabsStore(documentsRef.current));
   const problemsRef = useRef(createProblemsStore());
@@ -248,6 +250,26 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function toggleGitBlame() {
     setGitBlameVisible((visible) => !visible);
+    setSelectedBlameAttribution(null);
+  }
+  function selectGitBlameLine(line: number) {
+    const attribution = gitTraceState.blameAttributions.find((item) => item.bufferLine === line) ?? null;
+    setEditorSelection({ line, column: 1 });
+    setSelectedBlameAttribution(attribution);
+  }
+  function showSelectedBlameDiff() {
+    if (selectedBlameAttribution?.commit) {
+      showBottomTool("gitTrace");
+    } else {
+      showBottomTool("git");
+    }
+  }
+  function copySelectedBlameHash() {
+    if (!selectedBlameAttribution?.commit) {
+      return;
+    }
+    void navigator.clipboard?.writeText(selectedBlameAttribution.commit);
+    setStatusText(`Copied commit ${selectedBlameAttribution.shortCommit ?? selectedBlameAttribution.commit.slice(0, 7)}`);
   }
 
   function closeTransientUi() {
@@ -933,8 +955,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div className="shell-grid">
         <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectTool={showLeftTool} />
-        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={gitTraceState.selectedLine} onGitTraceLineClick={(line) => { setEditorSelection({ line, column: 1 }); showBottomTool("gitTrace"); }} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
       </div>
+      {selectedBlameAttribution ? (
+        <GitBlameCard
+          attribution={selectedBlameAttribution}
+          onClose={() => setSelectedBlameAttribution(null)}
+          onShowDiff={showSelectedBlameDiff}
+          onCopyHash={copySelectedBlameHash}
+        />
+      ) : null}
       <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
         <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} completionResults={completionResults} completionSelectedIndex={completionSelectedIndex} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onInsertCompletion={insertCompletion} onMoveCompletionSelection={(direction) => moveCompletionSelection(direction, completionResults.length)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onAcceptSelectedCompletion={() => { if (selectedCompletion) insertCompletion(selectedCompletion.label); }} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} completionAutoFocus={completionAutoFocus} />
       </OverlaySurface>
