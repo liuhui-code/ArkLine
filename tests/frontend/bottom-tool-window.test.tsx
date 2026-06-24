@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
 
@@ -82,9 +82,11 @@ describe("Bottom tool window", () => {
 
     expect(bottomPanel).toHaveStyle({ height: "280px" });
 
-    fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientY: 420 });
-    fireEvent.pointerUp(window, { pointerId: 1, clientY: 420 });
+    await act(async () => {
+      fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
+      fireEvent.pointerMove(window, { pointerId: 1, clientY: 420 });
+      fireEvent.pointerUp(window, { pointerId: 1, clientY: 420 });
+    });
 
     expect(bottomPanel).toHaveStyle({ height: "360px" });
   });
@@ -100,14 +102,18 @@ describe("Bottom tool window", () => {
     const bottomPanel = screen.getByLabelText("Bottom Tool Window");
     const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
 
-    fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
-    fireEvent.pointerMove(window, { pointerId: 1, clientY: 800 });
-    fireEvent.pointerUp(window, { pointerId: 1, clientY: 800 });
+    await act(async () => {
+      fireEvent.pointerDown(separator, { pointerId: 1, clientY: 500 });
+      fireEvent.pointerMove(window, { pointerId: 1, clientY: 800 });
+      fireEvent.pointerUp(window, { pointerId: 1, clientY: 800 });
+    });
     expect(bottomPanel).toHaveStyle({ height: "160px" });
 
-    fireEvent.pointerDown(separator, { pointerId: 2, clientY: 500 });
-    fireEvent.pointerMove(window, { pointerId: 2, clientY: 0 });
-    fireEvent.pointerUp(window, { pointerId: 2, clientY: 0 });
+    await act(async () => {
+      fireEvent.pointerDown(separator, { pointerId: 2, clientY: 500 });
+      fireEvent.pointerMove(window, { pointerId: 2, clientY: 0 });
+      fireEvent.pointerUp(window, { pointerId: 2, clientY: 0 });
+    });
     expect(bottomPanel).toHaveStyle({ height: "560px" });
   });
 
@@ -122,10 +128,36 @@ describe("Bottom tool window", () => {
     const bottomPanel = screen.getByLabelText("Bottom Tool Window");
     const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
 
-    fireEvent.doubleClick(separator);
+    await act(async () => {
+      fireEvent.doubleClick(separator);
+    });
     expect(bottomPanel).toHaveStyle({ height: "560px" });
 
-    fireEvent.doubleClick(separator);
+    await act(async () => {
+      fireEvent.doubleClick(separator);
+    });
     expect(bottomPanel).toHaveStyle({ height: "280px" });
+  });
+
+  it("resizes the bottom panel from the keyboard separator controls", async () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    render(<AppShell />);
+    const bottomPanel = screen.getByLabelText("Bottom Tool Window");
+    const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
+
+    expect(separator).toHaveAttribute("aria-valuemin", "160");
+    expect(separator).toHaveAttribute("aria-valuemax", "560");
+    expect(separator).toHaveAttribute("aria-valuenow", "280");
+
+    await act(async () => { fireEvent.keyDown(separator, { key: "ArrowUp" }); });
+    expect(bottomPanel).toHaveStyle({ height: "290px" });
+    expect(separator).toHaveAttribute("aria-valuenow", "290");
+
+    await act(async () => { fireEvent.keyDown(separator, { key: "End" }); });
+    expect(bottomPanel).toHaveStyle({ height: "560px" });
+    expect(separator).toHaveAttribute("aria-valuenow", "560");
+
+    await act(async () => { fireEvent.keyDown(separator, { key: "Home" }); });
+    expect(bottomPanel).toHaveStyle({ height: "160px" });
   });
 });

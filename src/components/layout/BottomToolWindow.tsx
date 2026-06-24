@@ -1,4 +1,11 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { flushSync } from "react-dom";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 
@@ -6,6 +13,7 @@ type BottomToolWindowProps = {
   activeTool: BottomToolKey;
   contentVisible?: boolean;
   height: number;
+  maxHeight: number;
   onResizeHeight: (height: number) => void;
   onToggleMaxHeight: () => void;
   onToggleTool: (tool: BottomToolKey) => void;
@@ -18,6 +26,7 @@ type BottomToolWindowProps = {
   usagesPanel: ReactNode;
 };
 
+const minHeight = 160;
 const tabOrder: BottomToolKey[] = ["problems", "terminal", "git", "gitTrace", "usages"];
 
 const tabLabels: Record<BottomToolKey, string> = {
@@ -32,6 +41,7 @@ export function BottomToolWindow({
   activeTool,
   contentVisible = true,
   height,
+  maxHeight,
   onResizeHeight,
   onToggleMaxHeight,
   onToggleTool,
@@ -44,35 +54,65 @@ export function BottomToolWindow({
   usagesPanel,
 }: BottomToolWindowProps) {
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
+  const activeResizeCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
       resizeStartRef.current = null;
-      window.removeEventListener("pointermove", handleResizePointerMove);
-      window.removeEventListener("pointerup", handleResizePointerUp);
+      activeResizeCleanupRef.current?.();
+      activeResizeCleanupRef.current = null;
     };
   }, []);
 
-  function handleResizePointerMove(event: PointerEvent) {
-    const start = resizeStartRef.current;
-    if (!start) {
-      return;
-    }
-    flushSync(() => {
-      onResizeHeight(start.height + start.y - event.clientY);
-    });
-  }
-
-  function handleResizePointerUp() {
+  function cleanupActiveResizeListeners() {
     resizeStartRef.current = null;
-    window.removeEventListener("pointermove", handleResizePointerMove);
-    window.removeEventListener("pointerup", handleResizePointerUp);
+    activeResizeCleanupRef.current?.();
+    activeResizeCleanupRef.current = null;
   }
 
   function handleResizePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    cleanupActiveResizeListeners();
     resizeStartRef.current = { y: event.clientY, height };
+
+    const handleResizePointerMove = (moveEvent: PointerEvent) => {
+      const start = resizeStartRef.current;
+      if (!start) {
+        return;
+      }
+      flushSync(() => {
+        onResizeHeight(start.height + start.y - moveEvent.clientY);
+      });
+    };
+    const handleResizePointerEnd = () => {
+      cleanupActiveResizeListeners();
+    };
+
     window.addEventListener("pointermove", handleResizePointerMove);
-    window.addEventListener("pointerup", handleResizePointerUp);
+    window.addEventListener("pointerup", handleResizePointerEnd);
+    window.addEventListener("pointercancel", handleResizePointerEnd);
+    activeResizeCleanupRef.current = () => {
+      window.removeEventListener("pointermove", handleResizePointerMove);
+      window.removeEventListener("pointerup", handleResizePointerEnd);
+      window.removeEventListener("pointercancel", handleResizePointerEnd);
+    };
+  }
+
+  function handleResizeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const resizeByKey: Record<string, number> = {
+      ArrowUp: height + 10,
+      ArrowDown: height - 10,
+      PageUp: height + 40,
+      PageDown: height - 40,
+      Home: minHeight,
+      End: maxHeight,
+    };
+    const nextHeight = resizeByKey[event.key];
+    if (nextHeight === undefined) {
+      return;
+    }
+
+    event.preventDefault();
+    onResizeHeight(nextHeight);
   }
 
   return (
@@ -87,9 +127,14 @@ export function BottomToolWindow({
         <div
           aria-label="Resize Bottom Tool Window"
           aria-orientation="horizontal"
+          aria-valuemax={maxHeight}
+          aria-valuemin={minHeight}
+          aria-valuenow={height}
           className="bottom-tool-window__resize-handle"
           role="separator"
+          tabIndex={0}
           onDoubleClick={onToggleMaxHeight}
+          onKeyDown={handleResizeKeyDown}
           onPointerDown={handleResizePointerDown}
         />
       ) : null}
