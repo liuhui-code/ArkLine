@@ -1,5 +1,5 @@
 import type { DefinitionHoverState, EditorLineColumn } from "@/editor/editor-events";
-import type { GitBlameLine } from "@/features/git/git-trace-model";
+import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { RefObject } from "react";
 import { LazyArkTsEditor } from "@/editor/LazyArkTsEditor";
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
@@ -38,7 +38,7 @@ type EditorSurfaceProps = {
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
-  blameLines?: GitBlameLine[];
+  blameAttributions?: GitBlameAttribution[];
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
   definitionHoverActive?: boolean;
@@ -60,7 +60,7 @@ export function EditorSurface({
   onDefinitionTrigger,
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
-  blameLines = [],
+  blameAttributions = [],
   selectedBlameLine = null,
   onGitTraceLineClick,
   definitionHoverActive = false,
@@ -112,7 +112,7 @@ export function EditorSurface({
           onDefinitionHoverChange={onDefinitionHoverChange}
           onSelectionChange={onSelectionChange}
           onTypingCompletionTrigger={onTypingCompletionTrigger}
-          blameLines={blameLines}
+          blameAttributions={blameAttributions}
           selectedBlameLine={selectedBlameLine}
           onGitTraceLineClick={onGitTraceLineClick}
         />

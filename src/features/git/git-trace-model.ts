@@ -55,6 +55,7 @@ export type GitCommitTrace = {
 export type GitTraceState = {
   blameStatus: "idle" | "loading" | "ready" | "unavailable" | "error";
   blameLines: GitBlameLine[];
+  blameAttributions: GitBlameAttribution[];
   selectedLine: number | null;
   selectedCommit: string | null;
   detailStatus: "idle" | "loading" | "ready" | "unavailable" | "error";
@@ -66,6 +67,7 @@ export function createDefaultGitTraceState(): GitTraceState {
   return {
     blameStatus: "idle",
     blameLines: [],
+    blameAttributions: [],
     selectedLine: null,
     selectedCommit: null,
     detailStatus: "idle",

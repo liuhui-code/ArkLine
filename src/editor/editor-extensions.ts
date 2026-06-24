@@ -26,7 +26,7 @@ import {
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import { arkLineSyntaxTheme, createArkLineEditorTheme } from "@/editor/theme";
-import type { GitBlameLine } from "@/features/git/git-trace-model";
+import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
 
 export const languageCompartment = new Compartment();
@@ -78,7 +78,7 @@ export function createEditorExtensions(
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void,
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,
   gitTrace?: {
-    blameLines: GitBlameLine[];
+    blameAttributions: GitBlameAttribution[];
     selectedLine: number | null;
     onSelectLine?: (line: number) => void;
   },

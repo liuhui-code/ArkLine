@@ -17,7 +17,7 @@ import {
   type EditorLineColumn,
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
-import type { GitBlameLine } from "@/features/git/git-trace-model";
+import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 
 type ArkTsEditorProps = {
@@ -32,7 +32,7 @@ type ArkTsEditorProps = {
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
-  blameLines?: GitBlameLine[];
+  blameAttributions?: GitBlameAttribution[];
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
 };
@@ -49,7 +49,7 @@ export function ArkTsEditor({
   onDefinitionTrigger,
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
-  blameLines = [],
+  blameAttributions = [],
   selectedBlameLine = null,
   onGitTraceLineClick,
 }: ArkTsEditorProps) {
@@ -84,7 +84,7 @@ export function ArkTsEditor({
         (state) => onDefinitionHoverChangeRef.current?.(state),
         (selection) => onTypingCompletionTriggerRef.current?.(selection),
         {
-          blameLines,
+          blameAttributions,
           selectedLine: selectedBlameLine,
           onSelectLine: onGitTraceLineClick,
         },
@@ -155,13 +155,13 @@ export function ArkTsEditor({
     view.dispatch({
       effects: gitTraceCompartment.reconfigure(
         createGitTraceGutter({
-          blameLines,
+          blameAttributions,
           selectedLine: selectedBlameLine,
           onSelectLine: onGitTraceLineClick,
         }),
       ),
     });
-  }, [blameLines, onGitTraceLineClick, selectedBlameLine]);
+  }, [blameAttributions, onGitTraceLineClick, selectedBlameLine]);
 
   useEffect(() => {
     const view = viewRef.current;

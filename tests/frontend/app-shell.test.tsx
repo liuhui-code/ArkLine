@@ -1505,8 +1505,71 @@ describe("App shell", () => {
     );
     await user.click(blameButton);
 
-    expect(await screen.findByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
+    });
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
+  });
+
+  it("keeps committed blame visible around an unsaved inserted line", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}\nText('Hi')",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+        {
+          line: 2,
+          commit: "bbb2222",
+          sourceLine: 2,
+          author: "Alex Chen",
+          authoredAt: "2026-06-21T10:00:00Z",
+          relativeTime: "3d ago",
+          summary: "Add build method",
+        },
+        {
+          line: 3,
+          commit: "ccc3333",
+          sourceLine: 3,
+          author: "Mina Park",
+          authoredAt: "2026-06-22T10:00:00Z",
+          relativeTime: "2d ago",
+          summary: "Add text widget",
+        },
+      ],
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard("{Home}{ArrowDown}{Enter}@Component");
+
+    await waitFor(() => {
+      expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy();
+    });
+
+    expect(container).toHaveTextContent("Uncommitted");
+    expect(container).toHaveTextContent("Jane Doe");
+    expect(container).toHaveTextContent("Alex Chen");
   });
 
   it("shows a clear message when the file is not tracked by Git", async () => {
@@ -1547,7 +1610,7 @@ describe("App shell", () => {
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Git is unavailable on this machine");
   });
 
-  it("asks to save the current file before loading Git Trace", async () => {
+  it("keeps Git Trace available after unsaved edits", async () => {
     const user = userEvent.setup();
     const getFileBlame = vi.fn(async () => [
       {
@@ -1560,7 +1623,21 @@ describe("App shell", () => {
         summary: "Mark ArkTS entry component",
       },
     ]);
-    const workspaceApi = createWorkspaceApi({ getFileBlame });
+    const workspaceApi = createWorkspaceApi({
+      getFileBlame,
+      getCommitTrace: async () => ({
+        commit: "abc1234",
+        shortCommit: "abc1234",
+        author: "Jane Doe",
+        email: "jane@example.com",
+        authoredAt: "2026-06-23T10:00:00Z",
+        subject: "Mark ArkTS entry component",
+        relativePath: "src/main.ets",
+        selectedLine: 1,
+        sourceLine: 1,
+        patch: "diff --git a/src/main.ets b/src/main.ets\n+@Entry",
+      }),
+    });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 
@@ -1571,7 +1648,7 @@ describe("App shell", () => {
     await user.keyboard("{End}\n// dirty");
     await user.click(screen.getByRole("tab", { name: "Git Trace" }));
 
-    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Save the current file to inspect Git Trace.");
+    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
     expect(getFileBlame).toHaveBeenCalledTimes(1);
   });
 

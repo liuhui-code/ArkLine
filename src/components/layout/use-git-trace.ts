@@ -4,35 +4,24 @@ import {
   isGitTraceUnavailable,
   type GitTraceState,
 } from "@/features/git/git-trace-model";
+import { mapBlameToBuffer } from "@/features/git/blame-buffer-mapper";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
 type UseGitTraceArgs = {
   activeLine: number;
   activePath: string | null;
-  isActiveFileDirty: boolean;
+  activeText: string;
+  baseText: string;
   activeTool: "problems" | "terminal" | "git" | "gitTrace" | "usages";
   workspaceApi: WorkspaceApi;
 };
 
-export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeTool, workspaceApi }: UseGitTraceArgs) {
+export function useGitTrace({ activeLine, activePath, activeText, baseText, activeTool, workspaceApi }: UseGitTraceArgs) {
   const [state, setState] = useState<GitTraceState>(createDefaultGitTraceState);
 
   useEffect(() => {
     if (!activePath || !workspaceApi.getFileBlame) {
       setState(createDefaultGitTraceState());
-      return;
-    }
-
-    if (isActiveFileDirty) {
-      setState({
-        blameStatus: "unavailable",
-        blameLines: [],
-        selectedLine: null,
-        selectedCommit: null,
-        detailStatus: "unavailable",
-        detail: null,
-        message: "Save the current file to inspect Git Trace.",
-      });
       return;
     }
 
@@ -55,6 +44,7 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
           ...current,
           blameStatus: "unavailable",
           blameLines: [],
+          blameAttributions: [],
           selectedLine: null,
           selectedCommit: null,
           detailStatus: "unavailable",
@@ -68,8 +58,9 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
         ...current,
         blameStatus: "ready",
         blameLines: result,
-        selectedLine: activeLine,
-        selectedCommit: result.find((line) => line.line === activeLine)?.commit ?? result[0]?.commit ?? null,
+        blameAttributions: [],
+        selectedLine: null,
+        selectedCommit: null,
         message: undefined,
       }));
     }).catch((error) => {
@@ -82,6 +73,7 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
         ...current,
         blameStatus: "error",
         blameLines: [],
+        blameAttributions: [],
         selectedLine: null,
         selectedCommit: null,
         detailStatus: "error",
@@ -93,7 +85,24 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
     return () => {
       cancelled = true;
     };
-  }, [activeLine, activePath, isActiveFileDirty, workspaceApi]);
+  }, [activePath, baseText, workspaceApi]);
+
+  useEffect(() => {
+    if (state.blameStatus !== "ready" || state.blameLines.length === 0) {
+      return;
+    }
+
+    const blameAttributions = mapBlameToBuffer({ baseText, currentText: activeText, blameLines: state.blameLines });
+    const selectedAttribution = blameAttributions.find((line) => line.bufferLine === activeLine && line.commit)
+      ?? blameAttributions.find((line) => line.commit);
+
+    setState((current) => ({
+      ...current,
+      blameAttributions,
+      selectedLine: activeLine,
+      selectedCommit: selectedAttribution?.commit ?? null,
+    }));
+  }, [activeLine, activeText, baseText, state.blameLines, state.blameStatus]);
 
   useEffect(() => {
     if (
@@ -101,26 +110,27 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
       || !activePath
       || !workspaceApi.getCommitTrace
       || state.blameStatus !== "ready"
-      || state.blameLines.length === 0
+      || state.blameAttributions.length === 0
     ) {
       return;
     }
 
-    const selected = state.blameLines.find((line) => line.line === activeLine) ?? state.blameLines[0];
-    if (!selected) {
+    const selected = state.blameAttributions.find((line) => line.bufferLine === activeLine && line.commit)
+      ?? state.blameAttributions.find((line) => line.commit);
+    if (!selected?.commit) {
       return;
     }
 
     let cancelled = false;
     setState((current) => ({
       ...current,
-      selectedLine: selected.line,
+      selectedLine: selected.bufferLine,
       selectedCommit: selected.commit,
       detailStatus: "loading",
       message: current.blameStatus === "ready" ? undefined : current.message,
     }));
 
-    void workspaceApi.getCommitTrace(activePath, selected.commit, selected.line).then((result) => {
+    void workspaceApi.getCommitTrace(activePath, selected.commit, selected.sourceLine ?? selected.bufferLine).then((result) => {
       if (cancelled) {
         return;
       }
@@ -128,7 +138,7 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
       if (isGitTraceUnavailable(result)) {
         setState((current) => ({
           ...current,
-          selectedLine: selected.line,
+          selectedLine: selected.bufferLine,
           selectedCommit: selected.commit,
           detailStatus: "unavailable",
           detail: null,
@@ -139,7 +149,7 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
 
       setState((current) => ({
         ...current,
-        selectedLine: selected.line,
+        selectedLine: selected.bufferLine,
         selectedCommit: selected.commit,
         detailStatus: "ready",
         detail: result,
@@ -153,7 +163,7 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
       const message = error instanceof Error ? error.message : String(error);
       setState((current) => ({
         ...current,
-        selectedLine: selected.line,
+        selectedLine: selected.bufferLine,
         selectedCommit: selected.commit,
         detailStatus: "error",
         detail: null,
@@ -164,7 +174,7 @@ export function useGitTrace({ activeLine, activePath, isActiveFileDirty, activeT
     return () => {
       cancelled = true;
     };
-  }, [activeLine, activePath, activeTool, state.blameLines, state.blameStatus, workspaceApi]);
+  }, [activeLine, activePath, activeTool, state.blameAttributions, state.blameStatus, workspaceApi]);
 
   return { gitTraceState: state };
 }

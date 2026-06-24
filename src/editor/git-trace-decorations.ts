@@ -1,6 +1,6 @@
 import type { Extension } from "@codemirror/state";
 import { gutter, GutterMarker, type BlockInfo } from "@codemirror/view";
-import type { GitBlameLine } from "@/features/git/git-trace-model";
+import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 
 class GitTraceMarker extends GutterMarker {
   constructor(
@@ -26,17 +26,17 @@ class GitTraceMarker extends GutterMarker {
 }
 
 type GitTraceGutterOptions = {
-  blameLines: GitBlameLine[];
+  blameAttributions: GitBlameAttribution[];
   selectedLine: number | null;
   onSelectLine?: (line: number) => void;
 };
 
 export function createGitTraceGutter({
-  blameLines,
+  blameAttributions,
   selectedLine,
   onSelectLine,
 }: GitTraceGutterOptions): Extension {
-  const blameByLine = new Map(blameLines.map((entry) => [entry.line, entry]));
+  const blameByLine = new Map(blameAttributions.map((entry) => [entry.bufferLine, entry]));
 
   return gutter({
     class: "cm-git-trace-gutter",
@@ -64,6 +64,14 @@ export function createGitTraceGutter({
   });
 }
 
-function buildBlameLabel(blame: GitBlameLine) {
-  return `${blame.author} ${blame.relativeTime} ${blame.summary}`;
+function buildBlameLabel(blame: GitBlameAttribution) {
+  if (blame.status === "added") {
+    return "Uncommitted";
+  }
+
+  if (blame.status === "modified") {
+    return `Modified · ${blame.originalAuthor ?? blame.author ?? "Unknown"}`;
+  }
+
+  return `${blame.author ?? "Unknown"} ${blame.relativeTime ?? ""} ${blame.summary ?? ""}`.trim();
 }

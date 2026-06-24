@@ -339,11 +339,13 @@ describe("ArkTsEditor", () => {
         appearance={defaultSettings().editor}
         path="C:/demo/main.ets"
         value={"@Entry\nstruct Index {}"}
-        blameLines={[
+        blameAttributions={[
           {
-            line: 1,
+            bufferLine: 1,
             commit: "abc1234",
+            shortCommit: "abc1234",
             sourceLine: 1,
+            status: "committed",
             author: "Jane Doe",
             authoredAt: "2026-06-23T10:00:00Z",
             relativeTime: "2h ago",
