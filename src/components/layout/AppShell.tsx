@@ -589,6 +589,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     trigger: "manual" | "typing",
     selectionOverride?: { line: number; column: number },
   ) {
+    if (trigger === "manual") {
+      clearTypingCompletionTimer();
+    }
     if (settingsApplying) {
       setStatusText("SDK settings are still applying");
       return;
@@ -982,7 +985,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   );
   const selectedCompletion = completionResults[Math.min(completionSelectedIndex, Math.max(completionResults.length - 1, 0))] ?? null;
   const selectedCompletionPresentation = completionPresentationResults[Math.min(completionSelectedIndex, Math.max(completionPresentationResults.length - 1, 0))] ?? null;
-  const completionPopupVisible = activeOverlay === "completion" && completionPresentationResults.length > 0;
+  const completionPopupVisible = activeOverlay === "completion" && !completionAutoFocus && completionPresentationResults.length > 0;
   const completionOverlayVisible = activeOverlay !== "completion" || completionAutoFocus || !completionPopupVisible;
 
   useEffect(() => {
@@ -999,6 +1002,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
       if (activeOverlay !== "completion" || completionAutoFocus || completionResults.length === 0 || !isEditorFocused()) {
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.code === "Space") {
+        event.preventDefault();
+        void openCompletionFromEditor();
         return;
       }
 

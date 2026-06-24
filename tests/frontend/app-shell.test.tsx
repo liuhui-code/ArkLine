@@ -591,24 +591,23 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
-    await user.keyboard("{Control>}{End}{/Control}bu");
-    await user.keyboard("{Control>} {/Control}");
+    await user.keyboard("{Control>}{End}{/Control}b");
 
     await waitFor(() => {
-      expect(workspaceApi.completeSymbol).toHaveBeenLastCalledWith({
+      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 3,
-        column: 18,
+        column: 17,
       });
     });
 
-    const results = await screen.findByRole("list", { name: "Completion Results" });
-    const resultButtons = within(results).getAllByRole("button");
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+    const resultButtons = within(results).getAllByRole("option");
     expect(resultButtons[0]).toHaveTextContent("build()");
-    expect(within(results).getByRole("button", { name: /sharedSubmit\(\)/ })).toBeVisible();
-    await user.click(within(results).getByRole("button", { name: /build\(\)/ }));
+    expect(within(results).getByRole("option", { name: /sharedSubmit\(\)/ })).toBeVisible();
+    await user.click(within(results).getByRole("option", { name: /build\(\)/ }));
 
-    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
   });
 
@@ -756,12 +755,12 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(workspaceApi.completeSymbol).toHaveBeenCalled();
     });
-    expect(await screen.findByLabelText("Completion Overlay")).toBeVisible();
+    expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
     await waitFor(() => expect(editor).toHaveFocus());
 
     await user.keyboard("{Tab}");
 
-    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build()");
     await waitFor(() => expect(editor).toHaveFocus());
   });
@@ -800,10 +799,9 @@ describe("App shell", () => {
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}b");
 
-    const overlay = await screen.findByLabelText("Completion Overlay");
-    const results = within(overlay).getByRole("list", { name: "Completion Results" });
-    const buildButton = within(results).getByRole("button", { name: /build\(\)/ });
-    const browseButton = within(results).getByRole("button", { name: /browse\(\)/ });
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+    const buildButton = within(results).getByRole("option", { name: /build\(\)/ });
+    const browseButton = within(results).getByRole("option", { name: /browse\(\)/ });
 
     expect(buildButton).toHaveAttribute("aria-selected", "true");
     expect(browseButton).toHaveAttribute("aria-selected", "false");
@@ -816,7 +814,7 @@ describe("App shell", () => {
 
     await user.keyboard("{Enter}");
 
-    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse()");
     await waitFor(() => expect(editor).toHaveFocus());
   });
@@ -913,24 +911,23 @@ describe("App shell", () => {
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}b");
 
-    await screen.findByLabelText("Completion Overlay");
+    await screen.findByRole("listbox", { name: "Code Completion" });
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Enter}");
 
-    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse()");
 
     await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
     await user.keyboard("b");
 
-    const secondOverlay = await screen.findByLabelText("Completion Overlay");
-    const secondResults = within(secondOverlay).getByRole("list", { name: "Completion Results" });
-    const resultButtons = within(secondResults).getAllByRole("button");
+    const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });
+    const resultButtons = within(secondResults).getAllByRole("option");
 
     expect(resultButtons[0]).toHaveTextContent("browse()");
-    expect(within(secondResults).getByRole("button", { name: /browse\(\)/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(secondResults).getByRole("button", { name: /broker\(\)/ })).toHaveAttribute("aria-selected", "false");
+    expect(within(secondResults).getByRole("option", { name: /browse\(\)/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(secondResults).getByRole("option", { name: /broker\(\)/ })).toHaveAttribute("aria-selected", "false");
   });
 
   it("keeps the closer prefix match ahead of a merely recent completion item", async () => {
@@ -967,7 +964,7 @@ describe("App shell", () => {
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}bu");
 
-    await screen.findByLabelText("Completion Overlay");
+    await screen.findByRole("listbox", { name: "Code Completion" });
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Enter}");
@@ -977,13 +974,12 @@ describe("App shell", () => {
     await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
     await user.keyboard("bu");
 
-    const secondOverlay = await screen.findByLabelText("Completion Overlay");
-    const secondResults = within(secondOverlay).getByRole("list", { name: "Completion Results" });
-    const resultButtons = within(secondResults).getAllByRole("button");
+    const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });
+    const resultButtons = within(secondResults).getAllByRole("option");
 
     expect(resultButtons[0]).toHaveTextContent("build()");
-    expect(within(secondResults).getByRole("button", { name: /build\(\)/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(secondResults).getByRole("button", { name: /button\(\)/ })).toHaveAttribute("aria-selected", "false");
+    expect(within(secondResults).getByRole("option", { name: /build\(\)/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(secondResults).getByRole("option", { name: /button\(\)/ })).toHaveAttribute("aria-selected", "false");
   });
 
   it("prefers the earlier contains-match position over a merely recent non-prefix completion", async () => {
@@ -1020,12 +1016,11 @@ describe("App shell", () => {
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}li");
 
-    const firstOverlay = await screen.findByLabelText("Completion Overlay");
-    const firstResults = within(firstOverlay).getByRole("list", { name: "Completion Results" });
-    await user.click(within(firstResults).getByRole("button", { name: /outline\(\)/ }));
+    const firstResults = await screen.findByRole("listbox", { name: "Code Completion" });
+    await user.click(within(firstResults).getByRole("option", { name: /outline\(\)/ }));
 
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}outline()");
-    expect(screen.queryByLabelText("Completion Overlay")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     await user.keyboard("{Control>} {/Control}");
 
     const manualOverlay = await screen.findByLabelText("Completion Overlay");
