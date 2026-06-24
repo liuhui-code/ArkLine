@@ -25,12 +25,14 @@ export function CompletionPopup({
   onSelect,
 }: CompletionPopupProps) {
   const selectedItem = items[selectedIndex] ?? null;
+  const activeOptionId = selectedItem ? completionOptionId(selectedItem.id) : undefined;
 
   return (
     <div
       className="completion-popup"
       role="listbox"
       aria-label="Code Completion"
+      aria-activedescendant={activeOptionId}
       data-anchor={anchor?.measured ? "editor-caret" : "fallback"}
       data-anchor-line={anchor?.line ?? 0}
       data-anchor-column={anchor?.column ?? 0}
@@ -40,6 +42,7 @@ export function CompletionPopup({
         items.map((item, index) => (
           <div
             key={item.id}
+            id={completionOptionId(item.id)}
             className={`completion-popup__option${index === selectedIndex ? " completion-popup__option--selected" : ""}`}
             role="option"
             aria-selected={index === selectedIndex}
@@ -77,4 +80,8 @@ function statusLabel(status: CompletionPopupProps["status"]) {
     return "No completions";
   }
   return "Completion failed";
+}
+
+function completionOptionId(itemId: string) {
+  return `completion-option-${itemId.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 }

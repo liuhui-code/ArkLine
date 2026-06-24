@@ -51,6 +51,7 @@ const COMPLETION_POPUP_WIDTH = 460;
 const COMPLETION_POPUP_HEIGHT = 340;
 const COMPLETION_POPUP_MARGIN = 12;
 const COMPLETION_POPUP_GAP = 4;
+const COMPLETION_PAGE_STEP = 6;
 const COMPLETION_POPUP_FALLBACK_POSITION = { top: 96, left: 280 };
 
 function clampNumber(value: number, min: number, max: number) {
@@ -709,6 +710,23 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return (normalized + direction + resultCount) % resultCount;
     });
   }
+  function moveCompletionSelectionByPage(direction: 1 | -1, resultCount: number) {
+    if (resultCount <= 0) {
+      return;
+    }
+
+    setCompletionSelectedIndex((current) => {
+      const normalized = Math.min(Math.max(current, 0), resultCount - 1);
+      return clampNumber(normalized + direction * COMPLETION_PAGE_STEP, 0, resultCount - 1);
+    });
+  }
+  function setCompletionSelectionBoundary(position: "first" | "last", resultCount: number) {
+    if (resultCount <= 0) {
+      return;
+    }
+
+    setCompletionSelectedIndex(position === "first" ? 0 : resultCount - 1);
+  }
   function moveSearchEverywhereSelection(direction: 1 | -1) {
     const resultCount = searchEverywhereResult.matches.length;
     if (resultCount <= 0) {
@@ -1004,6 +1022,20 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         event.preventDefault();
         event.stopPropagation();
         moveCompletionSelection(event.key === "ArrowDown" ? 1 : -1, completionPresentationResults.length);
+        return;
+      }
+
+      if (event.key === "PageDown" || event.key === "PageUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        moveCompletionSelectionByPage(event.key === "PageDown" ? 1 : -1, completionPresentationResults.length);
+        return;
+      }
+
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        event.stopPropagation();
+        setCompletionSelectionBoundary(event.key === "Home" ? "first" : "last", completionPresentationResults.length);
         return;
       }
 

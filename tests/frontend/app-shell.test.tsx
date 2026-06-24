@@ -1060,6 +1060,113 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
+  it("cycles completion selection and supports page and boundary navigation keys", async () => {
+    const user = userEvent.setup();
+    const completionItems = Array.from({ length: 12 }, (_, index) => ({
+      label: `item${String(index + 1).padStart(2, "0")}()`,
+      detail: `Completion item ${index + 1}`,
+      kind: "function",
+    }));
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => completionItems),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}i");
+
+    const results = await screen.findByRole("listbox", { name: "Code Completion" });
+    const item01 = within(results).getByRole("option", { name: /item01\(\)/ });
+    const item06 = within(results).getByRole("option", { name: /item06\(\)/ });
+    const item07 = within(results).getByRole("option", { name: /item07\(\)/ });
+    const item12 = within(results).getByRole("option", { name: /item12\(\)/ });
+
+    expect(item01).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(editor).toHaveFocus());
+
+    await user.keyboard("{ArrowUp}");
+    expect(item12).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Home}");
+    expect(item01).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{PageDown}");
+    expect(item07).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{End}");
+    expect(item12).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{PageUp}");
+    expect(item06).toHaveAttribute("aria-selected", "true");
+    expect(results).toHaveAttribute("aria-activedescendant", item06.id);
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("closes completion with Escape without moving focus out of the editor", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
+    await waitFor(() => expect(editor).toHaveFocus());
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}b");
+    await waitFor(() => expect(editor).toHaveFocus());
+  });
+
   it("opens manual completion in the editor popup instead of the old overlay", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
