@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { TerminalToolWindow } from "@/components/layout/TerminalToolWindow";
 import { createTerminalOutputController, type TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import type { TerminalSessionSummary } from "@/features/terminal/terminal-types";
@@ -24,22 +24,29 @@ export function TerminalToolWindowHost({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [focusToken, setFocusToken] = useState(0);
   const controllerRef = useRef(createTerminalOutputController());
-  const viewportRef = useRef<TerminalViewportHandle | null>(null);
+  const viewportRef = useMemo<RefObject<TerminalViewportHandle | null>>(() => {
+    let current: TerminalViewportHandle | null = null;
+
+    return {
+      get current() {
+        return current;
+      },
+      set current(nextViewport) {
+        current = nextViewport;
+        if (nextViewport) {
+          controllerRef.current.attachViewport(nextViewport);
+          return;
+        }
+
+        controllerRef.current.detachViewport();
+      },
+    };
+  }, []);
   const activeSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
-
-  useEffect(() => {
-    if (viewportRef.current) {
-      controllerRef.current.attachViewport(viewportRef.current);
-    }
-
-    return () => {
-      controllerRef.current.detachViewport();
-    };
-  }, []);
 
   useEffect(() => {
     controllerRef.current.activateSession(activeSessionId);

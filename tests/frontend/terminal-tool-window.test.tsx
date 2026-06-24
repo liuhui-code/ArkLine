@@ -13,6 +13,7 @@ import { createRef } from "react";
 import { beforeEach, vi } from "vitest";
 
 const terminalInstances: FakeTerminal[] = [];
+const tauriEventListeners = vi.hoisted(() => [] as Array<(event: { payload: { sessionId: string; data: string } }) => void>);
 
 class FakeTerminal {
   writes: string[] = [];
@@ -86,8 +87,17 @@ vi.mock("@xterm/addon-fit", () => ({
   },
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (_event: string, callback: (event: { payload: { sessionId: string; data: string } }) => void) => {
+    tauriEventListeners.push(callback);
+    return vi.fn();
+  }),
+}));
+
 beforeEach(() => {
   terminalInstances.length = 0;
+  tauriEventListeners.length = 0;
+  Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   fitAddonFit.mockClear();
   Object.defineProperty(window, "matchMedia", {
     writable: true,
@@ -332,6 +342,56 @@ describe("terminal tool window", () => {
 
     expect(terminalInstances).toHaveLength(1);
     expect(fitAddonFit.mock.calls.length).toBeGreaterThan(initialFitCount);
+  });
+
+  it("attaches hosted terminal output after the viewport mounts", async () => {
+    let resolveSession: (session: {
+      id: string;
+      title: string;
+      cwd: string;
+      shell: string;
+      status: "idle";
+    }) => void = () => undefined;
+    const createTerminalSession = vi.fn(
+      () =>
+        new Promise<Awaited<ReturnType<WorkspaceApi["createTerminalSession"]>>>((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {},
+    });
+
+    render(
+      <TerminalToolWindowHost
+        active
+        layoutToken={0}
+        onStatusChange={vi.fn()}
+        workspaceApi={createWorkspaceApi({ createTerminalSession })}
+        workspaceRootPath="C:/samples/DemoWorkspace"
+      />,
+    );
+
+    await waitFor(() => expect(tauriEventListeners).toHaveLength(1));
+
+    act(() => {
+      tauriEventListeners[0]?.({ payload: { sessionId: "session-1", data: "buffered output" } });
+    });
+    expect(terminalInstances).toHaveLength(0);
+
+    await act(async () => {
+      resolveSession({
+        id: "session-1",
+        title: "pwsh",
+        cwd: "C:\\samples\\ArkDemo",
+        shell: "pwsh",
+        status: "idle",
+      });
+    });
+
+    await waitFor(() => expect(terminalInstances).toHaveLength(1));
+    await waitFor(() => expect(terminalInstances[0]?.writes).toContain("buffered output"));
   });
 
   it("forwards terminal keystrokes to the active session writer", async () => {
