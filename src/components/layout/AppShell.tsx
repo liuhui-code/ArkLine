@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
-import { normalizeCompletionItems, rankCompletionItems } from "@/components/layout/completion-model";
+import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow } from "@/components/layout/GitToolWindow";
@@ -741,7 +741,26 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Find Usages failed: ${message}`);
     }
   }
-  function insertCompletion(insertText: string, label = insertText) { const text = completionInsertTextToPlainText(insertText); completionRequestRef.current += 1; completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(label, completionRecencyCounterRef.current); setInsertTextTarget({ text, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setCompletionStatus("empty"); setCompletionMessage(undefined); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
+  function insertCompletionItem(item: CompletionPresentation) {
+    const text = completionInsertTextToPlainText(item.insertText);
+    const replaceBefore = item.replacementRange
+      ? Math.max(0, editorSelection.column - item.replacementRange.startColumn)
+      : completionReplacePrefix.length;
+
+    completionRequestRef.current += 1;
+    completionRecencyCounterRef.current += 1;
+    completionRecencyRef.current.set(item.label, completionRecencyCounterRef.current);
+    setInsertTextTarget({ text, replaceBefore, nonce: Date.now() });
+    setCompletionItems([]);
+    setCompletionReplacePrefix("");
+    setCompletionSelectedIndex(0);
+    setCompletionStatus("empty");
+    setCompletionMessage(undefined);
+    setActiveOverlay("none");
+    setEditorFocusToken((token) => token + 1);
+    setStatusText(`Inserted completion: ${item.label}`);
+    focusEditorSoon();
+  }
   function moveCompletionSelection(direction: 1 | -1, resultCount: number) {
     if (resultCount <= 0) {
       return;
@@ -1103,7 +1122,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       event.preventDefault();
       event.stopPropagation();
       if (selectedCompletionPresentation) {
-        insertCompletion(selectedCompletionPresentation.insertText, selectedCompletionPresentation.label);
+        insertCompletionItem(selectedCompletionPresentation);
       }
     }
 
@@ -1155,7 +1174,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           status={completionPresentationResults.length > 0 ? "ready" : completionStatus}
           message={completionMessage}
           detailsVisible={false}
-          onAccept={(item) => insertCompletion(item.insertText, item.label)}
+          onAccept={insertCompletionItem}
           onSelect={setCompletionSelectedIndex}
         />
       ) : null}

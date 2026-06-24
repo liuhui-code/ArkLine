@@ -643,6 +643,73 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build(value)");
   });
 
+  it("uses completion replacement ranges when accepting SDK attributes", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () =>
+        [
+          "@Entry",
+          "@Component",
+          "struct Index {",
+          "  build() {",
+          "    Column() {",
+          "      Text(\"Hi\")",
+          "    }",
+          "    .wi",
+        ].join("\n"),
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => [
+        {
+          label: "width",
+          detail: "width(value: Length): T",
+          kind: "method",
+          insertText: "width(${1:value})",
+          filterText: "width",
+          source: "arkui" as const,
+          replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
+          definitionTarget: { path: "C:/HarmonyOS/Sdk/ets/component/common.d.ts", line: 20927, column: 5 },
+        },
+      ]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("{Control>} {/Control}");
+    await waitFor(() => {
+      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
+        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+        line: 8,
+        column: 8,
+      });
+    });
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    await user.click(within(popup).getByRole("option", { name: /width/ }));
+
+    expect(editor).toHaveTextContent(/Column\(\)\s*\{\s*Text\("Hi"\)\s*\}\s*\.width\(value\)/);
+    expect(editor).not.toHaveTextContent(".wiwidth(value)");
+  });
+
   it("refreshes an open completion popup once when Ctrl+Space is pressed again", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
