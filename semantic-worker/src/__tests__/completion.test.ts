@@ -119,10 +119,10 @@ describe("semantic worker completion", () => {
 
     expect(response.ok).toBe(true)
     expect(response.payload).toEqual([
-      { label: "@Entry", detail: "ArkTS decorator", kind: "keyword" },
-      { label: "@Component", detail: "ArkTS decorator", kind: "keyword" },
-      { label: "build()", detail: "Component lifecycle method", kind: "method" },
-      { label: "sharedSubmit()", detail: "Semantic workspace function", kind: "function" },
+      { label: "@Entry", detail: "ArkTS decorator", kind: "keyword", source: "arkts" },
+      { label: "@Component", detail: "ArkTS decorator", kind: "keyword", source: "arkts" },
+      { label: "build()", detail: "Component lifecycle method", kind: "method", source: "arkts" },
+      { label: "sharedSubmit()", detail: "Semantic workspace function", kind: "function", source: "workspace" },
     ])
   })
 
@@ -158,8 +158,56 @@ describe("semantic worker completion", () => {
 
     expect(response.ok).toBe(true)
     expect(response.payload).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "width", detail: "width(value: Length): T;", kind: "method" }),
-      expect.objectContaining({ label: "justifyContent", detail: "justifyContent(value: FlexAlign): T;", kind: "method" }),
+      expect.objectContaining({ label: "width", detail: "width(value: Length): T", kind: "method" }),
+      expect.objectContaining({ label: "justifyContent", detail: "justifyContent(value: FlexAlign): T", kind: "method" }),
     ]))
+  })
+
+  it("returns rich ArkUI width completion metadata", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-width-v2-"))
+    tempRoots.push(root)
+    const sdkRoot = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Column() {",
+        "      Text(\"Hi\")",
+        "    }",
+        "    .wi",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "completion-arkui-width-v2",
+      method: "completion",
+      position: { path: indexPath, line: 8, column: 8 },
+    })
+
+    expect(response.ok).toBe(true)
+    const items = response.payload as Array<Record<string, unknown>>
+    expect(items).toContainEqual(expect.objectContaining({
+      label: "width",
+      detail: "width(value: Length): T",
+      kind: "method",
+      insertText: "width(${1:value})",
+      filterText: "width",
+      source: "arkui",
+      documentation: "Sets the width of the component.",
+      replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
+      definitionTarget: expect.objectContaining({ path: expect.stringContaining("common.d.ts"), line: 3, column: 5 }),
+    }))
   })
 })

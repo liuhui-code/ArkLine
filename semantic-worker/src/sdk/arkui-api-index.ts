@@ -12,6 +12,13 @@ export type ArkuiApiEntry = {
   column: number
   signature: string
   detail: string
+  documentation?: string
+  overloads?: Array<{
+    signature: string
+    line: number
+    column: number
+    detail: string
+  }>
 }
 
 type ComponentMetadata = {
@@ -83,16 +90,24 @@ function buildArkuiApiIndex(sdkRoot: string): ArkuiApiEntry[] {
     path.join(sdkRoot, "ets", "build-tools", "ets-loader", "components", "common_attrs.json"),
   )
   const entries: ArkuiApiEntry[] = commonAttrs.flatMap((name) => {
-    const method = commonMethods.find((item) => item.name === name)
-    return method
+    const methods = commonMethods.filter((item) => item.name === name)
+    const primary = methods[0]
+    return primary
       ? [{
         name,
         kind: "universalAttribute" as const,
-        path: method.path ?? commonDeclarationPath,
-        line: method.line,
-        column: method.column,
-        signature: method.signature,
-        detail: method.detail || "ArkUI universal attribute",
+        path: primary.path ?? commonDeclarationPath,
+        line: primary.line,
+        column: primary.column,
+        signature: normalizeSignature(primary.signature),
+        detail: normalizeSignature(primary.signature),
+        documentation: primary.detail || "ArkUI universal attribute",
+        overloads: methods.map((method) => ({
+          signature: normalizeSignature(method.signature),
+          line: method.line,
+          column: method.column,
+          detail: method.detail,
+        })),
       }]
       : []
   })
@@ -109,18 +124,26 @@ function buildArkuiApiIndex(sdkRoot: string): ArkuiApiEntry[] {
     }
 
     const declarationPath = path.join(sdkRoot, "ets", "component", `${camelToSnake(metadata.name)}.d.ts`)
-    const methods = collectMethods(declarationPath)
+    const componentMethods = collectMethods(declarationPath)
     for (const attr of metadata.attrs) {
-      const method = methods.find((item) => item.name === attr)
+      const methods = componentMethods.filter((item) => item.name === attr)
+      const primary = methods[0]
       entries.push({
         name: attr,
         kind: "componentAttribute",
         component: metadata.name,
-        path: method?.path ?? declarationPath,
-        line: method?.line ?? 1,
-        column: method?.column ?? 1,
-        signature: method?.signature ?? `${attr}(...)`,
-        detail: method?.detail ?? `ArkUI ${metadata.name} attribute`,
+        path: primary?.path ?? declarationPath,
+        line: primary?.line ?? 1,
+        column: primary?.column ?? 1,
+        signature: primary ? normalizeSignature(primary.signature) : `${attr}(...)`,
+        detail: primary ? normalizeSignature(primary.signature) : `ArkUI ${metadata.name} attribute`,
+        documentation: primary?.detail ?? `ArkUI ${metadata.name} attribute`,
+        overloads: methods.map((method) => ({
+          signature: normalizeSignature(method.signature),
+          line: method.line,
+          column: method.column,
+          detail: method.detail,
+        })),
       })
     }
   }
@@ -130,7 +153,15 @@ function buildArkuiApiIndex(sdkRoot: string): ArkuiApiEntry[] {
 
 function collectMethods(filePath: string) {
   const content = readDocument(filePath)
-  return content ? collectDocumentMethodSymbolsForPath(content, filePath) : []
+  if (!content) {
+    return []
+  }
+
+  const lines = content.split(/\r?\n/)
+  return collectDocumentMethodSymbolsForPath(content, filePath).map((method) => ({
+    ...method,
+    detail: method.detail || docSummaryBefore(lines, method.line) || "",
+  }))
 }
 
 function readAttrs(filePath: string): string[] {
@@ -157,4 +188,28 @@ function listJsonFiles(directoryPath: string): string[] {
 
 function camelToSnake(value: string): string {
   return value.replace(/[A-Z]/g, (match, index) => `${index === 0 ? "" : "_"}${match.toLowerCase()}`)
+}
+
+function normalizeSignature(signature: string): string {
+  return signature.replace(/;\s*$/, "")
+}
+
+function docSummaryBefore(lines: string[], line: number): string | null {
+  const previous = lines[line - 2] ?? ""
+  const singleLine = previous.match(/\/\*\*\s*(.*?)\s*\*\//)?.[1]
+  if (singleLine) {
+    return singleLine
+  }
+
+  for (let index = line - 2; index >= 0; index -= 1) {
+    const summary = lines[index]?.match(/^\s*\*\s+([^@].*?)\s*$/)?.[1]
+    if (summary) {
+      return summary
+    }
+    if (lines[index]?.includes("/**")) {
+      return null
+    }
+  }
+
+  return null
 }

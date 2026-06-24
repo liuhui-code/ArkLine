@@ -4,10 +4,12 @@ import { discoverHarmonySdk } from "../sdk/discovery.js"
 import { completeArkuiApis } from "../sdk/arkui-api-index.js"
 
 import type {
+  SemanticTextRange,
   SemanticCompletionItem,
   SemanticDocumentPosition,
   SemanticResponsePayload,
 } from "../protocol.js"
+import type { ArkuiApiEntry } from "../sdk/arkui-api-index.js"
 
 export function resolveCompletion(
   position: SemanticDocumentPosition | undefined,
@@ -26,38 +28,57 @@ export function resolveCompletion(
 
   const labels: SemanticCompletionItem[] = []
   const seen = new Set<string>()
-  const push = (label: string, detail: string, kind: string) => {
-    if (!seen.has(label)) {
-      seen.add(label)
-      labels.push({ label, detail, kind })
+  const push = (item: SemanticCompletionItem) => {
+    if (!seen.has(item.label)) {
+      seen.add(item.label)
+      labels.push(item)
     }
   }
 
   if (content.includes("@Entry")) {
-    push("@Entry", "ArkTS decorator", "keyword")
+    push({ label: "@Entry", detail: "ArkTS decorator", kind: "keyword", source: "arkts" })
   }
 
   if (content.includes("@Component")) {
-    push("@Component", "ArkTS decorator", "keyword")
+    push({ label: "@Component", detail: "ArkTS decorator", kind: "keyword", source: "arkts" })
   }
 
   if (content.includes("struct ") || content.includes("@Component")) {
-    push("build()", "Component lifecycle method", "method")
+    push({ label: "build()", detail: "Component lifecycle method", kind: "method", source: "arkts" })
   }
 
   for (const symbol of workspace.documents.flatMap((document) =>
     collectDocumentSymbolsForPath(document.content, document.path),
   )) {
     if (symbol.kind === "function") {
-      push(`${symbol.name}()`, "Semantic workspace function", "function")
+      push({
+        label: `${symbol.name}()`,
+        detail: "Semantic workspace function",
+        kind: "function",
+        source: "workspace",
+      })
     }
   }
 
   const component = arkuiCompletionComponent(content, position)
   if (component) {
+    const arkuiRange = arkuiCompletionReplacementRange(content, position)
     const sdkPath = discoverHarmonySdk().path ?? undefined
     for (const entry of completeArkuiApis(sdkPath, component)) {
-      push(entry.name, entry.signature || entry.detail, "method")
+      push({
+        label: entry.name,
+        detail: entry.signature || entry.detail,
+        kind: "method",
+        insertText: snippetForArkuiMethod(entry),
+        filterText: entry.name,
+        sortText: `0100-${entry.name}`,
+        source: "arkui",
+        documentation: entry.documentation ?? entry.detail,
+        replacementRange: arkuiRange ?? undefined,
+        commitCharacters: ["("],
+        definitionTarget: { path: entry.path, line: entry.line, column: entry.column },
+        data: { provider: "arkui-sdk", component: entry.component ?? null },
+      })
     }
   }
 
@@ -88,4 +109,29 @@ function arkuiCompletionComponent(
   }
 
   return null
+}
+
+function arkuiCompletionReplacementRange(
+  content: string,
+  position: SemanticDocumentPosition,
+): SemanticTextRange | null {
+  const lineText = content.split(/\r?\n/)[position.line - 1]
+  if (lineText === undefined) {
+    return null
+  }
+
+  const endColumn = position.column
+  const before = lineText.slice(0, Math.max(endColumn - 1, 0))
+  const prefix = before.match(/[A-Za-z_$][A-Za-z0-9_$]*$/)?.[0] ?? ""
+  return {
+    startLine: position.line,
+    startColumn: endColumn - prefix.length,
+    endLine: position.line,
+    endColumn,
+  }
+}
+
+function snippetForArkuiMethod(entry: Pick<ArkuiApiEntry, "name" | "signature">): string {
+  const firstParam = entry.signature.match(/\(([^):,\s]+)/)?.[1] ?? "value"
+  return `${entry.name}(\${1:${firstParam}})`
 }
