@@ -25,6 +25,11 @@ export function TerminalToolWindowHost({
   const [focusToken, setFocusToken] = useState(0);
   const controllerRef = useRef(createTerminalOutputController());
   const viewportRef = useRef<TerminalViewportHandle | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   useEffect(() => {
     if (viewportRef.current) {
@@ -139,31 +144,42 @@ export function TerminalToolWindowHost({
   }, [activeSessionId, onStatusChange, workspaceApi]);
 
   const writeInput = useCallback(async (data: string) => {
-    if (!activeSessionId) {
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) {
       return;
     }
 
     await workspaceApi.writeTerminalInput({
-      sessionId: activeSessionId,
+      sessionId,
       data,
     });
-  }, [activeSessionId, workspaceApi]);
+  }, [workspaceApi]);
 
-  const terminalToolWindow = useMemo(() => (
-    <TerminalToolWindow
-      sessions={sessions}
-      activeSessionId={activeSessionId}
-      focusToken={focusToken}
-      layoutToken={layoutToken}
-      onInput={(data) => void writeInput(data)}
-      onCreateSession={() => void createSession()}
-      onCloseSession={(sessionId) => void closeSession(sessionId)}
-      onSetActiveSession={setActiveSession}
-      onClearSession={clearSession}
-      onStopSession={() => void stopSession()}
-      viewportRef={viewportRef}
-    />
-  ), [activeSessionId, clearSession, closeSession, createSession, focusToken, layoutToken, sessions, setActiveSession, stopSession, writeInput]);
+  const handleInput = useCallback((data: string) => {
+    void writeInput(data);
+  }, [writeInput]);
+
+  const terminalToolWindow = useMemo(() => {
+    if (!activeSessionId && sessions.length === 0) {
+      return null;
+    }
+
+    return (
+      <TerminalToolWindow
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        focusToken={focusToken}
+        layoutToken={layoutToken}
+        onInput={handleInput}
+        onCreateSession={() => void createSession()}
+        onCloseSession={(sessionId) => void closeSession(sessionId)}
+        onSetActiveSession={setActiveSession}
+        onClearSession={clearSession}
+        onStopSession={() => void stopSession()}
+        viewportRef={viewportRef}
+      />
+    );
+  }, [activeSessionId, clearSession, closeSession, createSession, focusToken, handleInput, layoutToken, sessions, setActiveSession, stopSession]);
 
   return terminalToolWindow;
 }

@@ -3,6 +3,7 @@ import { createTerminalSessionManager } from "@/features/terminal/terminal-sessi
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
+import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHost";
 import { TerminalViewport } from "@/components/layout/TerminalViewport";
 import type { TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import { defaultSettings } from "@/features/settings/settings-store";
@@ -298,6 +299,38 @@ describe("terminal tool window", () => {
       );
     });
 
+    expect(fitAddonFit.mock.calls.length).toBeGreaterThan(initialFitCount);
+  });
+
+  it("refits the hosted terminal without recreating xterm when layout changes", async () => {
+    const workspaceApi = createWorkspaceApi();
+    const onStatusChange = vi.fn();
+    const { rerender } = render(
+      <TerminalToolWindowHost
+        active
+        layoutToken={1}
+        onStatusChange={onStatusChange}
+        workspaceApi={workspaceApi}
+        workspaceRootPath="C:/samples/DemoWorkspace"
+      />,
+    );
+
+    await waitFor(() => expect(terminalInstances).toHaveLength(1));
+    const initialFitCount = fitAddonFit.mock.calls.length;
+
+    await act(async () => {
+      rerender(
+        <TerminalToolWindowHost
+          active
+          layoutToken={2}
+          onStatusChange={onStatusChange}
+          workspaceApi={workspaceApi}
+          workspaceRootPath="C:/samples/DemoWorkspace"
+        />,
+      );
+    });
+
+    expect(terminalInstances).toHaveLength(1);
     expect(fitAddonFit.mock.calls.length).toBeGreaterThan(initialFitCount);
   });
 
