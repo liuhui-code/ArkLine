@@ -1467,7 +1467,7 @@ describe("App shell", () => {
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
         { label: "broker()", detail: "Semantic workspace function", kind: "function" },
-        { label: "browse()", detail: "Semantic workspace function", kind: "function" },
+        { label: "browse()", detail: "Semantic workspace function", kind: "function", insertText: "browse(${1:value})" },
       ]),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
@@ -1487,9 +1487,9 @@ describe("App shell", () => {
     await user.keyboard("{Enter}");
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
-    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse()");
+    expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse(value)");
 
-    await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
+    await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
     await user.keyboard("b");
 
     const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });

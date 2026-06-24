@@ -741,7 +741,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Find Usages failed: ${message}`);
     }
   }
-  function insertCompletion(insertText: string) { const text = completionInsertTextToPlainText(insertText); completionRequestRef.current += 1; completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(text, completionRecencyCounterRef.current); setInsertTextTarget({ text, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setCompletionStatus("empty"); setCompletionMessage(undefined); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${text}`); focusEditorSoon(); }
+  function insertCompletion(insertText: string, label = insertText) { const text = completionInsertTextToPlainText(insertText); completionRequestRef.current += 1; completionRecencyCounterRef.current += 1; completionRecencyRef.current.set(label, completionRecencyCounterRef.current); setInsertTextTarget({ text, replaceBefore: completionReplacePrefix.length, nonce: Date.now() }); setCompletionItems([]); setCompletionReplacePrefix(""); setCompletionSelectedIndex(0); setCompletionStatus("empty"); setCompletionMessage(undefined); setActiveOverlay("none"); setEditorFocusToken((token) => token + 1); setStatusText(`Inserted completion: ${label}`); focusEditorSoon(); }
   function moveCompletionSelection(direction: 1 | -1, resultCount: number) {
     if (resultCount <= 0) {
       return;
@@ -1103,7 +1103,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       event.preventDefault();
       event.stopPropagation();
       if (selectedCompletionPresentation) {
-        insertCompletion(selectedCompletionPresentation.insertText);
+        insertCompletion(selectedCompletionPresentation.insertText, selectedCompletionPresentation.label);
       }
     }
 
@@ -1155,7 +1155,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           status={completionPresentationResults.length > 0 ? "ready" : completionStatus}
           message={completionMessage}
           detailsVisible={false}
-          onAccept={(item) => insertCompletion(item.insertText)}
+          onAccept={(item) => insertCompletion(item.insertText, item.label)}
           onSelect={setCompletionSelectedIndex}
         />
       ) : null}
