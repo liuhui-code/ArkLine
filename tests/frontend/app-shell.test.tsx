@@ -643,6 +643,52 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build(value)");
   });
 
+  it("shows SDK completion signature and source details", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async (): Promise<LanguageCompletionItem[]> => [{
+        label: "width",
+        detail: "width(value: Length): T",
+        kind: "method",
+        insertText: "width(${1:value})",
+        filterText: "width",
+        source: "arkui",
+        documentation: "Sets the width of the component.",
+        definitionTarget: { path: "C:/HarmonyOS/Sdk/ets/component/common.d.ts", line: 20927, column: 5 },
+      }]),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>} {/Control}");
+
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(within(popup).getByText("width(value: Length): T")).toBeVisible();
+    expect(within(popup).getByText("Sets the width of the component.")).toBeVisible();
+    expect(within(popup).getByText(/common\.d\.ts:20927:5/)).toBeVisible();
+  });
+
   it("uses completion replacement ranges when accepting SDK attributes", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

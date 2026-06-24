@@ -55,7 +55,9 @@ export function CompletionPopup({
             <span className="completion-popup__kind">{item.kindLabel}</span>
             <span className="completion-popup__label">{item.label}</span>
             <span className="completion-popup__source">{item.sourceLabel}</span>
-            <span className="completion-popup__detail">{item.detail}</span>
+            {detailsVisible && index === selectedIndex ? null : (
+              <span className="completion-popup__detail">{item.detail}</span>
+            )}
           </div>
         ))
       ) : (
@@ -65,7 +67,15 @@ export function CompletionPopup({
       )}
       {detailsVisible && selectedItem ? (
         <div className="completion-popup__details">
-          {selectedItem.documentation ?? selectedItem.detail}
+          <div className="completion-popup__details-signature">{selectedItem.detail}</div>
+          {selectedItem.documentation ? (
+            <div className="completion-popup__details-doc">{selectedItem.documentation}</div>
+          ) : null}
+          {selectedItem.definitionTarget ? (
+            <div className="completion-popup__details-source">
+              {`${selectedItem.definitionTarget.path.split(/[\\/]/).at(-1)}:${selectedItem.definitionTarget.line}:${selectedItem.definitionTarget.column}`}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

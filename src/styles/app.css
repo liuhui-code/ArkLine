@@ -272,8 +272,7 @@ button:disabled {
   white-space: nowrap;
 }
 
-.completion-popup__state,
-.completion-popup__details {
+.completion-popup__state {
   padding: 8px;
   color: var(--text-muted);
   font-family: var(--font-ui);
@@ -281,8 +280,27 @@ button:disabled {
 }
 
 .completion-popup__details {
-  margin-top: 4px;
+  margin: 4px;
+  padding: 8px;
   border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.completion-popup__details-signature {
+  color: var(--text-primary);
+  font-family: var(--font-code);
+}
+
+.completion-popup__details-doc,
+.completion-popup__details-source {
+  margin-top: 4px;
+}
+
+.completion-popup__details-source {
+  color: var(--text-muted);
 }
 
 .brand h1,

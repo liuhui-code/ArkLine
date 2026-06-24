@@ -1171,7 +1171,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           anchor={completionAnchor}
           status={completionPresentationResults.length > 0 ? "ready" : completionStatus}
           message={completionMessage}
-          detailsVisible={false}
+          detailsVisible={Boolean(selectedCompletionPresentation?.documentation || selectedCompletionPresentation?.definitionTarget)}
           onAccept={insertCompletionItem}
           onSelect={setCompletionSelectedIndex}
         />
