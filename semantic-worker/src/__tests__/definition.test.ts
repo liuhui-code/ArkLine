@@ -36,6 +36,43 @@ function createWorkspaceFixture(name: string): {
   return { indexPath, sharedPath }
 }
 
+function createArkuiSdkFixture(root: string): {
+  sdkRoot: string
+  commonPath: string
+} {
+  const sdkRoot = path.join(root, "sdk", "openharmony")
+  const componentDir = path.join(sdkRoot, "ets", "component")
+  const componentsDir = path.join(sdkRoot, "ets", "build-tools", "ets-loader", "components")
+  fs.mkdirSync(componentDir, { recursive: true })
+  fs.mkdirSync(componentsDir, { recursive: true })
+  fs.mkdirSync(path.join(sdkRoot, "ets"), { recursive: true })
+  fs.mkdirSync(path.join(sdkRoot, "toolchains"), { recursive: true })
+
+  const commonPath = path.join(componentDir, "common.d.ts")
+  fs.writeFileSync(
+    commonPath,
+    [
+      "declare class CommonMethod<T> {",
+      "    /** Sets the width of the component. */",
+      "    width(value: Length): T;",
+      "    /** Sets the height of the component. */",
+      "    height(value: Length): T;",
+      "}",
+      "",
+    ].join("\n"),
+  )
+  fs.writeFileSync(
+    path.join(componentsDir, "common_attrs.json"),
+    JSON.stringify({ attrs: ["width", "height"] }),
+  )
+  fs.writeFileSync(
+    path.join(componentsDir, "column.json"),
+    JSON.stringify({ name: "Column", attrs: ["justifyContent"] }),
+  )
+
+  return { sdkRoot, commonPath }
+}
+
 afterEach(() => {
   for (const root of tempRoots.splice(0, tempRoots.length)) {
     fs.rmSync(root, { recursive: true, force: true })
@@ -216,6 +253,85 @@ describe("semantic worker lifecycle", () => {
       path: sdkFilePath,
       line: 2,
       column: 13,
+    })
+  })
+
+  it("resolves ArkUI universal attributes from SDK component declarations", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-width-"))
+    tempRoots.push(root)
+    const { sdkRoot, commonPath } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Column() {",
+        "      Text(\"Hi\")",
+        "    }",
+        "    .width(100)",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "definition-arkui-width",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 8, column: 8 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual({
+      path: commonPath,
+      line: 3,
+      column: 5,
+    })
+  })
+
+  it("keeps current document definitions ahead of ArkUI system attributes", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-local-width-"))
+    tempRoots.push(root)
+    const { sdkRoot } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "function width() {",
+        "  return 1",
+        "}",
+        "",
+        "function run() {",
+        "  width()",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "definition-local-width",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 6, column: 4 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual({
+      path: indexPath,
+      line: 1,
+      column: 10,
     })
   })
 })

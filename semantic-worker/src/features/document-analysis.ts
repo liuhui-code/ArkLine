@@ -10,6 +10,11 @@ export interface DocumentSymbol {
   column: number
 }
 
+export interface DocumentMethodSymbol extends DocumentSymbol {
+  signature: string
+  detail: string
+}
+
 const DECLARATION_KEYWORDS = ["struct", "class", "interface", "enum", "type", "function", "namespace"]
 
 export function readDocument(path: string): string | null {
@@ -55,6 +60,42 @@ export function collectDocumentSymbolsForPath(
 
     return []
   })
+}
+
+export function collectDocumentMethodSymbolsForPath(
+  content: string,
+  documentPath?: string,
+): DocumentMethodSymbol[] {
+  const lines = content.split(/\r?\n/)
+  const symbols: DocumentMethodSymbol[] = []
+  let lastDocSummary = ""
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const lineText = lines[index] ?? ""
+    const summaryMatch = lineText.match(/^\s*\*\s+([^@].*?)\s*$/)
+    if (summaryMatch?.[1]) {
+      lastDocSummary = summaryMatch[1]
+    }
+
+    const methodMatch = lineText.match(/^(\s*)([A-Za-z_$][A-Za-z0-9_$]*)\s*\(([^)]*)\)\s*:\s*([^;{]+);/)
+    if (!methodMatch?.[2]) {
+      continue
+    }
+
+    const name = methodMatch[2]
+    symbols.push({
+      path: documentPath,
+      name,
+      kind: "method",
+      line: index + 1,
+      column: lineText.indexOf(name) + 1,
+      signature: lineText.trim(),
+      detail: lastDocSummary,
+    })
+    lastDocSummary = ""
+  }
+
+  return symbols
 }
 
 export function symbolAtPosition(

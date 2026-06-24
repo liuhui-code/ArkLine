@@ -7,6 +7,7 @@ import {
 } from "./document-analysis.js"
 import { loadWorkspace } from "../sdk/workspace-loader.js"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
+import { findArkuiApiDefinition } from "../sdk/arkui-api-index.js"
 
 import type {
   SemanticDefinitionCandidate,
@@ -104,6 +105,15 @@ export function resolveDefinitionCandidates(
     return importedSdkDefinitions
   }
 
+  const arkuiDefinition = resolveArkuiSystemAttribute(
+    currentDocument.content,
+    position,
+    symbol,
+  )
+  if (arkuiDefinition) {
+    return [arkuiDefinition]
+  }
+
   const workspaceDefinitions = workspace.documents
     .filter((document) => document.path !== currentDocument.path)
     .flatMap((document) => collectDocumentSymbolsForPath(document.content, document.path))
@@ -116,6 +126,55 @@ export function resolveDefinitionCandidates(
     symbol,
     workspaceDefinitions,
   )
+}
+
+function resolveArkuiSystemAttribute(
+  content: string,
+  position: SemanticDocumentPosition,
+  symbol: string,
+): SemanticDefinitionCandidate | null {
+  const sdkPath = discoverHarmonySdk().path
+  if (!sdkPath) {
+    return null
+  }
+
+  const component = componentReceiverBeforeSymbol(content, position)
+  const entry = findArkuiApiDefinition(sdkPath, symbol, component)
+  if (!entry) {
+    return null
+  }
+
+  return {
+    path: entry.path,
+    line: entry.line,
+    column: entry.column,
+  }
+}
+
+function componentReceiverBeforeSymbol(
+  content: string,
+  position: SemanticDocumentPosition | undefined,
+): string | null {
+  if (!position) {
+    return null
+  }
+
+  const lines = content.split(/\r?\n/)
+  const lineText = lines[position.line - 1] ?? ""
+  const before = lineText.slice(0, Math.max(position.column - 1, 0))
+  const sameLineReceiver = before.match(/([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*\.\s*[A-Za-z_$][A-Za-z0-9_$]*$/)
+  if (sameLineReceiver?.[1]) {
+    return sameLineReceiver[1]
+  }
+
+  for (let index = position.line - 2; index >= 0; index -= 1) {
+    const candidate = lines[index]?.match(/\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*(?:\{|$)/)
+    if (candidate?.[1]) {
+      return candidate[1]
+    }
+  }
+
+  return null
 }
 
 function resolveImportedSdkCandidates(
