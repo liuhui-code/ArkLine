@@ -1,9 +1,44 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
+import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
+import { readFileSync } from "node:fs";
+
+const appCss = readFileSync("src/styles/app.css", "utf8");
 
 if (typeof window.PointerEvent === "undefined") {
   window.PointerEvent = MouseEvent as typeof PointerEvent;
+}
+
+let appStyleElement: HTMLStyleElement;
+
+beforeAll(() => {
+  appStyleElement = document.createElement("style");
+  appStyleElement.textContent = extractStyleRules([
+    ".bottom-tool-window__panel",
+    ".bottom-tool-window__panel--git",
+    ".git-tool-window",
+    ".git-tool-window__sidebar",
+    ".git-tool-window__viewer",
+  ]).join("\n");
+  document.head.append(appStyleElement);
+});
+
+afterAll(() => {
+  appStyleElement.remove();
+});
+
+function extractStyleRules(targetSelectors: string[]) {
+  const rules = [...appCss.matchAll(/([^{}]+)\{([^{}]+)\}/g)]
+    .filter((match) => {
+      const selectors = match[1].split(",").map((selector) => selector.trim());
+      return targetSelectors.some((targetSelector) => selectors.includes(targetSelector));
+    })
+    .map((match) => `${match[1]} {${match[2]}}`);
+
+  expect(rules.join("\n")).toContain(".git-tool-window");
+
+  return rules;
 }
 
 describe("Bottom tool window", () => {
@@ -93,11 +128,24 @@ describe("Bottom tool window", () => {
 
   it("keeps Git content inside the resized bottom panel", async () => {
     const user = userEvent.setup();
-    render(<AppShell />);
+    const workspaceApi = {
+      ...defaultWorkspaceApi,
+      loadDiff: async () => `diff --git a/src/main.ets b/src/main.ets
+--- a/src/main.ets
++++ b/src/main.ets
+@@ -1,1 +1,1 @@
+-old
++new`,
+    };
 
-    await user.click(screen.getByRole("tab", { name: "Git" }));
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    const header = screen.getByRole("banner", { name: "Application Header" });
+    await user.click(within(header).getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Git" }));
     const bottomPanel = screen.getByLabelText("Bottom Tool Window");
-    const gitPanel = screen.getByLabelText("Git Panel");
+    const gitPanel = await screen.findByLabelText("Git Panel");
+    await screen.findByLabelText("Git Diff Viewer");
     const separator = screen.getByRole("separator", { name: "Resize Bottom Tool Window" });
 
     await act(async () => {
@@ -108,6 +156,26 @@ describe("Bottom tool window", () => {
 
     expect(bottomPanel).toHaveStyle({ height: "330px" });
     expect(gitPanel).toBeVisible();
+
+    const gitToolWindow = gitPanel.querySelector(".git-tool-window");
+    const gitSidebar = gitPanel.querySelector(".git-tool-window__sidebar");
+    const gitViewer = gitPanel.querySelector(".git-tool-window__viewer");
+
+    expect(gitToolWindow).toBeInstanceOf(HTMLElement);
+    expect(gitSidebar).toBeInstanceOf(HTMLElement);
+    expect(gitViewer).toBeInstanceOf(HTMLElement);
+
+    const gitToolStyle = window.getComputedStyle(gitToolWindow as HTMLElement);
+    const gitSidebarStyle = window.getComputedStyle(gitSidebar as HTMLElement);
+    const gitViewerStyle = window.getComputedStyle(gitViewer as HTMLElement);
+
+    expect(gitToolStyle.display).toBe("grid");
+    expect(gitToolStyle.height).toBe("100%");
+    expect(["0", "0px"]).toContain(gitToolStyle.minHeight);
+    expect(gitSidebarStyle.overflow).toBe("auto");
+    expect(["0", "0px"]).toContain(gitSidebarStyle.minHeight);
+    expect(gitViewerStyle.overflow).toBe("auto");
+    expect(["0", "0px"]).toContain(gitViewerStyle.minHeight);
   });
 
   it("clamps bottom panel resize height to min and max bounds", async () => {
