@@ -26,8 +26,18 @@ describe("package windows launcher", () => {
     ]);
   });
 
-  it("builds the installer packaging flow without a PowerShell dependency", () => {
+  it("cross-compiles the installer packaging flow on macOS", () => {
     expect(buildPackagingSteps({ target: "windows-installer", hostPlatform: "darwin" })).toEqual([
+      { command: "pnpm", args: ["build"] },
+      {
+        command: "pnpm",
+        args: ["tauri", "build", "--runner", "cargo-xwin", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"],
+      },
+    ]);
+  });
+
+  it("builds the installer packaging flow natively on Windows", () => {
+    expect(buildPackagingSteps({ target: "windows-installer", hostPlatform: "win32" })).toEqual([
       { command: "pnpm", args: ["build"] },
       { command: "pnpm", args: ["tauri", "build", "--bundles", "nsis"] },
     ]);

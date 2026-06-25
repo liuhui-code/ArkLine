@@ -2,6 +2,7 @@ export interface SemanticDocumentPosition {
   path: string
   line: number
   column: number
+  content?: string
 }
 
 export interface SemanticRequest {

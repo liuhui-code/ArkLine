@@ -78,6 +78,7 @@ export function SearchOverlayContent({
               {item.shortcut ? <span className="search-result__shortcut" aria-hidden="true">{item.shortcut}</span> : null}
             </button>
           ))}
+          {commandPaletteItems.length === 0 ? <div className="palette-empty">No actions found</div> : null}
         </div>
       </>
     );
@@ -105,6 +106,7 @@ export function SearchOverlayContent({
               {tab.path}
             </button>
           ))}
+          {recentFileResults.length === 0 ? <div className="palette-empty">No recent files</div> : null}
         </div>
       </>
     );
@@ -133,6 +135,7 @@ export function SearchOverlayContent({
               <span className="search-result__meta">{project.path}</span>
             </button>
           ))}
+          {recentProjectResults.length === 0 ? <div className="palette-empty">No recent projects</div> : null}
         </div>
       </>
     );
@@ -212,6 +215,7 @@ export function SearchOverlayContent({
             {result.path}
           </button>
         ))}
+        {results.length === 0 ? <div className="palette-empty">No files found</div> : null}
       </div>
     </>
   );

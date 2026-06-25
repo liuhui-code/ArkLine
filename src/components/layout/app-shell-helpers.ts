@@ -28,6 +28,7 @@ type CommandPaletteAction = {
   openGoToLine: () => void;
   goToDefinition: () => void | Promise<void>;
   findUsages: () => void | Promise<void>;
+  showCurrentClassMethods: () => void;
   openCompletion: () => void | Promise<void>;
   runLint: () => void;
   formatActiveDocument: () => void;
@@ -47,6 +48,7 @@ export function buildAppShellCommandPaletteItems(query: string, actions: Command
     { id: "go-to-line", label: "Go to Line...", action: actions.openGoToLine },
     { id: "go-to-definition", label: "Go to Definition", shortcut: getShellCommandShortcut("goToDefinition"), action: actions.goToDefinition },
     { id: "find-usages", label: "Find Usages", shortcut: getShellCommandShortcut("findUsages"), action: actions.findUsages },
+    { id: "current-class-methods", label: "Show Current Class Methods", shortcut: getShellCommandShortcut("showCurrentClassMethods"), action: actions.showCurrentClassMethods },
     { id: "completion", label: "Code Completion", shortcut: getShellCommandShortcut("openCompletion"), action: actions.openCompletion },
     { id: "run-validation", label: "Run Lint", action: actions.runLint },
     { id: "format-active-document", label: "Format Active Document", action: actions.formatActiveDocument },

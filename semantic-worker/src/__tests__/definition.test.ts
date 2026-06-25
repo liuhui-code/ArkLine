@@ -297,6 +297,92 @@ describe("semantic worker lifecycle", () => {
     })
   })
 
+  it("resolves ArkUI attributes when the configured SDK path is the DevEco sdk parent", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-parent-sdk-"))
+    tempRoots.push(root)
+    const { sdkRoot, commonPath } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = path.dirname(sdkRoot)
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Text(\"Hi\").width(100)",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "definition-arkui-parent-sdk-width",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 5, column: 16 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual({
+      path: commonPath,
+      line: 3,
+      column: 5,
+    })
+  })
+
+  it("resolves ArkUI attributes from unsaved document content in the request", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-unsaved-width-"))
+    tempRoots.push(root)
+    const { sdkRoot, commonPath } = createArkuiSdkFixture(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = sdkRoot
+
+    const pagesDir = path.join(root, "entry", "src", "main", "ets", "pages")
+    fs.mkdirSync(pagesDir, { recursive: true })
+    const indexPath = path.join(pagesDir, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  build() {",
+        "    Text(\"Hi\")",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const unsavedContent = [
+      "@Entry",
+      "@Component",
+      "struct Index {",
+      "  build() {",
+      "    Text(\"Hi\").width(100)",
+      "  }",
+      "}",
+      "",
+    ].join("\n")
+    const response = session.handle({
+      id: "definition-arkui-unsaved-width",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 5, column: 16, content: unsavedContent },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual({
+      path: commonPath,
+      line: 3,
+      column: 5,
+    })
+  })
+
   it("resolves width in a multi-line ArkUI chain", () => {
     const session = new SemanticWorkerSession()
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-chain-definition-"))

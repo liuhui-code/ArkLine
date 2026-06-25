@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { EditorView } from "@codemirror/view";
+import { act } from "react";
 import { vi } from "vitest";
 
 async function openProject(
@@ -150,6 +151,65 @@ describe("App shell", () => {
     expect(screen.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
     expect(within(header).getByRole("button", { name: "Settings" })).toHaveClass("toolbar__button--primary");
     expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
+  });
+
+  it("maximizes and restores the bottom tool window from the chrome actions", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const bottomToolWindow = screen.getByLabelText("Bottom Tool Window");
+    expect(bottomToolWindow).toHaveStyle({ height: "280px" });
+
+    await user.click(screen.getByRole("button", { name: "Maximize Bottom Tool Window" }));
+
+    expect(bottomToolWindow).not.toHaveStyle({ height: "280px" });
+    expect(screen.getByRole("button", { name: "Restore Bottom Tool Window" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Restore Bottom Tool Window" }));
+
+    expect(bottomToolWindow).toHaveStyle({ height: "280px" });
+    expect(screen.getByRole("button", { name: "Maximize Bottom Tool Window" })).toBeVisible();
+  });
+
+  it("clears terminal active state when the bottom tool window is hidden and restores it from the toolbar", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const header = screen.getByRole("banner", { name: "Application Header" });
+    const terminalButton = within(header).getByRole("button", { name: "Terminal" });
+
+    await user.click(terminalButton);
+
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(terminalButton).toHaveClass("toolbar__button--active");
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "false");
+
+    await user.click(screen.getByRole("button", { name: "Hide Bottom Tool Window" }));
+
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "true");
+    expect(terminalButton).not.toHaveClass("toolbar__button--active");
+
+    await user.click(terminalButton);
+
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "false");
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(terminalButton).toHaveClass("toolbar__button--active");
+  });
+
+  it("uses an explicit restore action after the bottom tool window is hidden", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Hide Bottom Tool Window" }));
+
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "true");
+    expect(screen.queryByRole("button", { name: "Hide Bottom Tool Window" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show Bottom Tool Window" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Show Bottom Tool Window" }));
+
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "false");
+    expect(screen.getByRole("button", { name: "Hide Bottom Tool Window" })).toBeVisible();
   });
 
   it("shows fallback semantic mode in the status bar", async () => {
@@ -323,6 +383,38 @@ describe("App shell", () => {
     expect(filesPane).toBeVisible();
   });
 
+  it("resizes the left navigation pane by dragging and keyboard controls", async () => {
+    render(<App />);
+
+    const shellGrid = document.querySelector<HTMLElement>(".shell-grid");
+    const separator = screen.getByRole("separator", { name: "Resize Left Navigation" });
+    expect(shellGrid).toHaveStyle({ gridTemplateColumns: "316px 1fr" });
+    expect(separator).toHaveAttribute("aria-valuenow", "316");
+
+    await act(async () => {
+      fireEvent.mouseDown(separator, { clientX: 316 });
+      fireEvent.mouseMove(window, { clientX: 420 });
+      fireEvent.mouseUp(window, { clientX: 420 });
+    });
+    expect(shellGrid).toHaveStyle({ gridTemplateColumns: "420px 1fr" });
+    expect(separator).toHaveAttribute("aria-valuenow", "420");
+
+    await act(async () => {
+      fireEvent.keyDown(separator, { key: "ArrowLeft" });
+    });
+    expect(shellGrid).toHaveStyle({ gridTemplateColumns: "410px 1fr" });
+
+    await act(async () => {
+      fireEvent.keyDown(separator, { key: "Home" });
+    });
+    expect(shellGrid).toHaveStyle({ gridTemplateColumns: "220px 1fr" });
+
+    await act(async () => {
+      fireEvent.keyDown(separator, { key: "End" });
+    });
+    expect(shellGrid).toHaveStyle({ gridTemplateColumns: "520px 1fr" });
+  });
+
   it("does not show a left-rail search tool", async () => {
     render(<App />);
     const toolRail = screen.getByLabelText("Primary Tool Window Rail");
@@ -492,6 +584,51 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@EntryX@Componentstruct Index {}");
   });
 
+  it("opens current-class methods with Ctrl+F7, filters, and jumps to the selected method", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  aboutToAppear() {}",
+        "  build() {}",
+        "  private handleTap(event: ClickEvent) {}",
+        "}",
+      ].join("\n"),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{Control>}{F7}{/Control}");
+
+    expect(await screen.findByRole("dialog", { name: "Methods in Current Class" })).toBeVisible();
+    expect(screen.getByRole("option", { name: /build\(\).*line 5/ })).toBeVisible();
+
+    await user.type(screen.getByLabelText("Current Class Method Query"), "tap");
+    expect(screen.queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /handleTap\(event: ClickEvent\).*line 6/ })).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("dialog", { name: "Methods in Current Class" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Method: handleTap(event: ClickEvent)")).toBeVisible();
+  });
+
   it("shows shortcut hints in the command palette", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -504,6 +641,37 @@ describe("App shell", () => {
     const results = await screen.findByRole("list", { name: "Find Action Results" });
     expect(within(results).getByRole("button", { name: "Go to Definition" })).toBeVisible();
     expect(within(results).getByText(/^(Ctrl|Cmd)\+B$/)).toBeVisible();
+  });
+
+  it("keeps command palette panel clicks inside and closes from its backdrop or close button", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+
+    const overlay = await screen.findByLabelText("Find Action Overlay");
+    expect(await screen.findByRole("dialog", { name: "Find Action" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close Find Action" })).toBeVisible();
+
+    fireEvent.mouseDown(within(overlay).getByText("Find Action"));
+    expect(screen.getByLabelText("Find Action Overlay")).toBeVisible();
+
+    fireEvent.mouseDown(overlay);
+    expect(screen.queryByLabelText("Find Action Overlay")).not.toBeInTheDocument();
+
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Close Find Action" }));
+    expect(screen.queryByLabelText("Find Action Overlay")).not.toBeInTheDocument();
+  });
+
+  it("shows an empty state when command palette search has no matches", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "no such command");
+
+    expect(await screen.findByText("No actions found")).toBeVisible();
   });
 
   it("shows shortcut hints in top bar menus", async () => {
@@ -563,11 +731,12 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("{Control>}b{/Control}");
     await waitFor(() => {
-      expect(workspaceApi.gotoDefinition).toHaveBeenCalledWith({
+      expect(workspaceApi.gotoDefinition).toHaveBeenCalledWith(expect.objectContaining({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 2,
         column: 1,
-      });
+        content: expect.stringContaining("struct Index"),
+      }));
     });
   });
 
@@ -656,11 +825,12 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}b");
 
     await waitFor(() => {
-      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
+      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith(expect.objectContaining({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 3,
         column: 17,
-      });
+        content: expect.stringContaining("struct Index"),
+      }));
     });
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -825,11 +995,12 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("{Control>} {/Control}");
     await waitFor(() => {
-      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
+      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith(expect.objectContaining({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 8,
         column: 8,
-      });
+        content: expect.stringContaining(".wi"),
+      }));
     });
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
     await user.click(within(popup).getByRole("option", { name: /width/ }));
@@ -1082,6 +1253,45 @@ describe("App shell", () => {
       "true",
     );
     await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("hides completion when the caret moves to another line and restores it when returning", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {\n  build() {}\n}",
+      completeSymbol: vi.fn(async () => [
+        { label: "build()", detail: "Component lifecycle method", kind: "method" },
+      ]),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}b");
+
+    expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
+
+    await user.keyboard("{Control>}{Home}{/Control}");
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
+    });
+
+    await user.keyboard("{Control>}{End}{/Control}");
+    expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
+    expect(within(screen.getByRole("listbox", { name: "Code Completion" })).getByRole("option", { name: /build\(\)/ })).toBeVisible();
   });
 
   it("does not render automatic completion popup for empty typing results", async () => {
@@ -1674,11 +1884,12 @@ describe("App shell", () => {
     await user.keyboard("{Control>} {/Control}");
 
     await waitFor(() => {
-      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith({
+      expect(workspaceApi.completeSymbol).toHaveBeenCalledWith(expect.objectContaining({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 3,
         column: 16,
-      });
+        content: expect.stringContaining("struct Index"),
+      }));
     });
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -1938,11 +2149,12 @@ describe("App shell", () => {
     await user.keyboard("{Alt>}{F7}{/Alt}");
 
     await waitFor(() => {
-      expect(workspaceApi.findUsages).toHaveBeenCalledWith({
+      expect(workspaceApi.findUsages).toHaveBeenCalledWith(expect.objectContaining({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 1,
         column: 1,
-      });
+        content: expect.stringContaining("struct Index"),
+      }));
     });
 
     expect(await screen.findByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");

@@ -6,6 +6,8 @@ pub struct SemanticDocumentPosition {
     pub path: String,
     pub line: u32,
     pub column: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -22,7 +24,7 @@ impl SemanticRequest {
         Self {
             id,
             method: "gotoDefinition".to_string(),
-            position: Some(SemanticDocumentPosition { path, line, column }),
+            position: Some(SemanticDocumentPosition { path, line, column, content: None }),
         }
     }
 }

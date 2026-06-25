@@ -35,7 +35,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "targets": ["nsis"],
     "windows": {
       "nsis": {
         "minimumWebview2Version": "110.0.1531.0"

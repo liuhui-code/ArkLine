@@ -17,6 +17,7 @@ type BottomToolWindowProps = {
   onResizeHeight: (height: number) => void;
   onToggleMaxHeight: () => void;
   onToggleTool: (tool: BottomToolKey) => void;
+  onRestore: () => void;
   onClose: () => void;
   containerRef?: RefObject<HTMLElement | null>;
   problemsPanel: ReactNode;
@@ -45,6 +46,7 @@ export function BottomToolWindow({
   onResizeHeight,
   onToggleMaxHeight,
   onToggleTool,
+  onRestore,
   onClose,
   containerRef,
   problemsPanel,
@@ -55,6 +57,7 @@ export function BottomToolWindow({
 }: BottomToolWindowProps) {
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
+  const isMaximized = Math.abs(height - maxHeight) <= 2;
 
   useEffect(() => {
     return () => {
@@ -155,14 +158,37 @@ export function BottomToolWindow({
             </button>
           ))}
         </div>
-          <button
-            type="button"
-            className="bottom-tool-window__close"
-            aria-label="Hide Bottom Tool Window"
-            onClick={onClose}
-          >
-            ×
-          </button>
+        <div className="bottom-tool-window__actions">
+          {contentVisible ? (
+            <button
+              type="button"
+              className="bottom-tool-window__action"
+              aria-label={isMaximized ? "Restore Bottom Tool Window" : "Maximize Bottom Tool Window"}
+              onClick={onToggleMaxHeight}
+            >
+              {isMaximized ? "▱" : "▢"}
+            </button>
+          ) : null}
+          {contentVisible ? (
+            <button
+              type="button"
+              className="bottom-tool-window__close"
+              aria-label="Hide Bottom Tool Window"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="bottom-tool-window__action"
+              aria-label="Show Bottom Tool Window"
+              onClick={onRestore}
+            >
+              ▴
+            </button>
+          )}
+        </div>
       </div>
       <div className="bottom-tool-window__content" hidden={!contentVisible}>
         {activeTool === "problems" ? (

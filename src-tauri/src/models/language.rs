@@ -21,6 +21,7 @@ pub struct LanguageQueryRequest {
     pub path: String,
     pub line: u32,
     pub column: u32,
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

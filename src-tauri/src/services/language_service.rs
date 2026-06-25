@@ -181,6 +181,7 @@ mod tests {
             path: path.to_string(),
             line,
             column,
+            content: None,
         }
     }
 

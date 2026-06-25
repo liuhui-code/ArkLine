@@ -226,6 +226,32 @@ describe("ArkTsEditor", () => {
     posAtCoords.mockRestore();
   });
 
+  it("snaps Ctrl+Click from a member-access dot to the following definition token", () => {
+    const onDefinitionTrigger = vi.fn();
+    const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(10);
+
+    render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"Text(\"Hi\").width(100)"}
+        onChange={() => undefined}
+        onDefinitionTrigger={onDefinitionTrigger}
+      />,
+    );
+
+    const editor = screen.getByLabelText("Editor Content");
+    fireEvent.mouseDown(editor, {
+      ctrlKey: true,
+      button: 0,
+      clientX: 24,
+      clientY: 24,
+    });
+
+    expect(onDefinitionTrigger).toHaveBeenCalledWith({ line: 1, column: 12 });
+    posAtCoords.mockRestore();
+  });
+
   it("reports modifier-hover state for definition affordance", () => {
     const onDefinitionHoverChange = vi.fn();
     const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(7);
@@ -372,5 +398,33 @@ describe("ArkTsEditor", () => {
 
     await user.click(blameButton);
     expect(onGitTraceLineClick).toHaveBeenCalledWith(1);
+  });
+
+  it("removes the git blame gutter when full-file blame is hidden", () => {
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"@Entry\nstruct Index {}"}
+        gitBlameVisible={false}
+        blameAttributions={[
+          {
+            bufferLine: 1,
+            commit: "abc1234",
+            shortCommit: "abc1234",
+            sourceLine: 1,
+            status: "committed",
+            author: "Jane Doe",
+            authoredAt: "2026-06-23T10:00:00Z",
+            relativeTime: "2h ago",
+            summary: "Mark ArkTS entry component",
+          },
+        ]}
+        selectedBlameLine={1}
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector(".cm-git-trace-gutter")).toBeNull();
   });
 });

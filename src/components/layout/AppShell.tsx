@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
+import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow } from "@/components/layout/GitToolWindow";
@@ -37,6 +38,7 @@ import {
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
+import { collectCurrentClassMethods, type CurrentClassMethod } from "@/features/workspace/current-class-methods";
 import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
@@ -47,12 +49,17 @@ import type { EditorCaretRect } from "@/editor/editor-events";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 type NavigationLocation = { path: string; line: number; column: number };
+type CompletionSession = { path: string; line: number; replacePrefix: string };
 const COMPLETION_POPUP_WIDTH = 460;
 const COMPLETION_POPUP_HEIGHT = 340;
 const COMPLETION_POPUP_MARGIN = 12;
 const COMPLETION_POPUP_GAP = 4;
 const COMPLETION_PAGE_STEP = 6;
 const COMPLETION_POPUP_FALLBACK_POSITION = { top: 96, left: 280 };
+const LEFT_SIDEBAR_DEFAULT_WIDTH = 316;
+const LEFT_SIDEBAR_COLLAPSED_WIDTH = 62;
+const LEFT_SIDEBAR_MIN_WIDTH = 220;
+const LEFT_SIDEBAR_MAX_WIDTH = 520;
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -89,6 +96,7 @@ function getCompletionPopupPosition(anchor: EditorCaretRect | null) {
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(LEFT_SIDEBAR_DEFAULT_WIDTH);
   const [bottomContentVisible, setBottomContentVisible] = useState(true);
   const [bottomToolHeight, setBottomToolHeight] = useState(280);
   const [bottomLayoutToken, setBottomLayoutToken] = useState(0);
@@ -126,10 +134,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [completionTrigger, setCompletionTrigger] = useState<"manual" | "typing">("typing");
   const [completionStatus, setCompletionStatus] = useState<"ready" | "empty" | "error">("empty");
   const [completionMessage, setCompletionMessage] = useState<string | undefined>();
+  const [completionSession, setCompletionSession] = useState<CompletionSession | null>(null);
   const [usageSearch, setUsageSearch] = useState<UsageSearchState>(idleUsageSearchState());
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
+  const [currentMethodsVisible, setCurrentMethodsVisible] = useState(false);
+  const [currentMethodsQuery, setCurrentMethodsQuery] = useState("");
+  const [currentMethodsSelectedIndex, setCurrentMethodsSelectedIndex] = useState(0);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -186,12 +198,18 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setBottomToolHeight(clampBottomToolHeight(height));
     setBottomLayoutToken((token) => token + 1);
   }
+  function resizeLeftSidebar(width: number) {
+    setLeftSidebarWidth(clampNumber(Math.round(width), LEFT_SIDEBAR_MIN_WIDTH, LEFT_SIDEBAR_MAX_WIDTH));
+  }
   function toggleBottomToolMaxHeight() {
     const maxHeight = maxBottomToolHeight();
     const nextHeight = Math.abs(bottomToolHeight - maxHeight) <= 2 ? 280 : maxHeight;
     resizeBottomToolWindow(nextHeight);
   }
   function setOverlay(overlay: Exclude<OverlayKey, "none">) {
+    if (overlay !== "completion") {
+      clearCompletionSession();
+    }
     setActiveOverlay(overlay);
     setQuickOpenQuery("");
     setSearchEverywhereSelectedIndex(0);
@@ -205,6 +223,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       window.clearTimeout(typingCompletionTimerRef.current);
       typingCompletionTimerRef.current = null;
     }
+  }
+  function clearCompletionSession() {
+    completionRequestRef.current += 1;
+    setCompletionItems([]);
+    setCompletionReplacePrefix("");
+    setCompletionSelectedIndex(0);
+    setCompletionStatus("empty");
+    setCompletionMessage(undefined);
+    setCompletionSession(null);
+    setActiveOverlay((current) => (current === "completion" ? "none" : current));
   }
   function clearSettingsSaveResetTimer() {
     if (settingsSaveResetTimerRef.current != null) {
@@ -373,6 +401,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       focusEditor();
       return true;
     }
+    if (currentMethodsVisible) {
+      closeCurrentClassMethods();
+      return true;
+    }
     if (projectOpening.projectPickerVisible) {
       projectOpening.closeProjectPicker();
       focusEditor();
@@ -453,7 +485,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay("none");
     setProblems([]);
     setDiffFiles([]);
-    setCompletionItems([]);
+    clearCompletionSession();
     setCompletionAnchor(null);
     setUsageSearch(idleUsageSearchState());
     setEditorSelection({ line: 1, column: 1 });
@@ -494,7 +526,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     tabsRef.current.openTab(path);
     syncTabs();
     setActiveDocument(path);
-    setCompletionItems([]);
+    clearCompletionSession();
     setCompletionAnchor(null);
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
@@ -526,10 +558,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText("Go to Definition unavailable");
       return;
     }
+    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
     const request = {
       path: activePath,
       line: selectionOverride?.line ?? editorSelection.line,
       column: selectionOverride?.column ?? editorSelection.column,
+      content: currentContent,
     };
     setStatusText(
       `${source === "modifierClick" ? "Ctrl+Click" : "Go to Definition"} query: ${getPathBasename(activePath)}:${request.line}:${request.column}`,
@@ -564,7 +598,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
     const fallbackRequest = {
       path: activePath,
-      content: documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent,
+      content: currentContent,
       line: request.line,
       column: request.column,
       workspaceFiles: workspace?.visibleFiles ?? [activePath],
@@ -652,7 +686,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     const query = trigger === "typing" ? replacePrefix : "";
     let results: LanguageCompletionItem[];
     try {
-      results = await workspaceApi.completeSymbol({ path, line: selection.line, column: selection.column });
+      results = await workspaceApi.completeSymbol({ path, line: selection.line, column: selection.column, content: currentContent });
     } catch (error) {
       if (completionRequestRef.current !== requestId) {
         return;
@@ -683,6 +717,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
     setCompletionItems(results);
     setCompletionReplacePrefix(replacePrefix);
+    setCompletionSession({ path, line: selection.line, replacePrefix });
     setCompletionSelectedIndex(0);
     setQuickOpenQuery(query);
     setCompletionTrigger(trigger);
@@ -724,7 +759,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setUsageSearch({ status: "error", items: [], message: "Find Usages unavailable" });
       return;
     }
-    const request = { path: activePath, line: editorSelection.line, column: editorSelection.column };
+    const request = {
+      path: activePath,
+      line: editorSelection.line,
+      column: editorSelection.column,
+      content: documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent,
+    };
     setUsageSearch({ status: "loading", items: [], requestedSymbol: request });
     try {
       const items = await workspaceApi.findUsages(request);
@@ -741,6 +781,31 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Find Usages failed: ${message}`);
     }
   }
+  function showCurrentClassMethods() {
+    if (!activePath) {
+      setStatusText("Current class methods unavailable: no active file");
+      return;
+    }
+    setActiveOverlay("none");
+    setCurrentMethodsQuery("");
+    setCurrentMethodsSelectedIndex(0);
+    setCurrentMethodsVisible(true);
+    setStatusText("Methods in Current Class");
+  }
+  function closeCurrentClassMethods() {
+    setCurrentMethodsVisible(false);
+    setCurrentMethodsQuery("");
+    setCurrentMethodsSelectedIndex(0);
+    focusEditorSoon();
+  }
+  function openCurrentClassMethod(method: CurrentClassMethod) {
+    rememberCurrentLocation();
+    setSelectionTarget({ line: method.line, column: method.column, nonce: Date.now() });
+    setEditorFocusToken((token) => token + 1);
+    setCurrentMethodsVisible(false);
+    setStatusText(`Method: ${method.signature}`);
+    focusEditorSoon();
+  }
   function insertCompletionItem(item: CompletionPresentation) {
     const text = completionInsertTextToPlainText(item.insertText);
     const replaceBefore = completionReplacementLength(item, editorSelection, documentsRef.current.getDocument(activePath ?? "")?.currentContent ?? editorContent, completionReplacePrefix);
@@ -754,6 +819,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setCompletionSelectedIndex(0);
     setCompletionStatus("empty");
     setCompletionMessage(undefined);
+    setCompletionSession(null);
     setActiveOverlay("none");
     setEditorFocusToken((token) => token + 1);
     setStatusText(`Inserted completion: ${item.label}`);
@@ -852,6 +918,32 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     syncTabs();
     syncEditor(activePath);
     setStatusText("Modified");
+  }
+  function handleEditorSelectionChange(selection: { line: number; column: number }) {
+    setEditorSelection(selection);
+    if (!completionSession || !activePath || normalizePath(completionSession.path) !== normalizePath(activePath)) {
+      return;
+    }
+
+    if (selection.line !== completionSession.line) {
+      if (activeOverlay === "completion") {
+        setActiveOverlay("none");
+      }
+      return;
+    }
+
+    if (activeOverlay !== "none") {
+      return;
+    }
+
+    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
+    const currentPrefix = extractCompletionPrefix(currentContent, selection.line, selection.column);
+    const sessionPrefix = completionSession.replacePrefix;
+    const prefixCompatible = currentPrefix.startsWith(sessionPrefix) || sessionPrefix.startsWith(currentPrefix);
+    if (prefixCompatible && completionItems.length > 0) {
+      setQuickOpenQuery(completionTrigger === "typing" ? currentPrefix : "");
+      setActiveOverlay("completion");
+    }
   }
   useEffect(() => () => {
     clearTypingCompletionTimer();
@@ -1013,17 +1105,17 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
   const shellHotkeyContext = useMemo(() => ({
     completionOpen: activeOverlay === "completion",
-    overlayOpen: activeOverlay !== "none" && activeOverlay !== "completion",
+    overlayOpen: currentMethodsVisible || (activeOverlay !== "none" && activeOverlay !== "completion"),
     settingsOpen: settingsVisible,
     settingsApplying,
-  }), [activeOverlay, settingsApplying, settingsVisible]);
+  }), [activeOverlay, currentMethodsVisible, settingsApplying, settingsVisible]);
 
   useShellHotkeys({ context: shellHotkeyContext, onCommand(command: ShellCommand) {
     const handlers: Partial<Record<ShellCommand, () => void>> = {
       closeTransientUi, closeActiveFile, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode,
       navigateBack: () => void navigateBackFromHistory(),
       openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => setOverlay("searchEverywhere"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(),
-      showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(),
+      showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), showCurrentClassMethods,
     };
     const handler = handlers[command];
     if (handler) return handler();
@@ -1062,6 +1154,18 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const completionPopupVisible = activeOverlay === "completion" && (completionPresentationResults.length > 0 || completionTrigger === "manual" || completionStatus === "error");
   const overlayVisible = activeOverlay !== "none" && activeOverlay !== "completion";
   const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
+  const currentClassMethods = useMemo(() => (
+    collectCurrentClassMethods(
+      documentsRef.current.getDocument(activePath ?? "")?.currentContent ?? editorContent,
+      editorSelection.line,
+    )
+  ), [activePath, editorContent, editorSelection.line]);
+  const visibleCurrentClassMethods = useMemo(() => {
+    const query = currentMethodsQuery.trim().toLowerCase();
+    return currentClassMethods.filter((method) => (
+      !query || method.name.toLowerCase().includes(query) || method.signature.toLowerCase().includes(query)
+    ));
+  }, [currentClassMethods, currentMethodsQuery]);
 
   useEffect(() => {
     setCompletionSelectedIndex((current) => {
@@ -1073,6 +1177,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return Math.min(current, resultCount - 1);
     });
   }, [completionPresentationResults.length]);
+
+  useEffect(() => {
+    setCurrentMethodsSelectedIndex((current) => {
+      const resultCount = visibleCurrentClassMethods.length;
+      if (resultCount === 0) {
+        return 0;
+      }
+      return Math.min(current, resultCount - 1);
+    });
+  }, [visibleCurrentClassMethods.length]);
 
   useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
@@ -1090,7 +1204,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        setActiveOverlay("none");
+        clearCompletionSession();
         focusEditorSoon();
         return;
       }
@@ -1099,21 +1213,23 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         return;
       }
 
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const editorNavigationModifier = event.ctrlKey || event.metaKey || event.altKey;
+
+      if (!editorNavigationModifier && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
         event.stopPropagation();
         moveCompletionSelection(event.key === "ArrowDown" ? 1 : -1, completionPresentationResults.length);
         return;
       }
 
-      if (event.key === "PageDown" || event.key === "PageUp") {
+      if (!editorNavigationModifier && (event.key === "PageDown" || event.key === "PageUp")) {
         event.preventDefault();
         event.stopPropagation();
         moveCompletionSelectionByPage(event.key === "PageDown" ? 1 : -1, completionPresentationResults.length);
         return;
       }
 
-      if (event.key === "Home" || event.key === "End") {
+      if (!editorNavigationModifier && (event.key === "Home" || event.key === "End")) {
         event.preventDefault();
         event.stopPropagation();
         setCompletionSelectionBoundary(event.key === "Home" ? "first" : "last", completionPresentationResults.length);
@@ -1142,6 +1258,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     openGoToLine: () => setOverlay("goToLine"),
     goToDefinition: () => void goToDefinitionFromEditor(),
     findUsages: () => void findUsagesFromEditor(),
+    showCurrentClassMethods,
     openCompletion: () => void openCompletionFromEditor(),
     runLint: () => void runLint(),
     formatActiveDocument: () => void formatActiveDocument(),
@@ -1155,10 +1272,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell" data-bottom-layout-token={bottomLayoutToken}>
-      <TopBar activeBottomTool={activeBottomTool} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
-      <div className="shell-grid">
-        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectTool={showLeftTool} />
-        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={setEditorSelection} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
+      <div
+        className="shell-grid"
+        style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
+      >
+        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
+        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={handleEditorSelectionChange} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
       </div>
       {selectedBlameAttribution ? (
         <GitBlameCard
@@ -1188,6 +1308,17 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
       ) : null}
+      {currentMethodsVisible ? (
+        <CurrentClassMethodsPalette
+          query={currentMethodsQuery}
+          methods={visibleCurrentClassMethods}
+          selectedIndex={currentMethodsSelectedIndex}
+          onChangeQuery={setCurrentMethodsQuery}
+          onClose={closeCurrentClassMethods}
+          onOpenMethod={openCurrentClassMethod}
+          onSelectIndex={setCurrentMethodsSelectedIndex}
+        />
+      ) : null}
 
       <OpenProjectDialog
         open={projectOpening.projectPickerVisible}
@@ -1216,7 +1347,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         onRefreshEnvironment={() => void refreshEnvironmentReport()}
       />
       <BottomToolWindow
-        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
+        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
         gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
         gitTracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />}

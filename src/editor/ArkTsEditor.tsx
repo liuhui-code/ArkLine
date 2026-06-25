@@ -97,11 +97,13 @@ export function ArkTsEditor({
         (selection) => onDefinitionTriggerRef.current?.(selection),
         (state) => onDefinitionHoverChangeRef.current?.(state),
         (selection) => onTypingCompletionTriggerRef.current?.(selection),
-        {
-          blameAttributions: gitBlameVisible ? blameAttributions : [],
-          selectedLine: selectedBlameLine,
-          onSelectLine: onGitTraceLineClick,
-        },
+        gitBlameVisible
+          ? {
+              blameAttributions,
+              selectedLine: selectedBlameLine,
+              onSelectLine: onGitTraceLineClick,
+            }
+          : undefined,
       ),
     });
 
@@ -169,11 +171,13 @@ export function ArkTsEditor({
 
     view.dispatch({
       effects: gitTraceCompartment.reconfigure(
-        createGitTraceGutter({
-          blameAttributions: gitBlameVisible ? blameAttributions : [],
-          selectedLine: selectedBlameLine,
-          onSelectLine: onGitTraceLineClick,
-        }),
+        gitBlameVisible
+          ? createGitTraceGutter({
+              blameAttributions,
+              selectedLine: selectedBlameLine,
+              onSelectLine: onGitTraceLineClick,
+            })
+          : [],
       ),
     });
   }, [blameAttributions, gitBlameVisible, onGitTraceLineClick, selectedBlameLine]);

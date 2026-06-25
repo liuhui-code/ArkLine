@@ -75,7 +75,9 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
 
   steps.push({
     command: "pnpm",
-    args: ["tauri", "build", "--bundles", "nsis"],
+    args: hostPlatform === "win32"
+      ? ["tauri", "build", "--bundles", "nsis"]
+      : ["tauri", "build", "--runner", "cargo-xwin", "--target", WINDOWS_TARGET, "--bundles", "nsis"],
   });
 
   return steps;

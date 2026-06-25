@@ -21,6 +21,7 @@ export type ShellCommand =
   | "showTerminal"
   | "goToDefinition"
   | "findUsages"
+  | "showCurrentClassMethods"
   | "openCompletion"
   | "save";
 
@@ -30,6 +31,7 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "closeActiveFile", title: "Close Active File", category: "File", defaultKeybindings: [{ mod: true, key: "w" }] },
   { id: "navigateBack", title: "Navigate Back", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowLeft" }] },
   { id: "findUsages", title: "Find Usages", category: "Navigation", defaultKeybindings: [{ alt: true, key: "F7" }] },
+  { id: "showCurrentClassMethods", title: "Show Current Class Methods", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F7" }] },
   { id: "toggleEditorOnly", title: "Editor Only", category: "Window", defaultKeybindings: [{ mod: true, shift: true, key: "F12" }] },
   { id: "save", title: "Save", category: "File", defaultKeybindings: [{ mod: true, key: "s" }] },
   { id: "goToDefinition", title: "Go to Definition", category: "Navigation", defaultKeybindings: [{ mod: true, key: "b" }] },

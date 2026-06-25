@@ -102,6 +102,7 @@ export type LanguageQueryRequest = {
   path: string;
   line: number;
   column: number;
+  content?: string;
 };
 
 export type LanguageServiceReport = {

@@ -18,7 +18,7 @@ export function resolveCompletion(
     return []
   }
 
-  const workspace = loadWorkspace(position.path)
+  const workspace = loadWorkspace(position.path, position.content)
   const currentDocument = workspace.documents.find((document) => document.path === position.path)
   if (!currentDocument) {
     return []

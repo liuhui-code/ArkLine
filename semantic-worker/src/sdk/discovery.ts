@@ -43,7 +43,7 @@ function discoverConfiguredSdk(configured: string | undefined): string | null {
     return null
   }
 
-  return isValidSdkRoot(configured) ? configured : null
+  return configuredSdkCandidates(configured).find((candidate) => isValidSdkRoot(candidate)) ?? null
 }
 
 function discoverDefaultSdk(platform: NodeJS.Platform): string | null {
@@ -57,4 +57,13 @@ function isValidSdkRoot(rootPath: string): boolean {
     fs.existsSync(`${rootPath}/ets`) &&
     fs.existsSync(`${rootPath}/toolchains`)
   )
+}
+
+function configuredSdkCandidates(configured: string): string[] {
+  const root = configured.trim().replace(/[\\/]+$/, "")
+  return [
+    root,
+    `${root}/openharmony`,
+    `${root}/default/openharmony`,
+  ]
 }

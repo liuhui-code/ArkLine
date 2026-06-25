@@ -108,6 +108,10 @@ fn resolve_node_directory(path: PathBuf, platform: &str) -> Result<PathBuf, Stri
         ));
     }
 
+    if is_node_executable_file(&path) {
+        return Ok(path);
+    }
+
     if !path.is_dir() {
         return Err(format!(
             "{ARKLINE_NODE_PATH_ENV} path is not a directory: {}",
@@ -130,6 +134,15 @@ fn resolve_node_directory(path: PathBuf, platform: &str) -> Result<PathBuf, Stri
                 path.display()
             )
         })
+}
+
+fn is_node_executable_file(path: &Path) -> bool {
+    path.is_file()
+        && path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(|name| name == "node" || name == "node.exe")
+            .unwrap_or(false)
 }
 
 fn resolve_worker_entry(configured: Option<&str>) -> Result<PathBuf, String> {
@@ -210,6 +223,19 @@ mod tests {
         let resolved = resolve_node_path(Some(root.to_string_lossy().as_ref()), "macos").unwrap();
 
         assert_eq!(resolved, bin.join("node"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolve_configured_node_executable_file() {
+        let root = unique_temp_dir("node-file-path");
+        fs::create_dir_all(&root).unwrap();
+        let node = root.join("node");
+        fs::write(&node, "").unwrap();
+
+        let resolved = resolve_node_path(Some(node.to_string_lossy().as_ref()), "macos").unwrap();
+
+        assert_eq!(resolved, node);
         fs::remove_dir_all(root).unwrap();
     }
 

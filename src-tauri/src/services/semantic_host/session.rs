@@ -161,6 +161,7 @@ impl SemanticWorkerSession {
                 path: value.path.clone(),
                 line: value.line,
                 column: value.column,
+                content: value.content.clone(),
             }),
         };
         let serialized = serde_json::to_string(&payload).map_err(|error| {

@@ -144,6 +144,9 @@ export function resolveDefinitionTokenRange(view: EditorView, position: number):
   if (!isDefinitionTokenChar(characterAt(tokenPosition))) {
     tokenPosition = clampedPosition - 1;
   }
+  if (tokenPosition < 0 || !isDefinitionTokenChar(characterAt(tokenPosition))) {
+    tokenPosition = clampedPosition + 1;
+  }
 
   if (tokenPosition < 0 || !isDefinitionTokenChar(characterAt(tokenPosition))) {
     return null;
@@ -218,7 +221,8 @@ export function createDefinitionTriggerHandler(
     }
 
     const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
-    const selection = position == null ? undefined : toLineColumn(view, position);
+    const range = position == null ? null : resolveDefinitionTokenRange(view, position);
+    const selection = range ? toLineColumn(view, range.from) : position == null ? undefined : toLineColumn(view, position);
 
     event.preventDefault();
     onDefinitionTrigger(selection);

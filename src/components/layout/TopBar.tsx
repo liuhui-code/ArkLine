@@ -4,6 +4,7 @@ import type { BottomToolKey, OverlayKey } from "@/components/layout/shell-state"
 
 type TopBarProps = {
   activeBottomTool: BottomToolKey;
+  bottomToolVisible: boolean;
   activeOverlay: OverlayKey;
   workspaceName: string | null;
   settingsOpen: boolean;
@@ -23,6 +24,7 @@ type MenuKey = "file" | "edit" | "view";
 
 export function TopBar({
   activeBottomTool,
+  bottomToolVisible,
   activeOverlay,
   workspaceName,
   settingsOpen,
@@ -123,7 +125,7 @@ function triggerMenuAction(action: () => void) {
       </div>
       <div className="topbar__group topbar__group--right">
         <div className="toolbar toolbar--utility" role="toolbar" aria-label="Secondary">
-          <button type="button" className={`toolbar__button${activeBottomTool === "terminal" ? " toolbar__button--active" : ""}`} onClick={onOpenTerminal}><span className="toolbar__icon toolbar__icon--terminal" aria-hidden="true" />Terminal</button>
+          <button type="button" className={`toolbar__button${bottomToolVisible && activeBottomTool === "terminal" ? " toolbar__button--active" : ""}`} onClick={onOpenTerminal}><span className="toolbar__icon toolbar__icon--terminal" aria-hidden="true" />Terminal</button>
           <button type="button" className={`toolbar__button toolbar__button--primary${settingsOpen ? " toolbar__button--active" : ""}`} onClick={onOpenSettings}><span className="toolbar__icon toolbar__icon--settings" aria-hidden="true" />Settings</button>
         </div>
       </div>

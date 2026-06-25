@@ -14,14 +14,53 @@ export interface WorkspaceSnapshot {
 const SOURCE_ROOT_MARKER = `${path.sep}src${path.sep}main${path.sep}ets${path.sep}`
 const SUPPORTED_EXTENSIONS = new Set([".ets", ".ts"])
 
-export function loadWorkspace(fromFilePath: string): WorkspaceSnapshot {
+export function loadWorkspace(fromFilePath: string, currentDocumentContent?: string): WorkspaceSnapshot {
   const rootPath = resolveWorkspaceRoot(fromFilePath)
-  const documents = collectWorkspaceDocuments(rootPath)
+  const documents = overlayCurrentDocument(
+    collectWorkspaceDocuments(rootPath),
+    path.resolve(fromFilePath),
+    currentDocumentContent,
+  )
 
   return {
     rootPath,
     documents,
   }
+}
+
+function overlayCurrentDocument(
+  documents: WorkspaceDocument[],
+  currentPath: string,
+  currentDocumentContent?: string,
+): WorkspaceDocument[] {
+  if (currentDocumentContent === undefined) {
+    return documents
+  }
+
+  let replaced = false
+  const nextDocuments = documents.map((document) => {
+    if (path.resolve(document.path) !== currentPath) {
+      return document
+    }
+
+    replaced = true
+    return {
+      ...document,
+      content: currentDocumentContent,
+    }
+  })
+
+  if (replaced) {
+    return nextDocuments
+  }
+
+  return [
+    ...nextDocuments,
+    {
+      path: currentPath,
+      content: currentDocumentContent,
+    },
+  ]
 }
 
 function resolveWorkspaceRoot(filePath: string): string {

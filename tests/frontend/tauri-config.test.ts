@@ -16,4 +16,22 @@ describe("tauri bundle icon config", () => {
       "icons/icon.ico",
     ]);
   });
+
+  it("does not force the Windows NSIS bundle target for every host platform", () => {
+    const configPath = resolve(process.cwd(), "src-tauri/tauri.conf.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+      bundle?: { targets?: string[] };
+    };
+
+    expect(config.bundle?.targets ?? []).not.toContain("nsis");
+  });
+
+  it("keeps NSIS as a Windows-specific bundle target", () => {
+    const configPath = resolve(process.cwd(), "src-tauri/tauri.windows.conf.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+      bundle?: { targets?: string[] };
+    };
+
+    expect(config.bundle?.targets).toEqual(["nsis"]);
+  });
 });
