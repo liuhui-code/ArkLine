@@ -183,4 +183,40 @@ describe("build tool window", () => {
     expect(within(moduleSelect).getByRole("option", { name: "entry" })).toBeInTheDocument();
     expect(within(moduleSelect).getByRole("option", { name: "feature" })).toBeInTheDocument();
   });
+
+  it("loads build-profile products into the Product select", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      openFile: async (path) => path.endsWith("build-profile.json5")
+        ? `{ app: { products: [{ name: "default" }, { name: "china" }] } }`
+        : "",
+    })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("tab", { name: "Build" }));
+
+    const productSelect = await screen.findByLabelText("Build Product");
+    expect(within(productSelect).getByRole("option", { name: "default" })).toBeInTheDocument();
+    expect(within(productSelect).getByRole("option", { name: "china" })).toBeInTheDocument();
+  });
+
+  it("uses the selected build product in the Hvigor command", async () => {
+    const user = userEvent.setup();
+    const runTerminalCommand = vi.fn(createWorkspaceApi().runTerminalCommand);
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      runTerminalCommand,
+      openFile: async (path) => path.endsWith("build-profile.json5")
+        ? `{ app: { products: [{ name: "default" }, { name: "china" }] } }`
+        : "",
+    })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("tab", { name: "Build" }));
+    await user.selectOptions(await screen.findByLabelText("Build Product"), "china");
+    await user.click(screen.getByRole("button", { name: "Run Build" }));
+
+    await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      command: "./hvigorw assembleHap --mode module -p module=entry@china -p product=china -p buildMode=debug --no-daemon",
+    })));
+  });
 });

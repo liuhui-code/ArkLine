@@ -44,6 +44,7 @@ export function BuildToolWindow({
   const hasWorkspace = Boolean(workspaceRootPath);
   const duration = formatDuration(state.lastDurationMs);
   const moduleOptions = modules.length > 0 ? modules : [state.moduleName || "entry"];
+  const productOptions = state.products.length > 0 ? state.products : [state.product || "default"];
 
   function changeTarget(event: ChangeEvent<HTMLSelectElement>) {
     onChangeTarget(event.target.value as BuildTarget);
@@ -84,7 +85,11 @@ export function BuildToolWindow({
         </label>
         <label className="build-tool-window__field">
           <span>Product</span>
-          <input value={state.product} disabled={running} onChange={(event) => onChangeProduct(event.target.value)} />
+          <select aria-label="Build Product" value={state.product} disabled={running} onChange={(event) => onChangeProduct(event.target.value)}>
+            {productOptions.map((product) => (
+              <option key={product} value={product}>{product}</option>
+            ))}
+          </select>
         </label>
         <label className="build-tool-window__field">
           <span>Mode</span>

@@ -32,6 +32,7 @@ import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import type { BuildState, BuildTarget } from "@/features/build/build-model";
+import { parseBuildProfileProducts } from "@/features/build/build-profile-parser";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
 import { createBuildStore } from "@/features/build/build-store";
@@ -213,6 +214,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
   const buildProject = useMemo(
     () => workspace ? detectHarmonyBuildProject(workspace.rootPath, workspace.visibleFiles) : null,
+    [workspace],
+  );
+  const buildProfilePath = useMemo(
+    () => workspace?.visibleFiles.find((path) => getPathBasename(path) === "build-profile.json5") ?? null,
     [workspace],
   );
   const settingsApplying = settingsApplyState === "applying";
@@ -1312,6 +1317,32 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setBuildState({ ...buildStoreRef.current.state });
     }
   }, [activePath, buildProject]);
+  useEffect(() => {
+    if (!buildProfilePath) {
+      buildStoreRef.current.configure({ products: ["default"], product: "default" });
+      setBuildState({ ...buildStoreRef.current.state });
+      return;
+    }
+
+    let cancelled = false;
+    void workspaceApi.openFile(buildProfilePath).then((content) => {
+      if (cancelled) {
+        return;
+      }
+
+      const products = parseBuildProfileProducts(content);
+      const currentProduct = buildStoreRef.current.state.product;
+      const product = products.includes(currentProduct)
+        ? currentProduct
+        : products.includes("default") ? "default" : products[0];
+      buildStoreRef.current.configure({ products, product });
+      setBuildState({ ...buildStoreRef.current.state });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildProfilePath, workspaceApi]);
   async function refreshProblems(path: string, content: string) {
     const validationProblems = await workspaceApi.runValidation(path, content);
     problemsRef.current.replace([

@@ -46,6 +46,7 @@ export type BuildState = {
   currentRun: HarmonyBuildPlan | null;
   lastTarget: BuildTarget;
   moduleName: string;
+  products: string[];
   product: string;
   buildMode: "debug" | "release";
   fastMode: boolean;

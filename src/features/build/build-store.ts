@@ -6,6 +6,7 @@ export function createBuildStore() {
     currentRun: null,
     lastTarget: "hap",
     moduleName: "entry",
+    products: ["default"],
     product: "default",
     buildMode: "debug",
     fastMode: false,
@@ -18,7 +19,7 @@ export function createBuildStore() {
 
   return {
     state,
-    configure(next: Partial<Pick<BuildState, "lastTarget" | "moduleName" | "product" | "buildMode" | "fastMode">>) {
+    configure(next: Partial<Pick<BuildState, "lastTarget" | "moduleName" | "products" | "product" | "buildMode" | "fastMode">>) {
       Object.assign(state, next);
     },
     start(plan: HarmonyBuildPlan & { runId: string }) {
