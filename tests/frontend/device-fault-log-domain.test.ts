@@ -82,6 +82,43 @@ describe("device fault log parser", () => {
     expect(entry.summary).toBe("opaque fault blob without structured fields");
     expect(entry.raw).toBe("opaque fault blob without structured fields");
   });
+
+  it("classifies app killed faults conservatively", () => {
+    const parsed = parseDeviceFaultLogEntries(buildResult([
+      {
+        id: "fault-killed",
+        raw: [
+          "Reason: APP_KILLED",
+          "Process: com.example.player",
+          "PID: 2468",
+          "Summary: Process killed by force stop request",
+        ].join("\n"),
+      },
+    ]));
+    const [entry] = parsed.entries;
+
+    expect(entry.type).toBe("appKilled");
+    expect(entry.processName).toBe("com.example.player");
+    expect(entry.summary).toContain("killed by force stop");
+  });
+
+  it("classifies system warnings conservatively", () => {
+    const parsed = parseDeviceFaultLogEntries(buildResult([
+      {
+        id: "fault-warning",
+        raw: [
+          "Reason: SYS_WARNING",
+          "Process: com.example.system",
+          "Summary: Watchdog warning detected during thermal check",
+        ].join("\n"),
+      },
+    ]));
+    const [entry] = parsed.entries;
+
+    expect(entry.type).toBe("sysWarning");
+    expect(entry.severity).toBe("warning");
+    expect(entry.summary).toContain("Watchdog warning");
+  });
 });
 
 describe("device fault log filter", () => {

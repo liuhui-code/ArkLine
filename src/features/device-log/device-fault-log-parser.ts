@@ -93,6 +93,12 @@ function classifyFaultType(reason: string, summary: string, raw: string): Device
   if (normalizedReason === "APP_FREEZE") {
     return "appFreeze";
   }
+  if (normalizedReason === "APP_KILLED") {
+    return "appKilled";
+  }
+  if (normalizedReason === "SYS_WARNING") {
+    return "sysWarning";
+  }
 
   const text = `${reason}\n${summary}\n${raw}`.toLocaleLowerCase();
   if (text.includes("js error")) {
@@ -103,6 +109,24 @@ function classifyFaultType(reason: string, summary: string, raw: string): Device
   }
   if (text.includes("app freeze") || text.includes("freeze") || text.includes("anr")) {
     return "appFreeze";
+  }
+  if (
+    text.includes("app_killed")
+    || text.includes("killed by")
+    || text.includes("force stop")
+    || text.includes("force-stop")
+    || text.includes("process killed")
+    || text.includes(" killed ")
+  ) {
+    return "appKilled";
+  }
+  if (
+    text.includes("sys_warning")
+    || text.includes("watchdog warning")
+    || text.includes("system warning")
+    || text.includes(" warning")
+  ) {
+    return "sysWarning";
   }
 
   return "unknown";
