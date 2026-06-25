@@ -6,6 +6,7 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "vite",
+    "cli": "node scripts/arkline-cli.mjs",
     "build:semantic-worker": "pnpm --dir semantic-worker build",
     "test:semantic-worker": "pnpm --dir semantic-worker test",
     "smoke:semantic": "node scripts/smoke-semantic.mjs --fixture",
