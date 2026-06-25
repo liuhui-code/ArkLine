@@ -1113,6 +1113,125 @@ describe("App shell", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument());
   });
 
+  it("applies Generate ArkTS Page from the IDE and updates the file tree", async () => {
+    const user = userEvent.setup();
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.generate.page",
+        title: "Generate ArkTS Page",
+        kind: "generate" as const,
+        provider: "template" as const,
+        safety: "needsPreview" as const,
+        data: { name: "Home", targetPath: "src/pages/Home.ets" },
+      },
+    ]);
+    const plan = {
+      id: "arkts.generate.page",
+      title: "Generate ArkTS Page",
+      operations: [
+        {
+          kind: "createFile" as const,
+          path: "src/pages/Home.ets",
+          content: "@Entry\n@Component\nstruct Home {\n  build() {\n  }\n}\n",
+          overwrite: false,
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["src/pages/Home.ets"],
+      undoLabel: "Remove generated ArkTS page",
+      requiresPreview: true,
+    };
+    const resolveCodeAction = vi.fn(async () => plan);
+    const previewWorkspaceEdit = vi.fn(async () => ({
+      plan,
+      conflicts: [],
+      affectedFiles: ["src/pages/Home.ets"],
+      summary: ["Create src/pages/Home.ets"],
+    }));
+    const applyWorkspaceEdit = vi.fn(async () => ({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["src/pages/Home.ets"],
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
+
+    await waitFor(() => expect(applyWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan,
+    }));
+    expect(await screen.findByRole("button", { name: "Home.ets" })).toBeVisible();
+  });
+
+  it("applies Rename File from the IDE and updates the file tree", async () => {
+    const user = userEvent.setup();
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "workspace.renameFile",
+        title: "Rename File",
+        kind: "source" as const,
+        provider: "workspace" as const,
+        safety: "needsPreview" as const,
+        data: {
+          currentPath: "C:/samples/DemoWorkspace/src/main.ets",
+          targetPath: "C:/samples/DemoWorkspace/src/Home.ets",
+        },
+      },
+    ]);
+    const plan = {
+      id: "workspace.renameFile.C:/samples/DemoWorkspace/src/main.ets",
+      title: "Rename main.ets to Home.ets",
+      operations: [
+        {
+          kind: "renameFile" as const,
+          oldPath: "C:/samples/DemoWorkspace/src/main.ets",
+          newPath: "C:/samples/DemoWorkspace/src/Home.ets",
+          overwrite: false,
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/src/Home.ets"],
+      undoLabel: "Rename Home.ets back to main.ets",
+      requiresPreview: true,
+    };
+    const resolveCodeAction = vi.fn(async () => plan);
+    const previewWorkspaceEdit = vi.fn(async () => ({
+      plan,
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/src/Home.ets"],
+      summary: ["Rename C:/samples/DemoWorkspace/src/main.ets to C:/samples/DemoWorkspace/src/Home.ets"],
+    }));
+    const applyWorkspaceEdit = vi.fn(async () => ({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/src/Home.ets"],
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{F2}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
+
+    await waitFor(() => expect(applyWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan,
+    }));
+    const filesPane = screen.getByLabelText("Files");
+    expect(await within(filesPane).findByRole("button", { name: "Home.ets" })).toBeVisible();
+    expect(within(filesPane).queryByRole("button", { name: "main.ets" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Home.ets", pressed: true })).toBeVisible();
+    expect(screen.queryByTitle("C:\\samples\\DemoWorkspace\\src\\main.ets")).not.toBeInTheDocument();
+  });
+
   it("keeps command palette panel clicks inside and closes from its backdrop or close button", async () => {
     const user = userEvent.setup();
     render(<App />);

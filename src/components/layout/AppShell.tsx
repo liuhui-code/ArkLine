@@ -44,6 +44,7 @@ import { useSemanticState } from "@/features/semantic/use-semantic-state";
 import { collectCurrentClassMethods, type CurrentClassMethod } from "@/features/workspace/current-class-methods";
 import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
+import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
@@ -87,6 +88,10 @@ function actionMatchesSource(action: CodeAction, source: "all" | "rename" | "gen
   }
 
   return action.kind.startsWith("refactor") || searchable.includes("refactor") || searchable.includes("extract") || searchable.includes("inline");
+}
+
+function uniqueNormalizedPaths(paths: string[]) {
+  return [...new Set(paths.map(normalizePath))].sort((left, right) => left.localeCompare(right));
 }
 
 function constrainCompletionPopupPosition(top: number, left: number) {
@@ -859,8 +864,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setWorkspaceEditMessage(undefined);
     focusEditorSoon();
   }
-  async function refreshAppliedWorkspaceEditFiles(changedFiles: string[]) {
+  async function refreshAppliedWorkspaceEditFiles(changedFiles: string[], plan: WorkspaceEditPlan) {
+    const renamedOldPaths = new Set(plan.operations
+      .filter((operation) => operation.kind === "renameFile")
+      .map((operation) => normalizePath(operation.oldPath)));
+
     for (const path of [...new Set(changedFiles)]) {
+      if (renamedOldPaths.has(normalizePath(path))) {
+        continue;
+      }
+
       const document = documentsRef.current.getDocument(path);
       if (!document) {
         continue;
@@ -871,6 +884,82 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       if (activePath && normalizePath(activePath) === normalizePath(path)) {
         setEditorContent(documentsRef.current.getDocument(path)?.currentContent ?? content);
       }
+    }
+  }
+  function updateWorkspaceFilesForAppliedEdit(plan: WorkspaceEditPlan) {
+    setWorkspace((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const paths = new Set(current.visibleFiles.map(normalizePath));
+      for (const operation of plan.operations) {
+        switch (operation.kind) {
+          case "createFile":
+            paths.add(normalizePath(operation.path));
+            break;
+          case "renameFile":
+            paths.delete(normalizePath(operation.oldPath));
+            paths.add(normalizePath(operation.newPath));
+            break;
+          case "deleteFile":
+            paths.delete(normalizePath(operation.path));
+            break;
+          case "text":
+            paths.add(normalizePath(operation.path));
+            break;
+        }
+      }
+
+      const visibleFiles = uniqueNormalizedPaths([...paths]);
+      return {
+        ...current,
+        visibleFiles,
+        fileTree: createFileTreeNodes(visibleFiles),
+      };
+    });
+  }
+  async function updateOpenTabsForAppliedEdit(plan: WorkspaceEditPlan) {
+    let activePathAfterRename: string | null = null;
+    let tabsChanged = false;
+
+    for (const operation of plan.operations) {
+      if (operation.kind !== "renameFile") {
+        continue;
+      }
+
+      const oldPath = normalizePath(operation.oldPath);
+      const newPath = normalizePath(operation.newPath);
+      const tab = tabsRef.current.state.openTabs.find((entry) => normalizePath(entry.path) === oldPath);
+      if (!tab) {
+        continue;
+      }
+
+      const content = await workspaceApi.openFile(newPath);
+      if (!documentsRef.current.getDocument(newPath)) {
+        documentsRef.current.openDocument(newPath, content);
+      } else {
+        documentsRef.current.applyExternalChange(newPath, content);
+      }
+
+      tab.path = newPath;
+      tab.title = getPathBasename(newPath);
+      tab.isDirty = documentsRef.current.getDocument(newPath)?.isDirty ?? false;
+      tabsRef.current.state.recentFiles = tabsRef.current.state.recentFiles.map((path) => (
+        normalizePath(path) === oldPath ? newPath : path
+      ));
+      if (tabsRef.current.state.activePath && normalizePath(tabsRef.current.state.activePath) === oldPath) {
+        tabsRef.current.state.activePath = newPath;
+        activePathAfterRename = newPath;
+      }
+      tabsChanged = true;
+    }
+
+    if (tabsChanged) {
+      syncTabs();
+    }
+    if (activePathAfterRename) {
+      setActiveDocument(activePathAfterRename);
     }
   }
   async function applyWorkspaceEditPreview() {
@@ -906,7 +995,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         return;
       }
 
-      await refreshAppliedWorkspaceEditFiles(result.changedFiles);
+      updateWorkspaceFilesForAppliedEdit(workspaceEditPreview.plan);
+      await updateOpenTabsForAppliedEdit(workspaceEditPreview.plan);
+      await refreshAppliedWorkspaceEditFiles(result.changedFiles, workspaceEditPreview.plan);
       setWorkspaceEditPreview(null);
       setWorkspaceEditApplyState("idle");
       setWorkspaceEditMessage(undefined);

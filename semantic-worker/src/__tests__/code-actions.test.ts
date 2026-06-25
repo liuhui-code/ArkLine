@@ -72,7 +72,7 @@ describe("semantic worker code actions", () => {
           kind: "generate",
           provider: "template",
           safety: "needsPreview",
-          data: { template: "arkts-page" },
+          data: { template: "arkts-page", currentPath: filePath, name: "GeneratedPage" },
         },
         {
           id: "arkts.generate.component",
@@ -80,7 +80,7 @@ describe("semantic worker code actions", () => {
           kind: "generate",
           provider: "template",
           safety: "needsPreview",
-          data: { template: "arkts-component" },
+          data: { template: "arkts-component", currentPath: filePath, name: "GeneratedComponent" },
         },
         {
           id: "workspace.renameFile",
@@ -88,9 +88,150 @@ describe("semantic worker code actions", () => {
           kind: "source",
           provider: "workspace",
           safety: "needsPreview",
-          data: { targetPath: filePath },
+          data: { currentPath: filePath, targetPath: expect.stringContaining("IndexRenamed.ets") },
         },
       ],
+    })
+  })
+
+  it("resolves Generate ArkTS Page to a create-file workspace edit plan", () => {
+    const session = new SemanticWorkerSession()
+
+    const response = session.handle({
+      id: "actions-page",
+      method: "resolveCodeAction",
+      action: {
+        id: "arkts.generate.page",
+        data: {
+          name: "Home",
+          targetPath: "src/pages/Home.ets",
+        },
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual({
+      id: "arkts.generate.page",
+      title: "Generate ArkTS Page",
+      operations: [
+        {
+          kind: "createFile",
+          path: "src/pages/Home.ets",
+          content: [
+            "@Entry",
+            "@Component",
+            "struct Home {",
+            "  build() {",
+            "  }",
+            "}",
+            "",
+          ].join("\n"),
+          overwrite: false,
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["src/pages/Home.ets"],
+      undoLabel: "Remove generated ArkTS page",
+      requiresPreview: true,
+    })
+  })
+
+  it("resolves Generate ArkTS Component to a create-file workspace edit plan", () => {
+    const session = new SemanticWorkerSession()
+
+    const response = session.handle({
+      id: "actions-component",
+      method: "resolveCodeAction",
+      action: {
+        id: "arkts.generate.component",
+        data: {
+          name: "UserCard",
+          currentPath: "src/pages/Index.ets",
+        },
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toMatchObject({
+      id: "arkts.generate.component",
+      title: "Generate ArkTS Component",
+      operations: [
+        {
+          kind: "createFile",
+          path: "src/components/UserCard.ets",
+          content: [
+            "@Component",
+            "struct UserCard {",
+            "  build() {",
+            "  }",
+            "}",
+            "",
+          ].join("\n"),
+          overwrite: false,
+        },
+      ],
+      affectedFiles: ["src/components/UserCard.ets"],
+      requiresPreview: true,
+    })
+  })
+
+  it("keeps ArkTS module prefixes when inferring generated target directories", () => {
+    const session = new SemanticWorkerSession()
+
+    const response = session.handle({
+      id: "actions-page-inferred",
+      method: "resolveCodeAction",
+      action: {
+        id: "arkts.generate.page",
+        data: {
+          name: "Home",
+          currentPath: "entry/src/main/ets/Foo.ets",
+        },
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toMatchObject({
+      operations: [
+        {
+          kind: "createFile",
+          path: "entry/src/main/ets/pages/Home.ets",
+        },
+      ],
+      affectedFiles: ["entry/src/main/ets/pages/Home.ets"],
+    })
+  })
+
+  it("resolves Rename File to a rename-file workspace edit plan", () => {
+    const session = new SemanticWorkerSession()
+
+    const response = session.handle({
+      id: "actions-rename",
+      method: "resolveCodeAction",
+      action: {
+        id: "workspace.renameFile",
+        data: {
+          currentPath: "src/pages/Old.ets",
+          targetPath: "src/pages/New.ets",
+        },
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toMatchObject({
+      id: "workspace.renameFile.src/pages/Old.ets",
+      title: "Rename src/pages/Old.ets to src/pages/New.ets",
+      operations: [
+        {
+          kind: "renameFile",
+          oldPath: "src/pages/Old.ets",
+          newPath: "src/pages/New.ets",
+          overwrite: false,
+        },
+      ],
+      affectedFiles: ["src/pages/Old.ets", "src/pages/New.ets"],
+      undoLabel: "Rename src/pages/New.ets back to src/pages/Old.ets",
+      requiresPreview: true,
     })
   })
 
@@ -151,6 +292,10 @@ describe("semantic worker code actions", () => {
       method: "resolveCodeAction",
       action: {
         id: "workspace.renameFile",
+        data: {
+          currentPath: filePath,
+          targetPath: filePath.replace(/Index\.ets$/, "IndexRenamed.ets"),
+        },
       },
     })
     const renameResponse = session.handle({
@@ -165,7 +310,7 @@ describe("semantic worker code actions", () => {
     })
 
     expect(listResponse.ok).toBe(true)
-    expect(resolveResponse.payload).toMatchObject({ status: "unsupported" })
+    expect(resolveResponse.payload).toMatchObject({ id: expect.stringContaining("workspace.renameFile") })
     expect(renameResponse.payload).toMatchObject({ status: "unsupported" })
     expect(snapshotTree(root)).toEqual(before)
   })
