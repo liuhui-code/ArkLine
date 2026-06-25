@@ -19,6 +19,7 @@ import {
   normalizePath,
   type WorkspaceOpenInput
 } from "@/features/workspace/workspace-store";
+import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
 
 export type WorkspaceSnapshot = {
   rootName: string;
@@ -98,6 +99,10 @@ export type DeviceLogDevice = {
 };
 
 export type StartDeviceLogStreamRequest = {
+  deviceId: string;
+};
+
+export type ListDeviceFaultLogsRequest = {
   deviceId: string;
 };
 
@@ -258,6 +263,7 @@ export type WorkspaceApi = {
   runTerminalCommand(request: TerminalRunRequest): Promise<TerminalRunResult>;
   stopTerminalCommand(runId: string): Promise<void>;
   listDeviceLogDevices(): Promise<DeviceLogDevice[]>;
+  listDeviceFaultLogs(request: ListDeviceFaultLogsRequest): Promise<DeviceFaultLogFetchResult>;
   startDeviceLogStream(request: StartDeviceLogStreamRequest): Promise<DeviceLogStreamSummary>;
   stopDeviceLogStream(streamId: string): Promise<void>;
 };
@@ -821,6 +827,47 @@ export const defaultWorkspaceApi: WorkspaceApi = {
         detail: "Mock HiLog stream",
       },
     ];
+  },
+  async listDeviceFaultLogs(request) {
+    if (hasTauriRuntime()) {
+      return invoke<DeviceFaultLogFetchResult>("list_device_fault_logs", { request });
+    }
+
+    return {
+      deviceId: request.deviceId,
+      fetchedAt: "2026-06-25T15:21:48.000Z",
+      entries: [
+        {
+          id: "demo-fault-1",
+          raw: [
+            "Timestamp: 2026-06-25 15:21:48",
+            "Reason: JS_ERROR",
+            "Process: com.demo.camera",
+            "PID: 4321",
+            "BundleName: com.demo.camera",
+            "Summary: Render pipeline crashed in demo mode",
+            "Error: TypeError: undefined is not a function",
+            "Stacktrace:",
+            "  at render (pages/index.ets:12:3)",
+            "  at update (pages/app.ets:44:9)",
+          ].join("\n"),
+        },
+        {
+          id: "demo-fault-2",
+          raw: [
+            "Timestamp: 2026-06-25 15:19:10",
+            "Reason: APP_FREEZE",
+            "Process: com.demo.camera",
+            "PID: 4321",
+            "Summary: Main thread blocked by image decode",
+          ].join("\n"),
+        },
+      ],
+      command: `hdc -t ${request.deviceId} shell faultlog -l`,
+      stderr: "",
+      status: "ready",
+      message: "ok",
+    };
   },
   async startDeviceLogStream(request) {
     if (hasTauriRuntime()) {

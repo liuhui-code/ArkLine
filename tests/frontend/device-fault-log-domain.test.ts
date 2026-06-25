@@ -3,6 +3,7 @@ import { applyDeviceFaultLogFilter, compileDeviceFaultLogFilter } from "@/featur
 import type { DeviceFaultLogFetchResult, DeviceFaultLogFilterState } from "@/features/device-log/device-fault-log-model";
 import { parseDeviceFaultLogEntries } from "@/features/device-log/device-fault-log-parser";
 import { createDeviceFaultLogStore } from "@/features/device-log/device-fault-log-store";
+import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
 
 const emptyFilter: DeviceFaultLogFilterState = {
   query: "",
@@ -253,5 +254,15 @@ describe("device fault log store", () => {
         process: "demo",
       },
     });
+  });
+});
+
+describe("device fault log workspace api demo implementation", () => {
+  it("returns deterministic demo fault log results outside Tauri", async () => {
+    const result = await defaultWorkspaceApi.listDeviceFaultLogs({ deviceId: "demo-device" });
+
+    expect(result.deviceId).toBe("demo-device");
+    expect(result.status).toBe("ready");
+    expect(result.entries[0]?.raw).toContain("JS_ERROR");
   });
 });
