@@ -1,3 +1,9 @@
+import {
+  listCodeActions,
+  prepareRename,
+  rename,
+  resolveCodeAction,
+} from "./features/code-actions.js"
 import { resolveCompletion } from "./features/completion.js"
 import { resolveDefinition } from "./features/definition.js"
 import type { SemanticRequest, SemanticResponse } from "./protocol.js"
@@ -25,6 +31,30 @@ export class SemanticWorkerSession {
           id: request.id,
           ok: true,
           payload: resolveCompletion(request.position),
+        }
+      case "listCodeActions":
+        return {
+          id: request.id,
+          ok: true,
+          payload: listCodeActions(request.position),
+        }
+      case "resolveCodeAction":
+        return {
+          id: request.id,
+          ok: true,
+          payload: resolveCodeAction(request.action),
+        }
+      case "prepareRename":
+        return {
+          id: request.id,
+          ok: true,
+          payload: prepareRename(),
+        }
+      case "rename":
+        return {
+          id: request.id,
+          ok: true,
+          payload: rename(),
         }
       default:
         return {
