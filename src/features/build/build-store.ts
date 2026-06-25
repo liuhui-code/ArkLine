@@ -1,3 +1,4 @@
+import { assessBuildFreshness, unknownBuildFreshness } from "@/features/build/build-freshness";
 import type { BuildResult, BuildState, HarmonyBuildPlan } from "@/features/build/build-model";
 
 export function createBuildStore() {
@@ -14,6 +15,7 @@ export function createBuildStore() {
     problems: [],
     lastResult: null,
     history: [],
+    freshness: unknownBuildFreshness,
     lastExitCode: null,
     lastDurationMs: null,
     message: "No build run yet",
@@ -27,6 +29,10 @@ export function createBuildStore() {
     start(plan: HarmonyBuildPlan & { runId: string }) {
       state.status = "running";
       state.currentRun = plan;
+      state.freshness = assessBuildFreshness({
+        plan,
+        history: state.history,
+      });
       state.output = "";
       state.problems = [];
       state.lastResult = null;

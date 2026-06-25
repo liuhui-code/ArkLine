@@ -4,6 +4,7 @@ import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/feat
 import { defaultBuildDiagnosticMatchers, parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
+import { assessBuildFreshness } from "@/features/build/build-freshness";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { createBuildIntent, createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import { createBuildStore } from "@/features/build/build-store";
@@ -150,6 +151,116 @@ describe("build artifacts", () => {
         source: "output",
       },
     ]);
+  });
+});
+
+describe("build freshness", () => {
+  it("marks a matching successful build with artifacts as a current candidate", () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const environment = createBuildEnvironmentSnapshot({ plan });
+    const previous = createBuildResultFromTerminalRun({
+      runId: "build-1",
+      exitCode: 0,
+      durationMs: 100,
+      stdout: "",
+      stderr: "",
+      problems: [],
+      artifacts: [{
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      }],
+      environment,
+    });
+
+    expect(assessBuildFreshness({ plan, environment, history: [previous] })).toEqual({
+      status: "candidate-current",
+      reason: "matching-success",
+      matchingRunId: "build-1",
+      artifactPaths: ["/workspace/Demo/entry/build/default/outputs/default/entry-default.hap"],
+    });
+  });
+
+  it("does not mark a matching build current when artifacts are missing", () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const environment = createBuildEnvironmentSnapshot({ plan });
+    const previous = createBuildResultFromTerminalRun({
+      runId: "build-1",
+      exitCode: 0,
+      durationMs: 100,
+      stdout: "",
+      stderr: "",
+      problems: [],
+      environment,
+    });
+
+    expect(assessBuildFreshness({ plan, environment, history: [previous] })).toEqual({
+      status: "unknown",
+      reason: "artifacts-missing",
+      matchingRunId: "build-1",
+      artifactPaths: [],
+    });
+  });
+
+  it("reports stale when successful history does not match the current command", () => {
+    const oldPlan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const nextPlan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "app",
+      moduleName: null,
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const previous = createBuildResultFromTerminalRun({
+      runId: "build-1",
+      exitCode: 0,
+      durationMs: 100,
+      stdout: "",
+      stderr: "",
+      problems: [],
+      artifacts: [{
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      }],
+      environment: createBuildEnvironmentSnapshot({ plan: oldPlan }),
+    });
+
+    expect(assessBuildFreshness({
+      plan: nextPlan,
+      environment: createBuildEnvironmentSnapshot({ plan: nextPlan }),
+      history: [previous],
+    })).toEqual({
+      status: "stale",
+      reason: "command-changed",
+      artifactPaths: [],
+    });
   });
 });
 
@@ -425,17 +536,18 @@ describe("build output parser", () => {
 describe("build store", () => {
   it("tracks a run lifecycle and last duration", () => {
     const store = createBuildStore();
+    const lifecyclePlan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
 
     store.start({
-      ...planHarmonyBuildCommand({
-        rootPath: "/workspace/Demo",
-        target: "hap",
-        moduleName: "entry",
-        product: "default",
-        buildMode: "debug",
-        clean: false,
-        fastMode: false,
-      }),
+      ...lifecyclePlan,
       runId: "build-1",
     });
     expect(store.state.status).toBe("running");
@@ -447,6 +559,12 @@ describe("build store", () => {
       stdout: "BUILD SUCCESSFUL",
       stderr: "",
       problems: [],
+      artifacts: [{
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      }],
+      environment: createBuildEnvironmentSnapshot({ plan: lifecyclePlan }),
     }));
 
     expect(store.state.status).toBe("success");
@@ -455,5 +573,11 @@ describe("build store", () => {
     expect(store.state.history[0]?.runId).toBe("build-1");
     expect(store.state.lastDurationMs).toBe(1200);
     expect(store.state.output).toContain("BUILD SUCCESSFUL");
+
+    store.start({
+      ...lifecyclePlan,
+      runId: "build-2",
+    });
+    expect(store.state.freshness.status).toBe("candidate-current");
   });
 });

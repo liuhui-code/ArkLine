@@ -55,6 +55,22 @@ export type BuildArtifact = {
   source: "output";
 };
 
+export type BuildFreshnessStatus = "unknown" | "candidate-current" | "stale";
+export type BuildFreshnessReason =
+  | "no-history"
+  | "no-successful-build"
+  | "command-changed"
+  | "environment-changed"
+  | "artifacts-missing"
+  | "matching-success";
+
+export type BuildFreshnessAssessment = {
+  status: BuildFreshnessStatus;
+  reason: BuildFreshnessReason;
+  matchingRunId?: string;
+  artifactPaths: string[];
+};
+
 export type BuildToolchainSnapshot = {
   harmonySdkPath: string;
   semanticWorkerPath: string;
@@ -123,6 +139,7 @@ export type BuildState = {
   problems: ProblemItem[];
   lastResult: BuildResult | null;
   history: BuildResult[];
+  freshness: BuildFreshnessAssessment;
   lastExitCode: number | null;
   lastDurationMs: number | null;
   message: string;
