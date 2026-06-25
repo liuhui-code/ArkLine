@@ -30,7 +30,11 @@ export async function main(args, io = {}) {
 
   if (isWorkspaceEditCommand(parsed.command)) {
     const result = await runWorkspaceEditCommand(parsed.command)
-    printJson(result, stdout)
+    if (parsed.command.output === "pretty") {
+      printPrettyWorkspaceEditResult(parsed.command, result, stdout)
+    } else {
+      printJson(result, stdout)
+    }
     if (!result.ok || hasConflicts(result.payload)) {
       process.exitCode = 1
     }
@@ -100,6 +104,72 @@ function buildPosition(command) {
 
 function printJson(value, stdout = process.stdout) {
   stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+}
+
+function printPrettyWorkspaceEditResult(command, result, stdout = process.stdout) {
+  stdout.write(`${formatPrettyWorkspaceEditResult(command, result)}\n`)
+}
+
+function formatPrettyWorkspaceEditResult(command, result) {
+  const payload = result.payload
+  const conflicts = Array.isArray(payload?.conflicts) ? payload.conflicts : []
+  const lines = [payload?.title ?? buildWorkspaceEditTitle(command)]
+
+  if (conflicts.length > 0) {
+    lines.push(`Mode: ${result.dryRun ? "dry-run" : "apply"}`)
+    lines.push("Conflicts:")
+    for (const conflict of conflicts) {
+      lines.push(`- ${conflict.path}: ${conflict.message}`)
+    }
+    return lines.join("\n")
+  }
+
+  if (payload?.applied) {
+    lines.push("Applied: yes")
+    lines.push("Changed files:")
+    for (const changedFile of payload.changedFiles ?? []) {
+      lines.push(`- ${changedFile}`)
+    }
+    return lines.join("\n")
+  }
+
+  lines.push("Mode: dry-run")
+  lines.push("Affected files:")
+  for (const affectedFile of payload?.affectedFiles ?? []) {
+    lines.push(`- ${affectedFile}`)
+  }
+  lines.push("Operations:")
+  for (const operation of payload?.operations ?? []) {
+    lines.push(`- ${formatWorkspaceEditOperation(operation)}`)
+  }
+
+  return lines.join("\n")
+}
+
+function buildWorkspaceEditTitle(command) {
+  switch (`${command.area} ${command.name}`) {
+    case "generate page":
+      return `Generate page ${command.symbolName}`
+    case "generate component":
+      return `Generate component ${command.symbolName}`
+    case "rename-file workspace":
+      return `Rename ${command.file} to ${command.to}`
+    default:
+      return "Workspace edit"
+  }
+}
+
+function formatWorkspaceEditOperation(operation) {
+  switch (operation.kind) {
+    case "createFile":
+      return operation.overwrite ? `Create or overwrite ${operation.path}` : `Create ${operation.path}`
+    case "renameFile":
+      return operation.overwrite
+        ? `Rename ${operation.oldPath} to ${operation.newPath} and overwrite if needed`
+        : `Rename ${operation.oldPath} to ${operation.newPath}`
+    default:
+      return `${operation.kind} ${operation.path ?? ""}`.trim()
+  }
 }
 
 function isWorkspaceEditCommand(command) {

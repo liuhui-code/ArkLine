@@ -210,6 +210,56 @@ describe("arkline cli parser", () => {
     });
   });
 
+  it("allows pretty output for workspace edit commands", () => {
+    expect(
+      parseArklineCliArgs([
+        "generate",
+        "page",
+        "--workspace",
+        ".",
+        "--name",
+        "Home",
+        "--dry-run",
+        "--pretty",
+      ]),
+    ).toEqual({
+      ok: true,
+      command: {
+        area: "generate",
+        name: "page",
+        workspace: ".",
+        symbolName: "Home",
+        output: "pretty",
+        dryRun: true,
+      },
+    });
+
+    expect(
+      parseArklineCliArgs([
+        "rename-file",
+        "--workspace",
+        ".",
+        "--file",
+        "src/pages/Old.ets",
+        "--to",
+        "src/pages/New.ets",
+        "--apply",
+        "--pretty",
+      ]),
+    ).toEqual({
+      ok: true,
+      command: {
+        area: "rename-file",
+        name: "workspace",
+        workspace: ".",
+        file: "src/pages/Old.ets",
+        to: "src/pages/New.ets",
+        output: "pretty",
+        dryRun: false,
+      },
+    });
+  });
+
   it("returns ok false and an error for invalid input", () => {
     expect(parseArklineCliArgs(["language", "completion", "--workspace", "."])).toEqual({
       ok: false,
@@ -217,10 +267,10 @@ describe("arkline cli parser", () => {
     });
   });
 
-  it("rejects pretty output until it is implemented", () => {
+  it("rejects pretty output for semantic worker commands", () => {
     expect(parseArklineCliArgs(["language", "inspect", "--pretty"])).toEqual({
       ok: false,
-      error: "--pretty is not implemented yet; use --json",
+      error: "language inspect does not support --pretty yet; use --json",
     });
   });
 });
@@ -564,6 +614,65 @@ describe("arkline cli workspace edit output", () => {
       dryRun: true,
     });
     expect(fs.existsSync(path.join(workspace, "src/pages/Home.ets"))).toBe(false);
+  });
+
+  it("prints a pretty dry-run workspace edit plan", async () => {
+    const workspace = createTempWorkspace();
+    const writes: string[] = [];
+    const originalExitCode = process.exitCode;
+
+    try {
+      process.exitCode = undefined;
+      await main(["generate", "page", "--workspace", workspace, "--name", "Home", "--dry-run", "--pretty"], {
+        stdout: { write: (value: string) => writes.push(value) },
+      });
+      expect(process.exitCode).toBeUndefined();
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+
+    expect(writes.join("")).toBe(
+      [
+        "Generate page Home",
+        "Mode: dry-run",
+        "Affected files:",
+        "- src/pages/Home.ets",
+        "Operations:",
+        "- Create src/pages/Home.ets",
+        "",
+      ].join("\n"),
+    );
+    expect(fs.existsSync(path.join(workspace, "src/pages/Home.ets"))).toBe(false);
+  });
+
+  it("prints pretty conflict output and sets a non-zero exit code", async () => {
+    const workspace = createTempWorkspace();
+    const targetPath = path.join(workspace, "src/pages/Home.ets");
+    const writes: string[] = [];
+    const originalExitCode = process.exitCode;
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, "existing");
+
+    try {
+      process.exitCode = undefined;
+      await main(["generate", "page", "--workspace", workspace, "--name", "Home", "--apply", "--pretty"], {
+        stdout: { write: (value: string) => writes.push(value) },
+      });
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+
+    expect(writes.join("")).toBe(
+      [
+        "Generate page Home",
+        "Mode: apply",
+        "Conflicts:",
+        "- src/pages/Home.ets: Create file target already exists.",
+        "",
+      ].join("\n"),
+    );
+    expect(fs.readFileSync(targetPath, "utf8")).toBe("existing");
   });
 
   it("sets a non-zero exit code when an edit command has conflicts", async () => {

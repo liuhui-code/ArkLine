@@ -103,9 +103,6 @@ function parseOptions(args) {
   if (options.json && options.pretty) {
     throw new Error("Use only one of --json or --pretty")
   }
-  if (options.pretty) {
-    throw new Error("--pretty is not implemented yet; use --json")
-  }
 
   return options
 }
@@ -114,6 +111,7 @@ function validateCommand(command) {
   const key = `${command.area} ${command.name}`
 
   if (key === "language inspect") {
+    rejectPrettyForSemanticCommand(command, key)
     if (command.output !== "json") {
       throw new Error("language inspect requires --json")
     }
@@ -121,6 +119,7 @@ function validateCommand(command) {
   }
 
   if (POSITION_COMMANDS.has(key)) {
+    rejectPrettyForSemanticCommand(command, key)
     if (
       !command.workspace ||
       !command.file ||
@@ -134,6 +133,7 @@ function validateCommand(command) {
   }
 
   if (EDIT_PRODUCING_COMMANDS.has(key)) {
+    rejectPrettyForSemanticCommand(command, key)
     if (!command.id || command.output !== "json") {
       throw new Error(`${key} requires --id and --json`)
     }
@@ -141,8 +141,8 @@ function validateCommand(command) {
   }
 
   if (GENERATE_COMMANDS.has(key)) {
-    if (!command.workspace || !command.symbolName || command.output !== "json") {
-      throw new Error(`${key} requires --workspace, --name, and --json`)
+    if (!command.workspace || !command.symbolName || !isWorkspaceEditOutput(command.output)) {
+      throw new Error(`${key} requires --workspace, --name, and --json or --pretty`)
     }
     if (!ARKTS_IDENTIFIER_PATTERN.test(command.symbolName)) {
       throw new Error("--name requires an ASCII ArkTS identifier")
@@ -151,8 +151,8 @@ function validateCommand(command) {
   }
 
   if (key === "rename-file workspace") {
-    if (!command.workspace || !command.file || !command.to || command.output !== "json") {
-      throw new Error("rename-file requires --workspace, --file, --to, and --json")
+    if (!command.workspace || !command.file || !command.to || !isWorkspaceEditOutput(command.output)) {
+      throw new Error("rename-file requires --workspace, --file, --to, and --json or --pretty")
     }
     return
   }
@@ -166,6 +166,16 @@ function normalizeCommandArgs(args) {
   }
 
   return args
+}
+
+function isWorkspaceEditOutput(output) {
+  return output === "json" || output === "pretty"
+}
+
+function rejectPrettyForSemanticCommand(command, key) {
+  if (command.output === "pretty") {
+    throw new Error(`${key} does not support --pretty yet; use --json`)
+  }
 }
 
 function requireNext(args, index, flag) {
