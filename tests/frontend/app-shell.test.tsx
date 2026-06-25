@@ -148,7 +148,8 @@ describe("App shell", () => {
     expect(within(header).getByRole("button", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Problems" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Git" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Usages" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Usages" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Git Trace" })).not.toBeInTheDocument();
     const statusBar = screen.getByLabelText("Status Bar");
     expect(statusBar).toBeInTheDocument();
     expect(within(statusBar).getByLabelText("Status Bar Left")).toBeInTheDocument();
@@ -447,6 +448,35 @@ describe("App shell", () => {
     expect(screen.getByRole("button", { name: "main.ets" })).toBeVisible();
     expect(screen.queryByRole("button", { name: "index.js" })).not.toBeInTheDocument();
     expect(screen.getByText("Workspace: DemoWorkspace")).toBeVisible();
+  });
+
+  it("supports project tree expand collapse and focus active file actions", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+
+    const filesPane = screen.getByRole("region", { name: "Files" });
+    await user.click(within(filesPane).getByRole("button", { name: "Collapse All" }));
+
+    expect(within(filesPane).queryByRole("button", { name: "main.ets" })).not.toBeInTheDocument();
+
+    await user.click(within(filesPane).getByRole("button", { name: "Focus Active File" }));
+
+    const activeFile = await waitFor(() => {
+      const row = within(filesPane).getByRole("button", { name: "main.ets" });
+      expect(row).toHaveAttribute("aria-current", "true");
+      return row;
+    });
+    expect(activeFile).toBeVisible();
+    await waitFor(() => expect(activeFile).toHaveFocus());
+
+    await user.click(within(filesPane).getByRole("button", { name: "Collapse All" }));
+    expect(within(filesPane).queryByRole("button", { name: "app.json5" })).not.toBeInTheDocument();
+
+    await user.click(within(filesPane).getByRole("button", { name: "Expand All" }));
+    expect(await within(filesPane).findByRole("button", { name: "app.json5" })).toBeVisible();
   });
 
   it("opens a file from the workspace into the editor surface", async () => {
@@ -2746,8 +2776,10 @@ describe("App shell", () => {
       }));
     });
 
-    expect(await screen.findByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
-    const usagesPanel = await screen.findByLabelText("Usages Panel");
+    expect(screen.queryByRole("tab", { name: "Usages" })).not.toBeInTheDocument();
+    const queryPanel = await screen.findByLabelText("Editor Query Panel");
+    expect(within(queryPanel).getByText("Usages (1)")).toBeVisible();
+    const usagesPanel = within(queryPanel).getByLabelText("Usages Panel");
     await user.click(within(usagesPanel).getByRole("button", { name: /AppScope[\\/]app\.json5/ }));
 
     await waitFor(() => {
@@ -2815,10 +2847,9 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(workspaceApi.gotoDefinition).toHaveBeenCalled();
     });
-    await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
-    });
-    const usagesPanel = await screen.findByLabelText("Usages Panel");
+    const queryPanel = await screen.findByLabelText("Editor Query Panel");
+    expect(within(queryPanel).getByText("Usages (2)")).toBeVisible();
+    const usagesPanel = within(queryPanel).getByLabelText("Usages Panel");
     await waitFor(() => {
       expect(within(usagesPanel).getByRole("button", { name: /entryability[\\/]EntryAbility\.ets/i })).toBeVisible();
       expect(within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i })).toBeVisible();
@@ -2908,10 +2939,9 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(workspaceApi.gotoDefinitionCandidates).toHaveBeenCalled();
     });
-    await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
-    });
-    const usagesPanel = await screen.findByLabelText("Usages Panel");
+    const queryPanel = await screen.findByLabelText("Editor Query Panel");
+    expect(within(queryPanel).getByText("Usages (2)")).toBeVisible();
+    const usagesPanel = within(queryPanel).getByLabelText("Usages Panel");
     expect(within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i })).toBeVisible();
     posAtCoords.mockRestore();
   });
@@ -3095,7 +3125,8 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+    await user.click(screen.getByRole("tab", { name: "Git" }));
+    await user.click(screen.getByRole("tab", { name: "Line Trace" }));
 
     const panel = await screen.findByLabelText("Git Trace Panel");
     expect(within(panel).getByText("Mark ArkTS entry component")).toBeVisible();
@@ -3169,11 +3200,13 @@ describe("App shell", () => {
     await user.click(blameButton);
 
     expect(await screen.findByRole("dialog", { name: "Git Blame Details" })).toHaveTextContent("Mark ArkTS entry component");
-    expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.queryByRole("tab", { name: "Git Trace" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "false");
 
     await user.click(screen.getByRole("button", { name: "Show Commit" }));
 
-    expect(screen.getByRole("tab", { name: "Git Trace" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Line Trace" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
   });
 
@@ -3338,7 +3371,7 @@ describe("App shell", () => {
     await user.click(screen.getByRole("button", { name: "Show Local Diff" }));
 
     expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByText("Local Changes")).toBeVisible();
+    expect(await screen.findByRole("tab", { name: "Local Changes" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByLabelText("Git Diff Viewer")).toHaveTextContent("+ // local change");
     expect(screen.queryByRole("dialog", { name: "Git Blame Details" })).not.toBeInTheDocument();
   });
@@ -3644,7 +3677,8 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+    await user.click(screen.getByRole("tab", { name: "Git" }));
+    await user.click(screen.getByRole("tab", { name: "Line Trace" }));
 
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("File is not tracked by Git");
   });
@@ -3663,7 +3697,8 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+    await user.click(screen.getByRole("tab", { name: "Git" }));
+    await user.click(screen.getByRole("tab", { name: "Line Trace" }));
 
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Git is unavailable on this machine");
   });
@@ -3704,7 +3739,8 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
     await user.keyboard("{End}\n// dirty");
-    await user.click(screen.getByRole("tab", { name: "Git Trace" }));
+    await user.click(screen.getByRole("tab", { name: "Git" }));
+    await user.click(screen.getByRole("tab", { name: "Line Trace" }));
 
     expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
     expect(getFileBlame).toHaveBeenCalledTimes(1);

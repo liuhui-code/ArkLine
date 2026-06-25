@@ -16,11 +16,21 @@ describe("Git tool window", () => {
   it("shows diff inside the Git tool window after selecting a changed file", async () => {
     const user = userEvent.setup();
 
-    render(<GitToolWindow files={demoDiffFiles} onOpenFile={vi.fn()} />);
+    render(
+      <GitToolWindow
+        files={demoDiffFiles}
+        activeView="changes"
+        tracePanel={<div>Trace</div>}
+        onChangeView={vi.fn()}
+        onOpenFile={vi.fn()}
+      />,
+    );
 
     const changedFile = screen.getByRole("button", { name: "src/main.ets M Modified" });
     await user.click(changedFile);
 
+    expect(screen.getByRole("tab", { name: "Local Changes" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Line Trace" })).toBeVisible();
     expect(changedFile).toHaveClass("git-tool-window__file--active");
     expect(screen.getByLabelText("Git Diff Viewer")).toBeVisible();
     expect(screen.getByText("Modified", { selector: ".git-tool-window__viewer-status" })).toBeVisible();

@@ -21,6 +21,12 @@ type TopBarProps = {
 };
 
 type MenuKey = "file" | "edit" | "view";
+type MenuItem = {
+  label: string;
+  action: () => void;
+  shortcut?: string;
+};
+type MenuGroup = MenuItem[];
 
 export function TopBar({
   activeBottomTool,
@@ -67,19 +73,48 @@ export function TopBar({
     };
   }, [activeMenu]);
 
-function triggerMenuAction(action: () => void) {
+  function triggerMenuAction(action: () => void) {
     setActiveMenu(null);
     action();
   }
 
-  function renderMenuItem(label: string, action: () => void, shortcut?: string) {
+  function renderMenuItem(item: MenuItem) {
     return (
-      <button type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(action)}>
-        <span>{label}</span>
-        {shortcut ? <span className="topbar-menu__shortcut" aria-hidden="true">{shortcut}</span> : null}
+      <button key={item.label} type="button" className="topbar-menu__item" role="menuitem" onClick={() => triggerMenuAction(item.action)}>
+        <span>{item.label}</span>
+        {item.shortcut ? <span className="topbar-menu__shortcut" aria-hidden="true">{item.shortcut}</span> : null}
       </button>
     );
   }
+
+  const menuGroups: Record<MenuKey, MenuGroup[]> = {
+    file: [
+      [
+        { label: "Open Project...", action: onOpenProject },
+        { label: "Recent Projects", action: onOpenRecentProjects },
+      ],
+    ],
+    edit: [
+      [
+        { label: "Command Palette", action: onOpenCommandPalette, shortcut: getShellCommandShortcut("openCommandPalette") },
+      ],
+      [
+        { label: "Settings", action: onOpenSettings },
+      ],
+    ],
+    view: [
+      [
+        { label: "Search Everywhere", action: onOpenSearchEverywhere, shortcut: "Double Shift" },
+      ],
+      [
+        { label: "Terminal", action: onOpenTerminal, shortcut: getShellCommandShortcut("showTerminal") },
+        { label: "Git", action: onLoadDiff, shortcut: getShellCommandShortcut("showGit") },
+      ],
+      [
+        { label: "Editor Only", action: onToggleEditorOnly, shortcut: getShellCommandShortcut("toggleEditorOnly") },
+      ],
+    ],
+  };
 
   return (
     <header className="topbar" aria-label="Application Header">
@@ -94,26 +129,12 @@ function triggerMenuAction(action: () => void) {
           <button type="button" className={`toolbar__button toolbar__button--ghost${activeMenu === "view" ? " toolbar__button--active" : ""}`} onClick={() => setActiveMenu(activeMenu === "view" ? null : "view")}>View</button>
           {activeMenu ? (
             <div className="topbar-menu" role="menu" aria-label={`${activeMenu} menu`}>
-              {activeMenu === "file" ? (
-                <>
-                  {renderMenuItem("Open Project...", onOpenProject)}
-                  {renderMenuItem("Recent Projects", onOpenRecentProjects)}
-                </>
-              ) : null}
-              {activeMenu === "edit" ? (
-                <>
-                  {renderMenuItem("Command Palette", onOpenCommandPalette, getShellCommandShortcut("openCommandPalette"))}
-                  {renderMenuItem("Settings", onOpenSettings)}
-                </>
-              ) : null}
-              {activeMenu === "view" ? (
-                <>
-                  {renderMenuItem("Search Everywhere", onOpenSearchEverywhere, "Double Shift")}
-                  {renderMenuItem("Terminal", onOpenTerminal, getShellCommandShortcut("showTerminal"))}
-                  {renderMenuItem("Git", onLoadDiff, getShellCommandShortcut("showGit"))}
-                  {renderMenuItem("Editor Only", onToggleEditorOnly, getShellCommandShortcut("toggleEditorOnly"))}
-                </>
-              ) : null}
+              {menuGroups[activeMenu].map((group, groupIndex) => (
+                <div key={`${activeMenu}-${groupIndex}`} className="topbar-menu__group" role="group">
+                  {groupIndex > 0 ? <div className="topbar-menu__separator" role="separator" /> : null}
+                  {group.map(renderMenuItem)}
+                </div>
+              ))}
             </div>
           ) : null}
         </div>

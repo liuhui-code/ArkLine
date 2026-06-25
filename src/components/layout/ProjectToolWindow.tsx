@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import { getPathBasename, normalizePath, splitPathSegments } from "@/features/workspace/workspace-store";
 
@@ -126,13 +126,54 @@ function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
   return entries;
 }
 
+function collectDirectoryPaths(root: InternalNode) {
+  const paths: string[] = [];
+
+  function visit(node: InternalNode) {
+    if (node.kind !== "directory") {
+      return;
+    }
+
+    paths.push(node.path);
+    node.children.forEach((child) => visit(child));
+  }
+
+  visit(root);
+  return paths;
+}
+
+function collectAncestorDirectories(root: InternalNode, targetPath: string) {
+  const ancestors: string[] = [];
+
+  function visit(node: InternalNode, parents: string[]) {
+    if (normalizePath(node.path) === normalizePath(targetPath)) {
+      ancestors.push(...parents);
+      return true;
+    }
+
+    for (const child of node.children.values()) {
+      if (visit(child, node.kind === "directory" ? [...parents, node.path] : parents)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  visit(root, []);
+  return ancestors;
+}
+
 export function ProjectToolWindow({
   tree,
   activePath,
   onOpen
 }: ProjectToolWindowProps) {
   const root = useMemo(() => buildTree(tree), [tree]);
+  const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const normalizedActivePath = activePath ? normalizePath(activePath) : null;
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
+  const [pendingFocusPath, setPendingFocusPath] = useState<string | null>(null);
   const expandedDirectories = useMemo(() => {
     const expanded = new Set<string>();
 
@@ -152,6 +193,23 @@ export function ProjectToolWindow({
   }, [collapsedDirectories, root]);
   const entries = useMemo(() => buildEntries(root, expandedDirectories), [expandedDirectories, root]);
 
+  useEffect(() => {
+    if (!pendingFocusPath) {
+      return;
+    }
+
+    const row = rowRefs.current.get(pendingFocusPath);
+    if (!row) {
+      return;
+    }
+
+    if (typeof row.scrollIntoView === "function") {
+      row.scrollIntoView({ block: "nearest" });
+    }
+    row.focus();
+    setPendingFocusPath(null);
+  }, [entries, pendingFocusPath]);
+
   function toggleDirectory(path: string) {
     setCollapsedDirectories((current) => {
       const next = new Set(current);
@@ -164,40 +222,78 @@ export function ProjectToolWindow({
     });
   }
 
+  function expandAll() {
+    setCollapsedDirectories(new Set());
+  }
+
+  function collapseAll() {
+    const collapsed = collectDirectoryPaths(root).filter((path) => path !== root.path);
+    setCollapsedDirectories(new Set(collapsed));
+  }
+
+  function focusActiveFile() {
+    if (!activePath) {
+      return;
+    }
+
+    const normalizedActivePath = normalizePath(activePath);
+    const ancestors = collectAncestorDirectories(root, normalizedActivePath);
+    setCollapsedDirectories((current) => {
+      const next = new Set(current);
+      ancestors.forEach((path) => next.delete(path));
+      return next;
+    });
+    setPendingFocusPath(normalizedActivePath);
+  }
+
   return (
-    <div className="project-tree" role="tree" aria-label="Workspace File Tree">
-      {entries.map((entry) =>
-        entry.kind === "directory" ? (
-          <button
-            key={entry.key}
-            type="button"
-            className="project-tree__row project-tree__row--directory"
-            style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
-            aria-expanded={entry.expanded ? "true" : "false"}
-            onClick={() => toggleDirectory(entry.path)}
-          >
-            <span className="project-tree__caret" aria-hidden="true">
-              {entry.expanded ? "▾" : "▸"}
-            </span>
-            <span className="project-tree__icon project-tree__icon--directory" aria-hidden="true" />
-            <span className="project-tree__label">{entry.label}</span>
-          </button>
-        ) : (
-          <button
-            key={entry.key}
-            type="button"
-            className={`project-tree__row project-tree__row--file${activePath === entry.path ? " project-tree__row--active" : ""}`}
-            style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
-            title={entry.path}
-            aria-current={activePath === entry.path ? "true" : undefined}
-            onClick={() => onOpen(entry.path)}
-          >
-            <span className="project-tree__caret" aria-hidden="true" />
-            <span className="project-tree__icon project-tree__icon--file" aria-hidden="true" />
-            <span className="project-tree__label">{entry.label}</span>
-          </button>
-        ),
-      )}
+    <div className="project-tree-shell">
+      <div className="project-tree-toolbar" role="toolbar" aria-label="Project Tree Actions">
+        <button type="button" className="project-tree-toolbar__button" aria-label="Expand All" onClick={expandAll}>+</button>
+        <button type="button" className="project-tree-toolbar__button" aria-label="Collapse All" onClick={collapseAll}>-</button>
+        <button type="button" className="project-tree-toolbar__button" aria-label="Focus Active File" onClick={focusActiveFile}>*</button>
+      </div>
+      <div className="project-tree" role="tree" aria-label="Workspace File Tree">
+        {entries.map((entry) =>
+          entry.kind === "directory" ? (
+            <button
+              key={entry.key}
+              type="button"
+              className="project-tree__row project-tree__row--directory"
+              style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
+              aria-expanded={entry.expanded ? "true" : "false"}
+              onClick={() => toggleDirectory(entry.path)}
+            >
+              <span className="project-tree__caret" aria-hidden="true">
+                {entry.expanded ? "▾" : "▸"}
+              </span>
+              <span className="project-tree__icon project-tree__icon--directory" aria-hidden="true" />
+              <span className="project-tree__label">{entry.label}</span>
+            </button>
+          ) : (
+            <button
+              key={entry.key}
+              ref={(node) => {
+                if (node) {
+                  rowRefs.current.set(normalizePath(entry.path), node);
+                } else {
+                  rowRefs.current.delete(normalizePath(entry.path));
+                }
+              }}
+              type="button"
+              className={`project-tree__row project-tree__row--file${normalizedActivePath === normalizePath(entry.path) ? " project-tree__row--active" : ""}`}
+              style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
+              title={entry.path}
+              aria-current={normalizedActivePath === normalizePath(entry.path) ? "true" : undefined}
+              onClick={() => onOpen(entry.path)}
+            >
+              <span className="project-tree__caret" aria-hidden="true" />
+              <span className="project-tree__icon project-tree__icon--file" aria-hidden="true" />
+              <span className="project-tree__label">{entry.label}</span>
+            </button>
+          ),
+        )}
+      </div>
     </div>
   );
 }

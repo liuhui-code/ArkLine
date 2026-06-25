@@ -12,12 +12,12 @@ type UseGitTraceArgs = {
   activePath: string | null;
   activeText: string;
   baseText: string;
-  activeTool: "problems" | "terminal" | "git" | "gitTrace" | "usages";
+  traceVisible: boolean;
   refreshToken: number;
   workspaceApi: WorkspaceApi;
 };
 
-export function useGitTrace({ activeLine, activePath, activeText, baseText, activeTool, refreshToken, workspaceApi }: UseGitTraceArgs) {
+export function useGitTrace({ activeLine, activePath, activeText, baseText, traceVisible, refreshToken, workspaceApi }: UseGitTraceArgs) {
   const [state, setState] = useState<GitTraceState>(createDefaultGitTraceState);
 
   useEffect(() => {
@@ -107,7 +107,7 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
 
   useEffect(() => {
     if (
-      activeTool !== "gitTrace"
+      !traceVisible
       || !activePath
       || !workspaceApi.getCommitTrace
       || state.blameStatus !== "ready"
@@ -178,7 +178,7 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, acti
     return () => {
       cancelled = true;
     };
-  }, [activeLine, activePath, activeTool, state.blameAttributions, state.blameStatus, workspaceApi]);
+  }, [activeLine, activePath, traceVisible, state.blameAttributions, state.blameStatus, workspaceApi]);
 
   return { gitTraceState: state };
 }

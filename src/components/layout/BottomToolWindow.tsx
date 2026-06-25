@@ -23,19 +23,15 @@ type BottomToolWindowProps = {
   problemsPanel: ReactNode;
   terminalPanel: ReactNode;
   gitPanel: ReactNode;
-  gitTracePanel: ReactNode;
-  usagesPanel: ReactNode;
 };
 
 const minHeight = 160;
-const tabOrder: BottomToolKey[] = ["problems", "terminal", "git", "gitTrace", "usages"];
+const tabOrder: BottomToolKey[] = ["problems", "terminal", "git"];
 
 const tabLabels: Record<BottomToolKey, string> = {
   problems: "Problems",
   terminal: "Terminal",
   git: "Git",
-  gitTrace: "Git Trace",
-  usages: "Usages",
 };
 
 export function BottomToolWindow({
@@ -52,8 +48,6 @@ export function BottomToolWindow({
   problemsPanel,
   terminalPanel,
   gitPanel,
-  gitTracePanel,
-  usagesPanel,
 }: BottomToolWindowProps) {
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -216,24 +210,6 @@ export function BottomToolWindow({
             aria-labelledby="bottom-tool-tab-git"
           >
             {gitPanel}
-          </div>
-        ) : null}
-        {activeTool === "gitTrace" ? (
-          <div
-            id="bottom-tool-panel-gitTrace"
-            role="tabpanel"
-            aria-labelledby="bottom-tool-tab-gitTrace"
-          >
-            {gitTracePanel}
-          </div>
-        ) : null}
-        {activeTool === "usages" ? (
-          <div
-            id="bottom-tool-panel-usages"
-            role="tabpanel"
-            aria-labelledby="bottom-tool-tab-usages"
-          >
-            {usagesPanel}
           </div>
         ) : null}
       </div>

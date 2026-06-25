@@ -69,14 +69,15 @@ describe("Shell hotkeys", () => {
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("opens the usages tool window with Alt+F7", async () => {
+  it("opens the editor query panel with Alt+F7", async () => {
     const user = userEvent.setup();
     render(<AppShell />);
 
     await user.click(await openEditor(user));
     await user.keyboard("{Alt>}{F7}{/Alt}");
 
-    expect(await screen.findByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByLabelText("Editor Query Panel")).toBeVisible();
+    expect(screen.queryByRole("tab", { name: "Usages" })).not.toBeInTheDocument();
   });
 
   it("opens code actions with Alt+Enter from the editor", async () => {

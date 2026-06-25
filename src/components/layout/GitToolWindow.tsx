@@ -1,8 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { DiffFile } from "@/features/diff/unified-diff";
+
+export type GitToolView = "changes" | "trace";
 
 type GitToolWindowProps = {
   files: DiffFile[];
+  activeView: GitToolView;
+  tracePanel: ReactNode;
+  onChangeView: (view: GitToolView) => void;
   onOpenFile: (path: string) => void;
 };
 
@@ -34,7 +39,7 @@ function renderDiffPrefix(kind: "context" | "added" | "removed") {
   return " ";
 }
 
-export function GitToolWindow({ files, onOpenFile }: GitToolWindowProps) {
+export function GitToolWindow({ files, activeView, tracePanel, onChangeView, onOpenFile }: GitToolWindowProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(files[0]?.path ?? null);
 
   useEffect(() => {
@@ -51,7 +56,31 @@ export function GitToolWindow({ files, onOpenFile }: GitToolWindowProps) {
 
   return (
     <section aria-label="Git Panel" className="bottom-tool-window__panel bottom-tool-window__panel--git">
-      {files.length > 0 ? (
+      <div className="git-tool-window__tabs" role="tablist" aria-label="Git Views">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === "changes"}
+          className={`git-tool-window__tab${activeView === "changes" ? " git-tool-window__tab--active" : ""}`}
+          onClick={() => onChangeView("changes")}
+        >
+          Local Changes
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeView === "trace"}
+          className={`git-tool-window__tab${activeView === "trace" ? " git-tool-window__tab--active" : ""}`}
+          onClick={() => onChangeView("trace")}
+        >
+          Line Trace
+        </button>
+      </div>
+      {activeView === "trace" ? (
+        <div className="git-tool-window__trace" role="tabpanel" aria-label="Line Trace View">
+          {tracePanel}
+        </div>
+      ) : files.length > 0 ? (
         <div className="git-tool-window">
           <div className="git-tool-window__sidebar">
             <strong className="git-tool-window__heading">Local Changes</strong>

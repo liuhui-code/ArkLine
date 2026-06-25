@@ -4,9 +4,10 @@ import { CodeActionsPalette } from "@/components/layout/CodeActionsPalette";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
+import { EditorQueryPanel } from "@/components/layout/EditorQueryPanel";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
-import { GitToolWindow } from "@/components/layout/GitToolWindow";
+import { GitToolWindow, type GitToolView } from "@/components/layout/GitToolWindow";
 import { GitTracePanel } from "@/components/layout/GitTracePanel";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
@@ -20,7 +21,6 @@ import { SearchOverlayContent } from "@/components/layout/SearchOverlayContent";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHost";
 import { TopBar } from "@/components/layout/TopBar";
-import { UsagesPanel } from "@/components/layout/UsagesPanel";
 import { WorkspaceEditPreview } from "@/components/layout/WorkspaceEditPreview";
 import { useProjectOpening } from "@/components/layout/use-project-opening";
 import { useShellHotkeys } from "@/components/layout/useShellHotkeys";
@@ -165,6 +165,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [completionMessage, setCompletionMessage] = useState<string | undefined>();
   const [completionSession, setCompletionSession] = useState<CompletionSession | null>(null);
   const [usageSearch, setUsageSearch] = useState<UsageSearchState>(idleUsageSearchState());
+  const [queryPanelVisible, setQueryPanelVisible] = useState(false);
+  const [gitToolView, setGitToolView] = useState<GitToolView>("changes");
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
@@ -207,7 +209,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     activePath,
     activeText: activeDocument?.currentContent ?? editorContent,
     baseText: activeDocument?.originalContent ?? editorContent,
-    activeTool: activeBottomTool,
+    traceVisible: bottomContentVisible && activeBottomTool === "git" && gitToolView === "trace",
     refreshToken: gitBlameRefreshToken,
     workspaceApi,
   });
@@ -341,8 +343,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setStatusText(
       tool === "terminal" ? "Terminal"
       : tool === "git" ? "Git"
-      : tool === "gitTrace" ? "Git Trace"
-      : tool === "usages" ? "Usages"
       : "Problems",
     );
   }
@@ -358,8 +358,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setStatusText("Editor");
     focusEditorSoon();
   }
-  function openUsagesToolWindow() {
-    showBottomTool("usages");
+  function openEditorQueryPanel() {
+    setQueryPanelVisible(true);
+  }
+  function closeEditorQueryPanel() {
+    setQueryPanelVisible(false);
+    setUsageSearch(idleUsageSearchState());
+  }
+  function openGitTraceView() {
+    setGitToolView("trace");
+    showBottomTool("git");
   }
   function toggleGitBlame() {
     setGitBlameVisible((visible) => !visible);
@@ -401,8 +409,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function showSelectedBlameDiff() {
     if (selectedBlameAttribution?.commit) {
-      showBottomTool("gitTrace");
+      openGitTraceView();
     } else {
+      setGitToolView("changes");
       showBottomTool("git");
     }
   }
@@ -410,7 +419,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     if (!selectedBlameAttribution?.commit) {
       return;
     }
-    showBottomTool("gitTrace");
+    openGitTraceView();
   }
   async function showSelectedLocalDiff() {
     await loadDiff();
@@ -633,7 +642,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       ? []
       : await workspaceApi.gotoDefinitionCandidates(request);
     if (semanticCandidates.length > 1) {
-      openUsagesToolWindow();
+      openEditorQueryPanel();
       setUsageSearch({
         status: "ready",
         items: semanticCandidates.map((item) => ({
@@ -674,7 +683,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     if (!resolvedTarget) {
       const fallbackCandidates = target ? [] : await findWorkspaceDefinitionCandidates(fallbackRequest);
       if (fallbackCandidates.length > 1) {
-        openUsagesToolWindow();
+        openEditorQueryPanel();
         setUsageSearch({
           status: "ready",
           items: fallbackCandidates.map((item) => ({
@@ -811,7 +820,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText("SDK settings are still applying");
       return;
     }
-    openUsagesToolWindow();
+    openEditorQueryPanel();
     if (!activePath || !workspaceApi.findUsages) {
       setUsageSearch({ status: "error", items: [], message: "Find Usages unavailable" });
       return;
@@ -1319,11 +1328,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   async function loadDiff() {
     const diffText = await workspaceApi.loadDiff(workspace?.rootPath ?? null);
     setDiffFiles(parseUnifiedDiff(diffText));
+    setGitToolView("changes");
     showBottomTool("git");
     setStatusText(diffText ? "Diff loaded" : "No diff");
   }
   function openGitTraceCommitDiff(patch: string) {
     setDiffFiles(parseUnifiedDiff(patch));
+    setGitToolView("changes");
     showBottomTool("git");
     setStatusText(patch ? "Commit diff loaded" : "No commit diff");
   }
@@ -1616,7 +1627,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
       >
         <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
-        <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={handleEditorSelectionChange} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+        <div className="editor-workbench">
+          {queryPanelVisible ? (
+            <EditorQueryPanel
+              state={usageSearch}
+              onClose={closeEditorQueryPanel}
+              onOpenUsage={(item) => void openUsageResult(item)}
+            />
+          ) : null}
+          <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={handleEditorSelectionChange} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+        </div>
       </div>
       {selectedBlameAttribution ? (
         <GitBlameCard
@@ -1707,9 +1727,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
-        gitPanel={<GitToolWindow files={diffFiles} onOpenFile={(path) => void openFile(path)} />}
-        gitTracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />}
-        usagesPanel={<UsagesPanel state={usageSearch} onOpenUsage={(item) => void openUsageResult(item)} />}
+        gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />} onChangeView={setGitToolView} onOpenFile={(path) => void openFile(path)} />}
       />
       <div
         aria-label="Definition Debug Banner"
