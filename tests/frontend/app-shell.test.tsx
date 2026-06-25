@@ -26,6 +26,14 @@ async function openProject(
   }
 }
 
+async function openMainEditor(user: ReturnType<typeof userEvent.setup>) {
+  await openProject(user);
+  await user.click(await screen.findByRole("button", { name: "main.ets" }));
+  const editor = await screen.findByLabelText("Editor Content");
+  await user.click(editor);
+  return editor;
+}
+
 function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi {
   return {
     pickWorkspaceRoot: async () => null,
@@ -641,6 +649,112 @@ describe("App shell", () => {
     const results = await screen.findByRole("list", { name: "Find Action Results" });
     expect(within(results).getByRole("button", { name: "Go to Definition" })).toBeVisible();
     expect(within(results).getByText(/^(Ctrl|Cmd)\+B$/)).toBeVisible();
+  });
+
+  it("opens code action palette with Alt+Enter and lists action title kind and disabled reason", async () => {
+    const user = userEvent.setup();
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.add-missing-import",
+        title: "Add missing import",
+        kind: "quickfix" as const,
+        provider: "arkts" as const,
+        safety: "safe" as const,
+      },
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "needsPreview" as const,
+        disabledReason: "Select an expression first",
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    expect(await screen.findByRole("dialog", { name: "Code Actions" })).toBeVisible();
+    const results = screen.getByRole("listbox", { name: "Code Actions" });
+    expect(within(results).getByRole("option", { name: /Add missing import.*Quick Fix/ })).toBeVisible();
+    expect(within(results).getByRole("option", { name: /Extract function.*Refactor: Extract.*Select an expression first/ })).toHaveAttribute("aria-disabled", "true");
+    await waitFor(() => expect(listCodeActions).toHaveBeenCalledWith(expect.objectContaining({
+      path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+      content: expect.stringContaining("struct Index"),
+    })));
+  });
+
+  it("resolves the selected code action with Enter", async () => {
+    const user = userEvent.setup();
+    const resolveCodeAction = vi.fn(async () => ({
+      status: "unsupported" as const,
+      reason: "Action resolution is not wired yet",
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.add-missing-import",
+        title: "Add missing import",
+        kind: "quickfix" as const,
+        provider: "arkts" as const,
+        safety: "safe" as const,
+        data: { import: "router" },
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(resolveCodeAction).toHaveBeenCalledWith({
+      id: "arkts.add-missing-import",
+      data: { import: "router" },
+    }));
+    expect(await screen.findByText("Code action unsupported: Action resolution is not wired yet")).toBeVisible();
+  });
+
+  it("opens a code action preview placeholder for risky actions without applying edits", async () => {
+    const user = userEvent.setup();
+    const applyWorkspaceEdit = vi.fn(async () => ({ applied: true, conflicts: [], changedFiles: [] }));
+    const resolveCodeAction = vi.fn(async () => ({
+      id: "plan.extract",
+      title: "Extract function",
+      operations: [
+        {
+          kind: "text" as const,
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+          newText: "function extracted() {}\n",
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo Extract function",
+      requiresPreview: true,
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "risky" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("status", { name: "Workspace Edit Preview Placeholder" })).toHaveTextContent("Preview ready: Extract function");
+    expect(applyWorkspaceEdit).not.toHaveBeenCalled();
   });
 
   it("keeps command palette panel clicks inside and closes from its backdrop or close button", async () => {

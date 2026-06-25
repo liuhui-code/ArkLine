@@ -22,6 +22,10 @@ export type ShellCommand =
   | "goToDefinition"
   | "findUsages"
   | "showCurrentClassMethods"
+  | "showCodeActions"
+  | "renameSymbol"
+  | "generateCode"
+  | "refactorThis"
   | "openCompletion"
   | "save";
 
@@ -32,6 +36,10 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "navigateBack", title: "Navigate Back", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowLeft" }] },
   { id: "findUsages", title: "Find Usages", category: "Navigation", defaultKeybindings: [{ alt: true, key: "F7" }] },
   { id: "showCurrentClassMethods", title: "Show Current Class Methods", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F7" }] },
+  { id: "showCodeActions", title: "Show Code Actions", category: "Editor", defaultKeybindings: [{ alt: true, key: "Enter" }] },
+  { id: "renameSymbol", title: "Rename Symbol", category: "Refactor", defaultKeybindings: [{ key: "F2" }] },
+  { id: "generateCode", title: "Generate Code", category: "Generate", defaultKeybindings: [{ alt: true, key: "Insert" }] },
+  { id: "refactorThis", title: "Refactor This", category: "Refactor", defaultKeybindings: [{ ctrl: true, alt: true, shift: true, key: "T" }] },
   { id: "toggleEditorOnly", title: "Editor Only", category: "Window", defaultKeybindings: [{ mod: true, shift: true, key: "F12" }] },
   { id: "save", title: "Save", category: "File", defaultKeybindings: [{ mod: true, key: "s" }] },
   { id: "goToDefinition", title: "Go to Definition", category: "Navigation", defaultKeybindings: [{ mod: true, key: "b" }] },

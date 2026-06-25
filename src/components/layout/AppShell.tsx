@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
+import { CodeActionsPalette } from "@/components/layout/CodeActionsPalette";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
@@ -26,6 +27,7 @@ import { buildAppShellCommandPaletteItems, extractCompletionPrefix, parseGoToLin
 import { useHydratedSettings } from "@/components/layout/use-hydrated-settings";
 import { useGitTrace } from "@/components/layout/use-git-trace";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
+import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
 import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
@@ -50,6 +52,7 @@ import type { EditorCaretRect } from "@/editor/editor-events";
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 type NavigationLocation = { path: string; line: number; column: number };
 type CompletionSession = { path: string; line: number; replacePrefix: string };
+type CodeActionsStatus = "loading" | "ready" | "empty" | "error";
 const COMPLETION_POPUP_WIDTH = 460;
 const COMPLETION_POPUP_HEIGHT = 340;
 const COMPLETION_POPUP_MARGIN = 12;
@@ -63,6 +66,10 @@ const LEFT_SIDEBAR_MAX_WIDTH = 520;
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
+}
+
+function isWorkspaceEditPlan(result: unknown): result is WorkspaceEditPlan {
+  return Boolean(result && typeof result === "object" && Array.isArray((result as WorkspaceEditPlan).operations));
 }
 
 function constrainCompletionPopupPosition(top: number, left: number) {
@@ -142,6 +149,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [currentMethodsVisible, setCurrentMethodsVisible] = useState(false);
   const [currentMethodsQuery, setCurrentMethodsQuery] = useState("");
   const [currentMethodsSelectedIndex, setCurrentMethodsSelectedIndex] = useState(0);
+  const [codeActionsVisible, setCodeActionsVisible] = useState(false);
+  const [codeActions, setCodeActions] = useState<CodeAction[]>([]);
+  const [codeActionsStatus, setCodeActionsStatus] = useState<CodeActionsStatus>("empty");
+  const [codeActionsMessage, setCodeActionsMessage] = useState<string | undefined>();
+  const [codeActionsSelectedIndex, setCodeActionsSelectedIndex] = useState(0);
+  const [workspaceEditPreviewPlaceholder, setWorkspaceEditPreviewPlaceholder] = useState<WorkspaceEditPlan | null>(null);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -157,6 +170,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const completionRecencyRef = useRef(new Map<string, number>());
   const completionRecencyCounterRef = useRef(0);
   const completionRequestRef = useRef(0);
+  const codeActionsRequestRef = useRef(0);
   const searchEverywhereRequestRef = useRef(0);
   const settingsSaveResetTimerRef = useRef<number | null>(null);
   const typingCompletionTimerRef = useRef<number | null>(null);
@@ -396,6 +410,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       focusEditor();
       return true;
     }
+    if (codeActionsVisible) {
+      closeCodeActionsPalette();
+      return true;
+    }
     if (activeOverlay !== "none") {
       setActiveOverlay("none");
       focusEditor();
@@ -485,6 +503,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay("none");
     setProblems([]);
     setDiffFiles([]);
+    setCodeActionsVisible(false);
+    setWorkspaceEditPreviewPlaceholder(null);
     clearCompletionSession();
     setCompletionAnchor(null);
     setUsageSearch(idleUsageSearchState());
@@ -528,6 +548,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveDocument(path);
     clearCompletionSession();
     setCompletionAnchor(null);
+    setCodeActionsVisible(false);
+    setWorkspaceEditPreviewPlaceholder(null);
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
     setSelectionTarget(null);
@@ -791,6 +813,99 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setCurrentMethodsSelectedIndex(0);
     setCurrentMethodsVisible(true);
     setStatusText("Methods in Current Class");
+  }
+  function closeCodeActionsPalette() {
+    setCodeActionsVisible(false);
+    focusEditorSoon();
+  }
+  async function showCodeActionsFromEditor(source: "all" | "rename" | "generate" | "refactor" = "all") {
+    if (settingsApplying) {
+      setStatusText("SDK settings are still applying");
+      return;
+    }
+    if (!activePath || !workspaceApi.listCodeActions) {
+      setStatusText("Code actions unavailable");
+      return;
+    }
+
+    const requestId = codeActionsRequestRef.current + 1;
+    codeActionsRequestRef.current = requestId;
+    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
+    const request = {
+      path: activePath,
+      line: editorSelection.line,
+      column: editorSelection.column,
+      content: currentContent,
+    };
+
+    clearCompletionSession();
+    setActiveOverlay("none");
+    setCurrentMethodsVisible(false);
+    setWorkspaceEditPreviewPlaceholder(null);
+    setCodeActions([]);
+    setCodeActionsSelectedIndex(0);
+    setCodeActionsMessage(undefined);
+    setCodeActionsStatus("loading");
+    setCodeActionsVisible(true);
+    setStatusText(source === "all" ? "Code Actions" : source === "rename" ? "Rename Symbol" : source === "generate" ? "Generate Code" : "Refactor This");
+
+    try {
+      const actions = await workspaceApi.listCodeActions(request);
+      if (codeActionsRequestRef.current !== requestId) {
+        return;
+      }
+
+      setCodeActions(actions);
+      setCodeActionsSelectedIndex(0);
+      setCodeActionsStatus(actions.length > 0 ? "ready" : "empty");
+      setCodeActionsMessage(actions.length > 0 ? undefined : "No code actions available");
+      setStatusText(actions.length > 0 ? `Code Actions: ${actions.length}` : "Code Actions: none");
+    } catch (error) {
+      if (codeActionsRequestRef.current !== requestId) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      setCodeActions([]);
+      setCodeActionsSelectedIndex(0);
+      setCodeActionsStatus("error");
+      setCodeActionsMessage(`Code actions failed: ${message}`);
+      setStatusText(`Code actions failed: ${message}`);
+    }
+  }
+  async function resolveCodeActionFromPalette(action: CodeAction) {
+    if (action.disabledReason) {
+      setStatusText(`Code action disabled: ${action.disabledReason}`);
+      return;
+    }
+    if (!workspaceApi.resolveCodeAction) {
+      setStatusText("Resolve code action unavailable");
+      return;
+    }
+
+    setStatusText(`Resolving code action: ${action.title}`);
+    try {
+      const result = await workspaceApi.resolveCodeAction({ id: action.id, data: action.data });
+      if (!isWorkspaceEditPlan(result)) {
+        setStatusText(`Code action unsupported: ${result.reason}`);
+        return;
+      }
+
+      if (result.requiresPreview || requiresPreview(action)) {
+        setWorkspaceEditPreviewPlaceholder(result);
+        setCodeActionsVisible(false);
+        setStatusText(`Preview ready: ${result.title}`);
+        focusEditorSoon();
+        return;
+      }
+
+      setCodeActionsVisible(false);
+      setStatusText(`Code action resolved: ${result.title}`);
+      focusEditorSoon();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText(`Resolve code action failed: ${message}`);
+    }
   }
   function closeCurrentClassMethods() {
     setCurrentMethodsVisible(false);
@@ -1105,10 +1220,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
   const shellHotkeyContext = useMemo(() => ({
     completionOpen: activeOverlay === "completion",
-    overlayOpen: currentMethodsVisible || (activeOverlay !== "none" && activeOverlay !== "completion"),
+    overlayOpen: codeActionsVisible || currentMethodsVisible || (activeOverlay !== "none" && activeOverlay !== "completion"),
     settingsOpen: settingsVisible,
     settingsApplying,
-  }), [activeOverlay, currentMethodsVisible, settingsApplying, settingsVisible]);
+  }), [activeOverlay, codeActionsVisible, currentMethodsVisible, settingsApplying, settingsVisible]);
 
   useShellHotkeys({ context: shellHotkeyContext, onCommand(command: ShellCommand) {
     const handlers: Partial<Record<ShellCommand, () => void>> = {
@@ -1116,6 +1231,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       navigateBack: () => void navigateBackFromHistory(),
       openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => setOverlay("searchEverywhere"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(),
       showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), showCurrentClassMethods,
+      showCodeActions: () => void showCodeActionsFromEditor(),
+      renameSymbol: () => void showCodeActionsFromEditor("rename"),
+      generateCode: () => void showCodeActionsFromEditor("generate"),
+      refactorThis: () => void showCodeActionsFromEditor("refactor"),
     };
     const handler = handlers[command];
     if (handler) return handler();
@@ -1259,6 +1378,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     goToDefinition: () => void goToDefinitionFromEditor(),
     findUsages: () => void findUsagesFromEditor(),
     showCurrentClassMethods,
+    showCodeActions: () => void showCodeActionsFromEditor(),
+    renameSymbol: () => void showCodeActionsFromEditor("rename"),
+    generateCode: () => void showCodeActionsFromEditor("generate"),
+    refactorThis: () => void showCodeActionsFromEditor("refactor"),
     openCompletion: () => void openCompletionFromEditor(),
     runLint: () => void runLint(),
     formatActiveDocument: () => void formatActiveDocument(),
@@ -1318,6 +1441,23 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           onOpenMethod={openCurrentClassMethod}
           onSelectIndex={setCurrentMethodsSelectedIndex}
         />
+      ) : null}
+      {codeActionsVisible ? (
+        <CodeActionsPalette
+          actions={codeActions}
+          status={codeActionsStatus}
+          message={codeActionsMessage}
+          selectedIndex={codeActionsSelectedIndex}
+          onClose={closeCodeActionsPalette}
+          onResolveAction={(action) => void resolveCodeActionFromPalette(action)}
+          onSelectIndex={setCodeActionsSelectedIndex}
+        />
+      ) : null}
+      {workspaceEditPreviewPlaceholder ? (
+        <div className="workspace-edit-preview-placeholder" role="status" aria-label="Workspace Edit Preview Placeholder">
+          <strong>Preview ready: {workspaceEditPreviewPlaceholder.title}</strong>
+          <span>{workspaceEditPreviewPlaceholder.affectedFiles.length} affected file{workspaceEditPreviewPlaceholder.affectedFiles.length === 1 ? "" : "s"}</span>
+        </div>
       ) : null}
 
       <OpenProjectDialog

@@ -79,6 +79,38 @@ describe("Shell hotkeys", () => {
     expect(await screen.findByRole("tab", { name: "Usages" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("opens code actions with Alt+Enter from the editor", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    expect(await screen.findByRole("dialog", { name: "Code Actions" })).toBeVisible();
+    expect(await screen.findByRole("option", { name: /Generate ArkTS Page.*Generate/ })).toBeVisible();
+  });
+
+  it("shows Rename Symbol Generate Code and Refactor This command palette entries", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "rename");
+    expect(await screen.findByRole("button", { name: "Rename Symbol" })).toBeVisible();
+    expect(screen.getByText("F2")).toBeVisible();
+
+    await user.clear(screen.getByLabelText("Find Action Query"));
+    await user.type(screen.getByLabelText("Find Action Query"), "generate");
+    expect(await screen.findByRole("button", { name: "Generate Code" })).toBeVisible();
+    expect(screen.getByText("Alt+Insert")).toBeVisible();
+
+    await user.clear(screen.getByLabelText("Find Action Query"));
+    await user.type(screen.getByLabelText("Find Action Query"), "refactor");
+    expect(await screen.findByRole("button", { name: "Refactor This" })).toBeVisible();
+    expect(screen.getByText("Ctrl+Alt+Shift+T")).toBeVisible();
+  });
+
   it("closes the active editor tab with Ctrl+W instead of closing the window", async () => {
     const user = userEvent.setup();
     render(<AppShell />);
