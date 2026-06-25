@@ -7,6 +7,7 @@ import { createBuildEnvironmentSnapshot } from "@/features/build/build-environme
 import { assessBuildFreshness } from "@/features/build/build-freshness";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { createBuildIntent, createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
+import { listBuildRunSummaries } from "@/features/build/build-run-summary";
 import { createBuildStore } from "@/features/build/build-store";
 import { createProblemsStore } from "@/features/problems/problems-store";
 
@@ -702,5 +703,75 @@ describe("build store", () => {
 
     store.clearEvents("build-1");
     expect(store.state.events).toEqual([]);
+  });
+
+  it("summarizes current queued and completed build runs", () => {
+    const store = createBuildStore();
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const queuedPlan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "app",
+      moduleName: null,
+      product: "default",
+      buildMode: "release",
+      clean: false,
+      fastMode: false,
+    });
+
+    store.enqueue({ runId: "build-queued", plan: queuedPlan, requestedAt: 100 });
+    store.start({ ...plan, runId: "build-running" });
+
+    expect(listBuildRunSummaries(store.state).map((summary) => ({
+      runId: summary.runId,
+      label: summary.label,
+      status: summary.status,
+      eventCount: summary.eventCount,
+    }))).toEqual([
+      {
+        runId: "build-running",
+        label: "Build HAP entry debug",
+        status: "running",
+        eventCount: 1,
+      },
+      {
+        runId: "build-queued",
+        label: "Build APP project release",
+        status: "queued",
+        eventCount: 1,
+      },
+    ]);
+
+    store.finish(createBuildResultFromTerminalRun({
+      runId: "build-running",
+      exitCode: 0,
+      durationMs: 1200,
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      problems: [],
+      artifacts: [{
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      }],
+      environment: createBuildEnvironmentSnapshot({ plan }),
+    }));
+
+    expect(listBuildRunSummaries(store.state)[1]).toMatchObject({
+      runId: "build-running",
+      label: "Build HAP entry debug",
+      status: "success",
+      durationMs: 1200,
+      diagnosticCount: 0,
+      artifactCount: 1,
+      eventCount: 3,
+    });
   });
 });
