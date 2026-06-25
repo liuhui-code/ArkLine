@@ -1,7 +1,7 @@
 import { createProblemsStore } from "@/features/problems/problems-store";
 
 describe("problems store", () => {
-  it("deduplicates diagnostics and filters unsupported sources", () => {
+  it("deduplicates diagnostics and keeps supported build sources", () => {
     const store = createProblemsStore();
     const diagnostic = {
       source: "lint" as const,
@@ -12,9 +12,10 @@ describe("problems store", () => {
       message: "Unexpected token",
     };
 
-    store.replace([diagnostic, diagnostic, { ...diagnostic, source: "build" as never }]);
+    const buildDiagnostic = { ...diagnostic, source: "build" as const };
+    store.replace([diagnostic, diagnostic, buildDiagnostic]);
 
-    expect(store.state.items).toEqual([diagnostic]);
+    expect(store.state.items).toEqual([diagnostic, buildDiagnostic]);
   });
 
   it("sorts errors before warnings", () => {

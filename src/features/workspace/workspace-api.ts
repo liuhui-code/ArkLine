@@ -43,7 +43,7 @@ export type PathPickOptions = {
 };
 
 export type ValidationProblem = {
-  source: "lint" | "format" | "language";
+  source: "lint" | "format" | "language" | "build";
   severity: "error" | "warning";
   path: string;
   line: number;

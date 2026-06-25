@@ -10,6 +10,7 @@ type ShellStatusBarProps = {
   statusText: string;
   workspaceName: string | null;
   terminalRunning: boolean;
+  buildMessage: string;
   currentLineBlame?: string | null;
   gitBlameVisible: boolean;
   gitBlameMenuOpen: boolean;
@@ -27,6 +28,7 @@ export function ShellStatusBar({
   statusText,
   workspaceName,
   terminalRunning,
+  buildMessage,
   currentLineBlame = null,
   gitBlameVisible,
   gitBlameMenuOpen,
@@ -42,6 +44,7 @@ export function ShellStatusBar({
         <span className="status-pill status-pill--em">{`Workspace: ${workspaceName ?? "none"}`}</span>
         <span className="status-pill">{activePath ? getPathBasename(activePath) : "No file selected"}</span>
         <SemanticModeBadge semanticState={semanticState} />
+        <span aria-label="Build Status" className="status-pill">{buildMessage}</span>
       </div>
       <div aria-label="Status Bar Right" className="status-bar__group status-bar__group--right">
         {currentLineBlame ? <span className="status-pill status-pill--blame">{currentLineBlame}</span> : null}

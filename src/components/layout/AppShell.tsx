@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
+import { BuildToolWindow } from "@/components/layout/BuildToolWindow";
 import { CodeActionsPalette } from "@/components/layout/CodeActionsPalette";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
@@ -29,6 +30,10 @@ import { useHydratedSettings } from "@/components/layout/use-hydrated-settings";
 import { useGitTrace } from "@/components/layout/use-git-trace";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
+import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
+import type { BuildState, BuildTarget } from "@/features/build/build-model";
+import { parseBuildProblems } from "@/features/build/build-output-parser";
+import { createBuildStore } from "@/features/build/build-store";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
 import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
@@ -146,6 +151,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   });
   const [searchEverywhereSelectedIndex, setSearchEverywhereSelectedIndex] = useState(0);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
+  const [buildState, setBuildState] = useState(createBuildStore().state);
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]), [recentProjects, setRecentProjects] = useState<string[]>([]);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [settingsSaveState, setSettingsSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -188,6 +194,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const documentsRef = useRef(createDocumentStore());
   const tabsRef = useRef(createEditorTabsStore(documentsRef.current));
   const problemsRef = useRef(createProblemsStore());
+  const buildStoreRef = useRef(createBuildStore());
   const settingsRef = useRef(createSettingsStore());
   const filesPaneRef = useRef<HTMLDivElement | null>(null);
   const editorSurfaceRef = useRef<HTMLElement | null>(null);
@@ -198,6 +205,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const completionRequestRef = useRef(0);
   const codeActionsRequestRef = useRef(0);
   const codeActionResolveRequestRef = useRef(0);
+  const buildRunCounterRef = useRef(0);
   const searchEverywhereRequestRef = useRef(0);
   const settingsSaveResetTimerRef = useRef<number | null>(null);
   const typingCompletionTimerRef = useRef<number | null>(null);
@@ -342,6 +350,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveBottomTool(tool);
     setStatusText(
       tool === "terminal" ? "Terminal"
+      : tool === "build" ? "Build"
       : tool === "git" ? "Git"
       : "Problems",
     );
@@ -1288,13 +1297,91 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     clearTypingCompletionTimer();
     clearSettingsSaveResetTimer();
   }, []);
-  async function refreshProblems(path: string, content: string) { problemsRef.current.replace(await workspaceApi.runValidation(path, content)); setProblems([...problemsRef.current.state.items]); }
+  async function refreshProblems(path: string, content: string) {
+    const validationProblems = await workspaceApi.runValidation(path, content);
+    problemsRef.current.replace([
+      ...problemsRef.current.state.items.filter((item) => item.source === "build"),
+      ...validationProblems,
+    ]);
+    setProblems([...problemsRef.current.state.items]);
+  }
 
   async function runLint() {
     if (!activePath) return;
     await refreshProblems(activePath, editorContent);
     showBottomTool("problems");
     setStatusText("Lint complete");
+  }
+
+  function updateBuildState(next: Partial<Pick<BuildState, "lastTarget" | "moduleName" | "product" | "buildMode" | "fastMode">>) {
+    buildStoreRef.current.configure(next);
+    setBuildState({ ...buildStoreRef.current.state });
+  }
+
+  async function runBuild(clean = false) {
+    if (!workspace?.rootPath) {
+      buildStoreRef.current.fail("Open a project before building");
+      setBuildState({ ...buildStoreRef.current.state });
+      showBottomTool("build");
+      return;
+    }
+
+    if (buildStoreRef.current.state.status === "running") {
+      showBottomTool("build");
+      return;
+    }
+
+    const state = buildStoreRef.current.state;
+    const plan = planHarmonyBuildCommand({
+      rootPath: workspace.rootPath,
+      target: state.lastTarget,
+      moduleName: state.lastTarget === "app" ? null : state.moduleName.trim() || "entry",
+      product: state.product.trim() || "default",
+      buildMode: state.buildMode,
+      clean,
+      fastMode: state.fastMode,
+    });
+    buildRunCounterRef.current += 1;
+    const runId = `build-${buildRunCounterRef.current}`;
+
+    buildStoreRef.current.start({ ...plan, runId });
+    setBuildState({ ...buildStoreRef.current.state });
+    showBottomTool("build");
+    setStatusText(plan.label);
+
+    try {
+      const result = await workspaceApi.runTerminalCommand({
+        runId,
+        command: plan.command,
+        cwd: plan.cwd,
+        source: "preset",
+      });
+      const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
+      const parsedProblems = parseBuildProblems(output);
+      buildStoreRef.current.finish({ ...result, problems: parsedProblems });
+      problemsRef.current.replace([
+        ...problemsRef.current.state.items.filter((item) => item.source !== "build"),
+        ...parsedProblems,
+      ]);
+      setProblems([...problemsRef.current.state.items]);
+      setBuildState({ ...buildStoreRef.current.state });
+      setStatusText(buildStoreRef.current.state.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      buildStoreRef.current.fail(message);
+      setBuildState({ ...buildStoreRef.current.state });
+      setStatusText("Build failed");
+    }
+  }
+
+  async function stopBuild() {
+    const runId = buildStoreRef.current.state.currentRun?.runId;
+    if (!runId) {
+      return;
+    }
+
+    await workspaceApi.stopTerminalCommand(runId);
+    setStatusText("Stopping build");
   }
 
   async function formatActiveDocument() {
@@ -1621,7 +1708,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell" data-bottom-layout-token={bottomLayoutToken}>
-      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
+      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onRunBuild={() => void runBuild()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div
         className="shell-grid"
         style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
@@ -1727,6 +1814,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
+        buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
         gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />} onChangeView={setGitToolView} onOpenFile={(path) => void openFile(path)} />}
       />
       <div
@@ -1737,7 +1825,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       >
         {definitionDebugText}
       </div>
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
     </div>
   );
 }

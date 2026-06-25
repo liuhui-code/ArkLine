@@ -13,6 +13,7 @@ type TopBarProps = {
   onOpenSearchEverywhere: () => void;
   onOpenCommandPalette: () => void;
   onRunLint: () => void;
+  onRunBuild: () => void;
   onFormat: () => void;
   onLoadDiff: () => void;
   onOpenTerminal: () => void;
@@ -20,7 +21,7 @@ type TopBarProps = {
   onToggleEditorOnly: () => void;
 };
 
-type MenuKey = "file" | "edit" | "view";
+type MenuKey = "file" | "edit" | "view" | "run";
 type MenuItem = {
   label: string;
   action: () => void;
@@ -39,6 +40,7 @@ export function TopBar({
   onOpenSearchEverywhere,
   onOpenCommandPalette,
   onRunLint,
+  onRunBuild,
   onFormat,
   onLoadDiff,
   onOpenTerminal,
@@ -114,6 +116,13 @@ export function TopBar({
         { label: "Editor Only", action: onToggleEditorOnly, shortcut: getShellCommandShortcut("toggleEditorOnly") },
       ],
     ],
+    run: [
+      [
+        { label: "Build", action: onRunBuild },
+        { label: "Run Lint", action: onRunLint },
+        { label: "Format", action: onFormat },
+      ],
+    ],
   };
 
   return (
@@ -127,6 +136,7 @@ export function TopBar({
           <button type="button" className={`toolbar__button toolbar__button--ghost${activeMenu === "file" ? " toolbar__button--active" : ""}`} onClick={() => setActiveMenu(activeMenu === "file" ? null : "file")}>File</button>
           <button type="button" className={`toolbar__button toolbar__button--ghost${activeMenu === "edit" ? " toolbar__button--active" : ""}`} onClick={() => setActiveMenu(activeMenu === "edit" ? null : "edit")}>Edit</button>
           <button type="button" className={`toolbar__button toolbar__button--ghost${activeMenu === "view" ? " toolbar__button--active" : ""}`} onClick={() => setActiveMenu(activeMenu === "view" ? null : "view")}>View</button>
+          <button type="button" className={`toolbar__button toolbar__button--ghost${activeMenu === "run" ? " toolbar__button--active" : ""}`} onClick={() => setActiveMenu(activeMenu === "run" ? null : "run")}>Run</button>
           {activeMenu ? (
             <div className="topbar-menu" role="menu" aria-label={`${activeMenu} menu`}>
               {menuGroups[activeMenu].map((group, groupIndex) => (
@@ -141,6 +151,7 @@ export function TopBar({
         <span className="topbar__workspace" title={workspaceName ?? "No workspace open"}>{workspaceName ?? "No workspace open"}</span>
         <div className="toolbar" role="toolbar" aria-label="Primary">
           <button type="button" aria-label="Run Lint" className="toolbar__button" onClick={onRunLint}><span className="toolbar__icon toolbar__icon--lint" aria-hidden="true" />Run Lint</button>
+          <button type="button" aria-label="Run Build" className="toolbar__button toolbar__button--primary" onClick={onRunBuild}><span className="toolbar__icon toolbar__icon--build" aria-hidden="true" />Build</button>
           <button type="button" aria-label="Format" className="toolbar__button" onClick={onFormat}><span className="toolbar__icon toolbar__icon--format" aria-hidden="true" />Format</button>
         </div>
       </div>

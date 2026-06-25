@@ -1,6 +1,6 @@
 export type LeftToolKey = "project" | "git" | "problems";
 
-export type BottomToolKey = "problems" | "terminal" | "git";
+export type BottomToolKey = "problems" | "terminal" | "build" | "git";
 
 export type OverlayKey =
   | "none"

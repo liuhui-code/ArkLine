@@ -1,4 +1,4 @@
-export type ProblemSource = "lint" | "format" | "language";
+export type ProblemSource = "lint" | "format" | "language" | "build";
 export type ProblemSeverity = "error" | "warning";
 
 export type ProblemItem = {
@@ -14,7 +14,7 @@ export type ProblemsState = {
   items: ProblemItem[];
 };
 
-const supportedSources: ProblemSource[] = ["lint", "format", "language"];
+const supportedSources: ProblemSource[] = ["lint", "format", "language", "build"];
 
 function severityWeight(severity: ProblemSeverity) {
   return severity === "error" ? 0 : 1;
