@@ -247,4 +247,10 @@ describe("Bottom tool window", () => {
     await act(async () => { fireEvent.keyDown(separator, { key: "Home" }); });
     expect(bottomPanel).toHaveStyle({ height: "160px" });
   });
+
+  it("includes Device Log as a bottom tool tab", () => {
+    render(<AppShell />);
+
+    expect(screen.getByRole("tab", { name: "Device Log" })).toBeVisible();
+  });
 });

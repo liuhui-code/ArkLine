@@ -24,16 +24,18 @@ type BottomToolWindowProps = {
   terminalPanel: ReactNode;
   buildPanel: ReactNode;
   gitPanel: ReactNode;
+  deviceLogPanel: ReactNode;
 };
 
 const minHeight = 160;
-const tabOrder: BottomToolKey[] = ["problems", "terminal", "build", "git"];
+const tabOrder: BottomToolKey[] = ["problems", "terminal", "build", "git", "deviceLog"];
 
 const tabLabels: Record<BottomToolKey, string> = {
   problems: "Problems",
   terminal: "Terminal",
   build: "Build",
   git: "Git",
+  deviceLog: "Device Log",
 };
 
 export function BottomToolWindow({
@@ -51,6 +53,7 @@ export function BottomToolWindow({
   terminalPanel,
   buildPanel,
   gitPanel,
+  deviceLogPanel,
 }: BottomToolWindowProps) {
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -222,6 +225,15 @@ export function BottomToolWindow({
             aria-labelledby="bottom-tool-tab-git"
           >
             {gitPanel}
+          </div>
+        ) : null}
+        {activeTool === "deviceLog" ? (
+          <div
+            id="bottom-tool-panel-deviceLog"
+            role="tabpanel"
+            aria-labelledby="bottom-tool-tab-deviceLog"
+          >
+            {deviceLogPanel}
           </div>
         ) : null}
       </div>

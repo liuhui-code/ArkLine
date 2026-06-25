@@ -5,6 +5,7 @@ import { CodeActionsPalette } from "@/components/layout/CodeActionsPalette";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
+import { DeviceLogToolWindow } from "@/components/layout/DeviceLogToolWindow";
 import { EditorQueryPanel } from "@/components/layout/EditorQueryPanel";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
@@ -1855,6 +1856,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
         buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} modules={buildProject?.modules ?? []} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
         gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />} onChangeView={setGitToolView} onOpenFile={(path) => void openFile(path)} />}
+        deviceLogPanel={<DeviceLogToolWindow active={bottomContentVisible && activeBottomTool === "deviceLog"} workspaceApi={workspaceApi} onStatusChange={setStatusText} />}
       />
       <div
         aria-label="Definition Debug Banner"

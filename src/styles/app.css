@@ -1627,6 +1627,115 @@ button:disabled {
   min-height: 0;
 }
 
+.device-log-tool-window {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: #24262b;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+}
+
+.device-log-tool-window__toolbar,
+.device-log-tool-window__filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.device-log-tool-window__toolbar select,
+.device-log-tool-window__filters input[aria-label="Filter device logs"] {
+  min-height: 26px;
+  color: var(--text-primary);
+  background: #1f2126;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.device-log-tool-window__toolbar select {
+  min-width: 220px;
+}
+
+.device-log-tool-window__toolbar button {
+  min-height: 26px;
+  padding: 0 10px;
+  color: var(--text-primary);
+  background: #343740;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.device-log-tool-window__toolbar button:hover {
+  background: #404550;
+}
+
+.device-log-tool-window__status {
+  min-width: 70px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.device-log-tool-window__filters input[aria-label="Filter device logs"] {
+  flex: 1;
+  min-width: 260px;
+  max-width: 520px;
+  padding: 0 8px;
+}
+
+.device-log-tool-window__filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.device-log-tool-window__filter-error {
+  color: #ff8f8f;
+  font-size: 12px;
+}
+
+.device-log-tool-window__entries {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.device-log-tool-window__entry {
+  display: grid;
+  grid-template-columns: 130px 56px 140px minmax(0, 1fr);
+  gap: 8px;
+  padding: 2px 8px;
+  white-space: pre-wrap;
+}
+
+.device-log-tool-window__entry:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.device-log-tool-window__entry--error,
+.device-log-tool-window__entry--fatal {
+  color: #ff8f8f;
+}
+
+.device-log-tool-window__entry--warn {
+  color: #ffd37a;
+}
+
+.device-log-tool-window__empty {
+  margin: 12px;
+  color: var(--text-muted);
+}
+
 .git-tool-window__trace {
   min-height: 0;
   overflow: auto;
