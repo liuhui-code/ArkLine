@@ -1,4 +1,5 @@
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
+import { extractBuildArtifacts } from "@/features/build/build-artifacts";
 import { parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import type { BuildPlan, BuildResult, BuildState } from "@/features/build/build-model";
@@ -43,11 +44,13 @@ export async function executeHarmonyBuildPlan(input: {
   });
   const output = [terminalResult.stdout, terminalResult.stderr].filter(Boolean).join("\n");
   const problems = parseBuildDiagnostics(output, input.diagnosticMatchers);
+  const artifacts = extractBuildArtifacts(output);
 
   return createBuildResultFromTerminalRun({
     ...terminalResult,
     planId: input.plan.id,
     problems,
+    artifacts,
     environment: createBuildEnvironmentSnapshot({
       plan: input.plan,
       settings: input.settings,

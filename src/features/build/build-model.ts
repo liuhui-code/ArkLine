@@ -47,6 +47,14 @@ export type HarmonyBuildPlan = BuildPlan;
 
 export type BuildResultStatus = "success" | "failed" | "stopped";
 
+export type BuildArtifactKind = BuildTarget;
+
+export type BuildArtifact = {
+  path: string;
+  kind: BuildArtifactKind;
+  source: "output";
+};
+
 export type BuildToolchainSnapshot = {
   harmonySdkPath: string;
   semanticWorkerPath: string;
@@ -78,6 +86,7 @@ export type BuildResult = {
   stdout: string;
   stderr: string;
   diagnostics: ProblemItem[];
+  artifacts: BuildArtifact[];
   environment?: BuildEnvironmentSnapshot;
 };
 
@@ -113,6 +122,7 @@ export type BuildState = {
   output: string;
   problems: ProblemItem[];
   lastResult: BuildResult | null;
+  history: BuildResult[];
   lastExitCode: number | null;
   lastDurationMs: number | null;
   message: string;

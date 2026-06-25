@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { extractBuildArtifacts } from "@/features/build/build-artifacts";
 import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
 import { defaultBuildDiagnosticMatchers, parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
@@ -118,6 +119,40 @@ describe("build environment snapshot", () => {
   });
 });
 
+describe("build artifacts", () => {
+  it("extracts Harmony artifact paths from build output", () => {
+    const artifacts = extractBuildArtifacts([
+      "Generated artifact: /workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+      "Archive: /workspace/Demo/library/build/default/outputs/default/library.har",
+    ].join("\n"));
+
+    expect(artifacts).toEqual([
+      {
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      },
+      {
+        path: "/workspace/Demo/library/build/default/outputs/default/library.har",
+        kind: "har",
+        source: "output",
+      },
+    ]);
+  });
+
+  it("deduplicates repeated artifact paths", () => {
+    const artifacts = extractBuildArtifacts("out=/workspace/Demo/build/default/app/default/app.app\nagain /workspace/Demo/build/default/app/default/app.app");
+
+    expect(artifacts).toEqual([
+      {
+        path: "/workspace/Demo/build/default/app/default/app.app",
+        kind: "app",
+        source: "output",
+      },
+    ]);
+  });
+});
+
 describe("Harmony build command planner", () => {
   it("plans a module HAP build through the project wrapper without clean by default", () => {
     const plan = planHarmonyBuildCommand({
@@ -211,7 +246,7 @@ describe("build controller", () => {
       runTerminalCommand: async (request) => ({
         runId: request.runId,
         command: request.command,
-        stdout: "",
+        stdout: "Generated artifact: /workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         stderr: "ERROR: ArkTS:ERROR File: /workspace/Demo/entry/src/main/ets/pages/Index.ets:12:8\nProperty width does not exist.",
         exitCode: 1,
         durationMs: 90,
@@ -228,6 +263,13 @@ describe("build controller", () => {
     expect(result.status).toBe("failed");
     expect(result.environment?.toolchain.nodePath).toBe("/opt/node");
     expect(result.environment?.moduleName).toBe("entry");
+    expect(result.artifacts).toEqual([
+      {
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      },
+    ]);
     expect(result.diagnostics).toEqual([
       {
         source: "build",
@@ -409,6 +451,8 @@ describe("build store", () => {
 
     expect(store.state.status).toBe("success");
     expect(store.state.lastResult?.status).toBe("success");
+    expect(store.state.history).toHaveLength(1);
+    expect(store.state.history[0]?.runId).toBe("build-1");
     expect(store.state.lastDurationMs).toBe(1200);
     expect(store.state.output).toContain("BUILD SUCCESSFUL");
   });

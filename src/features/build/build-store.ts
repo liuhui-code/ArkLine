@@ -13,6 +13,7 @@ export function createBuildStore() {
     output: "",
     problems: [],
     lastResult: null,
+    history: [],
     lastExitCode: null,
     lastDurationMs: null,
     message: "No build run yet",
@@ -37,6 +38,7 @@ export function createBuildStore() {
       state.output = result.output;
       state.problems = result.diagnostics;
       state.lastResult = result;
+      state.history = [result, ...state.history.filter((item) => item.runId !== result.runId)].slice(0, 20);
       state.lastExitCode = result.exitCode;
       state.lastDurationMs = result.durationMs;
       state.message = state.status === "success" ? "Build succeeded" : state.status === "stopped" ? "Build stopped" : "Build failed";
