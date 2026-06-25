@@ -7,8 +7,6 @@ import type {
   DeviceFaultLogType,
 } from "@/features/device-log/device-fault-log-model";
 
-const multiLineFields = new Set(["stacktrace"]);
-
 export function parseDeviceFaultLogEntries(result: DeviceFaultLogFetchResult): DeviceFaultLogParsedResult {
   return {
     deviceId: result.deviceId,
@@ -59,10 +57,11 @@ function extractFields(raw: string): Record<string, string> {
       continue;
     }
 
-    if (currentKey && multiLineFields.has(currentKey)) {
+    if (currentKey && /^\s+/u.test(line)) {
+      const continuation = currentKey === "stacktrace" ? line : line.trim();
       fields[currentKey] = fields[currentKey]
-        ? `${fields[currentKey]}\n${line}`
-        : line;
+        ? `${fields[currentKey]}\n${continuation}`
+        : continuation;
     }
   }
 
@@ -107,7 +106,14 @@ function classifyFaultType(reason: string, summary: string, raw: string): Device
   if (text.includes("app crash") || text.includes("cpp crash")) {
     return "cppCrash";
   }
-  if (text.includes("app freeze") || text.includes("freeze") || text.includes("anr")) {
+  if (
+    text.includes("app freeze")
+    || text.includes("anr")
+    || text.includes("not responding")
+    || text.includes("main thread blocked")
+    || text.includes("input dispatching timed out")
+    || text.includes("watchdog timeout")
+  ) {
     return "appFreeze";
   }
   if (
@@ -124,7 +130,8 @@ function classifyFaultType(reason: string, summary: string, raw: string): Device
     text.includes("sys_warning")
     || text.includes("watchdog warning")
     || text.includes("system warning")
-    || text.includes(" warning")
+    || text.includes("thermal warning")
+    || text.includes("memory warning")
   ) {
     return "sysWarning";
   }

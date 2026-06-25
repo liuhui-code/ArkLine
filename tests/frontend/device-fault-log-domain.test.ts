@@ -119,6 +119,40 @@ describe("device fault log parser", () => {
     expect(entry.severity).toBe("warning");
     expect(entry.summary).toContain("Watchdog warning");
   });
+
+  it("preserves wrapped summary continuation lines", () => {
+    const parsed = parseDeviceFaultLogEntries(buildResult([
+      {
+        id: "fault-summary-wrap",
+        raw: [
+          "Reason: APP_CRASH",
+          "Summary: Native crash while starting camera pipeline",
+          "  with extra context from the second wrapped line",
+          "Process: com.example.camera",
+        ].join("\n"),
+      },
+    ]));
+    const [entry] = parsed.entries;
+
+    expect(entry.type).toBe("cppCrash");
+    expect(entry.summary).toBe("Native crash while starting camera pipeline\nwith extra context from the second wrapped line");
+  });
+
+  it("does not promote generic prose into freeze or warning fault types", () => {
+    const parsed = parseDeviceFaultLogEntries(buildResult([
+      {
+        id: "fault-generic-prose",
+        raw: [
+          "Summary: User wrote a note saying the ui freeze felt bad and the warning banner looked noisy.",
+          "Process: com.example.notes",
+        ].join("\n"),
+      },
+    ]));
+    const [entry] = parsed.entries;
+
+    expect(entry.type).toBe("unknown");
+    expect(entry.severity).toBe("unknown");
+  });
 });
 
 describe("device fault log filter", () => {
@@ -191,7 +225,7 @@ describe("device fault log store", () => {
     expect(state.status).toBe("ready");
   });
 
-  it("clearView clears only in-memory view and returns status to idle", () => {
+  it("clearView clears in-memory view, resets metadata, and returns status to idle", () => {
     const store = createDeviceFaultLogStore();
 
     store.replace(buildResult([
@@ -209,6 +243,11 @@ describe("device fault log store", () => {
       status: "idle",
       entries: [],
       selectedEntryId: null,
+      deviceId: null,
+      fetchedAt: null,
+      command: "",
+      stderr: "",
+      message: "",
       filter: {
         query: "first",
         process: "demo",

@@ -63,6 +63,11 @@ export function createDeviceFaultLogStore() {
         status: "idle",
         entries: [],
         selectedEntryId: null,
+        deviceId: null,
+        fetchedAt: null,
+        command: "",
+        stderr: "",
+        message: "",
       };
     },
     getState() {
