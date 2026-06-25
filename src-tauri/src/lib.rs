@@ -14,6 +14,7 @@ mod models {
     pub mod language;
     pub mod terminal;
     pub mod workspace;
+    pub mod workspace_edit;
 }
 
 mod platform;
@@ -31,6 +32,7 @@ mod services {
     pub mod terminal_session_service;
     pub mod terminal_service;
     pub mod validation_service;
+    pub mod workspace_edit_service;
     pub mod workspace_service;
 }
 
