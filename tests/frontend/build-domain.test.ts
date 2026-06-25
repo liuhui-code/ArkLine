@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { createBuildIntent, createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
@@ -124,6 +125,66 @@ describe("Harmony build command planner", () => {
 
     expect(plan.command).toBe("./hvigorw clean --no-daemon && ./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
     expect(plan.steps.map((step) => step.label)).toEqual(["Clean", "Build"]);
+  });
+});
+
+describe("build controller", () => {
+  it("creates a Harmony build plan from build state", () => {
+    const store = createBuildStore();
+    store.configure({
+      lastTarget: "hap",
+      moduleName: " entry ",
+      product: " china ",
+      buildMode: "release",
+      fastMode: true,
+    });
+
+    const plan = createHarmonyBuildPlanFromState({
+      rootPath: "/workspace/Demo",
+      state: store.state,
+      clean: false,
+    });
+
+    expect(plan.command).toBe("./hvigorw assembleHap --mode module -p module=entry@china -p product=china -p buildMode=release");
+    expect(plan.intent.product).toBe("china");
+  });
+
+  it("executes a build plan through the terminal runner and returns parsed diagnostics", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-1",
+      plan,
+      runTerminalCommand: async (request) => ({
+        runId: request.runId,
+        command: request.command,
+        stdout: "",
+        stderr: "ERROR: ArkTS:ERROR File: /workspace/Demo/entry/src/main/ets/pages/Index.ets:12:8\nProperty width does not exist.",
+        exitCode: 1,
+        durationMs: 90,
+        stopped: false,
+      }),
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.diagnostics).toEqual([
+      {
+        source: "build",
+        severity: "error",
+        path: "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
+        line: 12,
+        column: 8,
+        message: "Property width does not exist.",
+      },
+    ]);
   });
 });
 

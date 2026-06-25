@@ -30,12 +30,10 @@ import { useHydratedSettings } from "@/components/layout/use-hydrated-settings";
 import { useGitTrace } from "@/components/layout/use-git-trace";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
-import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
+import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
 import type { BuildState, BuildTarget } from "@/features/build/build-model";
 import { parseBuildProfileProducts } from "@/features/build/build-profile-parser";
-import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
-import { createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import { createBuildStore } from "@/features/build/build-store";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
@@ -1379,14 +1377,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
 
     const state = buildStoreRef.current.state;
-    const plan = planHarmonyBuildCommand({
+    const plan = createHarmonyBuildPlanFromState({
       rootPath: workspace.rootPath,
-      target: state.lastTarget,
-      moduleName: state.lastTarget === "app" ? null : state.moduleName.trim() || "entry",
-      product: state.product.trim() || "default",
-      buildMode: state.buildMode,
+      state,
       clean,
-      fastMode: state.fastMode,
     });
     buildRunCounterRef.current += 1;
     const runId = `build-${buildRunCounterRef.current}`;
@@ -1397,23 +1391,15 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setStatusText(plan.label);
 
     try {
-      const result = await workspaceApi.runTerminalCommand({
+      const buildResult = await executeHarmonyBuildPlan({
         runId,
-        command: plan.command,
-        cwd: plan.cwd,
-        source: "preset",
-      });
-      const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-      const parsedProblems = parseBuildProblems(output);
-      const buildResult = createBuildResultFromTerminalRun({
-        ...result,
-        planId: plan.id,
-        problems: parsedProblems,
+        plan,
+        runTerminalCommand: workspaceApi.runTerminalCommand,
       });
       buildStoreRef.current.finish(buildResult);
       problemsRef.current.replace([
         ...problemsRef.current.state.items.filter((item) => item.source !== "build"),
-        ...parsedProblems,
+        ...buildResult.diagnostics,
       ]);
       setProblems([...problemsRef.current.state.items]);
       setBuildState({ ...buildStoreRef.current.state });
