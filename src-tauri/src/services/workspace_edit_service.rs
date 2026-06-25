@@ -306,6 +306,14 @@ fn validate_operation_relationships(operations: &[ValidatedOperation]) -> Vec<Ed
                 "Text edits cannot be mixed with file operations on the same path",
             ));
         }
+        for file_path in file_paths.keys() {
+            if path_is_ancestor(file_path, path) || path_is_ancestor(path, file_path) {
+                conflicts.push(conflict(
+                    path,
+                    "Text edits cannot be mixed with file operations on parent or child paths",
+                ));
+            }
+        }
     }
 
     for (path, roles) in file_paths {
@@ -318,6 +326,10 @@ fn validate_operation_relationships(operations: &[ValidatedOperation]) -> Vec<Ed
     }
 
     conflicts
+}
+
+fn path_is_ancestor(parent: &Path, child: &Path) -> bool {
+    parent != child && child.starts_with(parent)
 }
 
 fn normalize_workspace_root(workspace_root: &Path) -> Result<PathBuf, String> {
@@ -920,6 +932,45 @@ mod tests {
                 .message
                 .contains("Text edits cannot be mixed with file operations")
         }));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "original");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_rejects_text_edit_inside_deleted_directory() {
+        let root = unique_temp_dir("text-inside-deleted-directory");
+        let directory = root.join("src");
+        fs::create_dir_all(&directory).unwrap();
+        let file = directory.join("main.ets");
+        fs::write(&file, "original").unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![
+                text_edit(
+                    file.clone(),
+                    TextRange {
+                        start_line: 1,
+                        start_column: 1,
+                        end_line: 1,
+                        end_column: 9,
+                    },
+                    "changed",
+                ),
+                WorkspaceEditOperation::DeleteFile {
+                    path: directory.to_string_lossy().to_string(),
+                    recursive: true,
+                },
+            ]),
+        )
+        .unwrap();
+
+        assert!(!result.applied);
+        assert!(result
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.message.contains("parent or child paths")));
         assert_eq!(fs::read_to_string(&file).unwrap(), "original");
 
         fs::remove_dir_all(root).unwrap();
