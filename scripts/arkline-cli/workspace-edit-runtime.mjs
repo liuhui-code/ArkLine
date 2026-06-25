@@ -180,6 +180,8 @@ function addCreateFileConflicts(conflicts, workspace, operation) {
     return
   }
 
+  addParentDirectoryConflicts(conflicts, workspace, operation.path, "Create file parent path must be a directory.")
+
   if (!operation.overwrite && fs.existsSync(resolved.absolutePath)) {
     conflicts.push({
       path: operation.path,
@@ -200,12 +202,46 @@ function addRenameFileConflicts(conflicts, workspace, operation) {
       path: operation.oldPath,
       message: "Rename source file does not exist.",
     })
+  } else if (fs.statSync(oldResolved.absolutePath).isDirectory()) {
+    conflicts.push({
+      path: operation.oldPath,
+      message: "Rename source must be a file.",
+    })
+  }
+  if (fs.existsSync(newResolved.absolutePath) && fs.statSync(newResolved.absolutePath).isDirectory()) {
+    conflicts.push({
+      path: operation.newPath,
+      message: "Rename target must be a file path.",
+    })
   }
   if (!operation.overwrite && fs.existsSync(newResolved.absolutePath)) {
     conflicts.push({
       path: operation.newPath,
       message: "Rename target already exists.",
     })
+  }
+}
+
+function addParentDirectoryConflicts(conflicts, workspace, relativePath, message) {
+  const parentPath = toPosixPath(path.dirname(relativePath))
+  if (parentPath === ".") {
+    return
+  }
+
+  const segments = parentPath.split("/").filter(Boolean)
+  for (let index = 0; index < segments.length; index += 1) {
+    const candidatePath = segments.slice(0, index + 1).join("/")
+    const resolved = resolveWorkspacePath(workspace, candidatePath)
+    if (!resolved.insideRoot || resolved.blocked || !fs.existsSync(resolved.absolutePath)) {
+      continue
+    }
+    if (!fs.statSync(resolved.absolutePath).isDirectory()) {
+      conflicts.push({
+        path: candidatePath,
+        message,
+      })
+      return
+    }
   }
 }
 

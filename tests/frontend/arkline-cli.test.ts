@@ -555,6 +555,150 @@ describe("arkline cli workspace edit runtime", () => {
     expect(fs.readFileSync(newPath, "utf8")).toBe("new");
   });
 
+  it("rejects rename sources that are directories without moving them", async () => {
+    const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old");
+    const nestedPath = path.join(oldPath, "Child.ets");
+    const newPath = path.join(workspace, "src/pages/New.ets");
+    fs.mkdirSync(oldPath, { recursive: true });
+    fs.writeFileSync(nestedPath, "child");
+
+    const result = await runWorkspaceEditCommand({
+      area: "rename-file",
+      name: "workspace",
+      workspace,
+      file: "src/pages/Old",
+      to: "src/pages/New.ets",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "src/pages/Old",
+            message: "Rename source must be a file.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.existsSync(oldPath)).toBe(true);
+    expect(fs.readFileSync(nestedPath, "utf8")).toBe("child");
+    expect(fs.existsSync(newPath)).toBe(false);
+  });
+
+  it("rejects rename targets that are directories without moving the source", async () => {
+    const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old.ets");
+    const newPath = path.join(workspace, "src/pages/New.ets");
+    const nestedPath = path.join(newPath, "Child.ets");
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "old");
+    fs.mkdirSync(newPath, { recursive: true });
+    fs.writeFileSync(nestedPath, "child");
+
+    const result = await runWorkspaceEditCommand({
+      area: "rename-file",
+      name: "workspace",
+      workspace,
+      file: "src/pages/Old.ets",
+      to: "src/pages/New.ets",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "src/pages/New.ets",
+            message: "Rename target must be a file path.",
+          },
+          {
+            path: "src/pages/New.ets",
+            message: "Rename target already exists.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.readFileSync(oldPath, "utf8")).toBe("old");
+    expect(fs.existsSync(newPath)).toBe(true);
+    expect(fs.readFileSync(nestedPath, "utf8")).toBe("child");
+  });
+
+  it("reports a dry-run conflict when a generated target parent path is a file", async () => {
+    const workspace = createTempWorkspace();
+    const parentPath = path.join(workspace, "src/pages");
+    fs.mkdirSync(path.dirname(parentPath), { recursive: true });
+    fs.writeFileSync(parentPath, "not a directory");
+
+    const result = await runWorkspaceEditCommand({
+      area: "generate",
+      name: "page",
+      workspace,
+      symbolName: "Home",
+      output: "json",
+      dryRun: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      payload: {
+        conflicts: [
+          {
+            path: "src/pages",
+            message: "Create file parent path must be a directory.",
+          },
+        ],
+      },
+      dryRun: true,
+    });
+    expect(fs.readFileSync(parentPath, "utf8")).toBe("not a directory");
+    expect(fs.existsSync(path.join(workspace, "src/pages/Home.ets"))).toBe(false);
+  });
+
+  it("reports an apply conflict when a generated target parent path is a file without throwing or writing", async () => {
+    const workspace = createTempWorkspace();
+    const parentPath = path.join(workspace, "src/pages");
+    fs.mkdirSync(path.dirname(parentPath), { recursive: true });
+    fs.writeFileSync(parentPath, "not a directory");
+
+    await expect(
+      runWorkspaceEditCommand({
+        area: "generate",
+        name: "page",
+        workspace,
+        symbolName: "Home",
+        output: "json",
+        dryRun: false,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "src/pages",
+            message: "Create file parent path must be a directory.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.readFileSync(parentPath, "utf8")).toBe("not a directory");
+    expect(fs.existsSync(path.join(workspace, "src/pages/Home.ets"))).toBe(false);
+  });
+
   it("rejects blocked workspace directories by default", async () => {
     const workspace = createTempWorkspace();
     const oldPath = path.join(workspace, "src/pages/Old.ets");
