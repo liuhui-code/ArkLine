@@ -1,6 +1,7 @@
 const POSITION_COMMANDS = new Set(["language completion", "actions list"])
 const EDIT_PRODUCING_COMMANDS = new Set(["actions resolve"])
 const GENERATE_COMMANDS = new Set(["generate page", "generate component"])
+const ARKTS_IDENTIFIER_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 export function parseArklineCliArgs(args) {
   try {
@@ -142,6 +143,9 @@ function validateCommand(command) {
   if (GENERATE_COMMANDS.has(key)) {
     if (!command.workspace || !command.symbolName || command.output !== "json") {
       throw new Error(`${key} requires --workspace, --name, and --json`)
+    }
+    if (!ARKTS_IDENTIFIER_PATTERN.test(command.symbolName)) {
+      throw new Error("--name requires an ASCII ArkTS identifier")
     }
     return
   }

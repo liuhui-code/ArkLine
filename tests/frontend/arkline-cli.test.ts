@@ -159,6 +159,30 @@ describe("arkline cli parser", () => {
     });
   });
 
+  it("rejects invalid generate names before plan generation", () => {
+    for (const [kind, invalidName] of [
+      ["page", "主页"],
+      ["page", "../Escape"],
+      ["component", "User-Card"],
+    ]) {
+      expect(
+        parseArklineCliArgs([
+          "generate",
+          kind,
+          "--workspace",
+          ".",
+          "--name",
+          invalidName,
+          "--dry-run",
+          "--json",
+        ]),
+      ).toEqual({
+        ok: false,
+        error: "--name requires an ASCII ArkTS identifier",
+      });
+    }
+  });
+
   it("parses rename-file edit commands", () => {
     expect(
       parseArklineCliArgs([
@@ -544,14 +568,30 @@ describe("arkline cli workspace edit output", () => {
 
   it("sets a non-zero exit code when an edit command has conflicts", async () => {
     const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old.ets");
     const writes: string[] = [];
     const originalExitCode = process.exitCode;
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "old");
 
     try {
       process.exitCode = undefined;
-      await main(["generate", "page", "--workspace", workspace, "--name", "../../../Escape", "--apply", "--json"], {
-        stdout: { write: (value: string) => writes.push(value) },
-      });
+      await main(
+        [
+          "rename-file",
+          "--workspace",
+          workspace,
+          "--file",
+          "src/pages/Old.ets",
+          "--to",
+          "../../../Escape.ets",
+          "--apply",
+          "--json",
+        ],
+        {
+          stdout: { write: (value: string) => writes.push(value) },
+        },
+      );
       expect(process.exitCode).toBe(1);
     } finally {
       process.exitCode = originalExitCode;
@@ -561,7 +601,7 @@ describe("arkline cli workspace edit output", () => {
       ok: false,
       payload: {
         applied: false,
-        conflicts: [{ path: "src/pages/../../../Escape.ets" }],
+        conflicts: [{ path: "../../../Escape.ets" }],
       },
       dryRun: false,
     });
