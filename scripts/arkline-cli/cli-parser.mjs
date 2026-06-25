@@ -1,9 +1,11 @@
 const POSITION_COMMANDS = new Set(["language completion", "actions list"])
 const EDIT_PRODUCING_COMMANDS = new Set(["actions resolve"])
+const GENERATE_COMMANDS = new Set(["generate page", "generate component"])
 
 export function parseArklineCliArgs(args) {
   try {
-    const [area, name, ...rest] = args
+    const normalized = normalizeCommandArgs(args)
+    const [area, name, ...rest] = normalized
     if (!area || !name) {
       throw new Error("Expected a command")
     }
@@ -30,6 +32,12 @@ export function parseArklineCliArgs(args) {
     }
     if (options.id !== undefined) {
       command.id = options.id
+    }
+    if (options.name !== undefined) {
+      command.symbolName = options.name
+    }
+    if (options.to !== undefined) {
+      command.to = options.to
     }
 
     validateCommand(command)
@@ -67,6 +75,12 @@ function parseOptions(args) {
         break
       case "--id":
         options.id = requireNext(args, ++index, value)
+        break
+      case "--name":
+        options.name = requireNext(args, ++index, value)
+        break
+      case "--to":
+        options.to = requireNext(args, ++index, value)
         break
       case "--json":
         options.json = true
@@ -125,7 +139,29 @@ function validateCommand(command) {
     return
   }
 
+  if (GENERATE_COMMANDS.has(key)) {
+    if (!command.workspace || !command.symbolName || command.output !== "json") {
+      throw new Error(`${key} requires --workspace, --name, and --json`)
+    }
+    return
+  }
+
+  if (key === "rename-file workspace") {
+    if (!command.workspace || !command.file || !command.to || command.output !== "json") {
+      throw new Error("rename-file requires --workspace, --file, --to, and --json")
+    }
+    return
+  }
+
   throw new Error(`Unsupported command: ${key}`)
+}
+
+function normalizeCommandArgs(args) {
+  if (args[0] === "rename-file") {
+    return ["rename-file", "workspace", ...args.slice(1)]
+  }
+
+  return args
 }
 
 function requireNext(args, index, flag) {

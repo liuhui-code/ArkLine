@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
 
 // @ts-ignore The CLI entrypoint is a Node ESM script.
-import { buildSemanticRequest } from "../../scripts/arkline-cli.mjs";
+import { buildSemanticRequest, main } from "../../scripts/arkline-cli.mjs";
 // @ts-ignore The CLI parser is a Node ESM helper.
 import { parseArklineCliArgs } from "../../scripts/arkline-cli/cli-parser.mjs";
 // @ts-ignore The semantic client is a Node ESM helper.
 import { SemanticWorkerClient } from "../../scripts/arkline-cli/semantic-client.mjs";
+// @ts-ignore The workspace edit runtime is a Node ESM helper.
+import { runWorkspaceEditCommand } from "../../scripts/arkline-cli/workspace-edit-runtime.mjs";
 
 describe("arkline cli parser", () => {
   it("parses language inspect json requests", () => {
@@ -106,6 +111,81 @@ describe("arkline cli parser", () => {
     });
   });
 
+  it("parses generate page and component edit commands", () => {
+    expect(
+      parseArklineCliArgs([
+        "generate",
+        "page",
+        "--workspace",
+        ".",
+        "--name",
+        "Home",
+        "--dry-run",
+        "--json",
+      ]),
+    ).toEqual({
+      ok: true,
+      command: {
+        area: "generate",
+        name: "page",
+        workspace: ".",
+        symbolName: "Home",
+        output: "json",
+        dryRun: true,
+      },
+    });
+
+    expect(
+      parseArklineCliArgs([
+        "generate",
+        "component",
+        "--workspace",
+        ".",
+        "--name",
+        "UserCard",
+        "--apply",
+        "--json",
+      ]),
+    ).toEqual({
+      ok: true,
+      command: {
+        area: "generate",
+        name: "component",
+        workspace: ".",
+        symbolName: "UserCard",
+        output: "json",
+        dryRun: false,
+      },
+    });
+  });
+
+  it("parses rename-file edit commands", () => {
+    expect(
+      parseArklineCliArgs([
+        "rename-file",
+        "--workspace",
+        ".",
+        "--file",
+        "src/pages/Old.ets",
+        "--to",
+        "src/pages/New.ets",
+        "--dry-run",
+        "--json",
+      ]),
+    ).toEqual({
+      ok: true,
+      command: {
+        area: "rename-file",
+        name: "workspace",
+        workspace: ".",
+        file: "src/pages/Old.ets",
+        to: "src/pages/New.ets",
+        output: "json",
+        dryRun: true,
+      },
+    });
+  });
+
   it("returns ok false and an error for invalid input", () => {
     expect(parseArklineCliArgs(["language", "completion", "--workspace", "."])).toEqual({
       ok: false,
@@ -135,6 +215,355 @@ describe("arkline cli runtime dispatch", () => {
       id: "actions-resolve-1",
       method: "resolveCodeAction",
       action: { id: "workspace.renameFile" },
+    });
+  });
+});
+
+describe("arkline cli workspace edit runtime", () => {
+  it("returns a page WorkspaceEditPlan on dry run without writing", async () => {
+    const workspace = createTempWorkspace();
+
+    const result = await runWorkspaceEditCommand({
+      area: "generate",
+      name: "page",
+      workspace,
+      symbolName: "Home",
+      output: "json",
+      dryRun: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      payload: {
+        id: "generate.page.Home",
+        title: "Generate page Home",
+        operations: [
+          {
+            kind: "createFile",
+            path: "src/pages/Home.ets",
+            content: expect.stringContaining("struct Home"),
+            overwrite: false,
+          },
+        ],
+        conflicts: [],
+        affectedFiles: ["src/pages/Home.ets"],
+        undoLabel: "Remove generated page Home",
+        requiresPreview: true,
+      },
+      dryRun: true,
+    });
+    expect(fs.existsSync(path.join(workspace, "src/pages/Home.ets"))).toBe(false);
+  });
+
+  it("applies a page WorkspaceEditPlan inside the workspace", async () => {
+    const workspace = createTempWorkspace();
+
+    const result = await runWorkspaceEditCommand({
+      area: "generate",
+      name: "page",
+      workspace,
+      symbolName: "Home",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload).toMatchObject({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["src/pages/Home.ets"],
+    });
+    expect(fs.readFileSync(path.join(workspace, "src/pages/Home.ets"), "utf8")).toBe(
+      [
+        "@Entry",
+        "@Component",
+        "struct Home {",
+        "  build() {",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("applies a component WorkspaceEditPlan inside the workspace", async () => {
+    const workspace = createTempWorkspace();
+
+    const result = await runWorkspaceEditCommand({
+      area: "generate",
+      name: "component",
+      workspace,
+      symbolName: "UserCard",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload).toMatchObject({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["src/components/UserCard.ets"],
+    });
+    expect(fs.readFileSync(path.join(workspace, "src/components/UserCard.ets"), "utf8")).toBe(
+      [
+        "@Component",
+        "struct UserCard {",
+        "  build() {",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("returns a rename WorkspaceEditPlan on dry run without writing", async () => {
+    const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old.ets");
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "old");
+
+    const result = await runWorkspaceEditCommand({
+      area: "rename-file",
+      name: "workspace",
+      workspace,
+      file: "src/pages/Old.ets",
+      to: "src/pages/New.ets",
+      output: "json",
+      dryRun: true,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      payload: {
+        id: "rename-file.src/pages/Old.ets",
+        title: "Rename src/pages/Old.ets to src/pages/New.ets",
+        operations: [
+          {
+            kind: "renameFile",
+            oldPath: "src/pages/Old.ets",
+            newPath: "src/pages/New.ets",
+            overwrite: false,
+          },
+        ],
+        conflicts: [],
+        affectedFiles: ["src/pages/Old.ets", "src/pages/New.ets"],
+        undoLabel: "Rename src/pages/New.ets back to src/pages/Old.ets",
+        requiresPreview: true,
+      },
+      dryRun: true,
+    });
+    expect(fs.existsSync(oldPath)).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "src/pages/New.ets"))).toBe(false);
+  });
+
+  it("applies a rename WorkspaceEditPlan inside the workspace", async () => {
+    const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old.ets");
+    const newPath = path.join(workspace, "src/pages/New.ets");
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "old");
+
+    const result = await runWorkspaceEditCommand({
+      area: "rename-file",
+      name: "workspace",
+      workspace,
+      file: "src/pages/Old.ets",
+      to: "src/pages/New.ets",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.payload).toMatchObject({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["src/pages/New.ets"],
+    });
+    expect(fs.existsSync(oldPath)).toBe(false);
+    expect(fs.readFileSync(newPath, "utf8")).toBe("old");
+  });
+
+  it("rejects output paths outside the workspace root", async () => {
+    const workspace = createTempWorkspace();
+
+    const result = await runWorkspaceEditCommand({
+      area: "generate",
+      name: "page",
+      workspace,
+      symbolName: "../../../Escape",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Workspace edit has conflicts",
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "src/pages/../../../Escape.ets",
+            message: "Path must stay inside the workspace root.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.existsSync(path.join(workspace, "Escape.ets"))).toBe(false);
+  });
+
+  it("refuses to overwrite generated files by default", async () => {
+    const workspace = createTempWorkspace();
+    const targetPath = path.join(workspace, "src/pages/Home.ets");
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, "existing");
+
+    const result = await runWorkspaceEditCommand({
+      area: "generate",
+      name: "page",
+      workspace,
+      symbolName: "Home",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "src/pages/Home.ets",
+            message: "Create file target already exists.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.readFileSync(targetPath, "utf8")).toBe("existing");
+  });
+
+  it("refuses rename target collisions by default", async () => {
+    const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old.ets");
+    const newPath = path.join(workspace, "src/pages/New.ets");
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "old");
+    fs.writeFileSync(newPath, "new");
+
+    const result = await runWorkspaceEditCommand({
+      area: "rename-file",
+      name: "workspace",
+      workspace,
+      file: "src/pages/Old.ets",
+      to: "src/pages/New.ets",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "src/pages/New.ets",
+            message: "Rename target already exists.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.readFileSync(oldPath, "utf8")).toBe("old");
+    expect(fs.readFileSync(newPath, "utf8")).toBe("new");
+  });
+
+  it("rejects blocked workspace directories by default", async () => {
+    const workspace = createTempWorkspace();
+    const oldPath = path.join(workspace, "src/pages/Old.ets");
+    fs.mkdirSync(path.dirname(oldPath), { recursive: true });
+    fs.writeFileSync(oldPath, "old");
+
+    const result = await runWorkspaceEditCommand({
+      area: "rename-file",
+      name: "workspace",
+      workspace,
+      file: "src/pages/Old.ets",
+      to: "node_modules/New.ets",
+      output: "json",
+      dryRun: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [
+          {
+            path: "node_modules/New.ets",
+            message: "Path is inside a blocked directory: node_modules.",
+          },
+        ],
+        changedFiles: [],
+      },
+      dryRun: false,
+    });
+    expect(fs.existsSync(oldPath)).toBe(true);
+    expect(fs.existsSync(path.join(workspace, "node_modules/New.ets"))).toBe(false);
+  });
+});
+
+describe("arkline cli workspace edit output", () => {
+  it("prints JSON for dry-run edit commands without starting the semantic worker", async () => {
+    const workspace = createTempWorkspace();
+    const writes: string[] = [];
+    const originalExitCode = process.exitCode;
+
+    try {
+      process.exitCode = undefined;
+      await main(["generate", "page", "--workspace", workspace, "--name", "Home", "--dry-run", "--json"], {
+        stdout: { write: (value: string) => writes.push(value) },
+      });
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+
+    expect(JSON.parse(writes.join(""))).toMatchObject({
+      ok: true,
+      payload: {
+        id: "generate.page.Home",
+        operations: [{ kind: "createFile", path: "src/pages/Home.ets" }],
+      },
+      dryRun: true,
+    });
+    expect(fs.existsSync(path.join(workspace, "src/pages/Home.ets"))).toBe(false);
+  });
+
+  it("sets a non-zero exit code when an edit command has conflicts", async () => {
+    const workspace = createTempWorkspace();
+    const writes: string[] = [];
+    const originalExitCode = process.exitCode;
+
+    try {
+      process.exitCode = undefined;
+      await main(["generate", "page", "--workspace", workspace, "--name", "../../../Escape", "--apply", "--json"], {
+        stdout: { write: (value: string) => writes.push(value) },
+      });
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = originalExitCode;
+    }
+
+    expect(JSON.parse(writes.join(""))).toMatchObject({
+      ok: false,
+      payload: {
+        applied: false,
+        conflicts: [{ path: "src/pages/../../../Escape.ets" }],
+      },
+      dryRun: false,
     });
   });
 });
@@ -237,4 +666,8 @@ function createMockWorker() {
     stdout,
     spawn: () => process,
   };
+}
+
+function createTempWorkspace() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "arkline-cli-"));
 }

@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { parseArklineCliArgs } from "./arkline-cli/cli-parser.mjs"
 import { SemanticWorkerClient } from "./arkline-cli/semantic-client.mjs"
+import { runWorkspaceEditCommand } from "./arkline-cli/workspace-edit-runtime.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = path.resolve(__dirname, "..")
@@ -18,11 +19,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   })
 }
 
-export async function main(args) {
+export async function main(args, io = {}) {
+  const stdout = io.stdout ?? process.stdout
   const parsed = parseArklineCliArgs(args)
   if (!parsed.ok) {
-    printJson(parsed)
+    printJson(parsed, stdout)
     process.exitCode = 1
+    return
+  }
+
+  if (isWorkspaceEditCommand(parsed.command)) {
+    const result = await runWorkspaceEditCommand(parsed.command)
+    printJson(result, stdout)
+    if (!result.ok || hasConflicts(result.payload)) {
+      process.exitCode = 1
+    }
     return
   }
 
@@ -30,12 +41,12 @@ export async function main(args) {
   try {
     const response = await runCommand(worker, parsed.command)
     if (!response.ok) {
-      printJson({ ok: false, error: response.error ?? "Semantic worker request failed" })
+      printJson({ ok: false, error: response.error ?? "Semantic worker request failed" }, stdout)
       process.exitCode = 1
       return
     }
 
-    printJson({ ok: true, payload: response.payload, dryRun: parsed.command.dryRun })
+    printJson({ ok: true, payload: response.payload, dryRun: parsed.command.dryRun }, stdout)
   } finally {
     await worker.close()
   }
@@ -87,6 +98,14 @@ function buildPosition(command) {
   }
 }
 
-function printJson(value) {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+function printJson(value, stdout = process.stdout) {
+  stdout.write(`${JSON.stringify(value, null, 2)}\n`)
+}
+
+function isWorkspaceEditCommand(command) {
+  return command.area === "generate" || command.area === "rename-file"
+}
+
+function hasConflicts(payload) {
+  return Array.isArray(payload?.conflicts) && payload.conflicts.length > 0
 }
