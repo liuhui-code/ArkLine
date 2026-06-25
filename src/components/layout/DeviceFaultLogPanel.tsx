@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { applyDeviceFaultLogFilter, compileDeviceFaultLogFilter } from "@/features/device-log/device-fault-log-filter";
 import type {
   DeviceFaultLogEntry,
@@ -52,16 +52,28 @@ export function DeviceFaultLogPanel({
   onStatusChange,
 }: DeviceFaultLogPanelProps) {
   const [filter, setFilter] = useState(initialFilter);
-  const [status, setStatus] = useState<DeviceFaultLogFetchStatus>("idle");
   const [storeVersion, setStoreVersion] = useState(0);
   const store = useMemo(() => createDeviceFaultLogStore(), []);
   const compiledFilter = useMemo(() => compileDeviceFaultLogFilter(filter), [filter]);
   const state = store.getState();
   const visibleEntries = state.entries.filter((entry) => applyDeviceFaultLogFilter(entry, compiledFilter));
-  const selectedEntry = state.entries.find((entry) => entry.id === state.selectedEntryId) ?? visibleEntries[0] ?? null;
+  const selectedEntry = visibleEntries.find((entry) => entry.id === state.selectedEntryId) ?? visibleEntries[0] ?? null;
 
   function rerender() {
     setStoreVersion((value) => value + 1);
+  }
+
+  function syncStoreStatus(nextStatus: DeviceFaultLogFetchStatus, message: string, entries: Array<{ id: string; raw: string }> = []) {
+    store.replace({
+      deviceId,
+      fetchedAt: new Date(0).toISOString(),
+      entries,
+      command: deviceId ? `hdc -t ${deviceId} shell faultlog -l` : "hdc shell faultlog -l",
+      stderr: nextStatus === "error" ? message : "",
+      status: nextStatus,
+      message,
+    });
+    rerender();
   }
 
   function updateFilter(patch: Partial<DeviceFaultLogFilterState>) {
@@ -71,24 +83,44 @@ export function DeviceFaultLogPanel({
     rerender();
   }
 
+  useEffect(() => {
+    const resolvedSelectionId = selectedEntry?.id ?? null;
+    if (state.selectedEntryId === resolvedSelectionId) {
+      return;
+    }
+
+    store.selectEntry(resolvedSelectionId);
+    rerender();
+  }, [selectedEntry, state.selectedEntryId, store]);
+
+  useEffect(() => {
+    setFilter(initialFilter);
+    store.setFilter(initialFilter);
+    store.clearView();
+    rerender();
+    if (active) {
+      onStatusChange("Fault log view idle");
+    }
+  }, [active, deviceId, onStatusChange, store]);
+
   async function refreshFaultLogs() {
     if (!deviceId) {
-      setStatus("unavailable");
+      syncStoreStatus("unavailable", "Select a device before refreshing fault logs");
       onStatusChange("Select a device before refreshing fault logs");
       return;
     }
 
-    setStatus("loading");
+    syncStoreStatus("loading", "Refreshing fault logs");
     onStatusChange("Refreshing fault logs");
     try {
       const result = await workspaceApi.listDeviceFaultLogs({ deviceId });
       store.replace(result);
-      setStatus(result.status);
-      onStatusChange(result.message || `Fault log status: ${result.status}`);
       rerender();
+      onStatusChange(result.message || `Fault log status: ${result.status}`);
     } catch (error) {
-      setStatus("error");
-      onStatusChange(error instanceof Error ? error.message : "Fault log refresh failed");
+      const message = error instanceof Error ? error.message : "Fault log refresh failed";
+      syncStoreStatus("error", message);
+      onStatusChange(message);
     }
   }
 
@@ -116,7 +148,6 @@ export function DeviceFaultLogPanel({
 
   function clearFaultLogView() {
     store.clearView();
-    setStatus("idle");
     onStatusChange("Cleared fault log view");
     rerender();
   }
@@ -190,13 +221,13 @@ export function DeviceFaultLogPanel({
         />
         {compiledFilter.error ? <span className="device-log-tool-window__filter-error">{compiledFilter.error}</span> : null}
       </div>
-      {status === "idle" ? <p className="device-log-tool-window__empty">Refresh fault logs to inspect device faults.</p> : null}
-      {status === "loading" ? <p className="device-log-tool-window__empty">Loading fault logs…</p> : null}
-      {status === "empty" ? <p className="device-log-tool-window__empty">No fault logs found.</p> : null}
-      {status === "unavailable" ? <p className="device-log-tool-window__empty">{state.message || "Fault logs unavailable."}</p> : null}
-      {status === "unauthorized" ? <p className="device-log-tool-window__empty">{state.message || "Device unauthorized."}</p> : null}
-      {status === "error" ? <p className="device-log-tool-window__empty">{state.message || "Fault log refresh failed."}</p> : null}
-      {status === "ready" ? (
+      {state.status === "idle" ? <p className="device-log-tool-window__empty">Refresh fault logs to inspect device faults.</p> : null}
+      {state.status === "loading" ? <p className="device-log-tool-window__empty">{state.message || "Loading fault logs…"}</p> : null}
+      {state.status === "empty" ? <p className="device-log-tool-window__empty">No fault logs found.</p> : null}
+      {state.status === "unavailable" ? <p className="device-log-tool-window__empty">{state.message || "Fault logs unavailable."}</p> : null}
+      {state.status === "unauthorized" ? <p className="device-log-tool-window__empty">{state.message || "Device unauthorized."}</p> : null}
+      {state.status === "error" ? <p className="device-log-tool-window__empty">{state.message || "Fault log refresh failed."}</p> : null}
+      {state.status === "ready" ? (
         <div className="device-log-tool-window__fault-layout">
           <div className="device-log-tool-window__entries" role="list" aria-label="Fault Log Entries">
             {visibleEntries.length === 0 ? (

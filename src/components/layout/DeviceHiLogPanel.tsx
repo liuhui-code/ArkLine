@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { applyDeviceLogFilter, compileDeviceLogFilter } from "@/features/device-log/device-log-filter";
 import type { DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
 import { createDeviceLogStore } from "@/features/device-log/device-log-store";
@@ -34,11 +34,35 @@ export function DeviceHiLogPanel({
   const [filter, setFilter] = useState(initialFilter);
   const [storeVersion, setStoreVersion] = useState(0);
   const store = useMemo(() => createDeviceLogStore(), []);
+  const currentDeviceIdRef = useRef(deviceId);
+  const previousDeviceIdRef = useRef(deviceId);
+  const streamIdRef = useRef<string | null>(null);
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
   const visibleEntries = store.getState().entries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
 
   useEffect(() => {
+    currentDeviceIdRef.current = deviceId;
+  }, [deviceId]);
+
+  useEffect(() => {
+    streamIdRef.current = streamId;
+  }, [streamId]);
+
+  async function stopBackendStream(activeStreamId: string, nextStatus: string) {
+    try {
+      await workspaceApi.stopDeviceLogStream(activeStreamId);
+      onStatusChange(nextStatus);
+    } catch (error) {
+      onStatusChange(error instanceof Error ? error.message : "Device log stream failed to stop");
+    }
+  }
+
+  useEffect(() => {
     function appendLines(nextDeviceId: string, lines: string[]) {
+      if (!currentDeviceIdRef.current || nextDeviceId !== currentDeviceIdRef.current) {
+        return;
+      }
+
       store.appendRawLines(nextDeviceId, lines);
       setStoreVersion((value) => value + 1);
     }
@@ -66,10 +90,36 @@ export function DeviceHiLogPanel({
 
     return () => {
       disposed = true;
+      const activeStreamId = streamIdRef.current;
+      streamIdRef.current = null;
+      if (activeStreamId) {
+        void stopBackendStream(activeStreamId, "Device log stream stopped");
+      }
       teardown();
       document.removeEventListener("arkline-device-log-lines", handleTestEvent);
     };
-  }, [store]);
+  }, [onStatusChange, store, workspaceApi]);
+
+  useEffect(() => {
+    const previousDeviceId = previousDeviceIdRef.current;
+    if (previousDeviceId === deviceId) {
+      return;
+    }
+
+    previousDeviceIdRef.current = deviceId;
+    store.clear();
+    setStoreVersion((value) => value + 1);
+    setFilter(initialFilter);
+    store.setFilter(initialFilter);
+
+    const activeStreamId = streamIdRef.current;
+    streamIdRef.current = null;
+    setStreamId(null);
+    setStreamStatus("idle");
+    if (activeStreamId) {
+      void stopBackendStream(activeStreamId, "Device log stream stopped");
+    }
+  }, [deviceId, onStatusChange, store, workspaceApi]);
 
   useEffect(() => {
     if (!active && streamStatus === "running") {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DeviceFaultLogPanel } from "@/components/layout/DeviceFaultLogPanel";
 import { DeviceHiLogPanel } from "@/components/layout/DeviceHiLogPanel";
 import type { DeviceLogDevice, WorkspaceApi } from "@/features/workspace/workspace-api";
@@ -41,10 +41,10 @@ export function DeviceLogToolWindow({
   }, [active, workspaceApi]);
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? null;
 
-  function handlePanelStatusChange(status: string) {
+  const handlePanelStatusChange = useCallback((status: string) => {
     setPanelStatus(status);
     onStatusChange(status);
-  }
+  }, [onStatusChange]);
 
   return (
     <section className="device-log-tool-window" aria-label="Device Log Panel">
@@ -86,21 +86,22 @@ export function DeviceLogToolWindow({
           Fault Log
         </button>
       </div>
-      {activeTab === "hilog" ? (
+      <div hidden={activeTab !== "hilog"} aria-hidden={activeTab !== "hilog"}>
         <DeviceHiLogPanel
-          active={active}
+          active={active && activeTab === "hilog"}
           deviceId={selectedDeviceId}
           workspaceApi={workspaceApi}
           onStatusChange={handlePanelStatusChange}
         />
-      ) : (
+      </div>
+      <div hidden={activeTab !== "faultLog"} aria-hidden={activeTab !== "faultLog"}>
         <DeviceFaultLogPanel
-          active={active}
+          active={active && activeTab === "faultLog"}
           deviceId={selectedDeviceId}
           workspaceApi={workspaceApi}
           onStatusChange={handlePanelStatusChange}
         />
-      )}
+      </div>
     </section>
   );
 }
