@@ -164,10 +164,15 @@ export function DeviceHiLogPanel({
     }
 
     setStreamStatus("stopping");
-    await workspaceApi.stopDeviceLogStream(streamId);
-    setStreamId(null);
-    setStreamStatus("idle");
-    onStatusChange("Device log stream stopped");
+    try {
+      await workspaceApi.stopDeviceLogStream(streamId);
+      setStreamId(null);
+      setStreamStatus("idle");
+      onStatusChange("Device log stream stopped");
+    } catch (error) {
+      setStreamStatus("running");
+      onStatusChange(error instanceof Error ? error.message : "Device log stream failed to stop");
+    }
   }
 
   function updateFilter(patch: Partial<DeviceLogFilterState>) {

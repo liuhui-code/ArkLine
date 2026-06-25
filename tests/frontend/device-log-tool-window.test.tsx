@@ -193,4 +193,38 @@ describe("Device Log tool window", () => {
     await waitFor(() => expect(within(panel).queryByText("Running")).not.toBeInTheDocument());
     expect(within(panel).getByText("idle")).toBeVisible();
   });
+
+  it("recovers to a usable running state when stop stream fails", async () => {
+    const user = userEvent.setup();
+    const workspaceApi: WorkspaceApi = {
+      ...defaultWorkspaceApi,
+      listDeviceLogDevices: async () => [
+        { id: "device-1", label: "Pura 70 - USB", status: "online", detail: "USB" },
+      ],
+      startDeviceLogStream: async ({ deviceId }) => ({
+        streamId: `stream-${deviceId}`,
+        deviceId,
+        status: "running",
+      }),
+      stopDeviceLogStream: async () => {
+        throw new Error("Stop device log stream failed");
+      },
+    };
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+    expect(await within(panel).findByText("Running")).toBeVisible();
+
+    await user.click(within(panel).getByRole("button", { name: "Stop Device Log Stream" }));
+
+    await waitFor(() => expect(within(panel).queryByText("stopping")).not.toBeInTheDocument());
+    expect(within(panel).getByText("Running")).toBeVisible();
+    expect(within(panel).getByRole("button", { name: "Stop Device Log Stream" })).toBeVisible();
+    expect(within(panel).getByText("Stop device log stream failed")).toBeVisible();
+  });
 });
