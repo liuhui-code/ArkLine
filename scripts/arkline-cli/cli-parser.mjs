@@ -88,6 +88,9 @@ function parseOptions(args) {
   if (options.json && options.pretty) {
     throw new Error("Use only one of --json or --pretty")
   }
+  if (options.pretty) {
+    throw new Error("--pretty is not implemented yet; use --json")
+  }
 
   return options
 }

@@ -8,7 +8,8 @@ export class SemanticWorkerClient {
     this.spawnArgs = options.spawnArgs ?? [workerEntry]
     this.spawnOptions = options.spawnOptions ?? {}
     this.spawn = options.spawn ?? spawn
-    this.pending = []
+    this.timeoutMs = options.timeoutMs ?? 10_000
+    this.pending = new Map()
     this.stderr = ""
     this.closed = false
 
@@ -39,13 +40,28 @@ export class SemanticWorkerClient {
     if (this.closed) {
       return Promise.reject(new Error("Semantic worker is closed"))
     }
+    if (!payload || typeof payload.id !== "string" || payload.id.length === 0) {
+      return Promise.reject(new Error("Semantic request payload requires a string id"))
+    }
+    if (this.pending.has(payload.id)) {
+      return Promise.reject(new Error(`Duplicate semantic request id: ${payload.id}`))
+    }
 
     return new Promise((resolve, reject) => {
-      this.pending.push({ resolve, reject })
+      const timeout = setTimeout(() => {
+        this.pending.delete(payload.id)
+        reject(new Error(`Semantic worker request timed out: ${payload.id}`))
+      }, this.timeoutMs)
+
+      this.pending.set(payload.id, { resolve, reject, timeout })
       this.process.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
         if (error) {
-          const pending = this.pending.shift()
-          pending?.reject(error)
+          const pending = this.pending.get(payload.id)
+          if (pending) {
+            clearTimeout(pending.timeout)
+            this.pending.delete(payload.id)
+            pending.reject(error)
+          }
         }
       })
     })
@@ -54,6 +70,7 @@ export class SemanticWorkerClient {
   close() {
     this.closed = true
     this.reader.close()
+    this.rejectPending(new Error("Semantic worker client closed"))
 
     return new Promise((resolve) => {
       if (this.process.exitCode !== null || this.process.killed) {
@@ -68,21 +85,35 @@ export class SemanticWorkerClient {
   }
 
   handleLine(line) {
-    const pending = this.pending.shift()
-    if (!pending) {
+    let response
+    try {
+      response = JSON.parse(line)
+    } catch (error) {
+      this.rejectPending(new Error(`Invalid semantic worker response JSON: ${error instanceof Error ? error.message : String(error)}`))
       return
     }
 
-    try {
-      pending.resolve(JSON.parse(line))
-    } catch (error) {
-      pending.reject(error)
+    if (!response || typeof response.id !== "string" || response.id.length === 0) {
+      this.rejectPending(new Error("Semantic worker response missing string id"))
+      return
     }
+
+    const pending = this.pending.get(response.id)
+    if (!pending) {
+      this.rejectPending(new Error(`Semantic worker returned unknown response id: ${response.id}`))
+      return
+    }
+
+    clearTimeout(pending.timeout)
+    this.pending.delete(response.id)
+    pending.resolve(response)
   }
 
   rejectPending(error) {
-    while (this.pending.length > 0) {
-      this.pending.shift().reject(error)
+    for (const [id, pending] of this.pending) {
+      clearTimeout(pending.timeout)
+      this.pending.delete(id)
+      pending.reject(error)
     }
   }
 }

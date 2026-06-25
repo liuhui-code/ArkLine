@@ -57,6 +57,12 @@ export function buildSemanticRequest(command) {
         method: "listCodeActions",
         position: buildPosition(command),
       }
+    case "actions resolve":
+      return {
+        id: "actions-resolve-1",
+        method: "resolveCodeAction",
+        action: { id: command.id },
+      }
     default:
       throw new Error(`Unsupported command: ${command.area} ${command.name}`)
   }
