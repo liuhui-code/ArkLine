@@ -21,6 +21,17 @@ export type HarmonyBuildPlan = {
   target: BuildTarget;
 };
 
+export type HarmonyBuildProject = {
+  rootPath: string;
+  isHarmonyProject: boolean;
+  hasHvigorWrapper: boolean;
+  hasHvigorFile: boolean;
+  hasBuildProfile: boolean;
+  hasOhPackage: boolean;
+  modules: string[];
+  defaultModule: string | null;
+};
+
 export type BuildRunFinish = {
   exitCode: number | null;
   durationMs: number;

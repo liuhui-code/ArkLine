@@ -33,6 +33,7 @@ import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/feat
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import type { BuildState, BuildTarget } from "@/features/build/build-model";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
+import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
 import { createBuildStore } from "@/features/build/build-store";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
@@ -210,6 +211,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const settingsSaveResetTimerRef = useRef<number | null>(null);
   const typingCompletionTimerRef = useRef<number | null>(null);
   const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
+  const buildProject = useMemo(
+    () => workspace ? detectHarmonyBuildProject(workspace.rootPath, workspace.visibleFiles) : null,
+    [workspace],
+  );
   const settingsApplying = settingsApplyState === "applying";
   const activeDocument = activePath ? documentsRef.current.getDocument(activePath) : undefined;
   const { gitTraceState } = useGitTrace({
@@ -1297,6 +1302,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     clearTypingCompletionTimer();
     clearSettingsSaveResetTimer();
   }, []);
+  useEffect(() => {
+    const nextModule = inferBuildModuleForPath(buildProject, activePath);
+    if (!nextModule || buildStoreRef.current.state.status === "running") {
+      return;
+    }
+    if (buildStoreRef.current.state.moduleName !== nextModule) {
+      buildStoreRef.current.configure({ moduleName: nextModule });
+      setBuildState({ ...buildStoreRef.current.state });
+    }
+  }, [activePath, buildProject]);
   async function refreshProblems(path: string, content: string) {
     const validationProblems = await workspaceApi.runValidation(path, content);
     problemsRef.current.replace([
@@ -1814,7 +1829,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
-        buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
+        buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} modules={buildProject?.modules ?? []} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
         gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />} onChangeView={setGitToolView} onOpenFile={(path) => void openFile(path)} />}
       />
       <div

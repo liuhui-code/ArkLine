@@ -134,4 +134,53 @@ describe("build tool window", () => {
       });
     });
   });
+
+  it("uses the active file module for HAP builds", async () => {
+    const user = userEvent.setup();
+    const runTerminalCommand = vi.fn(createWorkspaceApi().runTerminalCommand);
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      runTerminalCommand,
+      openWorkspace: async () => ({
+        rootName: "Demo",
+        rootPath: "/workspace/Demo",
+        files: [
+          "/workspace/Demo/build-profile.json5",
+          "/workspace/Demo/hvigorfile.ts",
+          "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
+          "/workspace/Demo/feature/src/main/ets/pages/Feature.ets",
+        ],
+      }),
+    })} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "Feature.ets" }));
+    await user.click(screen.getByRole("button", { name: "Run Build" }));
+
+    await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      command: "./hvigorw assembleHap --mode module -p module=feature@default -p product=default -p buildMode=debug --no-daemon",
+    })));
+  });
+
+  it("shows detected modules as module choices", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "Demo",
+        rootPath: "/workspace/Demo",
+        files: [
+          "/workspace/Demo/build-profile.json5",
+          "/workspace/Demo/hvigorfile.ts",
+          "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
+          "/workspace/Demo/feature/src/main/ets/pages/Feature.ets",
+        ],
+      }),
+    })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("tab", { name: "Build" }));
+
+    const moduleSelect = await screen.findByLabelText("Build Module");
+    expect(within(moduleSelect).getByRole("option", { name: "entry" })).toBeInTheDocument();
+    expect(within(moduleSelect).getByRole("option", { name: "feature" })).toBeInTheDocument();
+  });
 });

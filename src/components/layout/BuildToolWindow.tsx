@@ -4,6 +4,7 @@ import type { BuildState, BuildTarget } from "@/features/build/build-model";
 type BuildToolWindowProps = {
   state: BuildState;
   workspaceRootPath: string | null;
+  modules: string[];
   onChangeTarget: (target: BuildTarget) => void;
   onChangeModuleName: (moduleName: string) => void;
   onChangeProduct: (product: string) => void;
@@ -29,6 +30,7 @@ function formatDuration(durationMs: number | null) {
 export function BuildToolWindow({
   state,
   workspaceRootPath,
+  modules,
   onChangeTarget,
   onChangeModuleName,
   onChangeProduct,
@@ -41,6 +43,7 @@ export function BuildToolWindow({
   const running = state.status === "running";
   const hasWorkspace = Boolean(workspaceRootPath);
   const duration = formatDuration(state.lastDurationMs);
+  const moduleOptions = modules.length > 0 ? modules : [state.moduleName || "entry"];
 
   function changeTarget(event: ChangeEvent<HTMLSelectElement>) {
     onChangeTarget(event.target.value as BuildTarget);
@@ -73,7 +76,11 @@ export function BuildToolWindow({
         </label>
         <label className="build-tool-window__field">
           <span>Module</span>
-          <input value={state.moduleName} disabled={running || state.lastTarget === "app"} onChange={(event) => onChangeModuleName(event.target.value)} />
+          <select aria-label="Build Module" value={state.moduleName} disabled={running || state.lastTarget === "app"} onChange={(event) => onChangeModuleName(event.target.value)}>
+            {moduleOptions.map((moduleName) => (
+              <option key={moduleName} value={moduleName}>{moduleName}</option>
+            ))}
+          </select>
         </label>
         <label className="build-tool-window__field">
           <span>Product</span>
