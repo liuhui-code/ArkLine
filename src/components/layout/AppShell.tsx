@@ -657,7 +657,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Definition candidates: ${semanticCandidates.length}`);
       if (source === "modifierClick") {
         setDefinitionDebug(
-          `Ctrl+Click found ${semanticCandidates.length} semantic definition candidates. Choose one from the Usages panel.`,
+          `Ctrl+Click found ${semanticCandidates.length} semantic definition candidates. Choose one from the editor query panel.`,
         );
       }
       return;
@@ -698,7 +698,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         setStatusText(`Definition candidates: ${fallbackCandidates.length}`);
         if (source === "modifierClick") {
           setDefinitionDebug(
-            `Ctrl+Click found ${fallbackCandidates.length} fallback definition candidates. Choose one from the Usages panel.`,
+            `Ctrl+Click found ${fallbackCandidates.length} fallback definition candidates. Choose one from the editor query panel.`,
           );
         }
         return;
