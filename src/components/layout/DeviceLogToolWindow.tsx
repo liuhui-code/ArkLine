@@ -1,26 +1,15 @@
-import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo, useState } from "react";
-import { applyDeviceLogFilter, compileDeviceLogFilter } from "@/features/device-log/device-log-filter";
-import type { DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
-import { createDeviceLogStore } from "@/features/device-log/device-log-store";
+import { useEffect, useState } from "react";
+import { DeviceFaultLogPanel } from "@/components/layout/DeviceFaultLogPanel";
+import { DeviceHiLogPanel } from "@/components/layout/DeviceHiLogPanel";
 import type { DeviceLogDevice, WorkspaceApi } from "@/features/workspace/workspace-api";
-
-const initialFilter: DeviceLogFilterState = {
-  query: "",
-  regex: false,
-  matchCase: false,
-  levels: [],
-  pid: "",
-  process: "",
-  domain: "",
-  tag: "",
-};
 
 type DeviceLogToolWindowProps = {
   active: boolean;
   workspaceApi: WorkspaceApi;
   onStatusChange: (status: string) => void;
 };
+
+type DeviceLogWorkbenchTab = "hilog" | "faultLog";
 
 export function DeviceLogToolWindow({
   active,
@@ -29,47 +18,8 @@ export function DeviceLogToolWindow({
 }: DeviceLogToolWindowProps) {
   const [devices, setDevices] = useState<DeviceLogDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
-  const [streamId, setStreamId] = useState<string | null>(null);
-  const [streamStatus, setStreamStatus] = useState<DeviceLogStreamStatus>("idle");
-  const [filter, setFilter] = useState(initialFilter);
-  const [storeVersion, setStoreVersion] = useState(0);
-  const store = useMemo(() => createDeviceLogStore(), []);
-  const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
-  const visibleEntries = store.getState().entries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
-
-  useEffect(() => {
-    function appendLines(deviceId: string, lines: string[]) {
-      store.appendRawLines(deviceId, lines);
-      setStoreVersion((value) => value + 1);
-    }
-
-    function handleTestEvent(event: Event) {
-      const detail = (event as CustomEvent<{ deviceId: string; lines: string[] }>).detail;
-      appendLines(detail.deviceId, detail.lines);
-    }
-
-    document.addEventListener("arkline-device-log-lines", handleTestEvent);
-
-    let disposed = false;
-    let teardown: () => void = () => {};
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      void listen<{ streamId: string; deviceId: string; lines: string[] }>("device-log-output", (event) => {
-        appendLines(event.payload.deviceId, event.payload.lines);
-      }).then((unlisten) => {
-        if (disposed) {
-          unlisten();
-          return;
-        }
-        teardown = unlisten;
-      });
-    }
-
-    return () => {
-      disposed = true;
-      teardown();
-      document.removeEventListener("arkline-device-log-lines", handleTestEvent);
-    };
-  }, [store]);
+  const [activeTab, setActiveTab] = useState<DeviceLogWorkbenchTab>("hilog");
+  const [panelStatus, setPanelStatus] = useState("Idle");
 
   useEffect(() => {
     if (!active) {
@@ -89,44 +39,12 @@ export function DeviceLogToolWindow({
       cancelled = true;
     };
   }, [active, workspaceApi]);
+  const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? null;
 
-  async function startStream() {
-    if (!selectedDeviceId || streamStatus === "running" || streamStatus === "starting") {
-      return;
-    }
-
-    setStreamStatus("starting");
-    try {
-      const stream = await workspaceApi.startDeviceLogStream({ deviceId: selectedDeviceId });
-      setStreamId(stream.streamId);
-      setStreamStatus("running");
-      onStatusChange("Device log stream running");
-    } catch (error) {
-      setStreamStatus("error");
-      onStatusChange(error instanceof Error ? error.message : "Device log stream failed");
-    }
+  function handlePanelStatusChange(status: string) {
+    setPanelStatus(status);
+    onStatusChange(status);
   }
-
-  async function stopStream() {
-    if (!streamId) {
-      return;
-    }
-
-    setStreamStatus("stopping");
-    await workspaceApi.stopDeviceLogStream(streamId);
-    setStreamId(null);
-    setStreamStatus("idle");
-    onStatusChange("Device log stream stopped");
-  }
-
-  function updateFilter(patch: Partial<DeviceLogFilterState>) {
-    const nextFilter = { ...filter, ...patch };
-    setFilter(nextFilter);
-    store.setFilter(nextFilter);
-    setStoreVersion((value) => value + 1);
-  }
-
-  void storeVersion;
 
   return (
     <section className="device-log-tool-window" aria-label="Device Log Panel">
@@ -143,65 +61,46 @@ export function DeviceLogToolWindow({
             </option>
           ))}
         </select>
-        <span className="device-log-tool-window__status">{streamStatus === "running" ? "Running" : streamStatus}</span>
-        {streamStatus === "running" ? (
-          <button type="button" onClick={() => void stopStream()} aria-label="Stop Device Log Stream">
-            Stop
-          </button>
-        ) : (
-          <button type="button" onClick={() => void startStream()} aria-label="Start Device Log Stream">
-            Start
-          </button>
-        )}
+        <span className="device-log-tool-window__status">
+          {selectedDevice ? `${selectedDevice.status} | ${selectedDevice.detail}` : "No device"}
+        </span>
+        <span className="device-log-tool-window__status">{panelStatus}</span>
+      </header>
+      <div className="device-log-tool-window__tabs" role="tablist" aria-label="Device Log Views">
         <button
           type="button"
-          onClick={() => {
-            store.clear();
-            setStoreVersion((value) => value + 1);
-          }}
+          role="tab"
+          aria-selected={activeTab === "hilog"}
+          className={activeTab === "hilog" ? "device-log-tool-window__tab device-log-tool-window__tab--active" : "device-log-tool-window__tab"}
+          onClick={() => setActiveTab("hilog")}
         >
-          Clear
+          HiLog
         </button>
-      </header>
-      <div className="device-log-tool-window__filters">
-        <input
-          aria-label="Filter device logs"
-          value={filter.query}
-          onChange={(event) => updateFilter({ query: event.target.value })}
-          placeholder="Filter logs"
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "faultLog"}
+          className={activeTab === "faultLog" ? "device-log-tool-window__tab device-log-tool-window__tab--active" : "device-log-tool-window__tab"}
+          onClick={() => setActiveTab("faultLog")}
+        >
+          Fault Log
+        </button>
+      </div>
+      {activeTab === "hilog" ? (
+        <DeviceHiLogPanel
+          active={active}
+          deviceId={selectedDeviceId}
+          workspaceApi={workspaceApi}
+          onStatusChange={handlePanelStatusChange}
         />
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.regex}
-            onChange={(event) => updateFilter({ regex: event.target.checked })}
-          />
-          Regex
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.matchCase}
-            onChange={(event) => updateFilter({ matchCase: event.target.checked })}
-          />
-          Match Case
-        </label>
-        {compiledFilter.error ? <span className="device-log-tool-window__filter-error">{compiledFilter.error}</span> : null}
-      </div>
-      <div className="device-log-tool-window__entries" role="log" aria-label="Device Log Entries">
-        {visibleEntries.length === 0 ? (
-          <p className="device-log-tool-window__empty">No log entries</p>
-        ) : (
-          visibleEntries.map((entry) => (
-            <div key={entry.id} className={`device-log-tool-window__entry device-log-tool-window__entry--${entry.level}`}>
-              <span>{entry.timestamp ?? "--"}</span>
-              <span>{entry.level}</span>
-              <span>{entry.tag || "-"}</span>
-              <span>{entry.message}</span>
-            </div>
-          ))
-        )}
-      </div>
+      ) : (
+        <DeviceFaultLogPanel
+          active={active}
+          deviceId={selectedDeviceId}
+          workspaceApi={workspaceApi}
+          onStatusChange={handlePanelStatusChange}
+        />
+      )}
     </section>
   );
 }

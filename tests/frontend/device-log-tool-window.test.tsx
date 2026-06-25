@@ -29,6 +29,7 @@ describe("Device Log tool window", () => {
     render(<AppShell workspaceApi={createWorkspaceApi()} />);
 
     await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
 
     const panel = await screen.findByLabelText("Device Log Panel");
     expect(panel).toBeVisible();
@@ -43,6 +44,7 @@ describe("Device Log tool window", () => {
     render(<AppShell workspaceApi={createWorkspaceApi()} />);
 
     await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
     const panel = await screen.findByLabelText("Device Log Panel");
 
     await user.click(within(panel).getByRole("checkbox", { name: "Regex" }));
@@ -56,6 +58,7 @@ describe("Device Log tool window", () => {
     render(<AppShell workspaceApi={createWorkspaceApi()} />);
 
     await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
     const panel = await screen.findByLabelText("Device Log Panel");
 
     fireEvent(
