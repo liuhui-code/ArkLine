@@ -54,6 +54,7 @@ pub fn apply_workspace_edit(
             }
         }
     }
+    conflicts.extend(validate_operation_relationships(&validated_operations));
 
     if !conflicts.is_empty() {
         return Ok(ApplyWorkspaceEditResult {
@@ -164,9 +165,15 @@ fn validate_operation(
             path,
             range,
             new_text,
-            expected_version: _,
+            expected_version,
         } => {
             let path = validate_workspace_path(workspace_root, path)?;
+            if expected_version.is_some() {
+                return Err(conflict(
+                    &path,
+                    "expectedVersion is not supported by the workspace edit runtime yet",
+                ));
+            }
             if !path.exists() {
                 return Err(conflict(&path, "Text edit target does not exist"));
             }
@@ -228,6 +235,9 @@ fn validate_operation(
             if old_path.is_dir() {
                 return Err(conflict(&old_path, "Rename source is a directory"));
             }
+            if old_path == new_path {
+                return Err(conflict(&old_path, "Rename source and target are the same path"));
+            }
             if new_path.is_dir() {
                 return Err(conflict(&new_path, "Rename target is a directory"));
             }
@@ -243,6 +253,9 @@ fn validate_operation(
         }
         WorkspaceEditOperation::DeleteFile { path, recursive } => {
             let path = validate_workspace_path(workspace_root, path)?;
+            if path == workspace_root {
+                return Err(conflict(&path, "Delete target cannot be the workspace root"));
+            }
             if !path.exists() {
                 return Err(conflict(&path, "Delete target does not exist"));
             }
@@ -259,6 +272,52 @@ fn validate_operation(
             })
         }
     }
+}
+
+fn validate_operation_relationships(operations: &[ValidatedOperation]) -> Vec<EditConflict> {
+    let mut conflicts = Vec::new();
+    let mut text_paths = BTreeSet::new();
+    let mut file_paths: BTreeMap<PathBuf, Vec<&'static str>> = BTreeMap::new();
+
+    for operation in operations {
+        match operation {
+            ValidatedOperation::Text(edit) => {
+                text_paths.insert(edit.path.clone());
+            }
+            ValidatedOperation::CreateFile { path, .. } => {
+                file_paths.entry(path.clone()).or_default().push("create");
+            }
+            ValidatedOperation::RenameFile {
+                old_path, new_path, ..
+            } => {
+                file_paths.entry(old_path.clone()).or_default().push("rename source");
+                file_paths.entry(new_path.clone()).or_default().push("rename target");
+            }
+            ValidatedOperation::DeleteFile { path, .. } => {
+                file_paths.entry(path.clone()).or_default().push("delete");
+            }
+        }
+    }
+
+    for path in &text_paths {
+        if file_paths.contains_key(path) {
+            conflicts.push(conflict(
+                path,
+                "Text edits cannot be mixed with file operations on the same path",
+            ));
+        }
+    }
+
+    for (path, roles) in file_paths {
+        if roles.len() > 1 {
+            conflicts.push(conflict(
+                &path,
+                format!("Multiple file operations affect the same path: {}", roles.join(", ")),
+            ));
+        }
+    }
+
+    conflicts
 }
 
 fn normalize_workspace_root(workspace_root: &Path) -> Result<PathBuf, String> {
@@ -400,7 +459,7 @@ fn text_range_to_byte_offsets(content: &str, range: &TextRange) -> Result<(usize
 
 fn line_column_to_byte_offset(content: &str, line: u32, column: u32) -> Result<usize, String> {
     let line_index = usize::try_from(line - 1).map_err(|_| "Line value is too large")?;
-    let column_index = usize::try_from(column - 1).map_err(|_| "Column value is too large")?;
+    let column_units = usize::try_from(column - 1).map_err(|_| "Column value is too large")?;
     let mut line_starts = vec![0usize];
 
     for (index, character) in content.char_indices() {
@@ -417,20 +476,28 @@ fn line_column_to_byte_offset(content: &str, line: u32, column: u32) -> Result<u
         .map(|offset| line_start + offset)
         .unwrap_or(content.len());
     let line_text = &content[line_start..line_end];
-    let line_char_count = line_text.chars().count();
+    let line_utf16_units = line_text.encode_utf16().count();
 
-    if column_index > line_char_count {
+    if column_units > line_utf16_units {
         return Err(format!("Column {column} is outside line {line}"));
     }
-    if column_index == line_char_count {
+    if column_units == line_utf16_units {
         return Ok(line_end);
     }
 
-    line_text
-        .char_indices()
-        .nth(column_index)
-        .map(|(offset, _)| line_start + offset)
-        .ok_or_else(|| format!("Column {column} is outside line {line}"))
+    let mut current_units = 0usize;
+    for (offset, character) in line_text.char_indices() {
+        if current_units == column_units {
+            return Ok(line_start + offset);
+        }
+        let next_units = current_units + character.len_utf16();
+        if column_units < next_units {
+            return Err(format!("Column {column} is not on a UTF-16 character boundary"));
+        }
+        current_units = next_units;
+    }
+
+    Err(format!("Column {column} is outside line {line}"))
 }
 
 fn conflict(path: &Path, message: impl Into<String>) -> EditConflict {
@@ -764,6 +831,195 @@ mod tests {
                 && conflict.message.contains("node_modules")
         }));
         assert!(!file.exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_refuses_to_delete_workspace_root() {
+        let root = unique_temp_dir("delete-root");
+        fs::create_dir_all(root.join("src")).unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::DeleteFile {
+                path: ".".to_string(),
+                recursive: true,
+            }]),
+        )
+        .unwrap();
+
+        assert!(!result.applied);
+        assert!(result
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.message.contains("workspace root")));
+        assert!(root.exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_rejects_same_path_rename_without_deleting_source() {
+        let root = unique_temp_dir("same-path-rename");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("main.ets");
+        fs::write(&file, "source").unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::RenameFile {
+                old_path: file.to_string_lossy().to_string(),
+                new_path: file.to_string_lossy().to_string(),
+                overwrite: true,
+            }]),
+        )
+        .unwrap();
+
+        assert!(!result.applied);
+        assert!(result
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.message.contains("same path")));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "source");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_rejects_text_and_delete_on_same_file() {
+        let root = unique_temp_dir("text-delete-same-file");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("main.ets");
+        fs::write(&file, "original").unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![
+                text_edit(
+                    file.clone(),
+                    TextRange {
+                        start_line: 1,
+                        start_column: 1,
+                        end_line: 1,
+                        end_column: 9,
+                    },
+                    "changed",
+                ),
+                WorkspaceEditOperation::DeleteFile {
+                    path: file.to_string_lossy().to_string(),
+                    recursive: false,
+                },
+            ]),
+        )
+        .unwrap();
+
+        assert!(!result.applied);
+        assert!(result.conflicts.iter().any(|conflict| {
+            conflict
+                .message
+                .contains("Text edits cannot be mixed with file operations")
+        }));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "original");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_rejects_text_and_rename_on_same_file() {
+        let root = unique_temp_dir("text-rename-same-file");
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.ets");
+        let target = root.join("target.ets");
+        fs::write(&source, "source").unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![
+                text_edit(
+                    source.clone(),
+                    TextRange {
+                        start_line: 1,
+                        start_column: 1,
+                        end_line: 1,
+                        end_column: 7,
+                    },
+                    "changed",
+                ),
+                WorkspaceEditOperation::RenameFile {
+                    old_path: source.to_string_lossy().to_string(),
+                    new_path: target.to_string_lossy().to_string(),
+                    overwrite: false,
+                },
+            ]),
+        )
+        .unwrap();
+
+        assert!(!result.applied);
+        assert!(source.exists());
+        assert!(!target.exists());
+        assert_eq!(fs::read_to_string(&source).unwrap(), "source");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_rejects_expected_version_until_document_versions_are_supported() {
+        let root = unique_temp_dir("expected-version");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("main.ets");
+        fs::write(&file, "original").unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::Text {
+                path: file.to_string_lossy().to_string(),
+                range: TextRange {
+                    start_line: 1,
+                    start_column: 1,
+                    end_line: 1,
+                    end_column: 9,
+                },
+                new_text: "changed".to_string(),
+                expected_version: Some(1),
+            }]),
+        )
+        .unwrap();
+
+        assert!(!result.applied);
+        assert!(result
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.message.contains("expectedVersion")));
+        assert_eq!(fs::read_to_string(&file).unwrap(), "original");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_uses_utf16_columns_for_text_ranges() {
+        let root = unique_temp_dir("utf16-columns");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("main.ets");
+        fs::write(&file, "😀width\n").unwrap();
+
+        let result = apply_workspace_edit(
+            &root,
+            &plan(vec![text_edit(
+                file.clone(),
+                TextRange {
+                    start_line: 1,
+                    start_column: 3,
+                    end_line: 1,
+                    end_column: 8,
+                },
+                "height",
+            )]),
+        )
+        .unwrap();
+
+        assert!(result.applied);
+        assert_eq!(fs::read_to_string(&file).unwrap(), "😀height\n");
 
         fs::remove_dir_all(root).unwrap();
     }
