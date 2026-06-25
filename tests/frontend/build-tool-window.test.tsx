@@ -60,6 +60,9 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     closeTerminalSession: async () => undefined,
     stopTerminalSession: async () => undefined,
     ...overrides,
+    listDeviceLogDevices: async () => [],
+    startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
+    stopDeviceLogStream: async () => undefined,
   };
 }
 
