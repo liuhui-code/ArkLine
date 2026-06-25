@@ -1,11 +1,18 @@
 use tauri::{AppHandle, State};
 
-use crate::models::device_log::{DeviceLogDevice, DeviceLogStreamSummary, StartDeviceLogStreamRequest};
-use crate::services::device_log_service::{list_devices, start_stream, stop_stream, DeviceLogRuntime};
+use crate::models::device_log::{
+    DeviceFaultLogFetchResult, DeviceLogDevice, DeviceLogStreamSummary, ListDeviceFaultLogsRequest, StartDeviceLogStreamRequest,
+};
+use crate::services::device_log_service::{list_devices, list_fault_logs, start_stream, stop_stream, DeviceLogRuntime};
 
 #[tauri::command]
 pub fn list_device_log_devices() -> Result<Vec<DeviceLogDevice>, String> {
     list_devices()
+}
+
+#[tauri::command]
+pub fn list_device_fault_logs(request: ListDeviceFaultLogsRequest) -> Result<DeviceFaultLogFetchResult, String> {
+    list_fault_logs(request)
 }
 
 #[tauri::command]

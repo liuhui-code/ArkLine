@@ -83,6 +83,7 @@ pub fn run() {
             commands::terminal::run_terminal_command,
             commands::terminal::stop_terminal_command,
             commands::device_log::list_device_log_devices,
+            commands::device_log::list_device_fault_logs,
             commands::device_log::start_device_log_stream,
             commands::device_log::stop_device_log_stream,
             commands::windowing::open_workspace_in_new_window,
