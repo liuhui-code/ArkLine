@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { applyDeviceFaultLogFilter, compileDeviceFaultLogFilter } from "@/features/device-log/device-fault-log-filter";
 import type {
   DeviceFaultLogEntry,
@@ -54,6 +54,9 @@ export function DeviceFaultLogPanel({
   const [filter, setFilter] = useState(initialFilter);
   const [storeVersion, setStoreVersion] = useState(0);
   const store = useMemo(() => createDeviceFaultLogStore(), []);
+  const currentDeviceIdRef = useRef(deviceId);
+  const previousDeviceIdRef = useRef(deviceId);
+  const refreshRequestVersionRef = useRef(0);
   const compiledFilter = useMemo(() => compileDeviceFaultLogFilter(filter), [filter]);
   const state = store.getState();
   const visibleEntries = state.entries.filter((entry) => applyDeviceFaultLogFilter(entry, compiledFilter));
@@ -84,6 +87,10 @@ export function DeviceFaultLogPanel({
   }
 
   useEffect(() => {
+    currentDeviceIdRef.current = deviceId;
+  }, [deviceId]);
+
+  useEffect(() => {
     const resolvedSelectionId = selectedEntry?.id ?? null;
     if (state.selectedEntryId === resolvedSelectionId) {
       return;
@@ -94,14 +101,18 @@ export function DeviceFaultLogPanel({
   }, [selectedEntry, state.selectedEntryId, store]);
 
   useEffect(() => {
+    if (previousDeviceIdRef.current === deviceId) {
+      return;
+    }
+
+    previousDeviceIdRef.current = deviceId;
+    refreshRequestVersionRef.current += 1;
     setFilter(initialFilter);
     store.setFilter(initialFilter);
     store.clearView();
     rerender();
-    if (active) {
-      onStatusChange("Fault log view idle");
-    }
-  }, [active, deviceId, onStatusChange, store]);
+    onStatusChange("Fault log view idle");
+  }, [deviceId, onStatusChange, store]);
 
   async function refreshFaultLogs() {
     if (!deviceId) {
@@ -110,14 +121,23 @@ export function DeviceFaultLogPanel({
       return;
     }
 
+    const requestVersion = refreshRequestVersionRef.current + 1;
+    refreshRequestVersionRef.current = requestVersion;
+    const requestedDeviceId = deviceId;
     syncStoreStatus("loading", "Refreshing fault logs");
     onStatusChange("Refreshing fault logs");
     try {
-      const result = await workspaceApi.listDeviceFaultLogs({ deviceId });
+      const result = await workspaceApi.listDeviceFaultLogs({ deviceId: requestedDeviceId });
+      if (requestVersion !== refreshRequestVersionRef.current || requestedDeviceId !== currentDeviceIdRef.current) {
+        return;
+      }
       store.replace(result);
       rerender();
       onStatusChange(result.message || `Fault log status: ${result.status}`);
     } catch (error) {
+      if (requestVersion !== refreshRequestVersionRef.current || requestedDeviceId !== currentDeviceIdRef.current) {
+        return;
+      }
       const message = error instanceof Error ? error.message : "Fault log refresh failed";
       syncStoreStatus("error", message);
       onStatusChange(message);

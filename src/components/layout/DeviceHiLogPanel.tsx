@@ -37,11 +37,13 @@ export function DeviceHiLogPanel({
   const currentDeviceIdRef = useRef(deviceId);
   const previousDeviceIdRef = useRef(deviceId);
   const streamIdRef = useRef<string | null>(null);
+  const startRequestVersionRef = useRef(0);
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
   const visibleEntries = store.getState().entries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
 
   useEffect(() => {
     currentDeviceIdRef.current = deviceId;
+    startRequestVersionRef.current += 1;
   }, [deviceId]);
 
   useEffect(() => {
@@ -90,6 +92,7 @@ export function DeviceHiLogPanel({
 
     return () => {
       disposed = true;
+      startRequestVersionRef.current += 1;
       const activeStreamId = streamIdRef.current;
       streamIdRef.current = null;
       if (activeStreamId) {
@@ -107,6 +110,7 @@ export function DeviceHiLogPanel({
     }
 
     previousDeviceIdRef.current = deviceId;
+    startRequestVersionRef.current += 1;
     store.clear();
     setStoreVersion((value) => value + 1);
     setFilter(initialFilter);
@@ -132,13 +136,23 @@ export function DeviceHiLogPanel({
       return;
     }
 
+    const requestVersion = startRequestVersionRef.current;
+    const requestedDeviceId = deviceId;
     setStreamStatus("starting");
     try {
-      const stream = await workspaceApi.startDeviceLogStream({ deviceId });
+      const stream = await workspaceApi.startDeviceLogStream({ deviceId: requestedDeviceId });
+      const staleRequest = requestVersion !== startRequestVersionRef.current || requestedDeviceId !== currentDeviceIdRef.current;
+      if (staleRequest) {
+        await workspaceApi.stopDeviceLogStream(stream.streamId).catch(() => undefined);
+        return;
+      }
       setStreamId(stream.streamId);
       setStreamStatus("running");
       onStatusChange("Device log stream running");
     } catch (error) {
+      if (requestVersion !== startRequestVersionRef.current || requestedDeviceId !== currentDeviceIdRef.current) {
+        return;
+      }
       setStreamStatus("error");
       onStatusChange(error instanceof Error ? error.message : "Device log stream failed");
     }

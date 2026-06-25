@@ -4,6 +4,16 @@ import { vi } from "vitest";
 import { AppShell } from "@/components/layout/AppShell";
 import { defaultWorkspaceApi, type WorkspaceApi } from "@/features/workspace/workspace-api";
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function createWorkspaceApi(): WorkspaceApi {
   return {
     ...defaultWorkspaceApi,
@@ -146,5 +156,41 @@ describe("Device Log tool window", () => {
       }),
     );
     expect(await within(panel).findByText("second device line")).toBeVisible();
+  });
+
+  it("ignores a stale start-stream result after switching devices", async () => {
+    const firstStart = createDeferred<{ streamId: string; deviceId: string; status: "running" }>();
+    const stopDeviceLogStream = vi.fn(async () => undefined);
+    const user = userEvent.setup();
+    const workspaceApi: WorkspaceApi = {
+      ...defaultWorkspaceApi,
+      listDeviceLogDevices: async () => [
+        { id: "device-1", label: "Pura 70 - USB", status: "online", detail: "USB" },
+        { id: "device-2", label: "MatePad - WiFi", status: "online", detail: "WiFi" },
+      ],
+      startDeviceLogStream: vi.fn(async ({ deviceId }) => {
+        if (deviceId === "device-1") {
+          return firstStart.promise;
+        }
+
+        return { streamId: `stream-${deviceId}`, deviceId, status: "running" };
+      }),
+      stopDeviceLogStream,
+    };
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Device" }), "device-2");
+
+    firstStart.resolve({ streamId: "stream-device-1", deviceId: "device-1", status: "running" });
+
+    await waitFor(() => expect(stopDeviceLogStream).toHaveBeenCalledWith("stream-device-1"));
+    await waitFor(() => expect(within(panel).queryByText("Running")).not.toBeInTheDocument());
+    expect(within(panel).getByText("idle")).toBeVisible();
   });
 });
