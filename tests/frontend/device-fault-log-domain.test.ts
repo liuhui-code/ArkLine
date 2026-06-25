@@ -260,9 +260,33 @@ describe("device fault log store", () => {
 describe("device fault log workspace api demo implementation", () => {
   it("returns deterministic demo fault log results outside Tauri", async () => {
     const result = await defaultWorkspaceApi.listDeviceFaultLogs({ deviceId: "demo-device" });
+    const parsed = parseDeviceFaultLogEntries(result);
 
-    expect(result.deviceId).toBe("demo-device");
-    expect(result.status).toBe("ready");
+    expect(result).toMatchObject({
+      deviceId: "demo-device",
+      command: "hdc -t demo-device shell faultlog -l",
+      stderr: "",
+      status: "ready",
+      message: "ok",
+    });
+    expect(result.entries).toHaveLength(2);
+    expect(result.entries.map((entry) => entry.id)).toEqual(["demo-fault-1", "demo-fault-2"]);
     expect(result.entries[0]?.raw).toContain("JS_ERROR");
+    expect(result.entries[1]?.raw).toContain("APP_FREEZE");
+
+    expect(parsed.entries.map((entry) => entry.type)).toEqual(["jsCrash", "appFreeze"]);
+  });
+
+  it("returns a structured non-happy-path result for unknown devices", async () => {
+    const result = await defaultWorkspaceApi.listDeviceFaultLogs({ deviceId: "missing-device" });
+
+    expect(result).toMatchObject({
+      deviceId: "missing-device",
+      status: "unavailable",
+      entries: [],
+      command: "hdc -t missing-device shell faultlog -l",
+      stderr: "",
+      message: "Device fault log demo data is only available for demo-device",
+    });
   });
 });

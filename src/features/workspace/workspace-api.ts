@@ -833,6 +833,18 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       return invoke<DeviceFaultLogFetchResult>("list_device_fault_logs", { request });
     }
 
+    if (request.deviceId !== "demo-device") {
+      return {
+        deviceId: request.deviceId,
+        fetchedAt: "2026-06-25T15:21:48.000Z",
+        entries: [],
+        command: `hdc -t ${request.deviceId} shell faultlog -l`,
+        stderr: "",
+        status: "unavailable",
+        message: "Device fault log demo data is only available for demo-device",
+      };
+    }
+
     return {
       deviceId: request.deviceId,
       fetchedAt: "2026-06-25T15:21:48.000Z",
