@@ -53,6 +53,18 @@ export type HarmonyBuildPlan = BuildPlan;
 
 export type BuildResultStatus = "success" | "failed" | "stopped";
 
+export type BuildEventKind = "queued" | "started" | "diagnostics" | "artifacts" | "finished" | "failed";
+
+export type BuildEvent = {
+  sequence: number;
+  runId: string;
+  kind: BuildEventKind;
+  message: string;
+  diagnosticCount?: number;
+  artifactPaths?: string[];
+  status?: BuildResultStatus;
+};
+
 export type BuildArtifactKind = BuildTarget;
 
 export type BuildArtifact = {
@@ -146,6 +158,7 @@ export type BuildState = {
   lastResult: BuildResult | null;
   history: BuildResult[];
   queue: BuildQueueItem[];
+  events: BuildEvent[];
   freshness: BuildFreshnessAssessment;
   lastExitCode: number | null;
   lastDurationMs: number | null;

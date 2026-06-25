@@ -632,4 +632,75 @@ describe("build store", () => {
     store.clearQueue();
     expect(store.state.queue).toEqual([]);
   });
+
+  it("records build lifecycle events in sequence", () => {
+    const store = createBuildStore();
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    store.start({ ...plan, runId: "build-1" });
+    store.finish(createBuildResultFromTerminalRun({
+      runId: "build-1",
+      exitCode: 0,
+      durationMs: 1200,
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      problems: [{
+        source: "build",
+        severity: "warning",
+        path: "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
+        line: 1,
+        column: 1,
+        message: "Warning",
+      }],
+      artifacts: [{
+        path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
+        kind: "hap",
+        source: "output",
+      }],
+      environment: createBuildEnvironmentSnapshot({ plan }),
+    }));
+
+    expect(store.eventsForRun("build-1").map((event) => event.kind)).toEqual([
+      "started",
+      "diagnostics",
+      "artifacts",
+      "finished",
+    ]);
+    expect(store.eventsForRun("build-1").map((event) => event.sequence)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("records queued events and can clear event logs", () => {
+    const store = createBuildStore();
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    store.enqueue({ runId: "build-1", plan, requestedAt: 100 });
+
+    expect(store.state.events).toEqual([
+      {
+        sequence: 1,
+        runId: "build-1",
+        kind: "queued",
+        message: "Queued Build HAP entry debug",
+      },
+    ]);
+
+    store.clearEvents("build-1");
+    expect(store.state.events).toEqual([]);
+  });
 });
