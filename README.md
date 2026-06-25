@@ -196,6 +196,43 @@ The shell is intentionally aligned toward IntelliJ IDEA habits.
 | Hide active tool window | `Shift+Esc` |
 | Editor-only mode toggle | `Ctrl+Shift+F12` |
 
+## ArkLine CLI
+
+ArkLine exposes a narrow CLI for inspecting language-service capability and
+running the same preview-first workspace edits used by the IDE shell.
+
+Inspect semantic-worker readiness:
+
+```bash
+pnpm cli language inspect --json
+```
+
+List code actions for a file and caret position:
+
+```bash
+pnpm cli actions list --workspace /path/to/project --file src/pages/Index.ets --line 1 --column 1 --json
+```
+
+Preview and apply generated ArkTS files:
+
+```bash
+pnpm cli generate page --workspace /path/to/project --name Home --dry-run --json
+pnpm cli generate page --workspace /path/to/project --name Home --apply --json
+pnpm cli generate component --workspace /path/to/project --name UserCard --dry-run --json
+```
+
+Preview and apply file renames inside the workspace root:
+
+```bash
+pnpm cli rename-file --workspace /path/to/project --file src/pages/Old.ets --to src/pages/New.ets --dry-run --json
+pnpm cli rename-file --workspace /path/to/project --file src/pages/Old.ets --to src/pages/New.ets --apply --json
+```
+
+Use `--pretty` instead of `--json` for human-readable dry-run/apply output on
+workspace edit commands. The runtime rejects paths outside the workspace and
+blocked generated directories such as `.git`, `node_modules`, `build`, and
+`.hvigor`.
+
 ## Architecture snapshot
 
 ArkLine is split into a small desktop host and a web-based UI shell:
