@@ -1,5 +1,6 @@
 mod commands {
     pub mod code_actions;
+    pub mod device_log;
     pub mod documents;
     pub mod environment;
     pub mod git_trace;
@@ -11,6 +12,7 @@ mod commands {
 }
 
 mod models {
+    pub mod device_log;
     pub mod diagnostics;
     pub mod language;
     pub mod terminal;
@@ -32,6 +34,7 @@ mod services {
     pub mod terminal_io_service;
     pub mod terminal_session_service;
     pub mod terminal_service;
+    pub mod device_log_service;
     pub mod validation_service;
     pub mod workspace_edit_service;
     pub mod workspace_service;
@@ -48,6 +51,7 @@ pub fn run() {
         .manage(services::language_service::LanguageRuntime::default())
         .manage(commands::windowing::LaunchWorkspaceState::default())
         .manage(services::terminal_service::TerminalRuntime::default())
+        .manage(services::device_log_service::DeviceLogRuntime::default())
         .invoke_handler(tauri::generate_handler![
             commands::workspace::open_workspace,
             commands::workspace::load_workspace_diff,
@@ -78,6 +82,9 @@ pub fn run() {
             commands::terminal::stop_terminal_session,
             commands::terminal::run_terminal_command,
             commands::terminal::stop_terminal_command,
+            commands::device_log::list_device_log_devices,
+            commands::device_log::start_device_log_stream,
+            commands::device_log::stop_device_log_stream,
             commands::windowing::open_workspace_in_new_window,
             commands::windowing::get_launch_workspace_path
         ])
