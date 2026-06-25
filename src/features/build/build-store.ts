@@ -1,5 +1,5 @@
 import { assessBuildFreshness, unknownBuildFreshness } from "@/features/build/build-freshness";
-import type { BuildResult, BuildState, HarmonyBuildPlan } from "@/features/build/build-model";
+import type { BuildQueueItem, BuildResult, BuildState, HarmonyBuildPlan } from "@/features/build/build-model";
 
 export function createBuildStore() {
   const state: BuildState = {
@@ -15,6 +15,7 @@ export function createBuildStore() {
     problems: [],
     lastResult: null,
     history: [],
+    queue: [],
     freshness: unknownBuildFreshness,
     lastExitCode: null,
     lastDurationMs: null,
@@ -25,6 +26,17 @@ export function createBuildStore() {
     state,
     configure(next: Partial<Pick<BuildState, "lastTarget" | "moduleName" | "products" | "product" | "buildMode" | "fastMode">>) {
       Object.assign(state, next);
+    },
+    enqueue(item: BuildQueueItem) {
+      state.queue = [...state.queue.filter((queued) => queued.runId !== item.runId), item];
+    },
+    dequeueNext() {
+      const [next, ...remaining] = state.queue;
+      state.queue = remaining;
+      return next ?? null;
+    },
+    clearQueue() {
+      state.queue = [];
     },
     start(plan: HarmonyBuildPlan & { runId: string }) {
       state.status = "running";

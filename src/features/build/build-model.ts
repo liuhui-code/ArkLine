@@ -43,6 +43,12 @@ export type BuildPlan = {
   command: string;
 };
 
+export type BuildQueueItem = {
+  runId: string;
+  plan: BuildPlan;
+  requestedAt: number;
+};
+
 export type HarmonyBuildPlan = BuildPlan;
 
 export type BuildResultStatus = "success" | "failed" | "stopped";
@@ -139,6 +145,7 @@ export type BuildState = {
   problems: ProblemItem[];
   lastResult: BuildResult | null;
   history: BuildResult[];
+  queue: BuildQueueItem[];
   freshness: BuildFreshnessAssessment;
   lastExitCode: number | null;
   lastDurationMs: number | null;

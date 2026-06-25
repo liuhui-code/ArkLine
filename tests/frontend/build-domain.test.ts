@@ -580,4 +580,56 @@ describe("build store", () => {
     });
     expect(store.state.freshness.status).toBe("candidate-current");
   });
+
+  it("queues pending build plans in FIFO order", () => {
+    const store = createBuildStore();
+    const firstPlan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const secondPlan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "app",
+      moduleName: null,
+      product: "default",
+      buildMode: "release",
+      clean: false,
+      fastMode: false,
+    });
+
+    store.enqueue({ runId: "build-1", plan: firstPlan, requestedAt: 100 });
+    store.enqueue({ runId: "build-2", plan: secondPlan, requestedAt: 200 });
+
+    expect(store.state.queue.map((item) => item.runId)).toEqual(["build-1", "build-2"]);
+    expect(store.dequeueNext()?.runId).toBe("build-1");
+    expect(store.dequeueNext()?.runId).toBe("build-2");
+    expect(store.dequeueNext()).toBeNull();
+  });
+
+  it("replaces queued plans with the same run id and clears the queue", () => {
+    const store = createBuildStore();
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    store.enqueue({ runId: "build-1", plan, requestedAt: 100 });
+    store.enqueue({ runId: "build-1", plan: { ...plan, label: "Replacement" }, requestedAt: 200 });
+
+    expect(store.state.queue).toHaveLength(1);
+    expect(store.state.queue[0]?.plan.label).toBe("Replacement");
+
+    store.clearQueue();
+    expect(store.state.queue).toEqual([]);
+  });
 });
