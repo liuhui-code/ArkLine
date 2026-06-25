@@ -1,51 +1,58 @@
 import type {
+  DeviceFaultLogEntry,
   DeviceFaultLogFetchResult,
-  DeviceFaultLogParsedEntry,
+  DeviceFaultLogParsedResult,
   DeviceFaultLogRawEntry,
-  DeviceFaultSeverity,
-  DeviceFaultType,
+  DeviceFaultLogSeverity,
+  DeviceFaultLogType,
 } from "@/features/device-log/device-fault-log-model";
 
 const multiLineFields = new Set(["stacktrace"]);
 
-export function parseDeviceFaultLogEntries(result: DeviceFaultLogFetchResult): DeviceFaultLogParsedEntry[] {
-  return result.entries.map(parseRawEntry);
-}
-
-function parseRawEntry(entry: DeviceFaultLogRawEntry): DeviceFaultLogParsedEntry {
-  const rawText = entry.raw.replace(/\r\n/gu, "\n").trim();
-  const fields = extractFields(rawText);
-  const reason = firstField(fields, "reason");
-  const summary = firstField(fields, "summary") || rawText;
-  const error = firstField(fields, "error");
-  const stacktrace = firstField(fields, "stacktrace")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
+export function parseDeviceFaultLogEntries(result: DeviceFaultLogFetchResult): DeviceFaultLogParsedResult {
   return {
-    id: entry.id,
-    rawText,
-    type: classifyFaultType(reason, summary, error),
-    severity: classifySeverity(reason, summary, error),
-    reason,
-    process: firstField(fields, "process"),
-    pid: parsePid(firstField(fields, "pid")),
-    bundleName: firstField(fields, "bundlename"),
-    timestamp: firstField(fields, "timestamp") || null,
-    summary,
-    error,
-    stacktrace,
+    deviceId: result.deviceId,
+    fetchedAt: result.fetchedAt,
+    status: result.status,
+    command: result.command,
+    stderr: result.stderr,
+    message: result.message,
+    entries: result.entries.map((entry) => parseRawEntry(entry, result.deviceId)),
   };
 }
 
-function extractFields(rawText: string): Record<string, string> {
+function parseRawEntry(entry: DeviceFaultLogRawEntry, deviceId: string): DeviceFaultLogEntry {
+  const raw = entry.raw.replace(/\r\n/gu, "\n").trim();
+  const fields = extractFields(raw);
+  const reason = firstField(fields, "reason");
+  const summary = firstField(fields, "summary") || raw;
+
+  return {
+    id: entry.id,
+    rawId: entry.id,
+    deviceId,
+    type: classifyFaultType(reason, summary, raw),
+    severity: classifySeverity(reason, summary, raw),
+    timestamp: firstField(fields, "timestamp") || null,
+    bundleName: firstField(fields, "bundlename"),
+    processName: firstField(fields, "process"),
+    pid: parsePid(firstField(fields, "pid")),
+    reason,
+    summary,
+    stack: firstField(fields, "stacktrace")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0),
+    raw,
+  };
+}
+
+function extractFields(raw: string): Record<string, string> {
   const fields: Record<string, string> = {};
   let currentKey = "";
-  const lines = rawText.split("\n");
 
-  for (const line of lines) {
-    const match = /^([A-Za-z][A-Za-z0-9]*):\s?(.*)$/u.exec(line);
+  for (const line of raw.split("\n")) {
+    const match = /^([A-Za-z][A-Za-z0-9_]*):\s?(.*)$/u.exec(line);
     if (match) {
       currentKey = match[1].toLocaleLowerCase();
       fields[currentKey] = match[2];
@@ -75,26 +82,38 @@ function parsePid(value: string) {
   return Number.isNaN(pid) ? null : pid;
 }
 
-function classifyFaultType(reason: string, summary: string, error: string): DeviceFaultType {
-  const text = `${reason}\n${summary}\n${error}`.toLocaleLowerCase();
-  if (text.includes("js error") || text.includes("javascript")) {
-    return "JS_ERROR";
+function classifyFaultType(reason: string, summary: string, raw: string): DeviceFaultLogType {
+  const normalizedReason = reason.trim().toLocaleUpperCase();
+  if (normalizedReason === "JS_ERROR") {
+    return "jsCrash";
   }
-  if (text.includes("freeze") || text.includes("not responding") || text.includes("anr")) {
-    return "APP_FREEZE";
+  if (normalizedReason === "APP_CRASH") {
+    return "cppCrash";
   }
-  if (text.includes("crash") || text.includes("abort") || text.includes("exception")) {
-    return "APP_CRASH";
+  if (normalizedReason === "APP_FREEZE") {
+    return "appFreeze";
   }
-  return "UNKNOWN";
+
+  const text = `${reason}\n${summary}\n${raw}`.toLocaleLowerCase();
+  if (text.includes("js error")) {
+    return "jsCrash";
+  }
+  if (text.includes("app crash") || text.includes("cpp crash")) {
+    return "cppCrash";
+  }
+  if (text.includes("app freeze") || text.includes("freeze") || text.includes("anr")) {
+    return "appFreeze";
+  }
+
+  return "unknown";
 }
 
-function classifySeverity(reason: string, summary: string, error: string): DeviceFaultSeverity {
-  const type = classifyFaultType(reason, summary, error);
-  if (type === "JS_ERROR" || type === "APP_CRASH") {
-    return "error";
+function classifySeverity(reason: string, summary: string, raw: string): DeviceFaultLogSeverity {
+  const type = classifyFaultType(reason, summary, raw);
+  if (type === "jsCrash" || type === "cppCrash") {
+    return "fatal";
   }
-  if (type === "APP_FREEZE") {
+  if (type === "appFreeze" || type === "sysWarning") {
     return "warning";
   }
   return "unknown";

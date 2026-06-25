@@ -8,22 +8,26 @@ const emptyFilter: DeviceFaultLogFilterState = {
   query: "",
   regex: false,
   matchCase: false,
-  types: [],
+  type: "all",
   process: "",
   pid: "",
 };
 
 function buildResult(entries: Array<{ id: string; raw: string }>): DeviceFaultLogFetchResult {
   return {
-    status: "success",
-    error: null,
+    deviceId: "device-1",
+    fetchedAt: "2026-06-25T15:21:48.000Z",
     entries,
+    command: "hdc shell faultlog -l",
+    stderr: "",
+    status: "ready",
+    message: "ok",
   };
 }
 
 describe("device fault log parser", () => {
   it("classifies js crash and preserves stack lines", () => {
-    const [entry] = parseDeviceFaultLogEntries(buildResult([
+    const parsed = parseDeviceFaultLogEntries(buildResult([
       {
         id: "fault-1",
         raw: [
@@ -40,51 +44,65 @@ describe("device fault log parser", () => {
         ].join("\n"),
       },
     ]));
+    const [entry] = parsed.entries;
 
-    expect(entry.type).toBe("JS_ERROR");
-    expect(entry.process).toBe("com.example.demo");
+    expect(parsed).toMatchObject({
+      deviceId: "device-1",
+      fetchedAt: "2026-06-25T15:21:48.000Z",
+      command: "hdc shell faultlog -l",
+      stderr: "",
+      status: "ready",
+      message: "ok",
+    });
+    expect(entry.type).toBe("jsCrash");
+    expect(entry.processName).toBe("com.example.demo");
     expect(entry.pid).toBe(4321);
+    expect(entry.bundleName).toBe("com.example.demo");
     expect(entry.summary).toBe("Render crashed");
-    expect(entry.error).toContain("TypeError");
-    expect(entry.stacktrace).toEqual([
+    expect(entry.reason).toBe("Js Error");
+    expect(entry.stack).toEqual([
       "at render (pages/index.ets:12:3)",
       "at update (pages/app.ets:44:9)",
     ]);
-    expect(entry.rawText).toContain("Stacktrace:");
+    expect(entry.raw).toContain("Stacktrace:");
+    expect(entry.deviceId).toBe("device-1");
+    expect(entry.rawId).toBe("fault-1");
   });
 
   it("keeps unknown entries inspectable", () => {
-    const [entry] = parseDeviceFaultLogEntries(buildResult([
+    const parsed = parseDeviceFaultLogEntries(buildResult([
       {
         id: "fault-2",
         raw: "opaque fault blob without structured fields",
       },
     ]));
+    const [entry] = parsed.entries;
 
-    expect(entry.type).toBe("UNKNOWN");
+    expect(entry.type).toBe("unknown");
     expect(entry.summary).toBe("opaque fault blob without structured fields");
-    expect(entry.rawText).toBe("opaque fault blob without structured fields");
+    expect(entry.raw).toBe("opaque fault blob without structured fields");
   });
 });
 
 describe("device fault log filter", () => {
   it("matches by type, process, pid, and plain text", () => {
-    const [entry] = parseDeviceFaultLogEntries(buildResult([
+    const parsed = parseDeviceFaultLogEntries(buildResult([
       {
         id: "fault-3",
         raw: [
-          "Reason: App Freeze",
+          "Reason: APP_FREEZE",
           "Process: com.example.camera",
           "PID: 987",
           "Summary: Main thread blocked by image decode",
         ].join("\n"),
       },
     ]));
+    const [entry] = parsed.entries;
 
     const compiled = compileDeviceFaultLogFilter({
       ...emptyFilter,
       query: "image decode",
-      types: ["APP_FREEZE"],
+      type: "appFreeze",
       process: "camera",
       pid: "987",
     });
@@ -94,12 +112,13 @@ describe("device fault log filter", () => {
   });
 
   it("reports invalid regex and does not match", () => {
-    const [entry] = parseDeviceFaultLogEntries(buildResult([
+    const parsed = parseDeviceFaultLogEntries(buildResult([
       {
         id: "fault-4",
         raw: "Summary: crash while starting",
       },
     ]));
+    const [entry] = parsed.entries;
 
     const compiled = compileDeviceFaultLogFilter({
       ...emptyFilter,
@@ -118,28 +137,28 @@ describe("device fault log store", () => {
     const store = createDeviceFaultLogStore();
 
     store.replace(buildResult([
-      { id: "fault-a", raw: "Reason: App Crash\nSummary: first" },
-      { id: "fault-b", raw: "Reason: App Crash\nSummary: second" },
+      { id: "fault-a", raw: "Reason: APP_CRASH\nSummary: first" },
+      { id: "fault-b", raw: "Reason: APP_CRASH\nSummary: second" },
     ]));
     expect(store.getState().selectedEntryId).toBe("fault-a");
 
     store.selectEntry("fault-b");
     store.replace(buildResult([
-      { id: "fault-b", raw: "Reason: App Crash\nSummary: second again" },
-      { id: "fault-c", raw: "Reason: App Crash\nSummary: third" },
+      { id: "fault-b", raw: "Reason: APP_CRASH\nSummary: second again" },
+      { id: "fault-c", raw: "Reason: APP_CRASH\nSummary: third" },
     ]));
 
     const state = store.getState();
     expect(state.selectedEntryId).toBe("fault-b");
     expect(state.entries.map((entry) => entry.id)).toEqual(["fault-b", "fault-c"]);
-    expect(state.status).toBe("success");
+    expect(state.status).toBe("ready");
   });
 
   it("clearView clears only in-memory view and returns status to idle", () => {
     const store = createDeviceFaultLogStore();
 
     store.replace(buildResult([
-      { id: "fault-a", raw: "Reason: App Crash\nSummary: first" },
+      { id: "fault-a", raw: "Reason: APP_CRASH\nSummary: first" },
     ]));
     store.setFilter({
       ...emptyFilter,

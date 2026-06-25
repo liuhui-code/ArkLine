@@ -1,8 +1,21 @@
-export type DeviceFaultLogFetchStatus = "idle" | "loading" | "success" | "error";
+export type DeviceFaultLogFetchStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "empty"
+  | "unavailable"
+  | "unauthorized"
+  | "error";
 
-export type DeviceFaultType = "JS_ERROR" | "APP_CRASH" | "APP_FREEZE" | "UNKNOWN";
+export type DeviceFaultLogType =
+  | "jsCrash"
+  | "cppCrash"
+  | "appFreeze"
+  | "appKilled"
+  | "sysWarning"
+  | "unknown";
 
-export type DeviceFaultSeverity = "info" | "warning" | "error" | "critical" | "unknown";
+export type DeviceFaultLogSeverity = "fatal" | "error" | "warning" | "unknown";
 
 export type DeviceFaultLogRawEntry = {
   id: string;
@@ -10,31 +23,46 @@ export type DeviceFaultLogRawEntry = {
 };
 
 export type DeviceFaultLogFetchResult = {
-  status: DeviceFaultLogFetchStatus;
-  error: string | null;
+  deviceId: string;
+  fetchedAt: string;
   entries: DeviceFaultLogRawEntry[];
+  command: string;
+  stderr: string;
+  status: DeviceFaultLogFetchStatus;
+  message: string;
 };
 
-export type DeviceFaultLogParsedEntry = {
+export type DeviceFaultLogEntry = {
   id: string;
-  rawText: string;
-  type: DeviceFaultType;
-  severity: DeviceFaultSeverity;
-  reason: string;
-  process: string;
-  pid: number | null;
-  bundleName: string;
+  rawId: string;
+  deviceId: string;
+  type: DeviceFaultLogType;
+  severity: DeviceFaultLogSeverity;
   timestamp: string | null;
+  bundleName: string;
+  processName: string;
+  pid: number | null;
+  reason: string;
   summary: string;
-  error: string;
-  stacktrace: string[];
+  stack: string[];
+  raw: string;
+};
+
+export type DeviceFaultLogParsedResult = {
+  deviceId: string;
+  fetchedAt: string;
+  entries: DeviceFaultLogEntry[];
+  command: string;
+  stderr: string;
+  status: DeviceFaultLogFetchStatus;
+  message: string;
 };
 
 export type DeviceFaultLogFilterState = {
   query: string;
   regex: boolean;
   matchCase: boolean;
-  types: DeviceFaultType[];
+  type: "all" | DeviceFaultLogType;
   process: string;
   pid: string;
 };
@@ -48,8 +76,12 @@ export type CompiledDeviceFaultLogFilter = {
 
 export type DeviceFaultLogStoreState = {
   status: DeviceFaultLogFetchStatus;
-  error: string | null;
-  entries: DeviceFaultLogParsedEntry[];
+  entries: DeviceFaultLogEntry[];
   filter: DeviceFaultLogFilterState;
   selectedEntryId: string | null;
+  deviceId: string | null;
+  fetchedAt: string | null;
+  command: string;
+  stderr: string;
+  message: string;
 };

@@ -1,7 +1,7 @@
 import type {
   CompiledDeviceFaultLogFilter,
+  DeviceFaultLogEntry,
   DeviceFaultLogFilterState,
-  DeviceFaultLogParsedEntry,
 } from "@/features/device-log/device-fault-log-model";
 
 export function compileDeviceFaultLogFilter(state: DeviceFaultLogFilterState): CompiledDeviceFaultLogFilter {
@@ -19,27 +19,26 @@ export function compileDeviceFaultLogFilter(state: DeviceFaultLogFilterState): C
       queryPattern: new RegExp(source, state.matchCase ? "u" : "iu"),
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Invalid regular expression";
     return {
       valid: false,
-      error: message.startsWith("Invalid regular expression") ? message : `Invalid regular expression: ${message}`,
+      error: error instanceof Error ? error.message : "Invalid regular expression",
       state,
       queryPattern: null,
     };
   }
 }
 
-export function applyDeviceFaultLogFilter(entry: DeviceFaultLogParsedEntry, compiled: CompiledDeviceFaultLogFilter): boolean {
+export function applyDeviceFaultLogFilter(entry: DeviceFaultLogEntry, compiled: CompiledDeviceFaultLogFilter): boolean {
   if (!compiled.valid) {
     return false;
   }
 
   const { state } = compiled;
-  if (compiled.queryPattern && !matchesQuery(entry, compiled.queryPattern)) {
+  if (compiled.queryPattern && !compiled.queryPattern.test(entry.summary) && !compiled.queryPattern.test(entry.raw)) {
     return false;
   }
 
-  if (state.types.length > 0 && !state.types.includes(entry.type)) {
+  if (state.type !== "all" && entry.type !== state.type) {
     return false;
   }
 
@@ -47,13 +46,7 @@ export function applyDeviceFaultLogFilter(entry: DeviceFaultLogParsedEntry, comp
     return false;
   }
 
-  return includesField(entry.process, state.process, state.matchCase);
-}
-
-function matchesQuery(entry: DeviceFaultLogParsedEntry, queryPattern: RegExp) {
-  return queryPattern.test(entry.summary)
-    || queryPattern.test(entry.error)
-    || queryPattern.test(entry.rawText);
+  return includesField(entry.processName, state.process, state.matchCase);
 }
 
 function includesField(value: string, query: string, matchCase: boolean) {
