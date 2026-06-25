@@ -35,6 +35,7 @@ import type { BuildState, BuildTarget } from "@/features/build/build-model";
 import { parseBuildProfileProducts } from "@/features/build/build-profile-parser";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
+import { createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import { createBuildStore } from "@/features/build/build-store";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
@@ -1404,7 +1405,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       });
       const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
       const parsedProblems = parseBuildProblems(output);
-      buildStoreRef.current.finish({ ...result, problems: parsedProblems });
+      const buildResult = createBuildResultFromTerminalRun({
+        ...result,
+        planId: plan.id,
+        problems: parsedProblems,
+      });
+      buildStoreRef.current.finish(buildResult);
       problemsRef.current.replace([
         ...problemsRef.current.state.items.filter((item) => item.source !== "build"),
         ...parsedProblems,

@@ -1,4 +1,4 @@
-import type { BuildRunFinish, BuildState, HarmonyBuildPlan } from "@/features/build/build-model";
+import type { BuildResult, BuildState, HarmonyBuildPlan } from "@/features/build/build-model";
 
 export function createBuildStore() {
   const state: BuildState = {
@@ -12,6 +12,7 @@ export function createBuildStore() {
     fastMode: false,
     output: "",
     problems: [],
+    lastResult: null,
     lastExitCode: null,
     lastDurationMs: null,
     message: "No build run yet",
@@ -27,13 +28,15 @@ export function createBuildStore() {
       state.currentRun = plan;
       state.output = "";
       state.problems = [];
+      state.lastResult = null;
       state.lastExitCode = null;
       state.message = plan.label;
     },
-    finish(result: BuildRunFinish) {
-      state.status = result.stopped ? "stopped" : result.exitCode === 0 ? "success" : "failed";
-      state.output = [result.stdout, result.stderr].filter(Boolean).join("\n");
-      state.problems = result.problems;
+    finish(result: BuildResult) {
+      state.status = result.status;
+      state.output = result.output;
+      state.problems = result.diagnostics;
+      state.lastResult = result;
       state.lastExitCode = result.exitCode;
       state.lastDurationMs = result.durationMs;
       state.message = state.status === "success" ? "Build succeeded" : state.status === "stopped" ? "Build stopped" : "Build failed";

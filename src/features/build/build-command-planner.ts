@@ -1,4 +1,5 @@
-import type { BuildTarget, HarmonyBuildPlan, HarmonyBuildRequest } from "@/features/build/build-model";
+import type { BuildIntent, BuildPlan, BuildTarget, HarmonyBuildRequest } from "@/features/build/build-model";
+import { createBuildIntent } from "@/features/build/build-run-model";
 
 function quoteValue(value: string) {
   if (/^[A-Za-z0-9_./:@=-]+$/.test(value)) {
@@ -22,37 +23,44 @@ function taskForTarget(target: BuildTarget) {
   }
 }
 
-function modeForTarget(target: BuildTarget) {
-  return target === "app" ? "project" : "module";
-}
-
 function labelForTarget(target: BuildTarget) {
   return target.toUpperCase();
 }
 
-export function planHarmonyBuildCommand(request: HarmonyBuildRequest): HarmonyBuildPlan {
-  const daemonArg = request.fastMode ? "" : " --no-daemon";
-  const task = taskForTarget(request.target);
-  const mode = modeForTarget(request.target);
-  const moduleArg = mode === "module" && request.moduleName
-    ? ` -p module=${quoteValue(`${request.moduleName}@${request.product}`)}`
+function commandForIntent(intent: BuildIntent) {
+  const daemonArg = intent.fastMode ? "" : " --no-daemon";
+  const task = taskForTarget(intent.target);
+  const moduleArg = intent.scope === "module" && intent.moduleName
+    ? ` -p module=${quoteValue(`${intent.moduleName}@${intent.product}`)}`
     : "";
-  const buildCommand = [
+
+  return [
     "./hvigorw",
     task,
-    `--mode ${mode}`,
+    `--mode ${intent.scope}`,
     moduleArg.trim(),
-    `-p product=${quoteValue(request.product)}`,
-    `-p buildMode=${quoteValue(request.buildMode)}`,
+    `-p product=${quoteValue(intent.product)}`,
+    `-p buildMode=${quoteValue(intent.buildMode)}`,
   ].filter(Boolean).join(" ") + daemonArg;
-  const command = request.clean
-    ? `./hvigorw clean${daemonArg} && ${buildCommand}`
-    : buildCommand;
+}
+
+export function planHarmonyBuildCommand(request: HarmonyBuildRequest): BuildPlan {
+  const intent = createBuildIntent(request);
+  const daemonArg = intent.fastMode ? "" : " --no-daemon";
+  const buildCommand = commandForIntent(intent);
+  const steps = intent.clean
+    ? [
+      { label: "Clean", command: `./hvigorw clean${daemonArg}` },
+      { label: "Build", command: buildCommand },
+    ]
+    : [{ label: "Build", command: buildCommand }];
 
   return {
-    label: `Build ${labelForTarget(request.target)} ${request.moduleName ?? "project"} ${request.buildMode}`,
-    command,
-    cwd: request.rootPath,
-    target: request.target,
+    label: `Build ${labelForTarget(intent.target)} ${intent.moduleName ?? "project"} ${intent.buildMode}`,
+    command: steps.map((step) => step.command).join(" && "),
+    cwd: intent.projectRoot,
+    target: intent.target,
+    intent,
+    steps,
   };
 }

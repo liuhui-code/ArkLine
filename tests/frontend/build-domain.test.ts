@@ -1,8 +1,76 @@
 import { describe, expect, it } from "vitest";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
+import { createBuildIntent, createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import { createBuildStore } from "@/features/build/build-store";
 import { createProblemsStore } from "@/features/problems/problems-store";
+
+describe("build run model", () => {
+  it("normalizes UI build choices into a durable build intent", () => {
+    const intent = createBuildIntent({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "  entry  ",
+      product: "  default  ",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    expect(intent).toEqual({
+      kind: "build",
+      projectRoot: "/workspace/Demo",
+      target: "hap",
+      scope: "module",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+  });
+
+  it("uses project scope and no module for APP intents", () => {
+    const intent = createBuildIntent({
+      rootPath: "/workspace/Demo",
+      target: "app",
+      moduleName: "entry",
+      product: "",
+      buildMode: "release",
+      clean: true,
+      fastMode: true,
+    });
+
+    expect(intent.scope).toBe("project");
+    expect(intent.moduleName).toBeNull();
+    expect(intent.product).toBe("default");
+  });
+
+  it("converts a terminal run into a structured build result", () => {
+    const result = createBuildResultFromTerminalRun({
+      runId: "build-1",
+      planId: "plan-1",
+      exitCode: 1,
+      durationMs: 90,
+      stdout: "",
+      stderr: "ERROR: ArkTS:ERROR File: /workspace/Demo/entry/src/main/ets/pages/Index.ets:12:8\nProperty width does not exist.",
+      problems: [
+        {
+          source: "build",
+          severity: "error",
+          path: "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
+          line: 12,
+          column: 8,
+          message: "Property width does not exist.",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.output).toContain("Property width does not exist.");
+    expect(result.diagnostics).toHaveLength(1);
+  });
+});
 
 describe("Harmony build command planner", () => {
   it("plans a module HAP build through the project wrapper without clean by default", () => {
@@ -19,6 +87,14 @@ describe("Harmony build command planner", () => {
     expect(plan.cwd).toBe("/workspace/Demo");
     expect(plan.command).toBe("./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
     expect(plan.label).toBe("Build HAP entry debug");
+    expect(plan.intent.scope).toBe("module");
+    expect(plan.intent.moduleName).toBe("entry");
+    expect(plan.steps).toEqual([
+      {
+        label: "Build",
+        command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      },
+    ]);
   });
 
   it("plans a project APP build and keeps daemon available in fast mode", () => {
@@ -47,6 +123,7 @@ describe("Harmony build command planner", () => {
     });
 
     expect(plan.command).toBe("./hvigorw clean --no-daemon && ./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
+    expect(plan.steps.map((step) => step.label)).toEqual(["Clean", "Build"]);
   });
 });
 
@@ -100,23 +177,30 @@ describe("build store", () => {
     const store = createBuildStore();
 
     store.start({
+      ...planHarmonyBuildCommand({
+        rootPath: "/workspace/Demo",
+        target: "hap",
+        moduleName: "entry",
+        product: "default",
+        buildMode: "debug",
+        clean: false,
+        fastMode: false,
+      }),
       runId: "build-1",
-      label: "Build HAP entry debug",
-      command: "./hvigorw assembleHap",
-      cwd: "/workspace/Demo",
-      target: "hap",
     });
     expect(store.state.status).toBe("running");
 
-    store.finish({
+    store.finish(createBuildResultFromTerminalRun({
+      runId: "build-1",
       exitCode: 0,
       durationMs: 1200,
       stdout: "BUILD SUCCESSFUL",
       stderr: "",
       problems: [],
-    });
+    }));
 
     expect(store.state.status).toBe("success");
+    expect(store.state.lastResult?.status).toBe("success");
     expect(store.state.lastDurationMs).toBe(1200);
     expect(store.state.output).toContain("BUILD SUCCESSFUL");
   });

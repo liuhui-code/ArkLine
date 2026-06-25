@@ -2,6 +2,20 @@ import type { ProblemItem } from "@/features/problems/problems-store";
 
 export type BuildTarget = "hap" | "app" | "har" | "hsp";
 export type BuildStatus = "idle" | "planning" | "running" | "success" | "failed" | "stopped";
+export type BuildActionKind = "build";
+export type BuildScope = "project" | "module";
+
+export type BuildIntent = {
+  kind: BuildActionKind;
+  projectRoot: string;
+  target: BuildTarget;
+  scope: BuildScope;
+  moduleName: string | null;
+  product: string;
+  buildMode: "debug" | "release";
+  clean: boolean;
+  fastMode: boolean;
+};
 
 export type HarmonyBuildRequest = {
   rootPath: string;
@@ -13,12 +27,36 @@ export type HarmonyBuildRequest = {
   fastMode: boolean;
 };
 
-export type HarmonyBuildPlan = {
-  runId?: string;
+export type BuildPlanStep = {
   label: string;
   command: string;
+};
+
+export type BuildPlan = {
+  id?: string;
+  runId?: string;
+  label: string;
   cwd: string;
   target: BuildTarget;
+  intent: BuildIntent;
+  steps: BuildPlanStep[];
+  command: string;
+};
+
+export type HarmonyBuildPlan = BuildPlan;
+
+export type BuildResultStatus = "success" | "failed" | "stopped";
+
+export type BuildResult = {
+  runId: string;
+  planId?: string;
+  status: BuildResultStatus;
+  exitCode: number | null;
+  durationMs: number;
+  output: string;
+  stdout: string;
+  stderr: string;
+  diagnostics: ProblemItem[];
 };
 
 export type HarmonyBuildProject = {
@@ -52,6 +90,7 @@ export type BuildState = {
   fastMode: boolean;
   output: string;
   problems: ProblemItem[];
+  lastResult: BuildResult | null;
   lastExitCode: number | null;
   lastDurationMs: number | null;
   message: string;
