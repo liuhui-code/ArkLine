@@ -48,8 +48,11 @@ export function CodeActionsPalette({
 
     if (event.key === "Enter") {
       event.preventDefault();
-      if (selectedAction && !selectedAction.disabledReason) {
-        onResolveAction(selectedAction);
+      const focusedOption = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>("[data-code-action-index]");
+      const focusedIndex = focusedOption?.dataset.codeActionIndex ? Number(focusedOption.dataset.codeActionIndex) : selectedIndex;
+      const action = actions[Number.isFinite(focusedIndex) ? focusedIndex : selectedIndex] ?? selectedAction;
+      if (action && !action.disabledReason) {
+        onResolveAction(action);
       }
     }
   }
@@ -72,9 +75,11 @@ export function CodeActionsPalette({
                 key={action.id}
                 type="button"
                 role="option"
+                data-code-action-index={index}
                 aria-selected={index === selectedIndex}
                 aria-disabled={action.disabledReason ? "true" : undefined}
                 className={`code-actions-palette__item${index === selectedIndex ? " code-actions-palette__item--selected" : ""}${action.disabledReason ? " code-actions-palette__item--disabled" : ""}`}
+                onFocus={() => onSelectIndex(index)}
                 onMouseEnter={() => onSelectIndex(index)}
                 onClick={() => {
                   if (!action.disabledReason) {

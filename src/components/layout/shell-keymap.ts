@@ -36,10 +36,10 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "navigateBack", title: "Navigate Back", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowLeft" }] },
   { id: "findUsages", title: "Find Usages", category: "Navigation", defaultKeybindings: [{ alt: true, key: "F7" }] },
   { id: "showCurrentClassMethods", title: "Show Current Class Methods", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F7" }] },
-  { id: "showCodeActions", title: "Show Code Actions", category: "Editor", defaultKeybindings: [{ alt: true, key: "Enter" }] },
-  { id: "renameSymbol", title: "Rename Symbol", category: "Refactor", defaultKeybindings: [{ key: "F2" }] },
-  { id: "generateCode", title: "Generate Code", category: "Generate", defaultKeybindings: [{ alt: true, key: "Insert" }] },
-  { id: "refactorThis", title: "Refactor This", category: "Refactor", defaultKeybindings: [{ ctrl: true, alt: true, shift: true, key: "T" }] },
+  { id: "showCodeActions", title: "Show Code Actions", category: "Editor", defaultKeybindings: [{ alt: true, key: "Enter" }], when: editorCommandAvailable },
+  { id: "renameSymbol", title: "Rename Symbol", category: "Refactor", defaultKeybindings: [{ key: "F2" }], when: editorCommandAvailable },
+  { id: "generateCode", title: "Generate Code", category: "Generate", defaultKeybindings: [{ alt: true, key: "Insert" }], when: editorCommandAvailable },
+  { id: "refactorThis", title: "Refactor This", category: "Refactor", defaultKeybindings: [{ ctrl: true, alt: true, shift: true, key: "T" }], when: editorCommandAvailable },
   { id: "toggleEditorOnly", title: "Editor Only", category: "Window", defaultKeybindings: [{ mod: true, shift: true, key: "F12" }] },
   { id: "save", title: "Save", category: "File", defaultKeybindings: [{ mod: true, key: "s" }] },
   { id: "goToDefinition", title: "Go to Definition", category: "Navigation", defaultKeybindings: [{ mod: true, key: "b" }] },
@@ -55,6 +55,10 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
 
 export function isBareShift(event: KeyboardEvent) {
   return event.key === "Shift" && !event.ctrlKey && !event.metaKey && !event.altKey;
+}
+
+function editorCommandAvailable(context: KeybindingContext) {
+  return !context.overlayOpen && !context.settingsOpen && !context.settingsApplying;
 }
 
 export function resolveShellCommand(event: KeyboardEvent, context: KeybindingContext = {}): ShellCommand | null {

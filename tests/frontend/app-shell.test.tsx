@@ -717,8 +717,147 @@ describe("App shell", () => {
     expect(await screen.findByText("Code action unsupported: Action resolution is not wired yet")).toBeVisible();
   });
 
-  it("opens a code action preview placeholder for risky actions without applying edits", async () => {
+  it("resolves the focused code action when keyboard focus moves through the palette", async () => {
     const user = userEvent.setup();
+    const resolveCodeAction = vi.fn(async () => ({
+      status: "unsupported" as const,
+      reason: "Action resolution is not wired yet",
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.first",
+        title: "First action",
+        kind: "quickfix" as const,
+        provider: "arkts" as const,
+        safety: "safe" as const,
+      },
+      {
+        id: "arkts.second",
+        title: "Second action",
+        kind: "quickfix" as const,
+        provider: "arkts" as const,
+        safety: "safe" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    const palette = await screen.findByRole("dialog", { name: "Code Actions" });
+    act(() => {
+      within(palette).getByRole("option", { name: /Second action/ }).focus();
+    });
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(resolveCodeAction).toHaveBeenCalledWith({
+      id: "arkts.second",
+      data: undefined,
+    }));
+  });
+
+  it("filters F2 to rename code actions", async () => {
+    const user = userEvent.setup();
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.generate-page",
+        title: "Generate ArkTS Page",
+        kind: "source" as const,
+        provider: "arkts" as const,
+        safety: "needsPreview" as const,
+      },
+      {
+        id: "arkts.rename-file",
+        title: "Rename File",
+        kind: "refactor.rewrite" as const,
+        provider: "arkts" as const,
+        safety: "needsPreview" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{F2}");
+
+    const results = await screen.findByRole("listbox", { name: "Code Actions" });
+    expect(within(results).getByRole("option", { name: /Rename File/ })).toBeVisible();
+    expect(within(results).queryByRole("option", { name: /Generate ArkTS Page/ })).not.toBeInTheDocument();
+  });
+
+  it("ignores stale code action resolutions after the palette closes", async () => {
+    const user = userEvent.setup();
+    let finishResolve!: (value: Awaited<ReturnType<NonNullable<WorkspaceApi["resolveCodeAction"]>>>) => void;
+    const resolveCodeAction = vi.fn(() => new Promise<Awaited<ReturnType<NonNullable<WorkspaceApi["resolveCodeAction"]>>>>((resolve) => {
+      finishResolve = resolve;
+    }));
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: plan.affectedFiles,
+      summary: ["Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1"],
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "risky" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(resolveCodeAction).toHaveBeenCalled());
+    await user.keyboard("{Escape}");
+    finishResolve({
+      id: "plan.extract",
+      title: "Extract function",
+      operations: [
+        {
+          kind: "text" as const,
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+          newText: "function extracted() {}\n",
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo Extract function",
+      requiresPreview: true,
+    });
+
+    await waitFor(() => expect(previewWorkspaceEdit).not.toHaveBeenCalled());
+    expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
+  });
+
+  it("does not trigger code actions while Settings is open", async () => {
+    const user = userEvent.setup();
+    const listCodeActions = vi.fn(async () => []);
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions })} />);
+
+    await openMainEditor(user);
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeVisible();
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    expect(listCodeActions).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Code Actions" })).not.toBeInTheDocument();
+  });
+
+  it("opens a workspace edit preview for risky actions without applying edits", async () => {
+    const user = userEvent.setup();
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      summary: ["Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1"],
+    }));
     const applyWorkspaceEdit = vi.fn(async () => ({ applied: true, conflicts: [], changedFiles: [] }));
     const resolveCodeAction = vi.fn(async () => ({
       id: "plan.extract",
@@ -746,15 +885,232 @@ describe("App shell", () => {
       },
     ]);
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, applyWorkspaceEdit })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
 
     await openMainEditor(user);
     await user.keyboard("{Alt>}{Enter}{/Alt}");
     await screen.findByRole("dialog", { name: "Code Actions" });
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByRole("status", { name: "Workspace Edit Preview Placeholder" })).toHaveTextContent("Preview ready: Extract function");
+    const preview = await screen.findByRole("dialog", { name: "Workspace Edit Preview" });
+    expect(within(preview).getByText("Extract function")).toBeVisible();
+    expect(within(within(preview).getByLabelText("Affected Files")).getByText("C:/samples/DemoWorkspace/src/main.ets")).toBeVisible();
+    expect(within(preview).getByText("Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1")).toBeVisible();
+    await waitFor(() => expect(previewWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan: expect.objectContaining({ id: "plan.extract" }),
+    }));
     expect(applyWorkspaceEdit).not.toHaveBeenCalled();
+  });
+
+  it("applies a workspace edit preview and closes on success", async () => {
+    const user = userEvent.setup();
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      summary: ["Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1"],
+    }));
+    const applyWorkspaceEdit = vi.fn(async () => ({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+    }));
+    const resolveCodeAction = vi.fn(async () => ({
+      id: "plan.extract",
+      title: "Extract function",
+      operations: [
+        {
+          kind: "text" as const,
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+          newText: "function extracted() {}\n",
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo Extract function",
+      requiresPreview: true,
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "risky" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
+
+    await waitFor(() => expect(applyWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan: expect.objectContaining({ id: "plan.extract" }),
+    }));
+    expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Workspace edit applied: 1 file changed")).toBeVisible();
+  });
+
+  it("cancels a workspace edit preview without applying edits", async () => {
+    const user = userEvent.setup();
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      summary: ["Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1"],
+    }));
+    const applyWorkspaceEdit = vi.fn(async () => ({ applied: true, conflicts: [], changedFiles: [] }));
+    const resolveCodeAction = vi.fn(async () => ({
+      id: "plan.extract",
+      title: "Extract function",
+      operations: [
+        {
+          kind: "text" as const,
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+          newText: "function extracted() {}\n",
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo Extract function",
+      requiresPreview: true,
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "risky" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Cancel Workspace Edit" }));
+
+    expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
+    expect(applyWorkspaceEdit).not.toHaveBeenCalled();
+  });
+
+  it("disables workspace edit apply when preview reports conflicts", async () => {
+    const user = userEvent.setup();
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [{ path: "C:/samples/DemoWorkspace/src/main.ets", message: "File changed on disk" }],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      summary: ["Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1"],
+    }));
+    const applyWorkspaceEdit = vi.fn(async () => ({ applied: true, conflicts: [], changedFiles: [] }));
+    const resolveCodeAction = vi.fn(async () => ({
+      id: "plan.extract",
+      title: "Extract function",
+      operations: [
+        {
+          kind: "text" as const,
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+          newText: "function extracted() {}\n",
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo Extract function",
+      requiresPreview: true,
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "risky" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+
+    const preview = await screen.findByRole("dialog", { name: "Workspace Edit Preview" });
+    expect(within(preview).getByText("File changed on disk")).toBeVisible();
+    expect(within(preview).getByRole("button", { name: "Apply Workspace Edit" })).toBeDisabled();
+    expect(applyWorkspaceEdit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a workspace edit preview open while apply is pending", async () => {
+    const user = userEvent.setup();
+    let finishApply!: (value: Awaited<ReturnType<NonNullable<WorkspaceApi["applyWorkspaceEdit"]>>>) => void;
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      summary: ["Edit C:/samples/DemoWorkspace/src/main.ets at 3:1-3:1"],
+    }));
+    const applyWorkspaceEdit = vi.fn(() => new Promise<Awaited<ReturnType<NonNullable<WorkspaceApi["applyWorkspaceEdit"]>>>>((resolve) => {
+      finishApply = resolve;
+    }));
+    const resolveCodeAction = vi.fn(async () => ({
+      id: "plan.extract",
+      title: "Extract function",
+      operations: [
+        {
+          kind: "text" as const,
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          range: { startLine: 3, startColumn: 1, endLine: 3, endColumn: 1 },
+          newText: "function extracted() {}\n",
+        },
+      ],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo Extract function",
+      requiresPreview: true,
+    }));
+    const listCodeActions = vi.fn(async () => [
+      {
+        id: "arkts.extract-function",
+        title: "Extract function",
+        kind: "refactor.extract" as const,
+        provider: "arkts" as const,
+        safety: "risky" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    const preview = await screen.findByRole("dialog", { name: "Workspace Edit Preview" });
+    await user.click(within(preview).getByRole("button", { name: "Apply Workspace Edit" }));
+
+    expect(within(preview).getByRole("button", { name: "Cancel Workspace Edit" })).toBeDisabled();
+    expect(within(preview).getByRole("button", { name: "Close Workspace Edit Preview" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Workspace Edit Preview" })).toBeVisible();
+
+    finishApply({
+      applied: true,
+      conflicts: [],
+      changedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument());
   });
 
   it("keeps command palette panel clicks inside and closes from its backdrop or close button", async () => {

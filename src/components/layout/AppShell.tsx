@@ -21,6 +21,7 @@ import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHost";
 import { TopBar } from "@/components/layout/TopBar";
 import { UsagesPanel } from "@/components/layout/UsagesPanel";
+import { WorkspaceEditPreview } from "@/components/layout/WorkspaceEditPreview";
 import { useProjectOpening } from "@/components/layout/use-project-opening";
 import { useShellHotkeys } from "@/components/layout/useShellHotkeys";
 import { buildAppShellCommandPaletteItems, extractCompletionPrefix, parseGoToLineQuery } from "@/components/layout/app-shell-helpers";
@@ -45,7 +46,7 @@ import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
-import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
 
@@ -70,6 +71,22 @@ function clampNumber(value: number, min: number, max: number) {
 
 function isWorkspaceEditPlan(result: unknown): result is WorkspaceEditPlan {
   return Boolean(result && typeof result === "object" && Array.isArray((result as WorkspaceEditPlan).operations));
+}
+
+function actionMatchesSource(action: CodeAction, source: "all" | "rename" | "generate" | "refactor") {
+  if (source === "all") {
+    return true;
+  }
+
+  const searchable = `${action.id} ${action.title} ${action.kind}`.toLowerCase();
+  if (source === "rename") {
+    return searchable.includes("rename");
+  }
+  if (source === "generate") {
+    return searchable.includes("generate") || action.kind === "source";
+  }
+
+  return action.kind.startsWith("refactor") || searchable.includes("refactor") || searchable.includes("extract") || searchable.includes("inline");
 }
 
 function constrainCompletionPopupPosition(top: number, left: number) {
@@ -154,7 +171,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [codeActionsStatus, setCodeActionsStatus] = useState<CodeActionsStatus>("empty");
   const [codeActionsMessage, setCodeActionsMessage] = useState<string | undefined>();
   const [codeActionsSelectedIndex, setCodeActionsSelectedIndex] = useState(0);
-  const [workspaceEditPreviewPlaceholder, setWorkspaceEditPreviewPlaceholder] = useState<WorkspaceEditPlan | null>(null);
+  const [workspaceEditPreview, setWorkspaceEditPreview] = useState<WorkspaceEditPreviewModel | null>(null);
+  const [workspaceEditApplyState, setWorkspaceEditApplyState] = useState<"idle" | "applying" | "error">("idle");
+  const [workspaceEditMessage, setWorkspaceEditMessage] = useState<string | undefined>();
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -171,6 +190,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const completionRecencyCounterRef = useRef(0);
   const completionRequestRef = useRef(0);
   const codeActionsRequestRef = useRef(0);
+  const codeActionResolveRequestRef = useRef(0);
   const searchEverywhereRequestRef = useRef(0);
   const settingsSaveResetTimerRef = useRef<number | null>(null);
   const typingCompletionTimerRef = useRef<number | null>(null);
@@ -414,6 +434,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       closeCodeActionsPalette();
       return true;
     }
+    if (workspaceEditPreview) {
+      closeWorkspaceEditPreview();
+      return true;
+    }
     if (activeOverlay !== "none") {
       setActiveOverlay("none");
       focusEditor();
@@ -504,7 +528,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProblems([]);
     setDiffFiles([]);
     setCodeActionsVisible(false);
-    setWorkspaceEditPreviewPlaceholder(null);
+    codeActionResolveRequestRef.current += 1;
+    setWorkspaceEditPreview(null);
+    setWorkspaceEditApplyState("idle");
+    setWorkspaceEditMessage(undefined);
     clearCompletionSession();
     setCompletionAnchor(null);
     setUsageSearch(idleUsageSearchState());
@@ -546,10 +573,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     tabsRef.current.openTab(path);
     syncTabs();
     setActiveDocument(path);
+    codeActionResolveRequestRef.current += 1;
     clearCompletionSession();
     setCompletionAnchor(null);
     setCodeActionsVisible(false);
-    setWorkspaceEditPreviewPlaceholder(null);
+    setWorkspaceEditPreview(null);
+    setWorkspaceEditApplyState("idle");
+    setWorkspaceEditMessage(undefined);
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
     setSelectionTarget(null);
@@ -815,8 +845,79 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setStatusText("Methods in Current Class");
   }
   function closeCodeActionsPalette() {
+    codeActionResolveRequestRef.current += 1;
     setCodeActionsVisible(false);
     focusEditorSoon();
+  }
+  function closeWorkspaceEditPreview() {
+    if (workspaceEditApplyState === "applying") {
+      return;
+    }
+
+    setWorkspaceEditPreview(null);
+    setWorkspaceEditApplyState("idle");
+    setWorkspaceEditMessage(undefined);
+    focusEditorSoon();
+  }
+  async function refreshAppliedWorkspaceEditFiles(changedFiles: string[]) {
+    for (const path of [...new Set(changedFiles)]) {
+      const document = documentsRef.current.getDocument(path);
+      if (!document) {
+        continue;
+      }
+
+      const content = await workspaceApi.openFile(path);
+      documentsRef.current.applyExternalChange(path, content);
+      if (activePath && normalizePath(activePath) === normalizePath(path)) {
+        setEditorContent(documentsRef.current.getDocument(path)?.currentContent ?? content);
+      }
+    }
+  }
+  async function applyWorkspaceEditPreview() {
+    if (!workspaceEditPreview || workspaceEditApplyState === "applying") {
+      return;
+    }
+    if (!workspace?.rootPath || !workspaceApi.applyWorkspaceEdit) {
+      setWorkspaceEditApplyState("error");
+      setWorkspaceEditMessage("Workspace edit apply is unavailable.");
+      setStatusText("Workspace edit apply unavailable");
+      return;
+    }
+
+    setWorkspaceEditApplyState("applying");
+    setWorkspaceEditMessage(undefined);
+    setStatusText(`Applying workspace edit: ${workspaceEditPreview.plan.title}`);
+
+    try {
+      const result = await workspaceApi.applyWorkspaceEdit({
+        workspaceRoot: workspace.rootPath,
+        plan: workspaceEditPreview.plan,
+      });
+
+      if (result.conflicts.length > 0 || !result.applied) {
+        setWorkspaceEditApplyState("error");
+        setWorkspaceEditPreview({
+          ...workspaceEditPreview,
+          conflicts: result.conflicts.length > 0 ? result.conflicts : workspaceEditPreview.conflicts,
+        });
+        const message = result.conflicts[0]?.message ?? "Workspace edit was not applied.";
+        setWorkspaceEditMessage(message);
+        setStatusText(`Workspace edit failed: ${message}`);
+        return;
+      }
+
+      await refreshAppliedWorkspaceEditFiles(result.changedFiles);
+      setWorkspaceEditPreview(null);
+      setWorkspaceEditApplyState("idle");
+      setWorkspaceEditMessage(undefined);
+      setStatusText(`Workspace edit applied: ${result.changedFiles.length} file${result.changedFiles.length === 1 ? "" : "s"} changed`);
+      focusEditorSoon();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setWorkspaceEditApplyState("error");
+      setWorkspaceEditMessage(message);
+      setStatusText(`Workspace edit failed: ${message}`);
+    }
   }
   async function showCodeActionsFromEditor(source: "all" | "rename" | "generate" | "refactor" = "all") {
     if (settingsApplying) {
@@ -841,7 +942,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     clearCompletionSession();
     setActiveOverlay("none");
     setCurrentMethodsVisible(false);
-    setWorkspaceEditPreviewPlaceholder(null);
+    setWorkspaceEditPreview(null);
+    setWorkspaceEditApplyState("idle");
+    setWorkspaceEditMessage(undefined);
     setCodeActions([]);
     setCodeActionsSelectedIndex(0);
     setCodeActionsMessage(undefined);
@@ -855,11 +958,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         return;
       }
 
-      setCodeActions(actions);
+      const visibleActions = actions.filter((action) => actionMatchesSource(action, source));
+      setCodeActions(visibleActions);
       setCodeActionsSelectedIndex(0);
-      setCodeActionsStatus(actions.length > 0 ? "ready" : "empty");
-      setCodeActionsMessage(actions.length > 0 ? undefined : "No code actions available");
-      setStatusText(actions.length > 0 ? `Code Actions: ${actions.length}` : "Code Actions: none");
+      setCodeActionsStatus(visibleActions.length > 0 ? "ready" : "empty");
+      setCodeActionsMessage(visibleActions.length > 0 ? undefined : `No ${source === "all" ? "code actions" : source} actions available`);
+      setStatusText(visibleActions.length > 0 ? `Code Actions: ${visibleActions.length}` : "Code Actions: none");
     } catch (error) {
       if (codeActionsRequestRef.current !== requestId) {
         return;
@@ -883,19 +987,39 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
 
+    const requestId = codeActionResolveRequestRef.current + 1;
+    codeActionResolveRequestRef.current = requestId;
     setStatusText(`Resolving code action: ${action.title}`);
     try {
       const result = await workspaceApi.resolveCodeAction({ id: action.id, data: action.data });
+      if (codeActionResolveRequestRef.current !== requestId) {
+        return;
+      }
+
       if (!isWorkspaceEditPlan(result)) {
         setStatusText(`Code action unsupported: ${result.reason}`);
         return;
       }
 
       if (result.requiresPreview || requiresPreview(action)) {
-        setWorkspaceEditPreviewPlaceholder(result);
+        if (!workspace?.rootPath || !workspaceApi.previewWorkspaceEdit) {
+          setStatusText("Workspace edit preview unavailable");
+          return;
+        }
+
+        const preview = await workspaceApi.previewWorkspaceEdit({
+          workspaceRoot: workspace.rootPath,
+          plan: result,
+        });
+        if (codeActionResolveRequestRef.current !== requestId) {
+          return;
+        }
+
+        setWorkspaceEditPreview(preview);
+        setWorkspaceEditApplyState("idle");
+        setWorkspaceEditMessage(undefined);
         setCodeActionsVisible(false);
         setStatusText(`Preview ready: ${result.title}`);
-        focusEditorSoon();
         return;
       }
 
@@ -1220,10 +1344,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
   const shellHotkeyContext = useMemo(() => ({
     completionOpen: activeOverlay === "completion",
-    overlayOpen: codeActionsVisible || currentMethodsVisible || (activeOverlay !== "none" && activeOverlay !== "completion"),
+    overlayOpen: Boolean(workspaceEditPreview) || codeActionsVisible || currentMethodsVisible || (activeOverlay !== "none" && activeOverlay !== "completion"),
     settingsOpen: settingsVisible,
     settingsApplying,
-  }), [activeOverlay, codeActionsVisible, currentMethodsVisible, settingsApplying, settingsVisible]);
+  }), [activeOverlay, codeActionsVisible, currentMethodsVisible, settingsApplying, settingsVisible, workspaceEditPreview]);
 
   useShellHotkeys({ context: shellHotkeyContext, onCommand(command: ShellCommand) {
     const handlers: Partial<Record<ShellCommand, () => void>> = {
@@ -1453,11 +1577,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           onSelectIndex={setCodeActionsSelectedIndex}
         />
       ) : null}
-      {workspaceEditPreviewPlaceholder ? (
-        <div className="workspace-edit-preview-placeholder" role="status" aria-label="Workspace Edit Preview Placeholder">
-          <strong>Preview ready: {workspaceEditPreviewPlaceholder.title}</strong>
-          <span>{workspaceEditPreviewPlaceholder.affectedFiles.length} affected file{workspaceEditPreviewPlaceholder.affectedFiles.length === 1 ? "" : "s"}</span>
-        </div>
+      {workspaceEditPreview ? (
+        <WorkspaceEditPreview
+          preview={workspaceEditPreview}
+          applyState={workspaceEditApplyState}
+          message={workspaceEditMessage}
+          onApply={() => void applyWorkspaceEditPreview()}
+          onClose={closeWorkspaceEditPreview}
+        />
       ) : null}
 
       <OpenProjectDialog
