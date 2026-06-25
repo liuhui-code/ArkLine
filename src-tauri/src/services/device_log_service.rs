@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::thread;
 
-use crate::models::device_log::{DeviceLogDevice, DeviceLogStreamSummary, StartDeviceLogStreamRequest};
+use crate::models::device_log::{DeviceLogDevice, DeviceLogOutputBatch, DeviceLogStreamSummary, StartDeviceLogStreamRequest};
+use tauri::{AppHandle, Emitter};
 
 pub struct DeviceLogRuntime {
     streams: Mutex<HashMap<String, Arc<Mutex<Child>>>>,
@@ -64,17 +67,55 @@ pub fn parse_hdc_targets(output: &str) -> Vec<DeviceLogDevice> {
 }
 
 pub fn start_stream(
+    app: AppHandle,
     runtime: &DeviceLogRuntime,
     request: StartDeviceLogStreamRequest,
 ) -> Result<DeviceLogStreamSummary, String> {
     let stream_number = runtime.next_id.fetch_add(1, Ordering::SeqCst) + 1;
     let stream_id = format!("device-log-{stream_number}");
-    let child = Command::new(resolve_hdc_path())
+    let mut child = Command::new(resolve_hdc_path())
         .args(["-t", &request.device_id, "hilog"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("Failed to start hdc hilog: {error}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture hdc hilog stdout".to_string())?;
+    let stream_id_for_thread = stream_id.clone();
+    let device_id_for_thread = request.device_id.clone();
+    let app_for_thread = app.clone();
+
+    thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        let mut batch: Vec<String> = Vec::new();
+
+        for line in reader.lines().map_while(Result::ok) {
+            batch.push(line);
+            if batch.len() >= 50 {
+                let _ = app_for_thread.emit(
+                    "device-log-output",
+                    DeviceLogOutputBatch {
+                        stream_id: stream_id_for_thread.clone(),
+                        device_id: device_id_for_thread.clone(),
+                        lines: std::mem::take(&mut batch),
+                    },
+                );
+            }
+        }
+
+        if !batch.is_empty() {
+            let _ = app_for_thread.emit(
+                "device-log-output",
+                DeviceLogOutputBatch {
+                    stream_id: stream_id_for_thread,
+                    device_id: device_id_for_thread,
+                    lines: batch,
+                },
+            );
+        }
+    });
 
     runtime
         .streams

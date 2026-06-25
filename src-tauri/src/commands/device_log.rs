@@ -1,4 +1,4 @@
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::models::device_log::{DeviceLogDevice, DeviceLogStreamSummary, StartDeviceLogStreamRequest};
 use crate::services::device_log_service::{list_devices, start_stream, stop_stream, DeviceLogRuntime};
@@ -10,10 +10,11 @@ pub fn list_device_log_devices() -> Result<Vec<DeviceLogDevice>, String> {
 
 #[tauri::command]
 pub fn start_device_log_stream(
+    app: AppHandle,
     runtime: State<DeviceLogRuntime>,
     request: StartDeviceLogStreamRequest,
 ) -> Result<DeviceLogStreamSummary, String> {
-    start_stream(runtime.inner(), request)
+    start_stream(app, runtime.inner(), request)
 }
 
 #[tauri::command]

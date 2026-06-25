@@ -50,4 +50,25 @@ describe("Device Log tool window", () => {
 
     expect(await within(panel).findByText(/Invalid regular expression/u)).toBeVisible();
   });
+
+  it("renders appended raw log lines through the same parser and filter path", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+
+    fireEvent(
+      panel,
+      new CustomEvent("arkline-device-log-lines", {
+        bubbles: true,
+        detail: {
+          deviceId: "device-1",
+          lines: ["06-25 15:21:48.123  1234  5678 I C03F00/AppTag com.example.demo: rendered line"],
+        },
+      }),
+    );
+
+    expect(await within(panel).findByText("rendered line")).toBeVisible();
+  });
 });

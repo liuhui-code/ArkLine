@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
 import { applyDeviceLogFilter, compileDeviceLogFilter } from "@/features/device-log/device-log-filter";
 import type { DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
@@ -35,6 +36,40 @@ export function DeviceLogToolWindow({
   const store = useMemo(() => createDeviceLogStore(), []);
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
   const visibleEntries = store.getState().entries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
+
+  useEffect(() => {
+    function appendLines(deviceId: string, lines: string[]) {
+      store.appendRawLines(deviceId, lines);
+      setStoreVersion((value) => value + 1);
+    }
+
+    function handleTestEvent(event: Event) {
+      const detail = (event as CustomEvent<{ deviceId: string; lines: string[] }>).detail;
+      appendLines(detail.deviceId, detail.lines);
+    }
+
+    document.addEventListener("arkline-device-log-lines", handleTestEvent);
+
+    let disposed = false;
+    let teardown: () => void = () => {};
+    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+      void listen<{ streamId: string; deviceId: string; lines: string[] }>("device-log-output", (event) => {
+        appendLines(event.payload.deviceId, event.payload.lines);
+      }).then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        teardown = unlisten;
+      });
+    }
+
+    return () => {
+      disposed = true;
+      teardown();
+      document.removeEventListener("arkline-device-log-lines", handleTestEvent);
+    };
+  }, [store]);
 
   useEffect(() => {
     if (!active) {

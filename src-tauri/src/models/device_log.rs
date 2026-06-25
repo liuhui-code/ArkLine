@@ -22,3 +22,11 @@ pub struct DeviceLogStreamSummary {
     pub device_id: String,
     pub status: String,
 }
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceLogOutputBatch {
+    pub stream_id: String,
+    pub device_id: String,
+    pub lines: Vec<String>,
+}
