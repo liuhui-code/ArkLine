@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
+import { defaultBuildDiagnosticMatchers, parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
@@ -235,6 +236,100 @@ describe("build controller", () => {
         line: 12,
         column: 8,
         message: "Property width does not exist.",
+      },
+    ]);
+  });
+
+  it("executes a build plan with custom diagnostic matchers", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-2",
+      plan,
+      runTerminalCommand: async (request) => ({
+        runId: request.runId,
+        command: request.command,
+        stdout: "",
+        stderr: "PACKAGER_FAIL",
+        exitCode: 1,
+        durationMs: 70,
+        stopped: false,
+      }),
+      diagnosticMatchers: [{
+        id: "custom-packager",
+        match: () => [{
+          source: "build",
+          severity: "error",
+          path: "/workspace/Demo/build-profile.json5",
+          line: 1,
+          column: 1,
+          message: "Packager failed",
+        }],
+      }],
+    });
+
+    expect(result.diagnostics).toEqual([
+      {
+        source: "build",
+        severity: "error",
+        path: "/workspace/Demo/build-profile.json5",
+        line: 1,
+        column: 1,
+        message: "Packager failed",
+      },
+    ]);
+  });
+});
+
+describe("build diagnostic matchers", () => {
+  it("uses default matchers to parse Hvigor file diagnostics", () => {
+    const output = "ERROR: ArkTS:ERROR File: /workspace/Demo/entry/src/main/ets/pages/Index.ets:12:8\nProperty width does not exist.";
+
+    expect(parseBuildDiagnostics(output, defaultBuildDiagnosticMatchers)).toEqual([
+      {
+        source: "build",
+        severity: "error",
+        path: "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
+        line: 12,
+        column: 8,
+        message: "Property width does not exist.",
+      },
+    ]);
+  });
+
+  it("allows custom build diagnostic matchers", () => {
+    const customMatcher: BuildDiagnosticMatcher = {
+      id: "custom-packager",
+      match(output) {
+        return output.includes("PACKAGER_FAIL")
+          ? [{
+            source: "build",
+            severity: "error",
+            path: "/workspace/Demo/build-profile.json5",
+            line: 1,
+            column: 1,
+            message: "Packager failed",
+          }]
+          : [];
+      },
+    };
+
+    expect(parseBuildDiagnostics("PACKAGER_FAIL", [customMatcher])).toEqual([
+      {
+        source: "build",
+        severity: "error",
+        path: "/workspace/Demo/build-profile.json5",
+        line: 1,
+        column: 1,
+        message: "Packager failed",
       },
     ]);
   });
