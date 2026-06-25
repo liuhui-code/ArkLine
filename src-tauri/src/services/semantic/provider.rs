@@ -1,6 +1,7 @@
 use crate::models::language::{
-    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
-    LanguageQueryRequest, LanguageServiceReport, UsageResult,
+    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
+    DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
+    LanguageServiceReport, UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;
@@ -13,6 +14,8 @@ pub trait SemanticProvider: Send + Sync {
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem>;
     fn document_symbols(&self, request: &LanguageQueryRequest) -> Vec<DocumentSymbol>;
     fn usages(&self, request: &LanguageQueryRequest) -> Vec<UsageResult>;
+    fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction>;
+    fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution;
 }
 
 pub struct FallbackProvider {
@@ -174,6 +177,20 @@ impl SemanticProvider for FallbackProvider {
                 preview,
             })
             .collect()
+    }
+
+    fn code_actions(&self, _request: &LanguageQueryRequest) -> Vec<CodeAction> {
+        Vec::new()
+    }
+
+    fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution {
+        CodeActionResolution::Unsupported(UnsupportedCodeActionResolution {
+            status: "unsupported".to_string(),
+            reason: format!(
+                "Resolving code action '{}' is not supported by the fallback semantic provider.",
+                request.id
+            ),
+        })
     }
 }
 

@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import type {
+  CodeAction,
+  EditConflict,
+  WorkspaceEditPlan,
+} from "@/features/code-actions/code-action-model";
 import { createFileTreeNodes, type FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
@@ -163,6 +168,41 @@ export type DocumentSymbol = {
   column: number;
 };
 
+export type CodeActionResolveRequest = {
+  id: string;
+  data?: Record<string, unknown>;
+};
+
+export type UnsupportedCodeActionResolution = {
+  status: "unsupported";
+  reason: string;
+};
+
+export type CodeActionResolution = WorkspaceEditPlan | UnsupportedCodeActionResolution;
+
+export type WorkspaceEditPreviewRequest = {
+  workspaceRoot: string;
+  plan: WorkspaceEditPlan;
+};
+
+export type WorkspaceEditPreview = {
+  plan: WorkspaceEditPlan;
+  conflicts: EditConflict[];
+  affectedFiles: string[];
+  summary: string[];
+};
+
+export type ApplyWorkspaceEditRequest = {
+  workspaceRoot: string;
+  plan: WorkspaceEditPlan;
+};
+
+export type ApplyWorkspaceEditResult = {
+  applied: boolean;
+  conflicts: EditConflict[];
+  changedFiles: string[];
+};
+
 export type WorkspaceApi = {
   pickWorkspaceRoot(): Promise<string | null>;
   pickPath?(options: PathPickOptions): Promise<string | null>;
@@ -182,6 +222,10 @@ export type WorkspaceApi = {
   completeSymbol?(request: LanguageQueryRequest): Promise<LanguageCompletionItem[]>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
   findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
+  listCodeActions?(request: LanguageQueryRequest): Promise<CodeAction[]>;
+  resolveCodeAction?(request: CodeActionResolveRequest): Promise<CodeActionResolution>;
+  previewWorkspaceEdit?(request: WorkspaceEditPreviewRequest): Promise<WorkspaceEditPreview>;
+  applyWorkspaceEdit?(request: ApplyWorkspaceEditRequest): Promise<ApplyWorkspaceEditResult>;
   getFileBlame?(path: string): Promise<GitBlameLine[] | GitTraceUnavailable>;
   getCommitTrace?(path: string, commit: string, line: number): Promise<GitCommitTrace | GitTraceUnavailable>;
   loadSettings(): Promise<AppSettings>;
@@ -496,6 +540,90 @@ export const defaultWorkspaceApi: WorkspaceApi = {
         preview: "struct Index {}",
       },
     ];
+  },
+  async listCodeActions(request) {
+    if (hasTauriRuntime()) {
+      return invoke<CodeAction[]>("list_code_actions", { request });
+    }
+
+    if (!isDemoWorkspacePath(request.path) || !request.path.toLowerCase().endsWith(".ets")) {
+      return [];
+    }
+
+    return [
+      {
+        id: "arkts.generate.page",
+        title: "Generate ArkTS Page",
+        kind: "generate",
+        provider: "template",
+        safety: "needsPreview",
+        data: { template: "arkts-page" },
+      },
+      {
+        id: "arkts.generate.component",
+        title: "Generate ArkTS Component",
+        kind: "generate",
+        provider: "template",
+        safety: "needsPreview",
+        data: { template: "arkts-component" },
+      },
+      {
+        id: "workspace.renameFile",
+        title: "Rename File",
+        kind: "source",
+        provider: "workspace",
+        safety: "needsPreview",
+        data: { targetPath: normalizePath(request.path) },
+      },
+    ];
+  },
+  async resolveCodeAction(request) {
+    if (hasTauriRuntime()) {
+      return invoke<CodeActionResolution>("resolve_code_action", { request });
+    }
+
+    return {
+      status: "unsupported",
+      reason: `Resolving code action '${request.id}' is not implemented in the mock workspace API.`,
+    };
+  },
+  async previewWorkspaceEdit(request) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceEditPreview>("preview_workspace_edit", { request });
+    }
+
+    const affectedFiles = request.plan.affectedFiles.length > 0
+      ? request.plan.affectedFiles
+      : request.plan.operations.flatMap((operation) => {
+          if (operation.kind === "renameFile") {
+            return [operation.oldPath, operation.newPath];
+          }
+
+          return [operation.path];
+        });
+
+    return {
+      plan: request.plan,
+      conflicts: request.plan.conflicts,
+      affectedFiles: [...new Set(affectedFiles)],
+      summary: request.plan.operations.map((operation) => operation.kind),
+    };
+  },
+  async applyWorkspaceEdit(request) {
+    if (hasTauriRuntime()) {
+      return invoke<ApplyWorkspaceEditResult>("apply_workspace_edit", { request });
+    }
+
+    return {
+      applied: false,
+      conflicts: [
+        {
+          path: request.workspaceRoot,
+          message: "Applying workspace edits is only available in the Tauri runtime.",
+        },
+      ],
+      changedFiles: [],
+    };
   },
   async getFileBlame(path) {
     if (hasTauriRuntime()) {

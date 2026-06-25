@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::models::language::{
-    CompletionItem, DefinitionCandidate, DefinitionTarget, LanguageQueryRequest,
+    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
+    DefinitionCandidate, DefinitionTarget, LanguageQueryRequest,
 };
 
 use super::process::SemanticWorkerProcessSpec;
@@ -140,6 +141,38 @@ impl SemanticWorkerSession {
         Ok(items.iter().filter_map(parse_completion_item).collect())
     }
 
+    pub fn list_code_actions(
+        &self,
+        request: &LanguageQueryRequest,
+    ) -> Result<Vec<CodeAction>, String> {
+        let response = self.send_request("listCodeActions", Some(request))?;
+        let payload = extract_payload(&response.payload, "actions");
+        let actions = payload
+            .as_array()
+            .ok_or_else(|| "Semantic worker code action response was not an array".to_string())?;
+
+        actions
+            .iter()
+            .cloned()
+            .map(|action| {
+                serde_json::from_value(action).map_err(|error| {
+                    format!("Failed to parse semantic worker code action: {error}")
+                })
+            })
+            .collect()
+    }
+
+    pub fn resolve_code_action(
+        &self,
+        request: &CodeActionResolveRequest,
+    ) -> Result<CodeActionResolution, String> {
+        let response = self.send_action_request("resolveCodeAction", request)?;
+
+        serde_json::from_value(response.payload).map_err(|error| {
+            format!("Failed to parse semantic worker code action resolution: {error}")
+        })
+    }
+
     #[cfg(test)]
     pub fn process_id(&self) -> Option<u32> {
         self.child.lock().ok().map(|child| child.id())
@@ -149,6 +182,23 @@ impl SemanticWorkerSession {
         &self,
         method: &str,
         request: Option<&LanguageQueryRequest>,
+    ) -> Result<RawSemanticResponse, String> {
+        self.send_request_parts(method, request, None)
+    }
+
+    fn send_action_request(
+        &self,
+        method: &str,
+        action: &CodeActionResolveRequest,
+    ) -> Result<RawSemanticResponse, String> {
+        self.send_request_parts(method, None, Some(action))
+    }
+
+    fn send_request_parts(
+        &self,
+        method: &str,
+        request: Option<&LanguageQueryRequest>,
+        action: Option<&CodeActionResolveRequest>,
     ) -> Result<RawSemanticResponse, String> {
         let request_id = format!(
             "semantic-{}",
@@ -163,6 +213,7 @@ impl SemanticWorkerSession {
                 column: value.column,
                 content: value.content.clone(),
             }),
+            action: action.cloned(),
         };
         let serialized = serde_json::to_string(&payload).map_err(|error| {
             format!("Failed to serialize semantic worker request {request_id}: {error}")

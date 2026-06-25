@@ -6,9 +6,56 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::models::workspace_edit::{
     ApplyWorkspaceEditResult, EditConflict, TextRange, WorkspaceEditOperation, WorkspaceEditPlan,
+    WorkspaceEditPreview,
 };
 
 const READONLY_COMPONENTS: [&str; 4] = [".git", ".hvigor", "build", "node_modules"];
+
+pub fn preview_workspace_edit(
+    workspace_root: &Path,
+    plan: &WorkspaceEditPlan,
+) -> Result<WorkspaceEditPreview, String> {
+    let workspace_root = normalize_workspace_root(workspace_root)?;
+    let mut conflicts = plan.conflicts.clone();
+    let mut validated_operations = Vec::new();
+    let mut text_edits_by_file: BTreeMap<PathBuf, Vec<ValidatedTextEdit>> = BTreeMap::new();
+    let mut file_contents: BTreeMap<PathBuf, String> = BTreeMap::new();
+
+    for operation in &plan.operations {
+        match validate_operation(&workspace_root, operation, &mut file_contents) {
+            Ok(validated) => {
+                if let ValidatedOperation::Text(edit) = &validated {
+                    text_edits_by_file
+                        .entry(edit.path.clone())
+                        .or_default()
+                        .push(edit.clone());
+                }
+                validated_operations.push(validated);
+            }
+            Err(conflict) => conflicts.push(conflict),
+        }
+    }
+
+    for edits in text_edits_by_file.values_mut() {
+        edits.sort_by_key(|edit| edit.start);
+        for pair in edits.windows(2) {
+            if pair[0].end > pair[1].start {
+                conflicts.push(EditConflict {
+                    path: normalize_path(&pair[0].path),
+                    message: "Text edits overlap".to_string(),
+                });
+            }
+        }
+    }
+    conflicts.extend(validate_operation_relationships(&validated_operations));
+
+    Ok(WorkspaceEditPreview {
+        plan: plan.clone(),
+        conflicts,
+        affected_files: collect_affected_files(plan),
+        summary: plan.operations.iter().map(summarize_operation).collect(),
+    })
+}
 
 pub fn apply_workspace_edit(
     workspace_root: &Path,
@@ -274,6 +321,67 @@ fn validate_operation(
     }
 }
 
+fn collect_affected_files(plan: &WorkspaceEditPlan) -> Vec<String> {
+    if !plan.affected_files.is_empty() {
+        return plan.affected_files.clone();
+    }
+
+    let mut files = BTreeSet::new();
+    for operation in &plan.operations {
+        match operation {
+            WorkspaceEditOperation::Text { path, .. }
+            | WorkspaceEditOperation::CreateFile { path, .. }
+            | WorkspaceEditOperation::DeleteFile { path, .. } => {
+                files.insert(path.clone());
+            }
+            WorkspaceEditOperation::RenameFile {
+                old_path, new_path, ..
+            } => {
+                files.insert(old_path.clone());
+                files.insert(new_path.clone());
+            }
+        }
+    }
+
+    files.into_iter().collect()
+}
+
+fn summarize_operation(operation: &WorkspaceEditOperation) -> String {
+    match operation {
+        WorkspaceEditOperation::Text { path, range, .. } => format!(
+            "Edit {path} at {}:{}-{}:{}",
+            range.start_line, range.start_column, range.end_line, range.end_column
+        ),
+        WorkspaceEditOperation::CreateFile {
+            path, overwrite, ..
+        } => {
+            if *overwrite {
+                format!("Create or overwrite {path}")
+            } else {
+                format!("Create {path}")
+            }
+        }
+        WorkspaceEditOperation::RenameFile {
+            old_path,
+            new_path,
+            overwrite,
+        } => {
+            if *overwrite {
+                format!("Rename {old_path} to {new_path} and overwrite if needed")
+            } else {
+                format!("Rename {old_path} to {new_path}")
+            }
+        }
+        WorkspaceEditOperation::DeleteFile { path, recursive } => {
+            if *recursive {
+                format!("Delete {path} recursively")
+            } else {
+                format!("Delete {path}")
+            }
+        }
+    }
+}
+
 fn validate_operation_relationships(operations: &[ValidatedOperation]) -> Vec<EditConflict> {
     let mut conflicts = Vec::new();
     let mut text_paths = BTreeSet::new();
@@ -529,7 +637,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::apply_workspace_edit;
+    use super::{apply_workspace_edit, preview_workspace_edit};
     use crate::models::workspace_edit::{
         EditConflict, TextRange, WorkspaceEditOperation, WorkspaceEditPlan,
     };
@@ -586,6 +694,36 @@ mod tests {
         assert!(result.applied);
         assert!(result.conflicts.is_empty());
         assert_eq!(fs::read_to_string(&file).unwrap(), "hello\nArkLine\n");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_preview_validates_without_writing_files() {
+        let root = unique_temp_dir("preview-text-edit");
+        fs::create_dir_all(root.join("src")).unwrap();
+        let file = root.join("src").join("main.ets");
+        fs::write(&file, "hello\nworld\n").unwrap();
+
+        let edit = plan(vec![text_edit(
+            file.clone(),
+            TextRange {
+                start_line: 2,
+                start_column: 1,
+                end_line: 2,
+                end_column: 6,
+            },
+            "ArkLine",
+        )]);
+
+        let preview = preview_workspace_edit(&root, &edit).unwrap();
+
+        assert!(preview.conflicts.is_empty());
+        assert_eq!(
+            preview.affected_files,
+            vec![file.to_string_lossy().to_string()]
+        );
+        assert_eq!(fs::read_to_string(&file).unwrap(), "hello\nworld\n");
 
         fs::remove_dir_all(root).unwrap();
     }

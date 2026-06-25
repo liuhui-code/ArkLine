@@ -71,3 +71,29 @@ pub struct ApplyWorkspaceEditResult {
     #[serde(default)]
     pub changed_files: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEditPreviewRequest {
+    pub workspace_root: String,
+    pub plan: WorkspaceEditPlan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplyWorkspaceEditRequest {
+    pub workspace_root: String,
+    pub plan: WorkspaceEditPlan,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceEditPreview {
+    pub plan: WorkspaceEditPlan,
+    #[serde(default)]
+    pub conflicts: Vec<EditConflict>,
+    #[serde(default)]
+    pub affected_files: Vec<String>,
+    #[serde(default)]
+    pub summary: Vec<String>,
+}

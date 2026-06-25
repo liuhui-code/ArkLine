@@ -11,6 +11,10 @@ describe("language service api skeleton", () => {
   const gotoDefinitionCandidates = defaultWorkspaceApi.gotoDefinitionCandidates!;
   const completeSymbol = defaultWorkspaceApi.completeSymbol!;
   const findUsages = defaultWorkspaceApi.findUsages!;
+  const listCodeActions = defaultWorkspaceApi.listCodeActions!;
+  const resolveCodeAction = defaultWorkspaceApi.resolveCodeAction!;
+  const previewWorkspaceEdit = defaultWorkspaceApi.previewWorkspaceEdit!;
+  const applyWorkspaceEdit = defaultWorkspaceApi.applyWorkspaceEdit!;
   const getFileBlame = defaultWorkspaceApi.getFileBlame!;
   const getCommitTrace = defaultWorkspaceApi.getCommitTrace!;
 
@@ -81,6 +85,13 @@ describe("language service api skeleton", () => {
     await expect(gotoDefinitionCandidates(unknown)).resolves.toEqual([]);
     await expect(completeSymbol(unknown)).resolves.toEqual([]);
     await expect(findUsages(unknown)).resolves.toEqual([]);
+  });
+
+  it("exposes code action and workspace edit APIs", async () => {
+    expect(listCodeActions).toEqual(expect.any(Function));
+    expect(resolveCodeAction).toEqual(expect.any(Function));
+    expect(previewWorkspaceEdit).toEqual(expect.any(Function));
+    expect(applyWorkspaceEdit).toEqual(expect.any(Function));
   });
 
   it("exposes git trace contract shapes", async () => {

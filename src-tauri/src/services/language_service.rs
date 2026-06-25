@@ -1,6 +1,7 @@
 use crate::models::language::{
-    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
-    LanguageQueryRequest, LanguageServiceReport, UsageResult,
+    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
+    DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
+    LanguageServiceReport, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use crate::services::semantic::router::SemanticRouter;
@@ -106,6 +107,24 @@ pub fn find_usages(
     request: &LanguageQueryRequest,
 ) -> Vec<UsageResult> {
     runtime.with_router(settings, |router| router.active().usages(request))
+}
+
+pub fn list_code_actions(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+) -> Vec<CodeAction> {
+    runtime.with_router(settings, |router| router.active().code_actions(request))
+}
+
+pub fn resolve_code_action(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &CodeActionResolveRequest,
+) -> CodeActionResolution {
+    runtime.with_router(settings, |router| {
+        router.active().resolve_code_action(request)
+    })
 }
 
 pub fn inspect_runtime(runtime: &LanguageRuntime, settings: &AppSettings) -> LanguageServiceReport {
@@ -518,8 +537,11 @@ rl.on("line", (line) => {{
         with_valid_sdk_env(|temp_sdk_root| {
             let sdk_common_path = temp_sdk_root.join("ets/component/common.d.ts");
             fs::create_dir_all(sdk_common_path.parent().unwrap()).unwrap();
-            fs::write(&sdk_common_path, "declare class CommonMethod<T> {\n  width(value: Length): T;\n}\n")
-                .unwrap();
+            fs::write(
+                &sdk_common_path,
+                "declare class CommonMethod<T> {\n  width(value: Length): T;\n}\n",
+            )
+            .unwrap();
 
             let source_path = unique_temp_path("arkui-width-source");
             fs::write(

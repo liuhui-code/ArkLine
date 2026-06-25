@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::models::workspace_edit::WorkspaceEditPlan;
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageServiceReport {
@@ -98,6 +100,44 @@ pub struct UsageResult {
     pub line: u32,
     pub column: u32,
     pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeAction {
+    pub id: String,
+    pub title: String,
+    pub kind: String,
+    pub provider: String,
+    pub safety: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disabled_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edit_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeActionResolveRequest {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UnsupportedCodeActionResolution {
+    pub status: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum CodeActionResolution {
+    WorkspaceEdit(WorkspaceEditPlan),
+    Unsupported(UnsupportedCodeActionResolution),
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

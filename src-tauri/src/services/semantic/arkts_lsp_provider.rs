@@ -2,8 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::models::language::{
-    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
-    LanguageQueryRequest, LanguageServiceReport, UsageResult,
+    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
+    DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
+    LanguageServiceReport, UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::manager::SemanticHostManager;
@@ -131,6 +132,21 @@ impl SemanticProvider for ArkTsLspProvider {
 
     fn usages(&self, _request: &LanguageQueryRequest) -> Vec<UsageResult> {
         Vec::new()
+    }
+
+    fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction> {
+        self.session.list_code_actions(request).unwrap_or_default()
+    }
+
+    fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution {
+        self.session
+            .resolve_code_action(request)
+            .unwrap_or_else(|error| {
+                CodeActionResolution::Unsupported(UnsupportedCodeActionResolution {
+                    status: "unsupported".to_string(),
+                    reason: error,
+                })
+            })
     }
 }
 

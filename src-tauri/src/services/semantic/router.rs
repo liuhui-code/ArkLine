@@ -31,14 +31,14 @@ impl SemanticRouter {
             )
         };
         let fallback: Arc<dyn SemanticProvider> = Arc::new(FallbackProvider::new(fallback_detail));
-        let semantic = ArkTsLspProvider::discover(config)
-            .ok()
-            .map(|provider| Arc::new(CompositeSemanticProvider::new(fallback.clone(), Arc::new(provider))) as Arc<dyn SemanticProvider>);
+        let semantic = ArkTsLspProvider::discover(config).ok().map(|provider| {
+            Arc::new(CompositeSemanticProvider::new(
+                fallback.clone(),
+                Arc::new(provider),
+            )) as Arc<dyn SemanticProvider>
+        });
 
-        Self {
-            fallback,
-            semantic,
-        }
+        Self { fallback, semantic }
     }
 
     pub fn active(&self) -> &dyn SemanticProvider {
@@ -122,5 +122,24 @@ impl SemanticProvider for CompositeSemanticProvider {
         request: &crate::models::language::LanguageQueryRequest,
     ) -> Vec<crate::models::language::UsageResult> {
         self.fallback.usages(request)
+    }
+
+    fn code_actions(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+    ) -> Vec<crate::models::language::CodeAction> {
+        let actions = self.semantic.code_actions(request);
+        if actions.is_empty() {
+            self.fallback.code_actions(request)
+        } else {
+            actions
+        }
+    }
+
+    fn resolve_code_action(
+        &self,
+        request: &crate::models::language::CodeActionResolveRequest,
+    ) -> crate::models::language::CodeActionResolution {
+        self.semantic.resolve_code_action(request)
     }
 }

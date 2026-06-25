@@ -1,4 +1,5 @@
 mod commands {
+    pub mod code_actions;
     pub mod documents;
     pub mod environment;
     pub mod git_trace;
@@ -63,6 +64,10 @@ pub fn run() {
             commands::language::complete_symbol,
             commands::language::document_symbols,
             commands::language::find_usages,
+            commands::code_actions::list_code_actions,
+            commands::code_actions::resolve_code_action,
+            commands::code_actions::preview_workspace_edit,
+            commands::code_actions::apply_workspace_edit,
             commands::git_trace::get_file_blame,
             commands::git_trace::get_commit_trace,
             commands::terminal::create_terminal_session,

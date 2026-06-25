@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::language::CodeActionResolveRequest;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticDocumentPosition {
@@ -15,7 +17,10 @@ pub struct SemanticDocumentPosition {
 pub struct SemanticRequest {
     pub id: String,
     pub method: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<SemanticDocumentPosition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<CodeActionResolveRequest>,
 }
 
 impl SemanticRequest {
@@ -24,7 +29,13 @@ impl SemanticRequest {
         Self {
             id,
             method: "gotoDefinition".to_string(),
-            position: Some(SemanticDocumentPosition { path, line, column, content: None }),
+            position: Some(SemanticDocumentPosition {
+                path,
+                line,
+                column,
+                content: None,
+            }),
+            action: None,
         }
     }
 }
