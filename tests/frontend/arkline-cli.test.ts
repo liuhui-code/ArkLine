@@ -189,6 +189,22 @@ describe("semantic worker client", () => {
 
     await client.close();
   });
+
+  it("rejects a pending request when the worker exits before timeout", async () => {
+    const worker = createMockWorker();
+    const client = new SemanticWorkerClient("worker.js", {
+      spawn: worker.spawn,
+      timeoutMs: 10_000,
+    });
+
+    const pending = client.request({ id: "exiting", method: "health" });
+
+    worker.process.emit("exit", 1, null);
+
+    await expect(pending).rejects.toThrow("Semantic worker exited before responding (code 1, signal null)");
+
+    await client.close();
+  });
 });
 
 function createMockWorker() {
@@ -217,6 +233,7 @@ function createMockWorker() {
   };
 
   return {
+    process,
     stdout,
     spawn: () => process,
   };

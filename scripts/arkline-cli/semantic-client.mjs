@@ -30,7 +30,7 @@ export class SemanticWorkerClient {
     this.process.on("error", (error) => this.rejectPending(error))
     this.process.on("exit", (code, signal) => {
       this.closed = true
-      if (this.pending.length > 0) {
+      if (this.pending.size > 0) {
         this.rejectPending(new Error(`Semantic worker exited before responding (code ${code}, signal ${signal})`))
       }
     })
