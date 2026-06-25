@@ -47,6 +47,27 @@ export type HarmonyBuildPlan = BuildPlan;
 
 export type BuildResultStatus = "success" | "failed" | "stopped";
 
+export type BuildToolchainSnapshot = {
+  harmonySdkPath: string;
+  semanticWorkerPath: string;
+  nodePath: string;
+  autoDetect: boolean;
+};
+
+export type BuildEnvironmentSnapshot = {
+  projectRoot: string;
+  cwd: string;
+  command: string;
+  target: BuildTarget;
+  scope: BuildScope;
+  moduleName: string | null;
+  product: string;
+  buildMode: "debug" | "release";
+  clean: boolean;
+  fastMode: boolean;
+  toolchain: BuildToolchainSnapshot;
+};
+
 export type BuildResult = {
   runId: string;
   planId?: string;
@@ -57,6 +78,7 @@ export type BuildResult = {
   stdout: string;
   stderr: string;
   diagnostics: ProblemItem[];
+  environment?: BuildEnvironmentSnapshot;
 };
 
 export type HarmonyBuildProject = {

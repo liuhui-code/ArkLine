@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
+import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { createBuildIntent, createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import { createBuildStore } from "@/features/build/build-store";
@@ -70,6 +71,49 @@ describe("build run model", () => {
     expect(result.status).toBe("failed");
     expect(result.output).toContain("Property width does not exist.");
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("build environment snapshot", () => {
+  it("captures build intent command and configured toolchain paths", () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "china",
+      buildMode: "release",
+      clean: true,
+      fastMode: false,
+    });
+
+    const snapshot = createBuildEnvironmentSnapshot({
+      plan,
+      settings: {
+        harmonySdkPath: "/opt/harmony-sdk",
+        semanticWorkerPath: "/opt/arkts-worker/index.js",
+        nodePath: "/opt/node",
+        autoDetect: false,
+      },
+    });
+
+    expect(snapshot).toEqual({
+      projectRoot: "/workspace/Demo",
+      cwd: "/workspace/Demo",
+      command: "./hvigorw clean --no-daemon && ./hvigorw assembleHap --mode module -p module=entry@china -p product=china -p buildMode=release --no-daemon",
+      target: "hap",
+      scope: "module",
+      moduleName: "entry",
+      product: "china",
+      buildMode: "release",
+      clean: true,
+      fastMode: false,
+      toolchain: {
+        harmonySdkPath: "/opt/harmony-sdk",
+        semanticWorkerPath: "/opt/arkts-worker/index.js",
+        nodePath: "/opt/node",
+        autoDetect: false,
+      },
+    });
   });
 });
 
@@ -172,9 +216,17 @@ describe("build controller", () => {
         durationMs: 90,
         stopped: false,
       }),
+      settings: {
+        harmonySdkPath: "/opt/harmony-sdk",
+        semanticWorkerPath: "",
+        nodePath: "/opt/node",
+        autoDetect: false,
+      },
     });
 
     expect(result.status).toBe("failed");
+    expect(result.environment?.toolchain.nodePath).toBe("/opt/node");
+    expect(result.environment?.moduleName).toBe("entry");
     expect(result.diagnostics).toEqual([
       {
         source: "build",

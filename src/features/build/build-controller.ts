@@ -1,7 +1,9 @@
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
+import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import type { BuildPlan, BuildResult, BuildState } from "@/features/build/build-model";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
+import type { AppSettings } from "@/features/settings/settings-store";
 import type { TerminalRunRequest, TerminalRunResult } from "@/features/workspace/workspace-api";
 
 export type BuildPlanFromStateInput = {
@@ -30,6 +32,7 @@ export async function executeHarmonyBuildPlan(input: {
   runId: string;
   plan: BuildPlan;
   runTerminalCommand: TerminalBuildRunner;
+  settings?: AppSettings["sdk"] | null;
 }): Promise<BuildResult> {
   const terminalResult = await input.runTerminalCommand({
     runId: input.runId,
@@ -44,5 +47,9 @@ export async function executeHarmonyBuildPlan(input: {
     ...terminalResult,
     planId: input.plan.id,
     problems,
+    environment: createBuildEnvironmentSnapshot({
+      plan: input.plan,
+      settings: input.settings,
+    }),
   });
 }

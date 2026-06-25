@@ -1,4 +1,4 @@
-import type { BuildIntent, BuildResult, BuildTarget, HarmonyBuildRequest } from "@/features/build/build-model";
+import type { BuildEnvironmentSnapshot, BuildIntent, BuildResult, BuildTarget, HarmonyBuildRequest } from "@/features/build/build-model";
 import type { ProblemItem } from "@/features/problems/problems-store";
 
 export function createBuildIntent(request: HarmonyBuildRequest): BuildIntent {
@@ -29,6 +29,7 @@ export function createBuildResultFromTerminalRun(input: {
   stdout: string;
   stderr: string;
   problems: ProblemItem[];
+  environment?: BuildEnvironmentSnapshot;
   stopped?: boolean;
 }): BuildResult {
   const status = input.stopped ? "stopped" : input.exitCode === 0 ? "success" : "failed";
@@ -44,6 +45,7 @@ export function createBuildResultFromTerminalRun(input: {
     stdout: input.stdout,
     stderr: input.stderr,
     diagnostics: input.problems,
+    environment: input.environment,
   };
 }
 

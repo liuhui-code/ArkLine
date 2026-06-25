@@ -1395,6 +1395,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         runId,
         plan,
         runTerminalCommand: workspaceApi.runTerminalCommand,
+        settings: settingsRef.current.state.settings.sdk,
       });
       buildStoreRef.current.finish(buildResult);
       problemsRef.current.replace([
