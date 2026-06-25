@@ -111,8 +111,10 @@ export function DeviceFaultLogPanel({
     store.setFilter(initialFilter);
     store.clearView();
     rerender();
-    onStatusChange("Fault log view idle");
-  }, [deviceId, onStatusChange, store]);
+    if (active) {
+      onStatusChange("Fault log view idle");
+    }
+  }, [active, deviceId, onStatusChange, store]);
 
   async function refreshFaultLogs() {
     if (!deviceId) {

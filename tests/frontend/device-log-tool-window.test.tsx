@@ -227,4 +227,44 @@ describe("Device Log tool window", () => {
     expect(within(panel).getByRole("button", { name: "Stop Device Log Stream" })).toBeVisible();
     expect(within(panel).getByText("Stop device log stream failed")).toBeVisible();
   });
+
+  it("does not let hidden fault log reset overwrite the visible hilog shared status", async () => {
+    const user = userEvent.setup();
+    const workspaceApi: WorkspaceApi = {
+      ...defaultWorkspaceApi,
+      listDeviceLogDevices: async () => [
+        { id: "device-1", label: "Pura 70 - USB", status: "online", detail: "USB" },
+        { id: "device-2", label: "MatePad - WiFi", status: "online", detail: "WiFi" },
+      ],
+      startDeviceLogStream: async ({ deviceId }) => ({
+        streamId: `stream-${deviceId}`,
+        deviceId,
+        status: "running",
+      }),
+      stopDeviceLogStream: async () => undefined,
+      listDeviceFaultLogs: async ({ deviceId }) => ({
+        deviceId,
+        fetchedAt: "2026-06-25T15:21:48.000Z",
+        command: `hdc -t ${deviceId} shell faultlog -l`,
+        stderr: "",
+        status: "ready",
+        message: "fault logs ready",
+        entries: [],
+      }),
+    };
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+    expect(await within(panel).findByText("Device log stream running")).toBeVisible();
+
+    await user.selectOptions(within(panel).getByRole("combobox", { name: "Device" }), "device-2");
+
+    await waitFor(() => expect(within(panel).queryByText("Fault log view idle")).not.toBeInTheDocument());
+    expect(within(panel).getByText("Device log stream stopped")).toBeVisible();
+  });
 });
