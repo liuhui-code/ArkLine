@@ -3,6 +3,7 @@ import { applyDeviceLogFilter, compileDeviceLogFilter } from "@/features/device-
 import { parseDeviceLogLine } from "@/features/device-log/device-log-parser";
 import { createDeviceLogStore } from "@/features/device-log/device-log-store";
 import type { DeviceLogFilterState } from "@/features/device-log/device-log-model";
+import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
 
 const emptyFilter: DeviceLogFilterState = {
   query: "",
@@ -91,5 +92,21 @@ describe("device log store", () => {
 
     store.setPaused(false);
     expect(store.getState().entries.map((entry) => entry.message)).toEqual(["one", "two"]);
+  });
+});
+
+describe("device log workspace api demo implementation", () => {
+  it("lists demo devices and exposes stream controls outside Tauri", async () => {
+    const devices = await defaultWorkspaceApi.listDeviceLogDevices();
+
+    expect(devices[0]).toMatchObject({
+      id: "demo-device",
+      label: "Demo HarmonyOS Device",
+      status: "online",
+    });
+
+    const stream = await defaultWorkspaceApi.startDeviceLogStream({ deviceId: devices[0].id });
+    expect(stream.streamId).toBe("demo-device-log-stream");
+    await expect(defaultWorkspaceApi.stopDeviceLogStream(stream.streamId)).resolves.toBeUndefined();
   });
 });

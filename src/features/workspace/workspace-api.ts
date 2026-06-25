@@ -88,6 +88,25 @@ export type TerminalSessionSummary = {
   status: TerminalSessionStatus;
 };
 
+export type DeviceConnectionStatus = "unknown" | "online" | "offline" | "unauthorized";
+
+export type DeviceLogDevice = {
+  id: string;
+  label: string;
+  status: DeviceConnectionStatus;
+  detail: string;
+};
+
+export type StartDeviceLogStreamRequest = {
+  deviceId: string;
+};
+
+export type DeviceLogStreamSummary = {
+  streamId: string;
+  deviceId: string;
+  status: "running";
+};
+
 export type CreateTerminalSessionRequest = {
   cwd: string | null;
 };
@@ -238,6 +257,9 @@ export type WorkspaceApi = {
   stopTerminalSession(sessionId: string): Promise<void>;
   runTerminalCommand(request: TerminalRunRequest): Promise<TerminalRunResult>;
   stopTerminalCommand(runId: string): Promise<void>;
+  listDeviceLogDevices(): Promise<DeviceLogDevice[]>;
+  startDeviceLogStream(request: StartDeviceLogStreamRequest): Promise<DeviceLogStreamSummary>;
+  stopDeviceLogStream(streamId: string): Promise<void>;
 };
 
 const demoWorkspace: WorkspaceSnapshot = {
@@ -785,6 +807,40 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     }
 
     void runId;
+  },
+  async listDeviceLogDevices() {
+    if (hasTauriRuntime()) {
+      return invoke<DeviceLogDevice[]>("list_device_log_devices");
+    }
+
+    return [
+      {
+        id: "demo-device",
+        label: "Demo HarmonyOS Device",
+        status: "online",
+        detail: "Mock HiLog stream",
+      },
+    ];
+  },
+  async startDeviceLogStream(request) {
+    if (hasTauriRuntime()) {
+      return invoke<DeviceLogStreamSummary>("start_device_log_stream", { request });
+    }
+
+    void request;
+    return {
+      streamId: "demo-device-log-stream",
+      deviceId: "demo-device",
+      status: "running",
+    };
+  },
+  async stopDeviceLogStream(streamId) {
+    if (hasTauriRuntime()) {
+      await invoke("stop_device_log_stream", { streamId });
+      return;
+    }
+
+    void streamId;
   }
 };
 
