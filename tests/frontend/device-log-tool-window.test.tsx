@@ -173,7 +173,7 @@ describe("Device Log tool window", () => {
           return firstStart.promise;
         }
 
-        return { streamId: `stream-${deviceId}`, deviceId, status: "running" };
+        return { streamId: `stream-${deviceId}`, deviceId, status: "running" as const };
       }),
       stopDeviceLogStream,
     };

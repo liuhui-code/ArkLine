@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { WorkspaceEditPlan } from "@/features/code-actions/workspace-edit-model";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { EditorView } from "@codemirror/view";
 import { act } from "react";
@@ -83,6 +84,15 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     stopTerminalCommand: async () => undefined,
     ...overrides,
     listDeviceLogDevices: async () => [],
+    listDeviceFaultLogs: async (request) => ({
+      deviceId: request.deviceId,
+      fetchedAt: "2026-06-25T15:21:48.000Z",
+      entries: [],
+      command: "",
+      stderr: "",
+      status: "ready",
+      message: "ok",
+    }),
     startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
     stopDeviceLogStream: async () => undefined,
   };
@@ -488,7 +498,7 @@ describe("App shell", () => {
       plan,
       conflicts: [],
       affectedFiles: [],
-      summary: plan.operations.map((operation) => operation.kind),
+      summary: (plan as WorkspaceEditPlan).operations.map((operation) => operation.kind),
     }));
     render(<AppShell workspaceApi={createWorkspaceApi({ previewWorkspaceEdit })} />);
 

@@ -11,6 +11,7 @@ describe("Project tool window", () => {
         tree={demoArkTsTree}
         activePath={"C:\\samples\\ArkDemo\\entry\\src\\main\\ets\\pages\\Index.ets"}
         onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
       />,
     );
 
@@ -38,6 +39,7 @@ describe("Project tool window", () => {
         ]}
         activePath="/Users/liuhui/Documents/code/ArkDemo/entry/src/main/ets/pages/Index.ets"
         onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
       />,
     );
 
@@ -53,6 +55,7 @@ describe("Project tool window", () => {
         tree={demoArkTsTree}
         activePath={"C:\\samples\\ArkDemo\\entry\\src\\main\\ets\\pages\\Index.ets"}
         onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
       />,
     );
 

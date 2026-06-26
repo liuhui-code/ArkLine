@@ -234,6 +234,15 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     stopTerminalCommand: async () => undefined,
     ...overrides,
     listDeviceLogDevices: async () => [],
+    listDeviceFaultLogs: async (request) => ({
+      deviceId: request.deviceId,
+      fetchedAt: "2026-06-25T15:21:48.000Z",
+      entries: [],
+      command: "",
+      stderr: "",
+      status: "ready",
+      message: "ok",
+    }),
     startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
     stopDeviceLogStream: async () => undefined,
   };
