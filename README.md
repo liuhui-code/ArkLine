@@ -63,6 +63,25 @@ This is the main target platform.
 3. Launch ArkLine.
 4. Use `File -> Open Project...` to select an ArkTS workspace folder.
 
+#### Build a downloadable Windows exe from GitHub
+
+The repository includes a manual GitHub Actions workflow that cross-compiles a
+portable Windows executable from a macOS runner.
+
+To create a downloadable artifact:
+
+1. Open the repository on GitHub.
+2. Go to `Actions`.
+3. Select `macos-windows-exe`.
+4. Click `Run workflow`.
+5. Leave `release_tag` empty for a workflow artifact only, or enter a tag such as
+   `v0.1.0` to also upload the executable to a GitHub Release.
+6. After the run finishes, download the `ArkLine-windows-x64` artifact, or open
+   the matching release if a tag was provided.
+
+The generated file is named `ArkLine-windows-x64.exe`. It is a portable Windows
+application; the target machine still needs Microsoft WebView2 Runtime.
+
 #### Fastest way for developers
 
 Prerequisites:

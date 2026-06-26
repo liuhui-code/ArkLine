@@ -1,0 +1,67 @@
+name: macos-windows-exe
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Optional GitHub Release tag to upload ArkLine-windows-x64.exe to"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exe:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install cargo-xwin
+        run: cargo install --locked cargo-xwin
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows portable exe
+        run: pnpm package:windows:portable
+
+      - name: Stage downloadable exe
+        run: |
+          mkdir -p dist/downloads
+          cp src-tauri/target/x86_64-pc-windows-msvc/release/arkline.exe dist/downloads/ArkLine-windows-x64.exe
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArkLine-windows-x64
+          path: dist/downloads/ArkLine-windows-x64.exe
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: ${{ inputs.release_tag != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "ArkLine Windows portable build."
+          gh release upload "$RELEASE_TAG" dist/downloads/ArkLine-windows-x64.exe --clobber
