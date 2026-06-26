@@ -19,7 +19,7 @@
     "preview": "vite preview",
     "test": "pnpm test:semantic-worker && vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri"
+    "tauri": "node scripts/tauri-cli.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
