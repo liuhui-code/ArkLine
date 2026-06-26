@@ -38,6 +38,12 @@ jobs:
       - name: Install cargo-xwin
         run: cargo install --locked cargo-xwin
 
+      - name: Install Windows resource compiler
+        run: |
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix llvm)/bin/llvm-rc" --version
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
