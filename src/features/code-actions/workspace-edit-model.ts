@@ -25,13 +25,28 @@ export type WorkspaceEditOperation =
       overwrite: boolean;
     }
   | {
+      kind: "createDirectory";
+      path: string;
+    }
+  | {
       kind: "renameFile";
       oldPath: string;
       newPath: string;
       overwrite: boolean;
     }
   | {
+      kind: "renameDirectory";
+      oldPath: string;
+      newPath: string;
+      overwrite: boolean;
+    }
+  | {
       kind: "deleteFile";
+      path: string;
+      recursive: boolean;
+    }
+  | {
+      kind: "deleteDirectory";
       path: string;
       recursive: boolean;
     };
@@ -59,9 +74,12 @@ function collectOperationFiles(operation: WorkspaceEditOperation) {
   switch (operation.kind) {
     case "text":
     case "createFile":
+    case "createDirectory":
     case "deleteFile":
+    case "deleteDirectory":
       return [operation.path];
     case "renameFile":
+    case "renameDirectory":
       return [operation.oldPath, operation.newPath];
   }
 }
@@ -123,11 +141,19 @@ export function summarizeWorkspaceEditOperation(operation: WorkspaceEditOperatio
       return `Edit ${operation.path} at ${operation.range.startLine}:${operation.range.startColumn}-${operation.range.endLine}:${operation.range.endColumn}`;
     case "createFile":
       return operation.overwrite ? `Create or overwrite ${operation.path}` : `Create ${operation.path}`;
+    case "createDirectory":
+      return `Create directory ${operation.path}`;
     case "renameFile":
       return operation.overwrite
         ? `Rename ${operation.oldPath} to ${operation.newPath} and overwrite if needed`
         : `Rename ${operation.oldPath} to ${operation.newPath}`;
+    case "renameDirectory":
+      return operation.overwrite
+        ? `Rename directory ${operation.oldPath} to ${operation.newPath} and overwrite if needed`
+        : `Rename directory ${operation.oldPath} to ${operation.newPath}`;
     case "deleteFile":
       return operation.recursive ? `Delete ${operation.path} recursively` : `Delete ${operation.path}`;
+    case "deleteDirectory":
+      return operation.recursive ? `Delete directory ${operation.path} recursively` : `Delete directory ${operation.path}`;
   }
 }

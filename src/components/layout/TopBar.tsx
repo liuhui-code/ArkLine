@@ -10,6 +10,8 @@ type TopBarProps = {
   settingsOpen: boolean;
   onOpenProject: () => void | Promise<void>;
   onOpenRecentProjects: () => void;
+  onNewFile: () => void;
+  onNewDirectory: () => void;
   onOpenSearchEverywhere: () => void;
   onOpenFindInFiles: () => void;
   onOpenReplaceInFiles: () => void;
@@ -39,6 +41,8 @@ export function TopBar({
   settingsOpen,
   onOpenProject,
   onOpenRecentProjects,
+  onNewFile,
+  onNewDirectory,
   onOpenSearchEverywhere,
   onOpenFindInFiles,
   onOpenReplaceInFiles,
@@ -95,6 +99,10 @@ export function TopBar({
 
   const menuGroups: Record<MenuKey, MenuGroup[]> = {
     file: [
+      [
+        { label: "New File", action: onNewFile },
+        { label: "New Directory", action: onNewDirectory },
+      ],
       [
         { label: "Open Project...", action: onOpenProject },
         { label: "Recent Projects", action: onOpenRecentProjects },

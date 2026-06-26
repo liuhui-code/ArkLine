@@ -6,7 +6,12 @@ type ProjectToolWindowProps = {
   tree: FileTreeNode[];
   activePath: string | null;
   onOpen: (path: string) => void;
+  onRequestMutation: (request: ProjectMutationRequest) => void;
 };
+
+export type ProjectMutationRequest =
+  | { action: "newFile"; parentPath: string }
+  | { action: "newDirectory"; parentPath: string };
 
 type TreeEntry = {
   key: string;
@@ -167,7 +172,8 @@ function collectAncestorDirectories(root: InternalNode, targetPath: string) {
 export function ProjectToolWindow({
   tree,
   activePath,
-  onOpen
+  onOpen,
+  onRequestMutation,
 }: ProjectToolWindowProps) {
   const root = useMemo(() => buildTree(tree), [tree]);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -249,6 +255,8 @@ export function ProjectToolWindow({
   return (
     <div className="project-tree-shell">
       <div className="project-tree-toolbar" role="toolbar" aria-label="Project Tree Actions">
+        <button type="button" className="project-tree-toolbar__button" aria-label="New File" onClick={() => onRequestMutation({ action: "newFile", parentPath: root.path })}>F</button>
+        <button type="button" className="project-tree-toolbar__button" aria-label="New Directory" onClick={() => onRequestMutation({ action: "newDirectory", parentPath: root.path })}>D</button>
         <button type="button" className="project-tree-toolbar__button" aria-label="Expand All" onClick={expandAll}>+</button>
         <button type="button" className="project-tree-toolbar__button" aria-label="Collapse All" onClick={collapseAll}>-</button>
         <button type="button" className="project-tree-toolbar__button" aria-label="Focus Active File" onClick={focusActiveFile}>*</button>

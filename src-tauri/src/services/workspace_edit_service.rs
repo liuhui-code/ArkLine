@@ -133,6 +133,10 @@ pub fn apply_workspace_edit(
                 fs::write(path, content).map_err(|error| error.to_string())?;
                 changed_files.insert(normalize_path(path));
             }
+            ValidatedOperation::CreateDirectory { path } => {
+                fs::create_dir_all(path).map_err(|error| error.to_string())?;
+                changed_files.insert(normalize_path(path));
+            }
             ValidatedOperation::RenameFile {
                 old_path,
                 new_path,
@@ -148,6 +152,21 @@ pub fn apply_workspace_edit(
                 changed_files.insert(normalize_path(old_path));
                 changed_files.insert(normalize_path(new_path));
             }
+            ValidatedOperation::RenameDirectory {
+                old_path,
+                new_path,
+                overwrite,
+            } => {
+                if let Some(parent) = new_path.parent() {
+                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                }
+                if *overwrite && new_path.exists() {
+                    fs::remove_dir_all(new_path).map_err(|error| error.to_string())?;
+                }
+                fs::rename(old_path, new_path).map_err(|error| error.to_string())?;
+                changed_files.insert(normalize_path(old_path));
+                changed_files.insert(normalize_path(new_path));
+            }
             ValidatedOperation::DeleteFile { path, recursive } => {
                 if path.is_dir() {
                     if *recursive {
@@ -155,6 +174,14 @@ pub fn apply_workspace_edit(
                     }
                 } else {
                     fs::remove_file(path).map_err(|error| error.to_string())?;
+                }
+                changed_files.insert(normalize_path(path));
+            }
+            ValidatedOperation::DeleteDirectory { path, recursive } => {
+                if *recursive {
+                    fs::remove_dir_all(path).map_err(|error| error.to_string())?;
+                } else {
+                    fs::remove_dir(path).map_err(|error| error.to_string())?;
                 }
                 changed_files.insert(normalize_path(path));
             }
@@ -191,12 +218,24 @@ enum ValidatedOperation {
         path: PathBuf,
         content: String,
     },
+    CreateDirectory {
+        path: PathBuf,
+    },
     RenameFile {
         old_path: PathBuf,
         new_path: PathBuf,
         overwrite: bool,
     },
+    RenameDirectory {
+        old_path: PathBuf,
+        new_path: PathBuf,
+        overwrite: bool,
+    },
     DeleteFile {
+        path: PathBuf,
+        recursive: bool,
+    },
+    DeleteDirectory {
         path: PathBuf,
         recursive: bool,
     },
@@ -267,6 +306,19 @@ fn validate_operation(
                 content: content.clone(),
             })
         }
+        WorkspaceEditOperation::CreateDirectory { path } => {
+            let path = validate_workspace_path(workspace_root, path)?;
+            validate_parent(&path)?;
+
+            if path.is_file() {
+                return Err(conflict(&path, "Create directory target is a file"));
+            }
+            if path.exists() {
+                return Err(conflict(&path, "Create directory target already exists"));
+            }
+
+            Ok(ValidatedOperation::CreateDirectory { path })
+        }
         WorkspaceEditOperation::RenameFile {
             old_path,
             new_path,
@@ -283,7 +335,10 @@ fn validate_operation(
                 return Err(conflict(&old_path, "Rename source is a directory"));
             }
             if old_path == new_path {
-                return Err(conflict(&old_path, "Rename source and target are the same path"));
+                return Err(conflict(
+                    &old_path,
+                    "Rename source and target are the same path",
+                ));
             }
             if new_path.is_dir() {
                 return Err(conflict(&new_path, "Rename target is a directory"));
@@ -298,10 +353,53 @@ fn validate_operation(
                 overwrite: *overwrite,
             })
         }
+        WorkspaceEditOperation::RenameDirectory {
+            old_path,
+            new_path,
+            overwrite,
+        } => {
+            let old_path = validate_workspace_path(workspace_root, old_path)?;
+            let new_path = validate_workspace_path(workspace_root, new_path)?;
+            validate_parent(&new_path)?;
+
+            if !old_path.exists() {
+                return Err(conflict(
+                    &old_path,
+                    "Rename directory source does not exist",
+                ));
+            }
+            if old_path.is_file() {
+                return Err(conflict(&old_path, "Rename directory source is a file"));
+            }
+            if old_path == new_path {
+                return Err(conflict(
+                    &old_path,
+                    "Rename directory source and target are the same path",
+                ));
+            }
+            if new_path.is_file() {
+                return Err(conflict(&new_path, "Rename directory target is a file"));
+            }
+            if new_path.exists() && !overwrite {
+                return Err(conflict(
+                    &new_path,
+                    "Rename directory target already exists",
+                ));
+            }
+
+            Ok(ValidatedOperation::RenameDirectory {
+                old_path,
+                new_path,
+                overwrite: *overwrite,
+            })
+        }
         WorkspaceEditOperation::DeleteFile { path, recursive } => {
             let path = validate_workspace_path(workspace_root, path)?;
             if path == workspace_root {
-                return Err(conflict(&path, "Delete target cannot be the workspace root"));
+                return Err(conflict(
+                    &path,
+                    "Delete target cannot be the workspace root",
+                ));
             }
             if !path.exists() {
                 return Err(conflict(&path, "Delete target does not exist"));
@@ -314,6 +412,26 @@ fn validate_operation(
             }
 
             Ok(ValidatedOperation::DeleteFile {
+                path,
+                recursive: *recursive,
+            })
+        }
+        WorkspaceEditOperation::DeleteDirectory { path, recursive } => {
+            let path = validate_workspace_path(workspace_root, path)?;
+            if path == workspace_root {
+                return Err(conflict(
+                    &path,
+                    "Delete directory target cannot be the workspace root",
+                ));
+            }
+            if !path.exists() {
+                return Err(conflict(&path, "Delete directory target does not exist"));
+            }
+            if path.is_file() {
+                return Err(conflict(&path, "Delete directory target is a file"));
+            }
+
+            Ok(ValidatedOperation::DeleteDirectory {
                 path,
                 recursive: *recursive,
             })
@@ -331,10 +449,15 @@ fn collect_affected_files(plan: &WorkspaceEditPlan) -> Vec<String> {
         match operation {
             WorkspaceEditOperation::Text { path, .. }
             | WorkspaceEditOperation::CreateFile { path, .. }
-            | WorkspaceEditOperation::DeleteFile { path, .. } => {
+            | WorkspaceEditOperation::CreateDirectory { path }
+            | WorkspaceEditOperation::DeleteFile { path, .. }
+            | WorkspaceEditOperation::DeleteDirectory { path, .. } => {
                 files.insert(path.clone());
             }
             WorkspaceEditOperation::RenameFile {
+                old_path, new_path, ..
+            }
+            | WorkspaceEditOperation::RenameDirectory {
                 old_path, new_path, ..
             } => {
                 files.insert(old_path.clone());
@@ -361,6 +484,9 @@ fn summarize_operation(operation: &WorkspaceEditOperation) -> String {
                 format!("Create {path}")
             }
         }
+        WorkspaceEditOperation::CreateDirectory { path } => {
+            format!("Create directory {path}")
+        }
         WorkspaceEditOperation::RenameFile {
             old_path,
             new_path,
@@ -372,11 +498,29 @@ fn summarize_operation(operation: &WorkspaceEditOperation) -> String {
                 format!("Rename {old_path} to {new_path}")
             }
         }
+        WorkspaceEditOperation::RenameDirectory {
+            old_path,
+            new_path,
+            overwrite,
+        } => {
+            if *overwrite {
+                format!("Rename directory {old_path} to {new_path} and overwrite if needed")
+            } else {
+                format!("Rename directory {old_path} to {new_path}")
+            }
+        }
         WorkspaceEditOperation::DeleteFile { path, recursive } => {
             if *recursive {
                 format!("Delete {path} recursively")
             } else {
                 format!("Delete {path}")
+            }
+        }
+        WorkspaceEditOperation::DeleteDirectory { path, recursive } => {
+            if *recursive {
+                format!("Delete directory {path} recursively")
+            } else {
+                format!("Delete directory {path}")
             }
         }
     }
@@ -395,14 +539,35 @@ fn validate_operation_relationships(operations: &[ValidatedOperation]) -> Vec<Ed
             ValidatedOperation::CreateFile { path, .. } => {
                 file_paths.entry(path.clone()).or_default().push("create");
             }
+            ValidatedOperation::CreateDirectory { path } => {
+                file_paths
+                    .entry(path.clone())
+                    .or_default()
+                    .push("create directory");
+            }
             ValidatedOperation::RenameFile {
                 old_path, new_path, ..
+            }
+            | ValidatedOperation::RenameDirectory {
+                old_path, new_path, ..
             } => {
-                file_paths.entry(old_path.clone()).or_default().push("rename source");
-                file_paths.entry(new_path.clone()).or_default().push("rename target");
+                file_paths
+                    .entry(old_path.clone())
+                    .or_default()
+                    .push("rename source");
+                file_paths
+                    .entry(new_path.clone())
+                    .or_default()
+                    .push("rename target");
             }
             ValidatedOperation::DeleteFile { path, .. } => {
                 file_paths.entry(path.clone()).or_default().push("delete");
+            }
+            ValidatedOperation::DeleteDirectory { path, .. } => {
+                file_paths
+                    .entry(path.clone())
+                    .or_default()
+                    .push("delete directory");
             }
         }
     }
@@ -428,7 +593,10 @@ fn validate_operation_relationships(operations: &[ValidatedOperation]) -> Vec<Ed
         if roles.len() > 1 {
             conflicts.push(conflict(
                 &path,
-                format!("Multiple file operations affect the same path: {}", roles.join(", ")),
+                format!(
+                    "Multiple file operations affect the same path: {}",
+                    roles.join(", ")
+                ),
             ));
         }
     }
@@ -612,7 +780,9 @@ fn line_column_to_byte_offset(content: &str, line: u32, column: u32) -> Result<u
         }
         let next_units = current_units + character.len_utf16();
         if column_units < next_units {
-            return Err(format!("Column {column} is not on a UTF-16 character boundary"));
+            return Err(format!(
+                "Column {column} is not on a UTF-16 character boundary"
+            ));
         }
         current_units = next_units;
     }
@@ -637,7 +807,7 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{apply_workspace_edit, preview_workspace_edit};
+    use super::{apply_workspace_edit, normalize_path, preview_workspace_edit};
     use crate::models::workspace_edit::{
         EditConflict, TextRange, WorkspaceEditOperation, WorkspaceEditPlan,
     };
@@ -879,6 +1049,105 @@ mod tests {
 
         assert!(applied.applied);
         assert!(!directory.exists());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_create_directory_creates_nested_directory() {
+        let root = unique_temp_dir("create-directory");
+        fs::create_dir_all(&root).unwrap();
+        let directory = root.join("src").join("pages");
+
+        let applied = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::CreateDirectory {
+                path: directory.to_string_lossy().to_string(),
+            }]),
+        )
+        .unwrap();
+
+        assert!(applied.applied);
+        assert!(directory.is_dir());
+        let normalized_directory = normalize_path(&fs::canonicalize(&directory).unwrap());
+        assert!(applied.changed_files.contains(&normalized_directory));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_create_directory_rejects_existing_file_target() {
+        let root = unique_temp_dir("create-directory-file-target");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("src");
+        fs::write(&file, "content").unwrap();
+
+        let rejected = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::CreateDirectory {
+                path: file.to_string_lossy().to_string(),
+            }]),
+        )
+        .unwrap();
+
+        assert!(!rejected.applied);
+        assert!(rejected
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.message.contains("file")));
+        assert!(file.is_file());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_rename_directory_rejects_file_source() {
+        let root = unique_temp_dir("rename-directory-file-source");
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.ets");
+        let target = root.join("target");
+        fs::write(&source, "content").unwrap();
+
+        let rejected = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::RenameDirectory {
+                old_path: source.to_string_lossy().to_string(),
+                new_path: target.to_string_lossy().to_string(),
+                overwrite: false,
+            }]),
+        )
+        .unwrap();
+
+        assert!(!rejected.applied);
+        assert!(rejected
+            .conflicts
+            .iter()
+            .any(|conflict| conflict.message.contains("file")));
+        assert!(source.is_file());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn workspace_edit_delete_directory_removes_recursive_directory() {
+        let root = unique_temp_dir("delete-directory-explicit");
+        let directory = root.join("src");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("main.ets"), "content").unwrap();
+        let normalized_directory = normalize_path(&fs::canonicalize(&directory).unwrap());
+
+        let applied = apply_workspace_edit(
+            &root,
+            &plan(vec![WorkspaceEditOperation::DeleteDirectory {
+                path: directory.to_string_lossy().to_string(),
+                recursive: true,
+            }]),
+        )
+        .unwrap();
+
+        assert!(applied.applied);
+        assert!(!directory.exists());
+        assert!(applied.changed_files.contains(&normalized_directory));
 
         fs::remove_dir_all(root).unwrap();
     }

@@ -623,7 +623,7 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     const affectedFiles = request.plan.affectedFiles.length > 0
       ? request.plan.affectedFiles
       : request.plan.operations.flatMap((operation) => {
-          if (operation.kind === "renameFile") {
+          if (operation.kind === "renameFile" || operation.kind === "renameDirectory") {
             return [operation.oldPath, operation.newPath];
           }
 

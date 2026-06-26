@@ -482,6 +482,58 @@ describe("App shell", () => {
     expect(await within(filesPane).findByRole("button", { name: "app.json5" })).toBeVisible();
   });
 
+  it("opens workspace edit previews for project tree new file and directory actions", async () => {
+    const user = userEvent.setup();
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: [],
+      summary: plan.operations.map((operation) => operation.kind),
+    }));
+    render(<AppShell workspaceApi={createWorkspaceApi({ previewWorkspaceEdit })} />);
+
+    await openProject(user);
+    const filesPane = screen.getByRole("region", { name: "Files" });
+
+    await user.click(within(filesPane).getByRole("button", { name: "New File" }));
+    await user.type(await screen.findByLabelText("New File Name"), "Home.ets");
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() => expect(previewWorkspaceEdit).toHaveBeenLastCalledWith({
+      workspaceRoot: expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace/),
+      plan: expect.objectContaining({
+        title: "Create File Home.ets",
+        operations: [
+          {
+            kind: "createFile",
+            path: expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace[/\\]Home\.ets/),
+            content: "",
+            overwrite: false,
+          },
+        ],
+      }),
+    }));
+    expect(await screen.findByRole("dialog", { name: "Workspace Edit Preview" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Close Workspace Edit Preview" }));
+    await user.click(within(filesPane).getByRole("button", { name: "New Directory" }));
+    await user.type(await screen.findByLabelText("New Directory Name"), "features");
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() => expect(previewWorkspaceEdit).toHaveBeenLastCalledWith({
+      workspaceRoot: expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace/),
+      plan: expect.objectContaining({
+        title: "Create Directory features",
+        operations: [
+          {
+            kind: "createDirectory",
+            path: expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace[/\\]features/),
+          },
+        ],
+      }),
+    }));
+  });
+
   it("opens a file from the workspace into the editor surface", async () => {
     const user = userEvent.setup();
     render(<App />);

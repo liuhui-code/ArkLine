@@ -54,6 +54,7 @@ import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
 import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
+import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
@@ -63,6 +64,9 @@ type AppShellProps = { workspaceApi?: WorkspaceApi };
 type NavigationLocation = { path: string; line: number; column: number };
 type CompletionSession = { path: string; line: number; replacePrefix: string };
 type CodeActionsStatus = "loading" | "ready" | "empty" | "error";
+type ProjectMutationDialogState =
+  | { kind: "newFile"; parentPath: string; name: string }
+  | { kind: "newDirectory"; parentPath: string; name: string };
 const COMPLETION_POPUP_WIDTH = 460;
 const COMPLETION_POPUP_HEIGHT = 340;
 const COMPLETION_POPUP_MARGIN = 12;
@@ -192,6 +196,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [workspaceEditPreview, setWorkspaceEditPreview] = useState<WorkspaceEditPreviewModel | null>(null);
   const [workspaceEditApplyState, setWorkspaceEditApplyState] = useState<"idle" | "applying" | "error">("idle");
   const [workspaceEditMessage, setWorkspaceEditMessage] = useState<string | undefined>();
+  const [projectMutationDialog, setProjectMutationDialog] = useState<ProjectMutationDialogState | null>(null);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -1045,6 +1050,42 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText(`Workspace edit failed: ${message}`);
     }
   }
+  async function previewWorkspaceMutationPlan(plan: WorkspaceEditPlan) {
+    if (!workspace?.rootPath || !workspaceApi.previewWorkspaceEdit) {
+      setStatusText("Workspace edit preview unavailable");
+      return;
+    }
+
+    const preview = await workspaceApi.previewWorkspaceEdit({
+      workspaceRoot: workspace.rootPath,
+      plan,
+    });
+    setWorkspaceEditPreview(preview);
+    setWorkspaceEditApplyState("idle");
+    setWorkspaceEditMessage(undefined);
+    setStatusText(`Preview ready: ${plan.title}`);
+  }
+  function openProjectMutationDialog(kind: "newFile" | "newDirectory", parentPath: string) {
+    setProjectMutationDialog({ kind, parentPath, name: "" });
+  }
+  function openRootProjectMutationDialog(kind: "newFile" | "newDirectory") {
+    if (!workspace?.rootPath) {
+      setStatusText("Open a project before creating files");
+      return;
+    }
+    openProjectMutationDialog(kind, workspace.rootPath);
+  }
+  async function submitProjectMutationDialog() {
+    if (!projectMutationDialog) {
+      return;
+    }
+
+    const plan = projectMutationDialog.kind === "newFile"
+      ? createNewFilePlan(projectMutationDialog.parentPath, projectMutationDialog.name)
+      : createNewDirectoryPlan(projectMutationDialog.parentPath, projectMutationDialog.name);
+    setProjectMutationDialog(null);
+    await previewWorkspaceMutationPlan(plan);
+  }
   async function showCodeActionsFromEditor(source: "all" | "rename" | "generate" | "refactor" = "all") {
     if (settingsApplying) {
       setStatusText("SDK settings are still applying");
@@ -1734,6 +1775,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     openProject: () => void projectOpening.openProjectPicker(),
     openDemoWorkspace: () => void openDemoWorkspace(),
     openRecentProjects: () => setOverlay("recentProjects"),
+    newFile: () => openRootProjectMutationDialog("newFile"),
+    newDirectory: () => openRootProjectMutationDialog("newDirectory"),
     openFindInFiles: () => openSearchOverlay("find"),
     openReplaceInFiles: () => openSearchOverlay("replace"),
     openGoToLine: () => setOverlay("goToLine"),
@@ -1759,12 +1802,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     : activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell" data-bottom-layout-token={bottomLayoutToken}>
-      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => openSearchOverlay("searchEverywhere")} onOpenFindInFiles={() => openSearchOverlay("find")} onOpenReplaceInFiles={() => openSearchOverlay("replace")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onRunBuild={() => void runBuild()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
+      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onNewFile={() => openRootProjectMutationDialog("newFile")} onNewDirectory={() => openRootProjectMutationDialog("newDirectory")} onOpenSearchEverywhere={() => openSearchOverlay("searchEverywhere")} onOpenFindInFiles={() => openSearchOverlay("find")} onOpenReplaceInFiles={() => openSearchOverlay("replace")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onRunBuild={() => void runBuild()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div
         className="shell-grid"
         style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
       >
-        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
+        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onRequestProjectMutation={(request) => openProjectMutationDialog(request.action, request.parentPath)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
         <div className="editor-workbench">
           {queryPanelVisible ? (
             <EditorQueryPanel
@@ -1803,6 +1846,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
           <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
+      ) : null}
+      {projectMutationDialog ? (
+        <ProjectMutationDialog
+          state={projectMutationDialog}
+          onChangeName={(name) => setProjectMutationDialog((current) => current ? { ...current, name } : current)}
+          onClose={() => setProjectMutationDialog(null)}
+          onSubmit={() => void submitProjectMutationDialog()}
+        />
       ) : null}
       {currentMethodsVisible ? (
         <CurrentClassMethodsPalette
@@ -1924,6 +1975,54 @@ function searchOverlayLabel(mode: SearchEverywhereMode) {
   }
 
   return "Search Everywhere";
+}
+
+function ProjectMutationDialog({
+  state,
+  onChangeName,
+  onClose,
+  onSubmit,
+}: {
+  state: ProjectMutationDialogState;
+  onChangeName: (name: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const title = state.kind === "newFile" ? "New File" : "New Directory";
+  const label = state.kind === "newFile" ? "New File Name" : "New Directory Name";
+
+  return (
+    <section className="project-mutation-dialog" role="dialog" aria-modal="true" aria-label={title}>
+      <form
+        className="project-mutation-dialog__panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <header className="project-mutation-dialog__header">
+          <div>
+            <h2>{title}</h2>
+            <span>{state.parentPath}</span>
+          </div>
+          <button type="button" aria-label={`Close ${title}`} onClick={onClose}>×</button>
+        </header>
+        <label className="project-mutation-dialog__field">
+          <span>{label}</span>
+          <input
+            aria-label={label}
+            autoFocus
+            value={state.name}
+            onChange={(event) => onChangeName(event.target.value)}
+          />
+        </label>
+        <footer className="project-mutation-dialog__footer">
+          <button type="button" className="button-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit">Preview</button>
+        </footer>
+      </form>
+    </section>
+  );
 }
 
 function completionReplacementLength(

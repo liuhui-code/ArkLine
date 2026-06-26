@@ -1000,6 +1000,73 @@ button:disabled {
   white-space: nowrap;
 }
 
+.project-mutation-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 34;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 42%);
+}
+
+.project-mutation-dialog__panel {
+  width: min(420px, calc(100vw - 48px));
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-overlay);
+  overflow: hidden;
+}
+
+.project-mutation-dialog__header,
+.project-mutation-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.project-mutation-dialog__header h2 {
+  margin: 0 0 3px;
+  font-size: 14px;
+}
+
+.project-mutation-dialog__header span {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-mutation-dialog__field {
+  display: grid;
+  gap: 6px;
+  padding: 0 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.project-mutation-dialog__field input {
+  width: 100%;
+}
+
+.project-mutation-dialog__footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 0;
+}
+
 .terminal-tool-window {
   display: grid;
   grid-template-rows: 28px 28px minmax(0, 1fr);

@@ -43,6 +43,21 @@ describe("workspace edit model", () => {
           content: "",
           overwrite: false,
         },
+        {
+          kind: "createDirectory",
+          path: "src/generated",
+        },
+        {
+          kind: "renameDirectory",
+          oldPath: "src/old",
+          newPath: "src/new",
+          overwrite: false,
+        },
+        {
+          kind: "deleteDirectory",
+          path: "src/generated",
+          recursive: true,
+        },
       ],
     };
 
@@ -50,6 +65,9 @@ describe("workspace edit model", () => {
       "src/pages/Index.ets",
       "src/pages/Old.ets",
       "src/pages/New.ets",
+      "src/generated",
+      "src/old",
+      "src/new",
     ]);
   });
 
@@ -80,6 +98,24 @@ describe("workspace edit model", () => {
       path: "src/pages/Unused.ets",
       recursive: false,
     })).toBe("Delete src/pages/Unused.ets");
+
+    expect(summarizeWorkspaceEditOperation({
+      kind: "createDirectory",
+      path: "src/pages",
+    })).toBe("Create directory src/pages");
+
+    expect(summarizeWorkspaceEditOperation({
+      kind: "renameDirectory",
+      oldPath: "src/old",
+      newPath: "src/new",
+      overwrite: false,
+    })).toBe("Rename directory src/old to src/new");
+
+    expect(summarizeWorkspaceEditOperation({
+      kind: "deleteDirectory",
+      path: "src/generated",
+      recursive: true,
+    })).toBe("Delete directory src/generated recursively");
   });
 
   it("accepts valid text ranges", () => {

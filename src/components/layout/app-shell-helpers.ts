@@ -25,6 +25,8 @@ type CommandPaletteAction = {
   openProject: () => void | Promise<void>;
   openDemoWorkspace: () => void;
   openRecentProjects: () => void;
+  newFile: () => void;
+  newDirectory: () => void;
   openFindInFiles: () => void;
   openReplaceInFiles: () => void;
   openGoToLine: () => void;
@@ -51,6 +53,8 @@ export function buildAppShellCommandPaletteItems(query: string, actions: Command
     { id: "open-project", label: "Open Project", action: actions.openProject },
     { id: "open-demo", label: "Open Demo Workspace", action: actions.openDemoWorkspace },
     { id: "recent-projects", label: "Recent Projects", action: actions.openRecentProjects },
+    { id: "new-file", label: "New File", action: actions.newFile },
+    { id: "new-directory", label: "New Directory", action: actions.newDirectory },
     { id: "find-in-files", label: "Find in Files", shortcut: getShellCommandShortcut("openFindInFiles"), action: actions.openFindInFiles },
     { id: "replace-in-files", label: "Replace in Files", shortcut: getShellCommandShortcut("openReplaceInFiles"), action: actions.openReplaceInFiles },
     { id: "go-to-line", label: "Go to Line...", action: actions.openGoToLine },

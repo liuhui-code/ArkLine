@@ -35,12 +35,24 @@ pub enum WorkspaceEditOperation {
         content: String,
         overwrite: bool,
     },
+    CreateDirectory {
+        path: String,
+    },
     RenameFile {
         old_path: String,
         new_path: String,
         overwrite: bool,
     },
+    RenameDirectory {
+        old_path: String,
+        new_path: String,
+        overwrite: bool,
+    },
     DeleteFile {
+        path: String,
+        recursive: bool,
+    },
+    DeleteDirectory {
         path: String,
         recursive: bool,
     },

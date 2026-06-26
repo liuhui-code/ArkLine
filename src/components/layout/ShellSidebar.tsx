@@ -9,6 +9,7 @@ import {
 import { flushSync } from "react-dom";
 import { LeftToolRail } from "@/components/layout/LeftToolRail";
 import { ProjectToolWindow } from "@/components/layout/ProjectToolWindow";
+import type { ProjectMutationRequest } from "@/components/layout/ProjectToolWindow";
 import type { LeftToolKey } from "@/components/layout/shell-state";
 import { ToolWindow } from "@/components/layout/ToolWindow";
 import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
@@ -23,6 +24,7 @@ type ShellSidebarProps = {
   workspace: WorkspaceViewModel | null;
   filesPaneRef: RefObject<HTMLDivElement | null>;
   onOpenFile: (path: string) => void;
+  onRequestProjectMutation: (request: ProjectMutationRequest) => void;
   onResizeWidth: (width: number) => void;
   onSelectTool: (tool: LeftToolKey) => void;
 };
@@ -37,6 +39,7 @@ export function ShellSidebar({
   workspace,
   filesPaneRef,
   onOpenFile,
+  onRequestProjectMutation,
   onResizeWidth,
   onSelectTool,
 }: ShellSidebarProps) {
@@ -122,7 +125,7 @@ export function ShellSidebar({
         <div ref={filesPaneRef} className="sidebar__pane">
           <ToolWindow ariaLabel="Files" title="Project" caption="Files" visible={filesVisible} className="tool-window">
             {workspace ? (
-              <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} />
+              <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} onRequestMutation={onRequestProjectMutation} />
             ) : (
               <p>Workspace files will appear here.</p>
             )}
