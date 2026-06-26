@@ -512,27 +512,28 @@ describe("App shell", () => {
     expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
   });
 
-  it("searches workspace text with regex and text options, shows relative paths, previews the selected hit, and opens the file", async () => {
+  it("searches workspace text with regex and text options, groups relative path results, previews the selected hit, and opens the file", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await openProject(user);
     await user.click(screen.getByRole("button", { name: "View" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Search Everywhere" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Find in Files" }));
 
-    const query = await screen.findByLabelText("Search Everywhere Query");
+    const query = await screen.findByLabelText("Find in Files Query");
     await user.type(query, "entry");
-    expect(screen.getByRole("button", { name: "Close Search Everywhere" })).toBeVisible();
-    expect(within(screen.getByRole("list", { name: "Search Everywhere Results" })).getByText("main.ets")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Close Find in Files" })).toBeVisible();
+    expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getByText("main.ets")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Aa" }));
-    expect(within(screen.getByRole("list", { name: "Search Everywhere Results" })).getByText("No matches")).toBeVisible();
+    expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getByText("No matches")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Aa" }));
     await user.clear(query);
     await user.type(query, "/bundleName/");
 
-    const results = screen.getByRole("list", { name: "Search Everywhere Results" });
+    const results = screen.getByRole("list", { name: "Find in Files Results" });
     expect(within(results).getByText("app.json5")).toBeVisible();
-    expect(within(results).getByText("AppScope/app.json5:3")).toBeVisible();
+    expect(within(results).getByText("AppScope/app.json5")).toBeVisible();
+    expect(within(results).getByText("3:6")).toBeVisible();
     expect(within(results).queryByText("C:\\samples\\DemoWorkspace\\AppScope\\app.json5")).not.toBeInTheDocument();
 
     const preview = screen.getByLabelText("Search Everywhere Preview");
@@ -546,6 +547,19 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content");
     expect(editor).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
     await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("opens Replace in Files from the menu with a replace input", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Replace in Files" }));
+
+    expect(await screen.findByLabelText("Replace in Files Query")).toHaveFocus();
+    expect(screen.getByLabelText("Replace With")).toBeVisible();
+    expect(screen.getByRole("list", { name: "Replace in Files Results" })).toBeVisible();
   });
 
   it("keeps Search Everywhere open for panel clicks and closes it from outside or close button", async () => {
@@ -1296,6 +1310,23 @@ describe("App shell", () => {
     expect(await screen.findByText("No actions found")).toBeVisible();
   });
 
+  it("shows Find and Replace in Files in the command palette", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "find in files");
+
+    expect(await screen.findByRole("button", { name: "Find in Files" })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+F$/)).toBeVisible();
+
+    await user.clear(screen.getByLabelText("Find Action Query"));
+    await user.type(screen.getByLabelText("Find Action Query"), "replace in files");
+
+    expect(await screen.findByRole("button", { name: "Replace in Files" })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+R$/)).toBeVisible();
+  });
+
   it("shows shortcut hints in top bar menus", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -1309,6 +1340,10 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("menuitem", { name: "Search Everywhere" })).toBeVisible();
     expect(screen.getByText("Double Shift")).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Find in Files" })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+F$/)).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Replace in Files" })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+R$/)).toBeVisible();
     expect(screen.getByText("Alt+F12")).toBeVisible();
   });
 
@@ -3835,6 +3870,18 @@ describe("App shell", () => {
 
     expect(screen.getByRole("row", { name: /Find Usages Navigation/i })).toBeVisible();
     expect(screen.queryByRole("row", { name: /Code Completion Editor/i })).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Search Keyboard Shortcuts"));
+    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Shift+F");
+
+    expect(screen.getByRole("row", { name: /Find in Files Navigation/i })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+F$/)).toBeVisible();
+
+    await user.clear(screen.getByLabelText("Search Keyboard Shortcuts"));
+    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Shift+R");
+
+    expect(screen.getByRole("row", { name: /Replace in Files Navigation/i })).toBeVisible();
+    expect(screen.getByText(/^(Ctrl|Cmd)\+Shift\+R$/)).toBeVisible();
   });
 
   it("warns about suspicious SDK paths without blocking Apply", async () => {

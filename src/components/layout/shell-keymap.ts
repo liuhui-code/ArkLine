@@ -13,6 +13,8 @@ export type ShellCommand =
   | "toggleEditorOnly"
   | "openQuickOpen"
   | "openSearchEverywhere"
+  | "openFindInFiles"
+  | "openReplaceInFiles"
   | "openRecentFiles"
   | "openCommandPalette"
   | "showProject"
@@ -45,6 +47,8 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "goToDefinition", title: "Go to Definition", category: "Navigation", defaultKeybindings: [{ mod: true, key: "b" }] },
   { id: "openCompletion", title: "Code Completion", category: "Editor", defaultKeybindings: [{ mod: true, key: "Space" }] },
   { id: "openQuickOpen", title: "Quick Open", category: "Navigation", defaultKeybindings: [{ mod: true, key: "p" }] },
+  { id: "openFindInFiles", title: "Find in Files", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "f" }] },
+  { id: "openReplaceInFiles", title: "Replace in Files", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "r" }] },
   { id: "openCommandPalette", title: "Command Palette", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "a" }] },
   { id: "openRecentFiles", title: "Recent Files", category: "Navigation", defaultKeybindings: [{ mod: true, key: "e" }] },
   { id: "showProject", title: "Project", category: "Window", defaultKeybindings: [{ alt: true, key: "1" }] },

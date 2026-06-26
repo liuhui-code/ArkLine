@@ -80,6 +80,29 @@ describe("Shell hotkeys", () => {
     expect(screen.queryByRole("tab", { name: "Usages" })).not.toBeInTheDocument();
   });
 
+  it("opens Find in Files with Ctrl+Shift+F", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+
+    expect(await screen.findByLabelText("Find in Files Query")).toHaveFocus();
+    expect(screen.getByText("Find in Files")).toBeVisible();
+  });
+
+  it("opens Replace in Files with Ctrl+Shift+R", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}{Shift>}r{/Shift}{/Control}");
+
+    expect(await screen.findByLabelText("Replace in Files Query")).toHaveFocus();
+    expect(screen.getByLabelText("Replace With")).toBeVisible();
+    expect(screen.getByText("Replace in Files")).toBeVisible();
+  });
+
   it("opens code actions with Alt+Enter from the editor", async () => {
     const user = userEvent.setup();
     render(<AppShell />);

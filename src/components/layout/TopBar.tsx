@@ -11,6 +11,8 @@ type TopBarProps = {
   onOpenProject: () => void | Promise<void>;
   onOpenRecentProjects: () => void;
   onOpenSearchEverywhere: () => void;
+  onOpenFindInFiles: () => void;
+  onOpenReplaceInFiles: () => void;
   onOpenCommandPalette: () => void;
   onRunLint: () => void;
   onRunBuild: () => void;
@@ -38,6 +40,8 @@ export function TopBar({
   onOpenProject,
   onOpenRecentProjects,
   onOpenSearchEverywhere,
+  onOpenFindInFiles,
+  onOpenReplaceInFiles,
   onOpenCommandPalette,
   onRunLint,
   onRunBuild,
@@ -107,6 +111,8 @@ export function TopBar({
     view: [
       [
         { label: "Search Everywhere", action: onOpenSearchEverywhere, shortcut: "Double Shift" },
+        { label: "Find in Files", action: onOpenFindInFiles, shortcut: getShellCommandShortcut("openFindInFiles") },
+        { label: "Replace in Files", action: onOpenReplaceInFiles, shortcut: getShellCommandShortcut("openReplaceInFiles") },
       ],
       [
         { label: "Terminal", action: onOpenTerminal, shortcut: getShellCommandShortcut("showTerminal") },

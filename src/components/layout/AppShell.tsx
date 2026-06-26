@@ -19,6 +19,7 @@ import { filterRecentFileResults, filterRecentProjectResults, getOverlayLabel } 
 import type { BottomToolKey, LeftToolKey, OverlayKey } from "@/components/layout/shell-state";
 import { ShellSidebar } from "@/components/layout/ShellSidebar";
 import type { ShellCommand } from "@/components/layout/shell-keymap";
+import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { SearchOverlayContent } from "@/components/layout/SearchOverlayContent";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHost";
@@ -143,6 +144,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [activePath, setActivePath] = useState<string | null>(null), [editorContent, setEditorContent] = useState("");
   const [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
+  const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
+  const [searchEverywhereReplaceQuery, setSearchEverywhereReplaceQuery] = useState("");
   const [searchEverywhereOptions, setSearchEverywhereOptions] = useState<WorkspaceTextSearchOptions>({
     caseSensitive: false,
     wholeWord: false,
@@ -273,6 +276,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setQuickOpenQuery("");
     setSearchEverywhereSelectedIndex(0);
     setStatusText(getOverlayLabel(overlay));
+  }
+  function openSearchOverlay(mode: SearchEverywhereMode) {
+    setSearchEverywhereMode(mode);
+    setOverlay("searchEverywhere");
   }
   function handleOverlayQueryChange(value: string) {
     setQuickOpenQuery(value);
@@ -1582,7 +1589,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     const handlers: Partial<Record<ShellCommand, () => void>> = {
       closeTransientUi, closeActiveFile, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode,
       navigateBack: () => void navigateBackFromHistory(),
-      openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => setOverlay("searchEverywhere"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(),
+      openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => openSearchOverlay("searchEverywhere"), openFindInFiles: () => openSearchOverlay("find"), openReplaceInFiles: () => openSearchOverlay("replace"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(),
       showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), showCurrentClassMethods,
       showCodeActions: () => void showCodeActionsFromEditor(),
       renameSymbol: () => void showCodeActionsFromEditor("rename"),
@@ -1727,6 +1734,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     openProject: () => void projectOpening.openProjectPicker(),
     openDemoWorkspace: () => void openDemoWorkspace(),
     openRecentProjects: () => setOverlay("recentProjects"),
+    openFindInFiles: () => openSearchOverlay("find"),
+    openReplaceInFiles: () => openSearchOverlay("replace"),
     openGoToLine: () => setOverlay("goToLine"),
     goToDefinition: () => void goToDefinitionFromEditor(),
     findUsages: () => void findUsagesFromEditor(),
@@ -1745,10 +1754,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     showCurrentLineBlame,
     closeGitBlame,
   });
-  const overlayLabel = activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
+  const overlayLabel = activeOverlay === "searchEverywhere"
+    ? searchOverlayLabel(searchEverywhereMode)
+    : activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay);
   return (
     <div className="app-shell" data-bottom-layout-token={bottomLayoutToken}>
-      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => setOverlay("searchEverywhere")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onRunBuild={() => void runBuild()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
+      <TopBar activeBottomTool={activeBottomTool} bottomToolVisible={bottomContentVisible} activeOverlay={activeOverlay} workspaceName={workspace?.rootName ?? null} settingsOpen={settingsVisible} onOpenProject={() => void projectOpening.openProjectPicker()} onOpenRecentProjects={() => setOverlay("recentProjects")} onOpenSearchEverywhere={() => openSearchOverlay("searchEverywhere")} onOpenFindInFiles={() => openSearchOverlay("find")} onOpenReplaceInFiles={() => openSearchOverlay("replace")} onOpenCommandPalette={() => setOverlay("commandPalette")} onRunLint={() => void runLint()} onRunBuild={() => void runBuild()} onFormat={() => void formatActiveDocument()} onLoadDiff={() => void loadDiff()} onOpenTerminal={() => showBottomTool("terminal")} onOpenSettings={() => void openSettings()} onToggleEditorOnly={enterEditorOnlyMode} />
       <div
         className="shell-grid"
         style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
@@ -1790,7 +1801,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       ) : null}
       {overlayVisible ? (
         <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
-          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
+          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
       ) : null}
       {currentMethodsVisible ? (
@@ -1901,6 +1912,18 @@ function completionInsertTextToPlainText(insertText: string) {
   return insertText
     .replace(/\$\{\d+:([^}]*)\}/g, "$1")
     .replace(/\$\d+/g, "");
+}
+
+function searchOverlayLabel(mode: SearchEverywhereMode) {
+  if (mode === "find") {
+    return "Find in Files";
+  }
+
+  if (mode === "replace") {
+    return "Replace in Files";
+  }
+
+  return "Search Everywhere";
 }
 
 function completionReplacementLength(

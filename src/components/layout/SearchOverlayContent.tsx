@@ -1,5 +1,5 @@
 import type { OverlayKey } from "@/components/layout/shell-state";
-import { SearchEverywherePanel } from "@/components/layout/SearchEverywherePanel";
+import { SearchEverywherePanel, type SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import type { CommandPaletteItem } from "@/components/layout/search-overlay-model";
 import type {
   WorkspaceTextSearchMatch,
@@ -15,9 +15,12 @@ type SearchOverlayContentProps = {
   recentFileResults: { path: string }[];
   recentProjectResults: { path: string; name: string }[];
   searchEverywhereOptions: WorkspaceTextSearchOptions;
+  searchEverywhereMode: SearchEverywhereMode;
+  searchEverywhereReplaceQuery: string;
   searchEverywhereResult: WorkspaceTextSearchResult;
   searchEverywhereSelectedIndex: number;
   onChangeQuery: (value: string) => void;
+  onChangeSearchEverywhereReplaceQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
   onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
   onOpenProject: (path: string) => void;
@@ -38,9 +41,12 @@ export function SearchOverlayContent({
   recentFileResults,
   recentProjectResults,
   searchEverywhereOptions,
+  searchEverywhereMode,
+  searchEverywhereReplaceQuery,
   searchEverywhereResult,
   searchEverywhereSelectedIndex,
   onChangeQuery,
+  onChangeSearchEverywhereReplaceQuery,
   onOpenFile,
   onOpenSearchEverywhereResult,
   onOpenProject,
@@ -173,11 +179,14 @@ export function SearchOverlayContent({
   if (activeOverlay === "searchEverywhere") {
     return (
       <SearchEverywherePanel
+        mode={searchEverywhereMode}
         options={searchEverywhereOptions}
         query={quickOpenQuery}
+        replaceQuery={searchEverywhereReplaceQuery}
         result={searchEverywhereResult}
         selectedIndex={searchEverywhereSelectedIndex}
         onChangeQuery={onChangeQuery}
+        onChangeReplaceQuery={onChangeSearchEverywhereReplaceQuery}
         onMoveSelection={onMoveSearchEverywhereSelection}
         onOpenSelected={onOpenSelectedSearchEverywhereResult}
         onSelectResult={onSelectSearchEverywhereResult}
