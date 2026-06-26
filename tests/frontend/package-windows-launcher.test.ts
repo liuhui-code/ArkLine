@@ -39,7 +39,14 @@ describe("package windows launcher", () => {
   it("builds the installer packaging flow natively on Windows", () => {
     expect(buildPackagingSteps({ target: "windows-installer", hostPlatform: "win32" })).toEqual([
       { command: "pnpm", args: ["build"] },
-      { command: "pnpm", args: ["tauri", "build", "--bundles", "nsis"] },
+      { command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"] },
+    ]);
+  });
+
+  it("builds the portable Windows flow natively with an explicit MSVC target", () => {
+    expect(buildPackagingSteps({ target: "windows-portable", hostPlatform: "win32" })).toEqual([
+      { command: "pnpm", args: ["build"] },
+      { command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--no-bundle"] },
     ]);
   });
 

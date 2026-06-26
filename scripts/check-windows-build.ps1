@@ -92,6 +92,32 @@ function Test-VsBuildTools {
   return $null
 }
 
+function Get-RustHostTriple {
+  $metadata = & rustc -vV
+  if ($LASTEXITCODE -ne 0) {
+    return $null
+  }
+
+  foreach ($line in $metadata) {
+    if ($line -match "^host:\s+(.+)$") {
+      return $Matches[1].Trim()
+    }
+  }
+
+  return $null
+}
+
+function Test-RustTargetInstalled {
+  param([string]$Target)
+
+  $targets = & rustup target list --installed 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    return $false
+  }
+
+  return $targets -contains $Target
+}
+
 function Invoke-Checked {
   param(
     [string]$Label,
@@ -121,6 +147,29 @@ Require-Command -CommandName "rustc" -InstallHint "Install the Rust stable toolc
 Require-Command -CommandName "cargo" -InstallHint "Install the Rust stable toolchain from https://rustup.rs/."
 
 Write-Step "Checking Windows-specific dependencies"
+$rustHost = Get-RustHostTriple
+if ($null -eq $rustHost) {
+  $PreflightFailed = $true
+  Write-Fail "Unable to read rustc host triple. Reinstall Rust via rustup."
+} elseif ($rustHost -notmatch "msvc") {
+  $PreflightFailed = $true
+  Write-Fail "Rust host is '$rustHost'. ArkLine Windows builds use MSVC; run 'rustup default stable-msvc'."
+} else {
+  Write-Ok "Rust MSVC host detected ($rustHost)"
+}
+
+if ($env:CARGO_BUILD_TARGET -and $env:CARGO_BUILD_TARGET -match "windows-gnu") {
+  $PreflightFailed = $true
+  Write-Fail "CARGO_BUILD_TARGET is '$env:CARGO_BUILD_TARGET'. Unset it or set it to x86_64-pc-windows-msvc to avoid GNU/dlltool builds."
+}
+
+if (-not (Test-RustTargetInstalled -Target "x86_64-pc-windows-msvc")) {
+  $PreflightFailed = $true
+  Write-Fail "Rust target x86_64-pc-windows-msvc is not installed. Run 'rustup target add x86_64-pc-windows-msvc'."
+} else {
+  Write-Ok "Rust target x86_64-pc-windows-msvc installed"
+}
+
 $vsBuildTools = Test-VsBuildTools
 if ($null -eq $vsBuildTools) {
   $PreflightFailed = $true
