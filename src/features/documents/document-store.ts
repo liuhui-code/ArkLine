@@ -80,6 +80,9 @@ export function createDocumentStore() {
     getDocument(path: string) {
       return documents.get(normalizePath(path));
     },
+    getDocuments() {
+      return [...documents.values()];
+    },
     subscribe(listener: (path: string, document: DocumentRecord) => void) {
       listeners.add(listener);
 

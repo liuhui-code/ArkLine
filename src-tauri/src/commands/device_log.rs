@@ -1,9 +1,12 @@
 use tauri::{AppHandle, State};
 
 use crate::models::device_log::{
-    DeviceFaultLogFetchResult, DeviceLogDevice, DeviceLogStreamSummary, ListDeviceFaultLogsRequest, StartDeviceLogStreamRequest,
+    DeviceFaultLogFetchResult, DeviceLogDevice, DeviceLogStreamSummary, ListDeviceFaultLogsRequest,
+    StartDeviceLogStreamRequest,
 };
-use crate::services::device_log_service::{list_devices, list_fault_logs, start_stream, stop_stream, DeviceLogRuntime};
+use crate::services::device_log_service::{
+    list_devices, list_fault_logs, start_stream, stop_stream, DeviceLogRuntime,
+};
 
 #[tauri::command]
 pub fn list_device_log_devices() -> Result<Vec<DeviceLogDevice>, String> {
@@ -11,7 +14,9 @@ pub fn list_device_log_devices() -> Result<Vec<DeviceLogDevice>, String> {
 }
 
 #[tauri::command]
-pub fn list_device_fault_logs(request: ListDeviceFaultLogsRequest) -> Result<DeviceFaultLogFetchResult, String> {
+pub fn list_device_fault_logs(
+    request: ListDeviceFaultLogsRequest,
+) -> Result<DeviceFaultLogFetchResult, String> {
     list_fault_logs(request)
 }
 
@@ -25,6 +30,9 @@ pub fn start_device_log_stream(
 }
 
 #[tauri::command]
-pub fn stop_device_log_stream(runtime: State<DeviceLogRuntime>, stream_id: String) -> Result<(), String> {
+pub fn stop_device_log_stream(
+    runtime: State<DeviceLogRuntime>,
+    stream_id: String,
+) -> Result<(), String> {
     stop_stream(runtime.inner(), &stream_id)
 }

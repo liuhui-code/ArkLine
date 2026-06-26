@@ -52,7 +52,10 @@ pub fn close_terminal_session(
 }
 
 #[tauri::command]
-pub fn stop_terminal_session(runtime: State<TerminalRuntime>, session_id: String) -> Result<(), String> {
+pub fn stop_terminal_session(
+    runtime: State<TerminalRuntime>,
+    session_id: String,
+) -> Result<(), String> {
     stop_active_session(runtime.inner(), &session_id)
 }
 
@@ -65,6 +68,9 @@ pub fn run_terminal_command(
 }
 
 #[tauri::command]
-pub fn stop_terminal_command(runtime: State<TerminalRuntime>, run_id: String) -> Result<(), String> {
+pub fn stop_terminal_command(
+    runtime: State<TerminalRuntime>,
+    run_id: String,
+) -> Result<(), String> {
     stop_command(runtime.inner(), &run_id)
 }

@@ -23,7 +23,10 @@ impl SemanticHostConfig {
     }
 
     pub fn harmony_sdk_env_value(&self) -> Option<String> {
-        match (self.harmony_sdk_auto_detect, self.harmony_sdk_path.as_deref()) {
+        match (
+            self.harmony_sdk_auto_detect,
+            self.harmony_sdk_path.as_deref(),
+        ) {
             (_, Some(path)) => Some(path.to_string()),
             (false, None) => Some(DISABLED_SDK_SENTINEL.to_string()),
             (true, None) => None,

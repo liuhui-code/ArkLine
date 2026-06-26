@@ -23,6 +23,7 @@ mod models {
 mod platform;
 
 mod services {
+    pub mod device_log_service;
     pub mod diff_service;
     pub mod document_service;
     pub mod environment_doctor;
@@ -32,12 +33,16 @@ mod services {
     pub mod semantic_host;
     pub mod settings_store;
     pub mod terminal_io_service;
-    pub mod terminal_session_service;
     pub mod terminal_service;
-    pub mod device_log_service;
+    pub mod terminal_session_service;
     pub mod validation_service;
     pub mod workspace_edit_service;
+    pub mod workspace_index_service;
+    pub mod workspace_index_watcher_service;
+    #[cfg(test)]
+    pub mod workspace_large_fixture_service;
     pub mod workspace_service;
+    pub mod workspace_text_search_service;
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -52,8 +57,19 @@ pub fn run() {
         .manage(commands::windowing::LaunchWorkspaceState::default())
         .manage(services::terminal_service::TerminalRuntime::default())
         .manage(services::device_log_service::DeviceLogRuntime::default())
+        .manage(services::workspace_index_service::WorkspaceIndexRuntime::default())
+        .manage(services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime::default())
         .invoke_handler(tauri::generate_handler![
             commands::workspace::open_workspace,
+            commands::workspace::list_workspace_directory,
+            commands::workspace::get_workspace_index_state,
+            commands::workspace::query_workspace_quick_open,
+            commands::workspace::update_workspace_index_files,
+            commands::workspace::refresh_workspace_index,
+            commands::workspace::refresh_workspace_index_with_changes,
+            commands::workspace::search_workspace_text,
+            commands::workspace::watch_workspace_index,
+            commands::workspace::unwatch_workspace_index,
             commands::workspace::load_workspace_diff,
             commands::documents::open_text_document,
             commands::documents::save_text_document,

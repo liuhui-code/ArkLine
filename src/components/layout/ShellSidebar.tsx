@@ -12,7 +12,7 @@ import { ProjectToolWindow } from "@/components/layout/ProjectToolWindow";
 import type { ProjectMutationRequest } from "@/components/layout/ProjectToolWindow";
 import type { LeftToolKey } from "@/components/layout/shell-state";
 import { ToolWindow } from "@/components/layout/ToolWindow";
-import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type { WorkspaceDirectoryEntry, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 
 type ShellSidebarProps = {
   activePath: string | null;
@@ -22,8 +22,12 @@ type ShellSidebarProps = {
   minWidth: number;
   maxWidth: number;
   workspace: WorkspaceViewModel | null;
+  useLazyProjectTree: boolean;
+  projectTreeChildren: Record<string, WorkspaceDirectoryEntry[]>;
+  projectTreeLoadingPaths: Set<string>;
   filesPaneRef: RefObject<HTMLDivElement | null>;
   onOpenFile: (path: string) => void;
+  onLoadProjectDirectory: (path: string) => void;
   onRequestProjectMutation: (request: ProjectMutationRequest) => void;
   onResizeWidth: (width: number) => void;
   onSelectTool: (tool: LeftToolKey) => void;
@@ -37,8 +41,12 @@ export function ShellSidebar({
   minWidth,
   maxWidth,
   workspace,
+  useLazyProjectTree,
+  projectTreeChildren,
+  projectTreeLoadingPaths,
   filesPaneRef,
   onOpenFile,
+  onLoadProjectDirectory,
   onRequestProjectMutation,
   onResizeWidth,
   onSelectTool,
@@ -125,7 +133,20 @@ export function ShellSidebar({
         <div ref={filesPaneRef} className="sidebar__pane">
           <ToolWindow ariaLabel="Files" title="Project" caption="Files" visible={filesVisible} className="tool-window">
             {workspace ? (
-              <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} onRequestMutation={onRequestProjectMutation} />
+              useLazyProjectTree ? (
+                <ProjectToolWindow
+                  lazyRoot={{ name: workspace.rootName, path: workspace.rootPath }}
+                  lazyChildren={projectTreeChildren}
+                  lazyLoadingPaths={projectTreeLoadingPaths}
+                  tree={workspace.fileTree}
+                  activePath={activePath}
+                  onLoadDirectory={onLoadProjectDirectory}
+                  onOpen={onOpenFile}
+                  onRequestMutation={onRequestProjectMutation}
+                />
+              ) : (
+                <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} onRequestMutation={onRequestProjectMutation} />
+              )
             ) : (
               <p>Workspace files will appear here.</p>
             )}

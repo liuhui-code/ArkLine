@@ -11,6 +11,7 @@ type SearchEverywherePanelProps = {
   replaceQuery: string;
   result: WorkspaceTextSearchResult;
   selectedIndex: number;
+  partialNotice?: string | null;
   onChangeQuery: (value: string) => void;
   onChangeReplaceQuery: (value: string) => void;
   onMoveSelection: (direction: 1 | -1) => void;
@@ -31,6 +32,7 @@ export function SearchEverywherePanel({
   replaceQuery,
   result,
   selectedIndex,
+  partialNotice,
   onChangeQuery,
   onChangeReplaceQuery,
   onMoveSelection,
@@ -131,6 +133,7 @@ export function SearchEverywherePanel({
           Invalid regular expression: {result.query.message}
         </div>
       ) : null}
+      {partialNotice ? <div className="search-everywhere__error" role="status">{partialNotice}</div> : null}
       <div className="search-everywhere__body">
         <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel}>
           {groups.map((group) => (

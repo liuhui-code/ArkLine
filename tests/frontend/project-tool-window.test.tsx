@@ -71,4 +71,77 @@ describe("Project tool window", () => {
     expect(entryDirectory).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Index.ets" })).toBeInTheDocument();
   });
+
+  it("loads children only when a lazy directory is expanded", async () => {
+    const user = userEvent.setup();
+    const loadDirectory = vi.fn();
+
+    render(
+      <ProjectToolWindow
+        lazyRoot={{ name: "ArkDemo", path: "C:/samples/ArkDemo" }}
+        lazyChildren={{
+          "C:\\samples\\ArkDemo": [
+            {
+              name: "entry",
+              path: "C:/samples/ArkDemo/entry",
+              kind: "directory",
+              excluded: false,
+              hasChildren: true,
+            },
+          ],
+          "C:\\samples\\ArkDemo\\entry": [
+            {
+              name: "Index.ets",
+              path: "C:/samples/ArkDemo/entry/Index.ets",
+              kind: "file",
+              excluded: false,
+              hasChildren: false,
+            },
+          ],
+        }}
+        lazyLoadingPaths={new Set()}
+        activePath={null}
+        onLoadDirectory={loadDirectory}
+        onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Index.ets" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "entry" }));
+
+    expect(loadDirectory).toHaveBeenCalledWith("C:\\samples\\ArkDemo\\entry");
+    expect(await screen.findByRole("button", { name: "Index.ets" })).toBeInTheDocument();
+  });
+
+  it("shows a loading row while lazy directory children are loading", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ProjectToolWindow
+        lazyRoot={{ name: "ArkDemo", path: "C:/samples/ArkDemo" }}
+        lazyChildren={{
+          "C:\\samples\\ArkDemo": [
+            {
+              name: "entry",
+              path: "C:/samples/ArkDemo/entry",
+              kind: "directory",
+              excluded: false,
+              hasChildren: true,
+            },
+          ],
+        }}
+        lazyLoadingPaths={new Set(["C:\\samples\\ArkDemo\\entry"])}
+        activePath={null}
+        onLoadDirectory={vi.fn()}
+        onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "entry" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading...");
+  });
 });

@@ -19,6 +19,7 @@ type SearchOverlayContentProps = {
   searchEverywhereReplaceQuery: string;
   searchEverywhereResult: WorkspaceTextSearchResult;
   searchEverywhereSelectedIndex: number;
+  workspacePartialNotice: string | null;
   onChangeQuery: (value: string) => void;
   onChangeSearchEverywhereReplaceQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
@@ -45,6 +46,7 @@ export function SearchOverlayContent({
   searchEverywhereReplaceQuery,
   searchEverywhereResult,
   searchEverywhereSelectedIndex,
+  workspacePartialNotice,
   onChangeQuery,
   onChangeSearchEverywhereReplaceQuery,
   onOpenFile,
@@ -185,6 +187,7 @@ export function SearchOverlayContent({
         replaceQuery={searchEverywhereReplaceQuery}
         result={searchEverywhereResult}
         selectedIndex={searchEverywhereSelectedIndex}
+        partialNotice={workspacePartialNotice}
         onChangeQuery={onChangeQuery}
         onChangeReplaceQuery={onChangeSearchEverywhereReplaceQuery}
         onMoveSelection={onMoveSearchEverywhereSelection}
@@ -213,6 +216,7 @@ export function SearchOverlayContent({
         placeholder={placeholder}
         onChange={(event) => onChangeQuery(event.target.value)}
       />
+      {workspacePartialNotice ? <div className="palette-empty" role="status">{workspacePartialNotice}</div> : null}
       <div className="search-results" role="list" aria-label={resultsLabel}>
         {results.map((result) => (
           <button

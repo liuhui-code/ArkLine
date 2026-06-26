@@ -2,7 +2,7 @@ import { getPathBasename, normalizePath } from "@/features/workspace/workspace-s
 
 export type SearchQuery =
   | { kind: "text"; query: string }
-  | { kind: "regex"; query: string; expression: RegExp }
+  | { kind: "regex"; query: string; expression?: RegExp }
   | { kind: "invalid"; query: string; message: string };
 
 export type WorkspaceTextSearchMatch = {
@@ -157,6 +157,10 @@ function findLineMatch(lineText: string, query: SearchQuery, options: WorkspaceT
   }
 
   if (query.kind !== "regex") {
+    return null;
+  }
+
+  if (!query.expression) {
     return null;
   }
 

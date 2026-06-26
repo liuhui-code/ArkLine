@@ -111,7 +111,10 @@ pub fn save_settings_for_app(app: &AppHandle, settings: &AppSettings) -> Result<
 }
 
 fn temporary_settings_path(path: &Path) -> PathBuf {
-    let file_name = path.file_name().and_then(|value| value.to_str()).unwrap_or("settings.json");
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("settings.json");
     path.with_file_name(format!("{file_name}.tmp"))
 }
 
@@ -188,7 +191,8 @@ mod tests {
         let path = root.join("settings.json");
         let mut settings = default_settings();
         settings.editor.letter_spacing = 0.25;
-        settings.sdk.harmony_sdk_path = "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony".to_string();
+        settings.sdk.harmony_sdk_path =
+            "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony".to_string();
         settings.sdk.semantic_worker_path = "/tmp/arkline-semantic-worker.mjs".to_string();
         settings.sdk.node_path = "/usr/local/bin/node".to_string();
         settings.sdk.auto_detect = false;

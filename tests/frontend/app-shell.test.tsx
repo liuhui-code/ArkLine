@@ -168,6 +168,7 @@ describe("App shell", () => {
     expect(within(statusBar).getByLabelText("Status Bar Left")).toBeInTheDocument();
     expect(within(statusBar).getByLabelText("Status Bar Right")).toBeInTheDocument();
     expect(within(statusBar).getByText("Workspace: none")).toHaveClass("status-pill--em");
+    expect(within(statusBar).getByText("Index: empty")).toBeVisible();
     expect(within(statusBar).getByText("Ready")).toHaveClass("status-pill--em");
     expect(within(screen.getByLabelText("Files")).getByText("Project")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
@@ -572,6 +573,169 @@ describe("App shell", () => {
 
     const results = screen.getByRole("list", { name: "Quick Open Results" });
     expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
+  });
+
+  it("refreshes the workspace index from external filesystem changes", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/DemoWorkspace";
+    let pollWorkspace: (() => void) | null = null;
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation((handler: TimerHandler) => {
+      if (typeof handler === "function") {
+        pollWorkspace = handler as () => void;
+      }
+      return 1 as unknown as ReturnType<typeof window.setInterval>;
+    });
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => undefined);
+    const refreshWorkspaceIndexWithChanges = vi.fn(async () => ({
+      state: {
+        status: "ready" as const,
+        rootPath: "C:\\samples\\DemoWorkspace",
+        filePaths: [
+          "C:\\samples\\DemoWorkspace\\AppScope\\app.json5",
+          "C:\\samples\\DemoWorkspace\\src\\About.ets",
+        ],
+        indexedAt: Date.now(),
+        partialReason: null,
+      },
+      changed: true,
+      addedPaths: ["C:\\samples\\DemoWorkspace\\src\\About.ets"],
+      removedPaths: ["C:\\samples\\DemoWorkspace\\src\\main.ets"],
+    }));
+
+    try {
+      render(
+        <AppShell
+          workspaceApi={createWorkspaceApi({
+            refreshWorkspaceIndexWithChanges,
+          })}
+        />,
+      );
+
+      await openProject(user, rootPath);
+
+      expect(pollWorkspace).not.toBeNull();
+      await act(async () => {
+        pollWorkspace?.();
+        await Promise.resolve();
+      });
+
+      expect(refreshWorkspaceIndexWithChanges).toHaveBeenCalledWith("C:\\samples\\DemoWorkspace");
+
+      await user.keyboard("{Control>}p{/Control}");
+      const query = await screen.findByLabelText("Quick Open Query");
+      await user.type(query, "about");
+
+      const results = screen.getByRole("list", { name: "Quick Open Results" });
+      expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\About.ets" })).toBeVisible();
+      expect(within(results).queryByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).not.toBeInTheDocument();
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
+  });
+
+  it("uses workspace index watcher events instead of polling when available", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/DemoWorkspace";
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    let emitIndexRefresh: ((result: Awaited<ReturnType<NonNullable<WorkspaceApi["refreshWorkspaceIndexWithChanges"]>>>) => void) | null = null;
+    const watchWorkspaceIndex = vi.fn(async (_rootPath: string, onChange: (result: Awaited<ReturnType<NonNullable<WorkspaceApi["refreshWorkspaceIndexWithChanges"]>>>) => void) => {
+      emitIndexRefresh = onChange;
+      return () => {
+        emitIndexRefresh = null;
+      };
+    });
+    const refreshWorkspaceIndexWithChanges = vi.fn(async () => ({
+      state: {
+        status: "ready" as const,
+        rootPath,
+        filePaths: ["C:/samples/DemoWorkspace/src/main.ets"],
+        indexedAt: Date.now(),
+        partialReason: null,
+      },
+      changed: false,
+      addedPaths: [],
+      removedPaths: [],
+    }));
+
+    try {
+      render(
+        <AppShell
+          workspaceApi={createWorkspaceApi({
+            refreshWorkspaceIndexWithChanges,
+            watchWorkspaceIndex,
+          })}
+        />,
+      );
+
+      await openProject(user, rootPath);
+
+      await waitFor(() => expect(watchWorkspaceIndex).toHaveBeenCalledWith("C:\\samples\\DemoWorkspace", expect.any(Function)));
+      expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 5_000);
+
+      await act(async () => {
+        emitIndexRefresh?.({
+          state: {
+            status: "ready",
+            rootPath: "C:\\samples\\DemoWorkspace",
+            filePaths: ["C:\\samples\\DemoWorkspace\\AppScope\\About.ets"],
+            indexedAt: Date.now(),
+            partialReason: null,
+          },
+          changed: true,
+          addedPaths: ["C:\\samples\\DemoWorkspace\\AppScope\\About.ets"],
+          removedPaths: ["C:\\samples\\DemoWorkspace\\src\\main.ets"],
+        });
+      });
+
+      await user.keyboard("{Control>}p{/Control}");
+      const query = await screen.findByLabelText("Quick Open Query");
+      await user.type(query, "about");
+
+      const results = screen.getByRole("list", { name: "Quick Open Results" });
+      expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\AppScope\\About.ets" })).toBeVisible();
+      expect(within(results).queryByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).not.toBeInTheDocument();
+    } finally {
+      setIntervalSpy.mockRestore();
+    }
+  });
+
+  it("marks truncated workspace scans as partial in status, quick open, and find in files", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/LargeWorkspace";
+    const files = Array.from({ length: 20_000 }, (_, index) => `${rootPath}/src/file-${index}.ets`);
+
+    render(
+      <AppShell
+        workspaceApi={createWorkspaceApi({
+          openWorkspace: async () => ({
+            rootName: "LargeWorkspace",
+            rootPath,
+            files,
+            scanSummary: {
+              scannedFiles: 20_000,
+              skippedEntries: 12,
+              truncated: true,
+              excludeRules: [".git", "node_modules", "oh_modules"],
+            },
+          }),
+        })}
+      />,
+    );
+
+    await openProject(user, rootPath);
+
+    expect(await screen.findByText("Workspace: partial (20,000 files)")).toBeVisible();
+    expect(await screen.findByText("Index: partial (20,000 files)")).toBeVisible();
+
+    await user.keyboard("{Control>}p{/Control}");
+    expect(await screen.findByText(/Partial workspace results: scan stopped at 20,000 files/)).toBeVisible();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Find in Files" }));
+
+    expect(await screen.findByText(/Partial workspace results: scan stopped at 20,000 files/)).toBeVisible();
   });
 
   it("searches workspace text with regex and text options, groups relative path results, previews the selected hit, and opens the file", async () => {

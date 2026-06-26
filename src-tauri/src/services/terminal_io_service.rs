@@ -9,7 +9,9 @@ pub fn write_session_input(handle: &TerminalSessionHandle, data: &str) -> Result
     use std::io::Write;
 
     let mut writer = handle.writer.lock().expect("terminal writer lock");
-    writer.write_all(data.as_bytes()).map_err(|error| error.to_string())?;
+    writer
+        .write_all(data.as_bytes())
+        .map_err(|error| error.to_string())?;
     writer.flush().map_err(|error| error.to_string())
 }
 

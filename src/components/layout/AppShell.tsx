@@ -49,14 +49,15 @@ import {
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
+import { describeSemanticCapabilities } from "@/features/semantic/semantic-capability-state";
 import { collectCurrentClassMethods, type CurrentClassMethod } from "@/features/workspace/current-class-methods";
-import { rankPaths } from "@/features/search/fuzzy-matcher";
 import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
 import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
-import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexRefreshResult, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { createWorkspaceIndexStore, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
 
@@ -77,6 +78,8 @@ const LEFT_SIDEBAR_DEFAULT_WIDTH = 316;
 const LEFT_SIDEBAR_COLLAPSED_WIDTH = 62;
 const LEFT_SIDEBAR_MIN_WIDTH = 220;
 const LEFT_SIDEBAR_MAX_WIDTH = 520;
+const LAZY_PROJECT_TREE_FILE_THRESHOLD = 1_000;
+const WORKSPACE_INDEX_WATCH_INTERVAL_MS = 5_000;
 
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), Math.max(min, max));
@@ -134,6 +137,32 @@ function getCompletionPopupPosition(anchor: EditorCaretRect | null) {
   return constrainCompletionPopupPosition(preferredTop, anchor.left);
 }
 
+function getWorkspaceScanText(workspace: WorkspaceViewModel | null) {
+  if (!workspace) {
+    return null;
+  }
+
+  return workspace.scanSummary.truncated
+    ? `Workspace: partial (${workspace.visibleFiles.length.toLocaleString()} files)`
+    : `Workspace: ready (${workspace.visibleFiles.length.toLocaleString()} files)`;
+}
+
+function getWorkspacePartialNotice(workspace: WorkspaceViewModel | null) {
+  if (!workspace?.scanSummary.truncated) {
+    return null;
+  }
+
+  return `Partial workspace results: scan stopped at ${workspace.scanSummary.scannedFiles.toLocaleString()} files; excluded ${workspace.scanSummary.skippedEntries.toLocaleString()} generated/dependency entries.`;
+}
+
+function getIndexStatusText(indexState: WorkspaceIndexState) {
+  if (indexState.status === "empty") {
+    return "Index: empty";
+  }
+
+  return `Index: ${indexState.status} (${indexState.filePaths.length.toLocaleString()} files)`;
+}
+
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
@@ -144,6 +173,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [activeLeftTool, setActiveLeftTool] = useState<LeftToolKey>("project");
   const [activeBottomTool, setActiveBottomTool] = useState<BottomToolKey>("problems");
   const [workspace, setWorkspace] = useState<WorkspaceViewModel | null>(null);
+  const [projectTreeChildren, setProjectTreeChildren] = useState<Record<string, WorkspaceDirectoryEntry[]>>({});
+  const [projectTreeLoadingPaths, setProjectTreeLoadingPaths] = useState<Set<string>>(() => new Set());
   const [openTabs, setOpenTabs] = useState<{ path: string; title: string; isDirty: boolean }[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null), [editorContent, setEditorContent] = useState("");
   const [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
@@ -206,6 +237,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const problemsRef = useRef(createProblemsStore());
   const buildStoreRef = useRef(createBuildStore());
   const settingsRef = useRef(createSettingsStore());
+  const workspaceIndexRef = useRef(createWorkspaceIndexStore());
   const filesPaneRef = useRef<HTMLDivElement | null>(null);
   const editorSurfaceRef = useRef<HTMLElement | null>(null);
   const bottomToolWindowRef = useRef<HTMLElement | null>(null);
@@ -228,6 +260,11 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     () => workspace?.visibleFiles.find((path) => getPathBasename(path) === "build-profile.json5") ?? null,
     [workspace],
   );
+  const useLazyProjectTree = Boolean(workspace && workspace.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD);
+  const workspaceScanText = getWorkspaceScanText(workspace);
+  const [workspaceIndexState, setWorkspaceIndexState] = useState<WorkspaceIndexState>(() => ({ ...workspaceIndexRef.current.state }));
+  const workspaceIndexText = getIndexStatusText(workspaceIndexState);
+  const workspacePartialNotice = workspaceIndexState.partialReason ?? getWorkspacePartialNotice(workspace);
   const settingsApplying = settingsApplyState === "applying";
   const activeDocument = activePath ? documentsRef.current.getDocument(activePath) : undefined;
   const { gitTraceState } = useGitTrace({
@@ -551,8 +588,65 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   function syncTabs() { setOpenTabs([...tabsRef.current.state.openTabs]); }
   function syncEditor(path: string | null) { setEditorContent(path ? documentsRef.current.getDocument(path)?.currentContent ?? "" : ""); }
   function setActiveDocument(path: string | null) { setActivePath(path); syncEditor(path); }
+  function syncWorkspaceIndex(nextWorkspace: WorkspaceViewModel) {
+    workspaceIndexRef.current.openWorkspace(nextWorkspace);
+    setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
+  }
+  function applyWorkspaceIndexRefreshResult(result: WorkspaceIndexRefreshResult) {
+    workspaceIndexRef.current.replaceState(result.state);
+    setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
+    setWorkspace((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const visibleFiles = uniqueNormalizedPaths(result.state.filePaths);
+      return {
+        ...current,
+        visibleFiles,
+        fileTree: createFileTreeNodes(visibleFiles),
+      };
+    });
+  }
+  async function loadProjectDirectory(rootPath: string, directoryPath: string) {
+    if (!workspaceApi.listWorkspaceDirectory) {
+      return;
+    }
+
+    const normalizedPath = normalizePath(directoryPath);
+    if (projectTreeLoadingPaths.has(normalizedPath)) {
+      return;
+    }
+
+    setProjectTreeLoadingPaths((current) => new Set(current).add(normalizedPath));
+    try {
+      const entries = await workspaceApi.listWorkspaceDirectory(rootPath, normalizedPath);
+      setProjectTreeChildren((current) => ({
+        ...current,
+        [normalizedPath]: entries.map((entry) => ({
+          ...entry,
+          path: normalizePath(entry.path),
+        })),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText(`Project tree failed: ${message}`);
+    } finally {
+      setProjectTreeLoadingPaths((current) => {
+        const next = new Set(current);
+        next.delete(normalizedPath);
+        return next;
+      });
+    }
+  }
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     setWorkspace(snapshot);
+    syncWorkspaceIndex(snapshot);
+    setProjectTreeChildren({});
+    setProjectTreeLoadingPaths(new Set());
+    if (snapshot.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD) {
+      void loadProjectDirectory(snapshot.rootPath, snapshot.rootPath);
+    }
     setRecentProjects((items) => {
       const next = [snapshot.rootPath, ...items.filter((item) => item !== snapshot.rootPath)].slice(0, 8);
       settingsRef.current.update({ recentProjects: next });
@@ -585,6 +679,19 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setSelectionTarget(null);
     setBottomContentVisible(true);
     setStatusText(`Workspace ready: ${rootName}`);
+  }
+
+  function loadProjectDirectoryForActiveWorkspace(path: string) {
+    if (!workspace) {
+      return;
+    }
+
+    const normalizedPath = normalizePath(path);
+    if (projectTreeChildren[normalizedPath]) {
+      return;
+    }
+
+    void loadProjectDirectory(workspace.rootPath, normalizedPath);
   }
 
   async function openWorkspace(rootPath: string) {
@@ -926,6 +1033,18 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       }
     }
   }
+  function pathWithinDirectory(path: string, directoryPath: string) {
+    const normalizedPath = normalizePath(path);
+    const normalizedDirectory = normalizePath(directoryPath).replace(/[\\/]+$/g, "");
+    const separator = normalizedDirectory.includes("\\") ? "\\" : "/";
+    return normalizedPath === normalizedDirectory || normalizedPath.startsWith(`${normalizedDirectory}${separator}`);
+  }
+  function replaceDirectoryPrefix(path: string, oldDirectoryPath: string, newDirectoryPath: string) {
+    const normalizedPath = normalizePath(path);
+    const normalizedOld = normalizePath(oldDirectoryPath).replace(/[\\/]+$/g, "");
+    const normalizedNew = normalizePath(newDirectoryPath).replace(/[\\/]+$/g, "");
+    return `${normalizedNew}${normalizedPath.slice(normalizedOld.length)}`;
+  }
   function updateWorkspaceFilesForAppliedEdit(plan: WorkspaceEditPlan) {
     setWorkspace((current) => {
       if (!current) {
@@ -933,30 +1052,65 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       }
 
       const paths = new Set(current.visibleFiles.map(normalizePath));
+      const addedIndexPaths = new Set<string>();
+      const removedIndexPaths = new Set<string>();
       for (const operation of plan.operations) {
         switch (operation.kind) {
           case "createFile":
             paths.add(normalizePath(operation.path));
+            addedIndexPaths.add(normalizePath(operation.path));
             break;
           case "renameFile":
             paths.delete(normalizePath(operation.oldPath));
             paths.add(normalizePath(operation.newPath));
+            removedIndexPaths.add(normalizePath(operation.oldPath));
+            addedIndexPaths.add(normalizePath(operation.newPath));
             break;
+          case "renameDirectory": {
+            const affectedPaths = [...paths].filter((path) => pathWithinDirectory(path, operation.oldPath));
+            affectedPaths.forEach((path) => {
+              paths.delete(path);
+              removedIndexPaths.add(path);
+              const newPath = replaceDirectoryPrefix(path, operation.oldPath, operation.newPath);
+              paths.add(newPath);
+              addedIndexPaths.add(newPath);
+            });
+            break;
+          }
           case "deleteFile":
             paths.delete(normalizePath(operation.path));
+            removedIndexPaths.add(normalizePath(operation.path));
             break;
+          case "deleteDirectory": {
+            const affectedPaths = [...paths].filter((path) => pathWithinDirectory(path, operation.path));
+            affectedPaths.forEach((path) => {
+              paths.delete(path);
+              removedIndexPaths.add(path);
+            });
+            break;
+          }
           case "text":
             paths.add(normalizePath(operation.path));
+            addedIndexPaths.add(normalizePath(operation.path));
+            break;
+          case "createDirectory":
             break;
         }
       }
 
       const visibleFiles = uniqueNormalizedPaths([...paths]);
-      return {
+      const nextWorkspace = {
         ...current,
         visibleFiles,
         fileTree: createFileTreeNodes(visibleFiles),
       };
+      syncWorkspaceIndex(nextWorkspace);
+      if (workspaceApi.updateWorkspaceIndexFiles) {
+        void workspaceApi.updateWorkspaceIndexFiles(current.rootPath, [...addedIndexPaths], [...removedIndexPaths]).catch((error) => {
+          setStatusText(`Workspace index update failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+      return nextWorkspace;
     });
   }
   async function updateOpenTabsForAppliedEdit(plan: WorkspaceEditPlan) {
@@ -1571,6 +1725,88 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   useHydratedSettings({ workspaceApi, settingsRef, onHydrated: handleHydratedSettings });
 
   useEffect(() => {
+    if (!workspace?.rootPath) {
+      return;
+    }
+
+    let disposed = false;
+    let inFlight = false;
+    const rootPath = workspace.rootPath;
+    let teardownWatcher: (() => void) | null = null;
+
+    function applyWatchedWorkspaceIndex(result: WorkspaceIndexRefreshResult) {
+      if (disposed || !result.changed) {
+        return;
+      }
+
+      applyWorkspaceIndexRefreshResult(result);
+      setStatusText(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
+    }
+
+    async function pollWorkspaceIndex() {
+      if (!workspaceApi.refreshWorkspaceIndexWithChanges) {
+        return;
+      }
+
+      if (inFlight) {
+        return;
+      }
+
+      inFlight = true;
+      try {
+        const result = await workspaceApi.refreshWorkspaceIndexWithChanges?.(rootPath);
+        if (!result || disposed || !result.changed) {
+          return;
+        }
+
+        applyWorkspaceIndexRefreshResult(result);
+        setStatusText(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
+      } catch (error) {
+        if (!disposed) {
+          setStatusText(`Workspace index refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    if (workspaceApi.watchWorkspaceIndex) {
+      void workspaceApi.watchWorkspaceIndex(rootPath, applyWatchedWorkspaceIndex)
+        .then((teardown) => {
+          if (disposed) {
+            teardown();
+            return;
+          }
+
+          teardownWatcher = teardown;
+        })
+        .catch((error) => {
+          if (!disposed) {
+            setStatusText(`Workspace index watcher failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        });
+
+      return () => {
+        disposed = true;
+        teardownWatcher?.();
+      };
+    }
+
+    if (!workspaceApi.refreshWorkspaceIndexWithChanges) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void pollWorkspaceIndex();
+    }, WORKSPACE_INDEX_WATCH_INTERVAL_MS);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [workspace?.rootPath, workspaceApi]);
+
+  useEffect(() => {
     if (activeOverlay !== "searchEverywhere") {
       return;
     }
@@ -1587,29 +1823,42 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
 
-    void searchWorkspaceText({
-      query: quickOpenQuery,
-      rootPath: workspace.rootPath,
-      paths: workspace.visibleFiles,
-      options: searchEverywhereOptions,
-      readFile: async (path) => {
-        if (normalizePath(path) === normalizePath(activePath ?? "")) {
-          return documentsRef.current.getDocument(path)?.currentContent ?? editorContent;
-        }
+    const paths = workspaceIndexRef.current.getTextSearchPaths();
+    const hasDirtyDocuments = documentsRef.current.getDocuments().some((document) => document.isDirty);
+    const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+    const searchRequest = canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !hasDirtyDocuments
+      ? workspaceApi.searchWorkspaceText({
+        query: quickOpenQuery,
+        rootPath: workspace.rootPath,
+        options: searchEverywhereOptions,
+        limit: 60,
+        contextLines: 2,
+      })
+      : searchWorkspaceText({
+        query: quickOpenQuery,
+        rootPath: workspace.rootPath,
+        paths,
+        options: searchEverywhereOptions,
+        readFile: async (path) => {
+          if (normalizePath(path) === normalizePath(activePath ?? "")) {
+            return documentsRef.current.getDocument(path)?.currentContent ?? editorContent;
+          }
 
-        const document = documentsRef.current.getDocument(path);
-        if (document) {
-          return document.currentContent;
-        }
+          const document = documentsRef.current.getDocument(path);
+          if (document) {
+            return document.currentContent;
+          }
 
-        try {
-          return await workspaceApi.openFile(path);
-        } catch {
-          return null;
-        }
-      },
-      limit: 60,
-    }).then((result) => {
+          try {
+            return await workspaceApi.openFile(path);
+          } catch {
+            return null;
+          }
+        },
+        limit: 60,
+      });
+
+    void searchRequest.then((result) => {
       if (searchEverywhereRequestRef.current !== requestId) {
         return;
       }
@@ -1617,7 +1866,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setSearchEverywhereResult(result);
       setSearchEverywhereSelectedIndex(0);
     });
-  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereOptions, workspace, workspaceApi]);
+  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereOptions, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
 
   const shellHotkeyContext = useMemo(() => ({
     completionOpen: activeOverlay === "completion",
@@ -1642,7 +1891,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     void saveActiveDocument();
   } });
 
-  const quickOpenResults = workspace ? rankPaths(workspace.visibleFiles, quickOpenQuery, 8) : [];
+  const quickOpenResults = workspace
+    ? workspaceIndexRef.current.queryQuickOpen(quickOpenQuery, 8).flatMap((candidate) => candidate.path ? [{ path: candidate.path }] : [])
+    : [];
   const recentFileResults = filterRecentFileResults(tabsRef.current.state.recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery);
   const recentProjectResults = filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery);
   const completionPresentationContext = useMemo(() => {
@@ -1674,6 +1925,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const completionPopupVisible = activeOverlay === "completion" && (completionPresentationResults.length > 0 || completionTrigger === "manual" || completionStatus === "error");
   const overlayVisible = activeOverlay !== "none" && activeOverlay !== "completion";
   const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
+  const semanticCapability = describeSemanticCapabilities(semanticState, settingsApplyState);
   const currentClassMethods = useMemo(() => (
     collectCurrentClassMethods(
       documentsRef.current.getDocument(activePath ?? "")?.currentContent ?? editorContent,
@@ -1807,7 +2059,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         className="shell-grid"
         style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
       >
-        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onRequestProjectMutation={(request) => openProjectMutationDialog(request.action, request.parentPath)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
+        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} useLazyProjectTree={useLazyProjectTree} projectTreeChildren={projectTreeChildren} projectTreeLoadingPaths={projectTreeLoadingPaths} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onLoadProjectDirectory={loadProjectDirectoryForActiveWorkspace} onRequestProjectMutation={(request) => openProjectMutationDialog(request.action, request.parentPath)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
         <div className="editor-workbench">
           {queryPanelVisible ? (
             <EditorQueryPanel
@@ -1844,7 +2096,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       ) : null}
       {overlayVisible ? (
         <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
-          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
+          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} workspacePartialNotice={workspacePartialNotice} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
       ) : null}
       {projectMutationDialog ? (
@@ -1928,7 +2180,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       >
         {definitionDebugText}
       </div>
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} statusText={statusText} workspaceName={workspace?.rootName ?? null} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} semanticCapability={semanticCapability} statusText={statusText} workspaceName={workspace?.rootName ?? null} workspaceScanText={workspaceScanText} workspaceIndexText={workspaceIndexText} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
     </div>
   );
 }

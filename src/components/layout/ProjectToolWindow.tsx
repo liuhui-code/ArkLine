@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
+import type { WorkspaceDirectoryEntry } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath, splitPathSegments } from "@/features/workspace/workspace-store";
 
 type ProjectToolWindowProps = {
-  tree: FileTreeNode[];
+  tree?: FileTreeNode[];
+  lazyRoot?: { name: string; path: string };
+  lazyChildren?: Record<string, WorkspaceDirectoryEntry[]>;
+  lazyLoadingPaths?: Set<string>;
   activePath: string | null;
   onOpen: (path: string) => void;
+  onLoadDirectory?: (path: string) => void;
   onRequestMutation: (request: ProjectMutationRequest) => void;
 };
 
@@ -16,7 +21,7 @@ export type ProjectMutationRequest =
 type TreeEntry = {
   key: string;
   depth: number;
-  kind: "directory" | "file";
+  kind: "directory" | "file" | "loading";
   label: string;
   path: string;
   expanded?: boolean;
@@ -26,6 +31,9 @@ type InternalNode = {
   label: string;
   path: string;
   kind: "directory" | "file";
+  excluded?: boolean;
+  lazy?: boolean;
+  loading?: boolean;
   children: Map<string, InternalNode>;
 };
 
@@ -98,6 +106,51 @@ function buildTree(tree: FileTreeNode[]) {
   return root;
 }
 
+function buildLazyTree(
+  rootInfo: { name: string; path: string },
+  childrenByDirectory: Record<string, WorkspaceDirectoryEntry[]>,
+  loadingPaths: Set<string>,
+) {
+  const rootPath = normalizePath(rootInfo.path);
+  const root: InternalNode = {
+    label: rootInfo.name,
+    path: rootPath,
+    kind: "directory",
+    children: new Map<string, InternalNode>(),
+    loading: loadingPaths.has(rootPath),
+  };
+  const visited = new Set<string>();
+
+  function hydrateDirectory(node: InternalNode) {
+    const normalizedPath = normalizePath(node.path);
+    if (visited.has(normalizedPath)) {
+      return;
+    }
+    visited.add(normalizedPath);
+
+    for (const entry of childrenByDirectory[normalizedPath] ?? []) {
+      const childPath = normalizePath(entry.path);
+      const child: InternalNode = {
+        label: entry.name,
+        path: childPath,
+        kind: entry.kind,
+        excluded: entry.excluded,
+        lazy: entry.kind === "directory" && entry.hasChildren && !entry.excluded,
+        loading: loadingPaths.has(childPath),
+        children: new Map<string, InternalNode>(),
+      };
+      node.children.set(childPath, child);
+
+      if (entry.kind === "directory" && childrenByDirectory[childPath]) {
+        hydrateDirectory(child);
+      }
+    }
+  }
+
+  hydrateDirectory(root);
+  return root;
+}
+
 function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
   const entries: TreeEntry[] = [];
 
@@ -114,6 +167,16 @@ function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
 
     if (node.kind === "file" || !expanded) {
       return;
+    }
+
+    if (node.loading) {
+      entries.push({
+        key: `loading:${node.path}`,
+        depth: depth + 1,
+        kind: "loading",
+        label: "Loading...",
+        path: `${node.path}::loading`,
+      });
     }
 
     const children = [...node.children.values()].sort((left, right) => {
@@ -171,16 +234,31 @@ function collectAncestorDirectories(root: InternalNode, targetPath: string) {
 
 export function ProjectToolWindow({
   tree,
+  lazyRoot,
+  lazyChildren,
+  lazyLoadingPaths,
   activePath,
   onOpen,
+  onLoadDirectory,
   onRequestMutation,
 }: ProjectToolWindowProps) {
-  const root = useMemo(() => buildTree(tree), [tree]);
+  const root = useMemo(() => {
+    if (lazyRoot) {
+      return buildLazyTree(lazyRoot, lazyChildren ?? {}, lazyLoadingPaths ?? new Set());
+    }
+
+    return buildTree(tree ?? []);
+  }, [lazyChildren, lazyLoadingPaths, lazyRoot, tree]);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const normalizedActivePath = activePath ? normalizePath(activePath) : null;
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
+  const [lazyExpandedDirectories, setLazyExpandedDirectories] = useState<Set<string>>(() => new Set());
   const [pendingFocusPath, setPendingFocusPath] = useState<string | null>(null);
   const expandedDirectories = useMemo(() => {
+    if (lazyRoot) {
+      return new Set([normalizePath(lazyRoot.path), ...lazyExpandedDirectories]);
+    }
+
     const expanded = new Set<string>();
 
     function visit(node: InternalNode) {
@@ -196,7 +274,7 @@ export function ProjectToolWindow({
 
     visit(root);
     return expanded;
-  }, [collapsedDirectories, root]);
+  }, [collapsedDirectories, lazyExpandedDirectories, lazyRoot, root]);
   const entries = useMemo(() => buildEntries(root, expandedDirectories), [expandedDirectories, root]);
 
   useEffect(() => {
@@ -217,6 +295,25 @@ export function ProjectToolWindow({
   }, [entries, pendingFocusPath]);
 
   function toggleDirectory(path: string) {
+    const entry = entries.find((item) => normalizePath(item.path) === normalizePath(path));
+    if (entry?.kind === "directory") {
+      onLoadDirectory?.(normalizePath(path));
+    }
+
+    if (lazyRoot) {
+      setLazyExpandedDirectories((current) => {
+        const next = new Set(current);
+        const normalizedPath = normalizePath(path);
+        if (next.has(normalizedPath)) {
+          next.delete(normalizedPath);
+        } else {
+          next.add(normalizedPath);
+        }
+        return next;
+      });
+      return;
+    }
+
     setCollapsedDirectories((current) => {
       const next = new Set(current);
       if (next.has(path)) {
@@ -278,6 +375,18 @@ export function ProjectToolWindow({
               <span className="project-tree__icon project-tree__icon--directory" aria-hidden="true" />
               <span className="project-tree__label">{entry.label}</span>
             </button>
+          ) : entry.kind === "loading" ? (
+            <div
+              key={entry.key}
+              className="project-tree__row project-tree__row--loading"
+              style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="project-tree__caret" aria-hidden="true" />
+              <span className="project-tree__icon project-tree__icon--file" aria-hidden="true" />
+              <span className="project-tree__label">{entry.label}</span>
+            </div>
           ) : (
             <button
               key={entry.key}

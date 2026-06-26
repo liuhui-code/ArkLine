@@ -48,7 +48,7 @@
 - Modify: `/Users/liuhui/Documents/code/ArkLine/src/features/workspace/workspace-api.ts`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/tests/frontend/completion-model.test.ts`
 
-- [ ] **Step 1: Add failing frontend model test for richer item fields**
+- [x] **Step 1: Add failing frontend model test for richer item fields**
 
 Add this test to `/Users/liuhui/Documents/code/ArkLine/tests/frontend/completion-model.test.ts`:
 
@@ -87,7 +87,7 @@ it("preserves completion protocol v2 metadata for SDK items", () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -97,7 +97,7 @@ pnpm exec vitest run tests/frontend/completion-model.test.ts --testNamePattern "
 
 Expected: FAIL because `LanguageCompletionItem` and `CompletionPresentation` do not expose the new optional fields.
 
-- [ ] **Step 3: Extend semantic-worker protocol type**
+- [x] **Step 3: Extend semantic-worker protocol type**
 
 In `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/protocol.ts`, replace `SemanticCompletionItem` with:
 
@@ -133,7 +133,7 @@ export interface SemanticCompletionItem {
 
 Keep the existing `SemanticDefinitionTarget` export as this single definition; do not duplicate it later in the file.
 
-- [ ] **Step 4: Extend frontend completion item type**
+- [x] **Step 4: Extend frontend completion item type**
 
 In `/Users/liuhui/Documents/code/ArkLine/src/features/workspace/workspace-api.ts`, add:
 
@@ -165,7 +165,7 @@ export type LanguageCompletionItem = {
 };
 ```
 
-- [ ] **Step 5: Extend completion presentation model**
+- [x] **Step 5: Extend completion presentation model**
 
 In `/Users/liuhui/Documents/code/ArkLine/src/components/layout/completion-model.ts`, extend `CompletionPresentation` with:
 
@@ -200,7 +200,7 @@ commitCharacters: item.commitCharacters ?? [],
 
 Update filtering/ranking helpers to compare against `filterText` as well as `label`.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run:
 
@@ -210,7 +210,7 @@ pnpm exec vitest run tests/frontend/completion-model.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add semantic-worker/src/protocol.ts src/features/workspace/workspace-api.ts src/components/layout/completion-model.ts tests/frontend/completion-model.test.ts
@@ -223,7 +223,7 @@ git commit -m "feat: define completion protocol v2 fields"
 - Modify: `/Users/liuhui/Documents/code/ArkLine/src-tauri/src/models/language.rs`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/src-tauri/src/services/semantic_host/session.rs`
 
-- [ ] **Step 1: Add failing Rust parser test**
+- [x] **Step 1: Add failing Rust parser test**
 
 Add this test inside the `tests` module in `/Users/liuhui/Documents/code/ArkLine/src-tauri/src/services/semantic_host/session.rs`:
 
@@ -268,7 +268,7 @@ fn parses_completion_v2_fields() {
 }
 ```
 
-- [ ] **Step 2: Run the failing Rust test**
+- [x] **Step 2: Run the failing Rust test**
 
 Run:
 
@@ -278,7 +278,7 @@ cargo test --manifest-path src-tauri/Cargo.toml parses_completion_v2_fields
 
 Expected: FAIL because `parse_completion_item`, `TextRange`, and optional fields do not exist.
 
-- [ ] **Step 3: Extend Rust models**
+- [x] **Step 3: Extend Rust models**
 
 In `/Users/liuhui/Documents/code/ArkLine/src-tauri/src/models/language.rs`, add:
 
@@ -330,7 +330,7 @@ pub struct CompletionItem {
 }
 ```
 
-- [ ] **Step 4: Add parser helper**
+- [x] **Step 4: Add parser helper**
 
 In `/Users/liuhui/Documents/code/ArkLine/src-tauri/src/services/semantic_host/session.rs`, add:
 
@@ -372,7 +372,7 @@ Update `completion()` to use:
 Ok(items.iter().filter_map(parse_completion_item).collect())
 ```
 
-- [ ] **Step 5: Run Rust semantic-host tests**
+- [x] **Step 5: Run Rust semantic-host tests**
 
 Run:
 
@@ -382,7 +382,7 @@ cargo test --manifest-path src-tauri/Cargo.toml semantic_host::session
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src-tauri/src/models/language.rs src-tauri/src/services/semantic_host/session.rs
@@ -396,7 +396,7 @@ git commit -m "feat: parse completion protocol v2"
 - Modify: `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/features/completion.ts`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/completion.test.ts`
 
-- [ ] **Step 1: Add failing semantic-worker test for `width` V2 item**
+- [x] **Step 1: Add failing semantic-worker test for `width` V2 item**
 
 Add to `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/completion.test.ts`:
 
@@ -450,7 +450,7 @@ it("returns rich ArkUI width completion metadata", () => {
 })
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -460,7 +460,7 @@ pnpm --dir semantic-worker test -- completion --testNamePattern "width completio
 
 Expected: FAIL because ArkUI completions do not emit V2 fields.
 
-- [ ] **Step 3: Preserve overload data in ArkUI entries**
+- [x] **Step 3: Preserve overload data in ArkUI entries**
 
 In `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/sdk/arkui-api-index.ts`, extend `ArkuiApiEntry`:
 
@@ -501,7 +501,7 @@ return primary
 
 Use the same pattern for component-specific entries.
 
-- [ ] **Step 4: Emit V2 item fields from completion**
+- [x] **Step 4: Emit V2 item fields from completion**
 
 In `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/features/completion.ts`, change `push` to accept optional item fields:
 
@@ -548,7 +548,7 @@ function snippetForArkuiMethod(entry: { name: string; signature: string }) {
 }
 ```
 
-- [ ] **Step 5: Run semantic-worker completion tests**
+- [x] **Step 5: Run semantic-worker completion tests**
 
 Run:
 
@@ -558,7 +558,7 @@ pnpm --dir semantic-worker test -- completion
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add semantic-worker/src/sdk/arkui-api-index.ts semantic-worker/src/features/completion.ts semantic-worker/src/__tests__/completion.test.ts
@@ -574,7 +574,7 @@ git commit -m "feat: enrich arkui completion items"
 - Modify: `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/completion.test.ts`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/definition.test.ts`
 
-- [ ] **Step 1: Add failing tests for multi-line chained `width` contexts**
+- [x] **Step 1: Add failing tests for multi-line chained `width` contexts**
 
 Add to `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/completion.test.ts`:
 
@@ -659,7 +659,7 @@ it("resolves width in a multi-line ArkUI chain", () => {
 })
 ```
 
-- [ ] **Step 2: Run failing tests**
+- [x] **Step 2: Run failing tests**
 
 Run:
 
@@ -669,7 +669,7 @@ pnpm --dir semantic-worker test -- --testNamePattern "multi-line ArkUI chain"
 
 Expected: FAIL for at least one test because current receiver detection is line-oriented.
 
-- [ ] **Step 3: Create ArkUI context helper**
+- [x] **Step 3: Create ArkUI context helper**
 
 Create `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/features/arkui-context.ts`:
 
@@ -728,7 +728,7 @@ export function findArkuiContext(content: string, position: SemanticDocumentPosi
 }
 ```
 
-- [ ] **Step 4: Use context helper in completion and definition**
+- [x] **Step 4: Use context helper in completion and definition**
 
 In `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/features/completion.ts`, replace the `arkuiCompletionComponent` call site with:
 
@@ -765,7 +765,7 @@ const arkuiContext = findArkuiContext(content, position)
 const entry = findArkuiApiDefinition(sdkPath, symbol, arkuiContext?.component)
 ```
 
-- [ ] **Step 5: Run semantic-worker tests**
+- [x] **Step 5: Run semantic-worker tests**
 
 Run:
 
@@ -775,7 +775,7 @@ pnpm --dir semantic-worker test
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add semantic-worker/src/features/arkui-context.ts semantic-worker/src/features/completion.ts semantic-worker/src/features/definition.ts semantic-worker/src/__tests__/completion.test.ts semantic-worker/src/__tests__/definition.test.ts
@@ -788,7 +788,7 @@ git commit -m "feat: detect arkui completion context"
 - Modify: `/Users/liuhui/Documents/code/ArkLine/src/components/layout/AppShell.tsx`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/tests/frontend/app-shell.test.tsx`
 
-- [ ] **Step 1: Add failing frontend insertion test**
+- [x] **Step 1: Add failing frontend insertion test**
 
 Add to `/Users/liuhui/Documents/code/ArkLine/tests/frontend/app-shell.test.tsx` near completion tests:
 
@@ -850,7 +850,7 @@ it("uses completion replacement ranges when accepting SDK attributes", async () 
 });
 ```
 
-- [ ] **Step 2: Run failing test**
+- [x] **Step 2: Run failing test**
 
 Run:
 
@@ -860,7 +860,7 @@ pnpm exec vitest run tests/frontend/app-shell.test.tsx --testNamePattern "replac
 
 Expected: FAIL because `insertCompletion` only replaces `completionReplacePrefix.length`.
 
-- [ ] **Step 3: Convert snippets to plain insertion text**
+- [x] **Step 3: Convert snippets to plain insertion text**
 
 In `/Users/liuhui/Documents/code/ArkLine/src/components/layout/AppShell.tsx`, add:
 
@@ -872,7 +872,7 @@ function plainCompletionInsertText(value: string) {
 }
 ```
 
-- [ ] **Step 4: Use replacementRange when accepting completion**
+- [x] **Step 4: Use replacementRange when accepting completion**
 
 Change `insertCompletion(label: string)` to accept a presentation item:
 
@@ -912,7 +912,7 @@ if (selectedCompletionPresentation) {
 }
 ```
 
-- [ ] **Step 5: Run frontend completion tests**
+- [x] **Step 5: Run frontend completion tests**
 
 Run:
 
@@ -922,7 +922,7 @@ pnpm exec vitest run tests/frontend/app-shell.test.tsx --testNamePattern "comple
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/components/layout/AppShell.tsx tests/frontend/app-shell.test.tsx
@@ -936,7 +936,7 @@ git commit -m "feat: apply completion replacement ranges"
 - Modify: `/Users/liuhui/Documents/code/ArkLine/src/styles/app.css`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/tests/frontend/app-shell.test.tsx`
 
-- [ ] **Step 1: Add failing detail display test**
+- [x] **Step 1: Add failing detail display test**
 
 Add to `/Users/liuhui/Documents/code/ArkLine/tests/frontend/app-shell.test.tsx`:
 
@@ -988,7 +988,7 @@ it("shows SDK completion signature and source details", async () => {
 });
 ```
 
-- [ ] **Step 2: Run failing test**
+- [x] **Step 2: Run failing test**
 
 Run:
 
@@ -998,7 +998,7 @@ pnpm exec vitest run tests/frontend/app-shell.test.tsx --testNamePattern "SDK co
 
 Expected: FAIL because popup details are hidden.
 
-- [ ] **Step 3: Enable compact details in popup**
+- [x] **Step 3: Enable compact details in popup**
 
 In `/Users/liuhui/Documents/code/ArkLine/src/components/layout/AppShell.tsx`, pass:
 
@@ -1024,7 +1024,7 @@ In `/Users/liuhui/Documents/code/ArkLine/src/components/layout/CompletionPopup.t
 ) : null}
 ```
 
-- [ ] **Step 4: Add restrained CSS**
+- [x] **Step 4: Add restrained CSS**
 
 In `/Users/liuhui/Documents/code/ArkLine/src/styles/app.css`, update details styles:
 
@@ -1054,7 +1054,7 @@ In `/Users/liuhui/Documents/code/ArkLine/src/styles/app.css`, update details sty
 }
 ```
 
-- [ ] **Step 5: Run focused frontend tests**
+- [x] **Step 5: Run focused frontend tests**
 
 Run:
 
@@ -1064,7 +1064,7 @@ pnpm exec vitest run tests/frontend/app-shell.test.tsx --testNamePattern "SDK co
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/components/layout/AppShell.tsx src/components/layout/CompletionPopup.tsx src/styles/app.css tests/frontend/app-shell.test.tsx
@@ -1078,7 +1078,7 @@ git commit -m "feat: show sdk completion details"
 - Modify: `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/completion.test.ts`
 - Modify: `/Users/liuhui/Documents/code/ArkLine/semantic-worker/src/__tests__/definition.test.ts`
 
-- [ ] **Step 1: Add or update end-to-end tests for target user workflow**
+- [x] **Step 1: Add or update end-to-end tests for target user workflow**
 
 Ensure these test names exist and pass:
 
@@ -1093,7 +1093,7 @@ App shell > opens SDK declaration targets returned by go to definition
 
 If any are missing, add them using the exact snippets from Tasks 3-6.
 
-- [ ] **Step 2: Run semantic worker tests**
+- [x] **Step 2: Run semantic worker tests**
 
 Run:
 
@@ -1103,7 +1103,7 @@ pnpm --dir semantic-worker test
 
 Expected: PASS.
 
-- [ ] **Step 3: Run frontend focused tests**
+- [x] **Step 3: Run frontend focused tests**
 
 Run:
 
@@ -1113,7 +1113,7 @@ pnpm exec vitest run tests/frontend/completion-model.test.ts tests/frontend/app-
 
 Expected: PASS.
 
-- [ ] **Step 4: Run Rust tests**
+- [x] **Step 4: Run Rust tests**
 
 Run:
 
@@ -1123,7 +1123,7 @@ cargo test --manifest-path src-tauri/Cargo.toml semantic_host
 
 Expected: PASS.
 
-- [ ] **Step 5: Run full verification**
+- [x] **Step 5: Run full verification**
 
 Run:
 
@@ -1141,7 +1141,7 @@ pnpm build: semantic-worker build, TypeScript checks, and Vite build pass
 cargo test: all Rust/Tauri tests pass
 ```
 
-- [ ] **Step 6: Search for obsolete assumptions**
+- [x] **Step 6: Search for obsolete assumptions**
 
 Run:
 
@@ -1155,7 +1155,7 @@ Expected:
 - no old completion overlay/query labels remain
 - `width(value: Length): T` appears only in fixtures/tests/docs or SDK-derived details
 
-- [ ] **Step 7: Commit verification updates if tests changed**
+- [x] **Step 7: Commit verification updates if tests changed**
 
 If Step 1 or Step 6 required test/code cleanup:
 

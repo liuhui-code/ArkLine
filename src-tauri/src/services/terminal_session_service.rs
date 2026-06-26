@@ -60,14 +60,20 @@ pub fn default_terminal_cwd() -> String {
 }
 
 pub fn resolve_terminal_cwd(requested_cwd: Option<&str>) -> String {
-    let Some(cwd) = requested_cwd.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(cwd) = requested_cwd
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return default_terminal_cwd();
     };
     let path = Path::new(cwd);
 
     if path.exists() && path.is_dir() {
         cwd.to_string()
-    } else if let Some(parent) = path.parent().filter(|parent| parent.exists() && parent.is_dir()) {
+    } else if let Some(parent) = path
+        .parent()
+        .filter(|parent| parent.exists() && parent.is_dir())
+    {
         parent.to_string_lossy().to_string()
     } else {
         default_terminal_cwd()
@@ -84,7 +90,16 @@ pub fn default_shell() -> String {
 
 pub fn spawn_terminal_session(
     requested_cwd: Option<&str>,
-) -> Result<(Box<dyn MasterPty + Send>, Box<dyn Write + Send>, Box<dyn Child + Send + Sync>, String, String), String> {
+) -> Result<
+    (
+        Box<dyn MasterPty + Send>,
+        Box<dyn Write + Send>,
+        Box<dyn Child + Send + Sync>,
+        String,
+        String,
+    ),
+    String,
+> {
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -102,7 +117,10 @@ pub fn spawn_terminal_session(
         .slave
         .spawn_command(command)
         .map_err(|error| error.to_string())?;
-    let writer = pair.master.take_writer().map_err(|error| error.to_string())?;
+    let writer = pair
+        .master
+        .take_writer()
+        .map_err(|error| error.to_string())?;
 
     Ok((pair.master, writer, child, shell.clone(), cwd))
 }

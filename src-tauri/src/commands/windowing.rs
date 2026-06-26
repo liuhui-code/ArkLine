@@ -38,7 +38,11 @@ pub fn open_workspace_in_new_window(
     launch_state: State<LaunchWorkspaceState>,
     root_path: String,
 ) -> Result<(), String> {
-    let label = format!("{}-{}", sanitize_window_label(&root_path), uuid::Uuid::new_v4());
+    let label = format!(
+        "{}-{}",
+        sanitize_window_label(&root_path),
+        uuid::Uuid::new_v4()
+    );
     launch_state.set_for_label(&label, root_path);
     WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
         .title("ArkLine")

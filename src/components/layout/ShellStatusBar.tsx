@@ -1,5 +1,7 @@
 import type { BottomToolKey } from "@/components/layout/shell-state";
+import { SemanticCapabilityBadge } from "@/components/layout/SemanticCapabilityBadge";
 import { SemanticModeBadge } from "@/components/layout/SemanticModeBadge";
+import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
 import type { SemanticState } from "@/features/semantic/semantic-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 
@@ -7,8 +9,11 @@ type ShellStatusBarProps = {
   activeBottomTool: BottomToolKey;
   activePath: string | null;
   semanticState: SemanticState;
+  semanticCapability: SemanticCapabilityState;
   statusText: string;
   workspaceName: string | null;
+  workspaceScanText: string | null;
+  workspaceIndexText: string;
   terminalRunning: boolean;
   buildMessage: string;
   currentLineBlame?: string | null;
@@ -25,8 +30,11 @@ export function ShellStatusBar({
   activeBottomTool,
   activePath,
   semanticState,
+  semanticCapability,
   statusText,
   workspaceName,
+  workspaceScanText,
+  workspaceIndexText,
   terminalRunning,
   buildMessage,
   currentLineBlame = null,
@@ -42,7 +50,10 @@ export function ShellStatusBar({
     <footer aria-label="Status Bar" className="status-bar">
       <div aria-label="Status Bar Left" className="status-bar__group status-bar__group--left">
         <span className="status-pill status-pill--em">{`Workspace: ${workspaceName ?? "none"}`}</span>
+        {workspaceScanText ? <span className="status-pill">{workspaceScanText}</span> : null}
+        <span className="status-pill">{workspaceIndexText}</span>
         <span className="status-pill">{activePath ? getPathBasename(activePath) : "No file selected"}</span>
+        <SemanticCapabilityBadge capability={semanticCapability} />
         <SemanticModeBadge semanticState={semanticState} />
         <span aria-label="Build Status" className="status-pill">{buildMessage}</span>
       </div>

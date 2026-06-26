@@ -49,7 +49,8 @@ mod tests {
 
     #[test]
     fn reports_lint_and_format_warnings() {
-        let problems = validate_text_document_content("C:/demo/main.ets", "console.log('x')\n\tlet a = 1;");
+        let problems =
+            validate_text_document_content("C:/demo/main.ets", "console.log('x')\n\tlet a = 1;");
 
         assert_eq!(problems.len(), 3);
         assert_eq!(problems[0].source, "lint");

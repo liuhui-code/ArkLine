@@ -7,8 +7,8 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::device_log::{
-    DeviceFaultLogFetchResult, DeviceFaultLogRawEntry, DeviceLogDevice, DeviceLogOutputBatch, DeviceLogStreamSummary,
-    ListDeviceFaultLogsRequest, StartDeviceLogStreamRequest,
+    DeviceFaultLogFetchResult, DeviceFaultLogRawEntry, DeviceLogDevice, DeviceLogOutputBatch,
+    DeviceLogStreamSummary, ListDeviceFaultLogsRequest, StartDeviceLogStreamRequest,
 };
 use tauri::{AppHandle, Emitter};
 
@@ -41,8 +41,14 @@ pub fn list_devices() -> Result<Vec<DeviceLogDevice>, String> {
     Ok(parse_hdc_targets(&combined))
 }
 
-pub fn list_fault_logs(request: ListDeviceFaultLogsRequest) -> Result<DeviceFaultLogFetchResult, String> {
-    let command = format!("{} -t {} shell faultloggerd --dump", resolve_hdc_path(), request.device_id);
+pub fn list_fault_logs(
+    request: ListDeviceFaultLogsRequest,
+) -> Result<DeviceFaultLogFetchResult, String> {
+    let command = format!(
+        "{} -t {} shell faultloggerd --dump",
+        resolve_hdc_path(),
+        request.device_id
+    );
     let output = Command::new(resolve_hdc_path())
         .args(["-t", &request.device_id, "shell", "faultloggerd", "--dump"])
         .stdout(Stdio::piped())
@@ -106,7 +112,11 @@ pub fn normalize_fault_log_output(
     let (status, message, entries) = if combined.contains("Connect server failed") {
         (
             "unavailable".to_string(),
-            message_from_text("Connect server failed", &normalized_stderr, "Device fault logs unavailable"),
+            message_from_text(
+                "Connect server failed",
+                &normalized_stderr,
+                "Device fault logs unavailable",
+            ),
             Vec::new(),
         )
     } else if combined_lower.contains("unauthorized")
@@ -287,11 +297,24 @@ fn should_split_fault_entry(current: &[&str], next_line: Option<&str>) -> bool {
 fn looks_like_fault_entry_start(line: &str) -> bool {
     matches!(
         line.split(':').next().map(str::trim),
-        Some("Timestamp" | "Reason" | "Process" | "PID" | "BundleName" | "Summary" | "Module" | "FaultType")
+        Some(
+            "Timestamp"
+                | "Reason"
+                | "Process"
+                | "PID"
+                | "BundleName"
+                | "Summary"
+                | "Module"
+                | "FaultType"
+        )
     )
 }
 
-fn push_fault_log_entry(device_id: &str, entries: &mut Vec<DeviceFaultLogRawEntry>, current: &mut Vec<&str>) {
+fn push_fault_log_entry(
+    device_id: &str,
+    entries: &mut Vec<DeviceFaultLogRawEntry>,
+    current: &mut Vec<&str>,
+) {
     if current.is_empty() {
         return;
     }

@@ -5,16 +5,19 @@ use crate::models::language::{
     LanguageQueryRequest, LanguageServiceReport, UsageResult,
 };
 use crate::services::language_service::{
-    complete_symbol as complete_symbol_impl, goto_definition as goto_definition_impl,
+    complete_symbol as complete_symbol_impl, find_usages as find_usages_impl,
+    goto_definition as goto_definition_impl,
     goto_definition_candidates as goto_definition_candidates_impl,
     hover_symbol as hover_symbol_impl, inspect_runtime as inspect_runtime_impl,
-    list_document_symbols as list_document_symbols_impl, find_usages as find_usages_impl,
-    LanguageRuntime,
+    list_document_symbols as list_document_symbols_impl, LanguageRuntime,
 };
 use crate::services::settings_store::load_settings_for_app;
 
 #[tauri::command]
-pub fn inspect_language_service(app: AppHandle, runtime: State<LanguageRuntime>) -> Result<LanguageServiceReport, String> {
+pub fn inspect_language_service(
+    app: AppHandle,
+    runtime: State<LanguageRuntime>,
+) -> Result<LanguageServiceReport, String> {
     let settings = load_settings_for_app(&app)?;
     Ok(inspect_runtime_impl(runtime.inner(), &settings))
 }
@@ -46,7 +49,11 @@ pub fn goto_definition_candidates(
     request: LanguageQueryRequest,
 ) -> Result<Vec<DefinitionCandidate>, String> {
     let settings = load_settings_for_app(&app)?;
-    Ok(goto_definition_candidates_impl(runtime.inner(), &settings, &request))
+    Ok(goto_definition_candidates_impl(
+        runtime.inner(),
+        &settings,
+        &request,
+    ))
 }
 
 #[tauri::command]
@@ -66,7 +73,11 @@ pub fn document_symbols(
     request: LanguageQueryRequest,
 ) -> Result<Vec<DocumentSymbol>, String> {
     let settings = load_settings_for_app(&app)?;
-    Ok(list_document_symbols_impl(runtime.inner(), &settings, &request))
+    Ok(list_document_symbols_impl(
+        runtime.inner(),
+        &settings,
+        &request,
+    ))
 }
 
 #[tauri::command]

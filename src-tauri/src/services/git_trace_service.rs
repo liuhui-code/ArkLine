@@ -33,7 +33,11 @@ pub fn load_file_blame(path: &Path) -> Result<GitBlameResponse, String> {
     Ok(GitBlameResponse::Lines(lines))
 }
 
-pub fn load_commit_trace(path: &Path, commit: &str, line: usize) -> Result<GitCommitTraceResponse, String> {
+pub fn load_commit_trace(
+    path: &Path,
+    commit: &str,
+    line: usize,
+) -> Result<GitCommitTraceResponse, String> {
     let repo_root = match resolve_repo_root(path)? {
         Some(root) => root,
         None => {
@@ -57,10 +61,7 @@ pub fn load_commit_trace(path: &Path, commit: &str, line: usize) -> Result<GitCo
         .strip_prefix(&repo_root)
         .map(|value| value.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"));
-    let output = run_git(
-        &repo_root,
-        ["show", commit, "--", &relative_path],
-    )?;
+    let output = run_git(&repo_root, ["show", commit, "--", &relative_path])?;
     let trace = parse_commit_show(&output, &relative_path, commit, line, line)?;
     Ok(GitCommitTraceResponse::Trace(trace))
 }
@@ -85,7 +86,10 @@ fn is_tracked_file(repo_root: &Path, path: &Path) -> Result<bool, String> {
         .map(|value| value.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"));
 
-    match run_git(repo_root, ["ls-files", "--error-unmatch", "--", &relative_path]) {
+    match run_git(
+        repo_root,
+        ["ls-files", "--error-unmatch", "--", &relative_path],
+    ) {
         Ok(_) => Ok(true),
         Err(error) if error.contains("did not match any file") => Ok(false),
         Err(error) => Err(error),
@@ -127,7 +131,7 @@ pub fn parse_blame_porcelain(input: &str) -> Result<Vec<GitBlameLine>, String> {
 
     for raw_line in input.lines() {
         if raw_line.is_empty() {
-          continue;
+            continue;
         }
 
         if let Some(content) = raw_line.strip_prefix('\t') {
@@ -151,7 +155,10 @@ pub fn parse_blame_porcelain(input: &str) -> Result<Vec<GitBlameLine>, String> {
             if header.len() >= 7 && header.chars().all(|char| char.is_ascii_hexdigit()) {
                 let parts: Vec<&str> = raw_line.split_whitespace().collect();
                 current_commit = parts.first().unwrap_or(&"").to_string();
-                current_source_line = parts.get(1).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
+                current_source_line = parts
+                    .get(1)
+                    .and_then(|value| value.parse::<usize>().ok())
+                    .unwrap_or(0);
                 current_author.clear();
                 current_authored_at.clear();
                 current_summary.clear();
@@ -246,9 +253,7 @@ pub fn parse_commit_show(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        parse_blame_porcelain, parse_commit_show, GitBlameLine, GitCommitTrace,
-    };
+    use super::{parse_blame_porcelain, parse_commit_show, GitBlameLine, GitCommitTrace};
 
     #[test]
     fn parses_git_blame_porcelain_into_line_entries() {
@@ -295,14 +300,8 @@ index 1111111..2222222 100644
  @Component
 ";
 
-        let trace = parse_commit_show(
-            fixture,
-            "src/main.ets",
-            "abc1234567890",
-            3,
-            3,
-        )
-        .expect("fixture should parse");
+        let trace = parse_commit_show(fixture, "src/main.ets", "abc1234567890", 3, 3)
+            .expect("fixture should parse");
 
         assert_eq!(
             trace,

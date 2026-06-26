@@ -18,6 +18,13 @@ describe("workspace store", () => {
         "C:/code/ArkLine/build/output.js",
         "C:/code/ArkLine/.git/config",
         "C:/code/ArkLine/.hvigor/cache.bin",
+        "C:/code/ArkLine/.idea/workspace.xml",
+        "C:/code/ArkLine/.arkline/index/workspace-catalog.json",
+        "C:/code/ArkLine/.ohpm/pkg/index.js",
+        "C:/code/ArkLine/oh_modules/pkg/index.js",
+        "C:/code/ArkLine/dist/bundle.js",
+        "C:/code/ArkLine/out/generated.js",
+        "C:/code/ArkLine/coverage/report.json",
         "C:/code/ArkLine/AppScope/app.json5"
       ]
     });
@@ -30,7 +37,14 @@ describe("workspace store", () => {
     expect(DEFAULT_WORKSPACE_EXCLUDES).toEqual([
       ".git",
       ".hvigor",
+      ".idea",
+      ".arkline",
+      ".ohpm",
       "build",
+      "coverage",
+      "dist",
+      "oh_modules",
+      "out",
       "node_modules"
     ]);
   });

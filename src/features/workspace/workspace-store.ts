@@ -1,7 +1,14 @@
 export const DEFAULT_WORKSPACE_EXCLUDES = [
   ".git",
   ".hvigor",
+  ".idea",
+  ".arkline",
+  ".ohpm",
   "build",
+  "coverage",
+  "dist",
+  "oh_modules",
+  "out",
   "node_modules"
 ] as const;
 

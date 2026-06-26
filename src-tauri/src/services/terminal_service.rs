@@ -8,13 +8,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::models::terminal::{
-    CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalResizeRequest,
-    TerminalOutputChunk, TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
+    CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalOutputChunk,
+    TerminalResizeRequest, TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
 };
-use crate::services::terminal_io_service::{resize_session, session_status, stop_session, write_session_input};
-use crate::services::terminal_session_service::{
-    spawn_terminal_session, TerminalSessionHandle,
+use crate::services::terminal_io_service::{
+    resize_session, session_status, stop_session, write_session_input,
 };
+use crate::services::terminal_session_service::{spawn_terminal_session, TerminalSessionHandle};
 use tauri::{AppHandle, Emitter};
 
 pub struct TerminalRuntime {
@@ -171,7 +171,10 @@ pub fn start_output_forwarder(
     Ok(())
 }
 
-pub fn write_input(runtime: &TerminalRuntime, request: &TerminalInputWriteRequest) -> Result<(), String> {
+pub fn write_input(
+    runtime: &TerminalRuntime,
+    request: &TerminalInputWriteRequest,
+) -> Result<(), String> {
     let sessions = runtime.sessions.lock().expect("terminal session lock");
     let handle = sessions
         .get(&request.session_id)
@@ -180,7 +183,10 @@ pub fn write_input(runtime: &TerminalRuntime, request: &TerminalInputWriteReques
     write_session_input(handle, &request.data)
 }
 
-pub fn resize_active_session(runtime: &TerminalRuntime, request: &TerminalResizeRequest) -> Result<(), String> {
+pub fn resize_active_session(
+    runtime: &TerminalRuntime,
+    request: &TerminalResizeRequest,
+) -> Result<(), String> {
     let sessions = runtime.sessions.lock().expect("terminal session lock");
     let handle = sessions
         .get(&request.session_id)
@@ -203,7 +209,11 @@ pub fn run_command(
     request: &TerminalRunRequest,
 ) -> Result<TerminalRunResult, String> {
     let mut command = shell_command(&request.command);
-    if let Some(cwd) = request.cwd.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(cwd) = request
+        .cwd
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         command.current_dir(Path::new(cwd));
     }
 

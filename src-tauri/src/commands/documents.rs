@@ -15,6 +15,9 @@ pub fn save_text_document(path: String, content: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn validate_text_document(path: String, content: String) -> Result<Vec<ValidationProblem>, String> {
+pub fn validate_text_document(
+    path: String,
+    content: String,
+) -> Result<Vec<ValidationProblem>, String> {
     Ok(validate_text_document_content(&path, &content))
 }

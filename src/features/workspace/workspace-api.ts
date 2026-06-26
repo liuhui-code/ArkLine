@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   CodeAction,
@@ -6,8 +7,14 @@ import type {
   WorkspaceEditPlan,
 } from "@/features/code-actions/code-action-model";
 import { createFileTreeNodes, type FileTreeNode } from "@/features/workspace/file-tree-store";
+import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
+import {
+  searchWorkspaceText as searchWorkspaceTextInMemory,
+  type WorkspaceTextSearchOptions,
+  type WorkspaceTextSearchResult,
+} from "@/features/search/workspace-text-search";
 import {
   collectFallbackCompletions,
   collectFallbackDocumentSymbols,
@@ -15,8 +22,10 @@ import {
 import type { UsageResult } from "@/features/workspace/usage-search";
 import {
   createWorkspaceStore,
+  DEFAULT_WORKSPACE_EXCLUDES,
   getPathBasename,
   normalizePath,
+  splitPathSegments,
   type WorkspaceOpenInput
 } from "@/features/workspace/workspace-store";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
@@ -25,6 +34,22 @@ export type WorkspaceSnapshot = {
   rootName: string;
   rootPath: string;
   files: string[];
+  scanSummary?: WorkspaceScanSummary;
+};
+
+export type WorkspaceScanSummary = {
+  scannedFiles: number;
+  skippedEntries: number;
+  truncated: boolean;
+  excludeRules: string[];
+};
+
+export type WorkspaceDirectoryEntry = {
+  name: string;
+  path: string;
+  kind: "directory" | "file";
+  excluded: boolean;
+  hasChildren: boolean;
 };
 
 export type WorkspaceViewModel = {
@@ -32,7 +57,25 @@ export type WorkspaceViewModel = {
   rootPath: string;
   visibleFiles: string[];
   fileTree: FileTreeNode[];
+  scanSummary: WorkspaceScanSummary;
 };
+
+export type WorkspaceIndexRefreshResult = {
+  state: WorkspaceIndexState;
+  changed: boolean;
+  addedPaths: string[];
+  removedPaths: string[];
+};
+
+export type WorkspaceTextSearchRequest = {
+  rootPath: string;
+  query: string;
+  options: WorkspaceTextSearchOptions;
+  limit: number;
+  contextLines: number;
+};
+
+export type WorkspaceIndexWatcher = (result: WorkspaceIndexRefreshResult) => void;
 
 export type WorkspaceLaunchContext = {
   rootPath: string | null;
@@ -231,6 +274,14 @@ export type WorkspaceApi = {
   pickWorkspaceRoot(): Promise<string | null>;
   pickPath?(options: PathPickOptions): Promise<string | null>;
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
+  listWorkspaceDirectory?(rootPath: string, directoryPath: string): Promise<WorkspaceDirectoryEntry[]>;
+  getWorkspaceIndexState?(rootPath: string): Promise<WorkspaceIndexState>;
+  queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
+  updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
+  refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
+  refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
+  watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
+  searchWorkspaceText?(request: WorkspaceTextSearchRequest): Promise<WorkspaceTextSearchResult>;
   openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
   getLaunchWorkspacePath?(): Promise<string | null>;
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;
@@ -275,7 +326,13 @@ const demoWorkspace: WorkspaceSnapshot = {
     "C:/samples/DemoWorkspace/src/main.ets",
     "C:/samples/DemoWorkspace/AppScope/app.json5",
     "C:/samples/DemoWorkspace/node_modules/react/index.js"
-  ]
+  ],
+  scanSummary: {
+    scannedFiles: 3,
+    skippedEntries: 1,
+    truncated: false,
+    excludeRules: [...DEFAULT_WORKSPACE_EXCLUDES],
+  },
 };
 
 function hasTauriRuntime() {
@@ -311,6 +368,61 @@ async function loadWorkspaceSnapshot(rootPath: string) {
       joinPath(normalized, "src", "pages", "Index.ets"),
     ],
   };
+}
+
+function joinWorkspacePath(base: string, child: string) {
+  const normalizedBase = normalizePath(base).replace(/[\\/]+$/g, "");
+  const separator = normalizedBase.includes("\\") ? "\\" : "/";
+  return `${normalizedBase}${separator}${child}`;
+}
+
+function pathHasExcludedSegment(path: string) {
+  const segments = splitPathSegments(path);
+  return DEFAULT_WORKSPACE_EXCLUDES.some((segment) => segments.includes(segment));
+}
+
+function listDirectoryFromSnapshot(snapshot: WorkspaceSnapshot, directoryPath: string): WorkspaceDirectoryEntry[] {
+  const normalizedDirectory = normalizePath(directoryPath);
+  const directorySegments = splitPathSegments(normalizedDirectory);
+  const entries = new Map<string, WorkspaceDirectoryEntry>();
+
+  for (const file of snapshot.files) {
+    const normalizedFile = normalizePath(file);
+    const fileSegments = splitPathSegments(normalizedFile);
+    const isDescendant = directorySegments.every((segment, index) => fileSegments[index] === segment)
+      && fileSegments.length > directorySegments.length;
+
+    if (!isDescendant) {
+      continue;
+    }
+
+    const childName = fileSegments[directorySegments.length];
+    if (!childName) {
+      continue;
+    }
+
+    const childPath = joinWorkspacePath(normalizedDirectory, childName);
+    const remainingSegments = fileSegments.slice(directorySegments.length + 1);
+    const isDirectory = remainingSegments.length > 0;
+    const excluded = pathHasExcludedSegment(childPath);
+    const existing = entries.get(childPath);
+
+    entries.set(childPath, {
+      name: childName,
+      path: childPath,
+      kind: isDirectory ? "directory" : "file",
+      excluded,
+      hasChildren: Boolean((existing?.hasChildren ?? false) || (isDirectory && !excluded && remainingSegments.length > 0)),
+    });
+  }
+
+  return [...entries.values()].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "directory" ? -1 : 1;
+    }
+
+    return left.name.localeCompare(right.name);
+  });
 }
 
 async function loadMockDocumentContent(path: string) {
@@ -356,6 +468,129 @@ export const defaultWorkspaceApi: WorkspaceApi = {
   },
   async openWorkspace(rootPath) {
     return loadWorkspaceSnapshot(rootPath);
+  },
+  async listWorkspaceDirectory(rootPath, directoryPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceDirectoryEntry[]>("list_workspace_directory", { rootPath, directoryPath });
+    }
+
+    const snapshot = await loadWorkspaceSnapshot(rootPath);
+    return listDirectoryFromSnapshot(snapshot, directoryPath);
+  },
+  async getWorkspaceIndexState(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexState>("get_workspace_index_state", { rootPath });
+    }
+
+    void rootPath;
+    return {
+      status: "empty",
+      rootPath: null,
+      filePaths: [],
+      indexedAt: null,
+      partialReason: null,
+    };
+  },
+  async queryWorkspaceQuickOpen(rootPath, query, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<SearchCandidate[]>("query_workspace_quick_open", { rootPath, query, limit });
+    }
+
+    void rootPath;
+    void query;
+    void limit;
+    return [];
+  },
+  async updateWorkspaceIndexFiles(rootPath, addedPaths, removedPaths) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexState>("update_workspace_index_files", { rootPath, addedPaths, removedPaths });
+    }
+
+    void rootPath;
+    void addedPaths;
+    void removedPaths;
+    return {
+      status: "empty",
+      rootPath: null,
+      filePaths: [],
+      indexedAt: null,
+      partialReason: null,
+    };
+  },
+  async refreshWorkspaceIndex(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexState>("refresh_workspace_index", { rootPath });
+    }
+
+    void rootPath;
+    return {
+      status: "empty",
+      rootPath: null,
+      filePaths: [],
+      indexedAt: null,
+      partialReason: null,
+    };
+  },
+  async refreshWorkspaceIndexWithChanges(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexRefreshResult>("refresh_workspace_index_with_changes", { rootPath });
+    }
+
+    void rootPath;
+    return {
+      state: {
+        status: "empty",
+        rootPath: null,
+        filePaths: [],
+        indexedAt: null,
+        partialReason: null,
+      },
+      changed: false,
+      addedPaths: [],
+      removedPaths: [],
+    };
+  },
+  async watchWorkspaceIndex(rootPath, onChange) {
+    if (!hasTauriRuntime()) {
+      return () => undefined;
+    }
+
+    const unlisten = await listen<WorkspaceIndexRefreshResult>("workspace-index-changed", (event) => {
+      const eventRootPath = event.payload.state.rootPath;
+      if (eventRootPath && normalizePath(eventRootPath) !== normalizePath(rootPath)) {
+        return;
+      }
+
+      onChange(event.payload);
+    });
+
+    try {
+      await invoke("watch_workspace_index", { rootPath });
+    } catch (error) {
+      unlisten();
+      throw error;
+    }
+
+    return () => {
+      unlisten();
+      void invoke("unwatch_workspace_index", { rootPath });
+    };
+  },
+  async searchWorkspaceText(request) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceTextSearchResult>("search_workspace_text", { request });
+    }
+
+    const snapshot = await loadWorkspaceSnapshot(request.rootPath);
+    return searchWorkspaceTextInMemory({
+      query: request.query,
+      rootPath: request.rootPath,
+      paths: snapshot.files,
+      options: request.options,
+      limit: request.limit,
+      contextLines: request.contextLines,
+      readFile: loadMockDocumentContent,
+    });
   },
   async openWorkspaceInNewWindow(rootPath) {
     if (hasTauriRuntime()) {
@@ -916,6 +1151,12 @@ export function toWorkspaceViewModel(snapshot: WorkspaceSnapshot): WorkspaceView
     rootName: snapshot.rootName,
     rootPath: normalizePath(snapshot.rootPath),
     visibleFiles: store.state.visibleFiles,
-    fileTree: createFileTreeNodes(store.state.visibleFiles)
+    fileTree: createFileTreeNodes(store.state.visibleFiles),
+    scanSummary: snapshot.scanSummary ?? {
+      scannedFiles: store.state.visibleFiles.length,
+      skippedEntries: Math.max(0, snapshot.files.length - store.state.visibleFiles.length),
+      truncated: false,
+      excludeRules: [...DEFAULT_WORKSPACE_EXCLUDES],
+    },
   };
 }
