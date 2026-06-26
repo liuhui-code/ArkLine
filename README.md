@@ -69,29 +69,63 @@ Prerequisites:
 
 - Node.js 20+
 - Corepack-enabled `pnpm` 10.x
-- Rust stable toolchain
-- Microsoft C++ Build Tools
+- Rust stable MSVC toolchain
+- Microsoft C++ Build Tools with the `Desktop development with C++` workload
+- Windows SDK
 - WebView2 Runtime
 
 Run:
 
-```bash
+```powershell
 corepack enable
 corepack prepare pnpm@10.12.1 --activate
 pnpm install
 pnpm tauri dev
 ```
 
+ArkLine's supported Windows development path is MSVC. Do not use the GNU Rust
+toolchain or a `*-windows-gnu` Cargo target unless you are intentionally
+debugging an unsupported build path.
+
+Configure and verify the Rust toolchain:
+
+```powershell
+rustup default stable-msvc
+rustup target add x86_64-pc-windows-msvc
+rustc -vV
+rustup target list --installed
+```
+
+`rustc -vV` should show a host similar to `x86_64-pc-windows-msvc`, and the
+installed target list should contain `x86_64-pc-windows-msvc`.
+
+If `pnpm tauri dev` or packaging fails with `dlltool`, the build is still using
+the GNU path. Check and clear any forced Cargo target:
+
+```powershell
+Get-ChildItem Env:CARGO_BUILD_TARGET
+Remove-Item Env:CARGO_BUILD_TARGET -ErrorAction SilentlyContinue
+rustup default stable-msvc
+pnpm tauri dev
+```
+
+Reopen PowerShell after changing Rust or Visual Studio Build Tools if the old
+toolchain is still visible in the same terminal session.
+
+On Windows, `pnpm tauri dev` and `pnpm tauri build` are routed through
+`scripts/tauri-cli.mjs`, which automatically adds
+`--target x86_64-pc-windows-msvc` unless a target was passed explicitly.
+
 Build the standard Windows installer:
 
-```bash
+```powershell
 pnpm build
 pnpm package:windows
 ```
 
 Build a portable `.exe` that can be launched directly:
 
-```bash
+```powershell
 pnpm build
 pnpm package:windows:portable
 ```
