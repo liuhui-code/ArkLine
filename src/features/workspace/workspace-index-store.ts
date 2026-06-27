@@ -13,14 +13,27 @@ export type SearchCandidate = {
   title: string;
   subtitle: string;
   path?: string;
+  line?: number;
+  column?: number;
   score: number;
   freshness: SearchCandidateFreshness;
+};
+
+export type WorkspaceIndexedSymbol = {
+  source: "class" | "symbol";
+  kind: string;
+  name: string;
+  path: string;
+  line: number;
+  column: number;
+  container?: string;
 };
 
 export type WorkspaceIndexState = {
   status: WorkspaceIndexStatus;
   rootPath: string | null;
   filePaths: string[];
+  symbols?: WorkspaceIndexedSymbol[];
   indexedAt: number | null;
   partialReason: string | null;
 };
@@ -30,6 +43,7 @@ function createInitialState(): WorkspaceIndexState {
     status: "empty",
     rootPath: null,
     filePaths: [],
+    symbols: [],
     indexedAt: null,
     partialReason: null,
   };
@@ -63,6 +77,7 @@ export function createWorkspaceIndexStore() {
     openWorkspace(workspace: WorkspaceViewModel) {
       state.rootPath = normalizePath(workspace.rootPath);
       state.filePaths = workspace.visibleFiles.map(normalizePath);
+      state.symbols = [];
       state.status = workspace.scanSummary.truncated ? "partial" : "ready";
       state.indexedAt = Date.now();
       state.partialReason = buildPartialReason(workspace);
@@ -70,6 +85,7 @@ export function createWorkspaceIndexStore() {
     replaceState(nextState: WorkspaceIndexState) {
       state.rootPath = nextState.rootPath ? normalizePath(nextState.rootPath) : null;
       state.filePaths = nextState.filePaths.map(normalizePath);
+      state.symbols = (nextState.symbols ?? []).map((symbol) => ({ ...symbol, path: normalizePath(symbol.path) }));
       state.status = nextState.status;
       state.indexedAt = nextState.indexedAt;
       state.partialReason = nextState.partialReason;
@@ -87,12 +103,59 @@ export function createWorkspaceIndexStore() {
         title: getPathBasename(match.path),
         subtitle: match.path,
         path: match.path,
+        line: 1,
+        column: 1,
         score: match.score,
         freshness,
       }));
+    },
+    querySearchEverywhere(query: string, limit = 16): SearchCandidate[] {
+      const fileCandidates = this.queryQuickOpen(query, Math.ceil(limit / 2));
+      const symbolCandidates = rankSymbols(state.symbols ?? [], query, limit - fileCandidates.length, candidateFreshness(state.status));
+      return [...symbolCandidates, ...fileCandidates]
+        .sort((left, right) => sourcePriority(left.source) - sourcePriority(right.source) || right.score - left.score)
+        .slice(0, limit);
     },
     getTextSearchPaths() {
       return [...state.filePaths];
     },
   };
+}
+
+function rankSymbols(
+  symbols: WorkspaceIndexedSymbol[],
+  query: string,
+  limit: number,
+  freshness: SearchCandidateFreshness,
+): SearchCandidate[] {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed || limit <= 0) {
+    return [];
+  }
+
+  return symbols
+    .map((symbol) => {
+      const name = symbol.name.toLowerCase();
+      const score = name === trimmed ? 120 : name.startsWith(trimmed) ? 90 : name.includes(trimmed) ? 60 : 0;
+      return score > 0 ? { symbol, score } : null;
+    })
+    .filter((item): item is { symbol: WorkspaceIndexedSymbol; score: number } => item !== null)
+    .sort((left, right) => right.score - left.score || left.symbol.name.localeCompare(right.symbol.name))
+    .slice(0, limit)
+    .map(({ symbol, score }) => ({
+      id: `${symbol.source}:${symbol.path}:${symbol.line}:${symbol.column}`,
+      source: symbol.source,
+      kind: symbol.kind,
+      title: symbol.name,
+      subtitle: symbol.container ? `${symbol.container} · ${symbol.path}` : symbol.path,
+      path: symbol.path,
+      line: symbol.line,
+      column: symbol.column,
+      score,
+      freshness,
+    }));
+}
+
+function sourcePriority(source: SearchCandidate["source"]) {
+  return source === "class" ? 0 : source === "symbol" ? 1 : source === "file" ? 2 : 3;
 }

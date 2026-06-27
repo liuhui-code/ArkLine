@@ -575,6 +575,71 @@ describe("App shell", () => {
     expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
   });
 
+  it("opens Search Everywhere with class symbol and file index results", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 7,
+        score: 120,
+        freshness: "ready" as const,
+      },
+      {
+        id: "symbol:submit",
+        source: "symbol" as const,
+        kind: "method",
+        title: "submitLogin",
+        subtitle: "LoginController · C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 8,
+        column: 11,
+        score: 80,
+        freshness: "ready" as const,
+      },
+      {
+        id: "file:login",
+        source: "file" as const,
+        kind: "file",
+        title: "LoginPage.ets",
+        subtitle: "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        path: "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        line: 1,
+        column: 1,
+        score: 70,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    await waitFor(() => expect(queryWorkspaceSearchEverywhere).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "login",
+      24,
+    ));
+    const results = screen.getByRole("list", { name: "Search Everywhere Results" });
+    expect(within(results).getByText("Classes")).toBeVisible();
+    expect(within(results).getByRole("button", { name: /class LoginController/ })).toBeVisible();
+    expect(within(results).getByText("Symbols")).toBeVisible();
+    expect(within(results).getByRole("button", { name: /symbol submitLogin/ })).toBeVisible();
+    expect(within(results).getByText("Files")).toBeVisible();
+    expect(within(results).getByRole("button", { name: /file LoginPage\.ets/ })).toBeVisible();
+
+    await user.click(within(results).getByRole("button", { name: /class LoginController/ }));
+
+    expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index");
+  });
+
   it("refreshes the workspace index from external filesystem changes", async () => {
     const user = userEvent.setup();
     const rootPath = "C:/samples/DemoWorkspace";

@@ -68,8 +68,23 @@ pub struct WorkspaceIndexState {
     pub status: WorkspaceIndexStatus,
     pub root_path: Option<String>,
     pub file_paths: Vec<String>,
+    #[serde(default)]
+    pub symbols: Vec<WorkspaceIndexedSymbol>,
     pub indexed_at: Option<u128>,
     pub partial_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexedSymbol {
+    pub source: String,
+    pub kind: String,
+    pub name: String,
+    pub path: String,
+    pub line: usize,
+    pub column: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -81,6 +96,10 @@ pub struct WorkspaceSearchCandidate {
     pub title: String,
     pub subtitle: String,
     pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<usize>,
     pub score: f64,
     pub freshness: String,
 }

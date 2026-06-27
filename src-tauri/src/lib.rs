@@ -36,12 +36,33 @@ mod services {
     pub mod terminal_service;
     pub mod terminal_session_service;
     pub mod validation_service;
+    pub mod workspace_content_index_service;
+    #[cfg(test)]
+    mod workspace_content_index_service_tests;
+    pub mod workspace_content_query_service;
     pub mod workspace_edit_service;
+    pub mod workspace_file_fingerprint_service;
+    #[cfg(test)]
+    mod workspace_file_fingerprint_service_tests;
+    pub mod workspace_index_manager_service;
+    #[cfg(test)]
+    mod workspace_index_manager_service_tests;
+    pub mod workspace_index_persistence_service;
+    pub mod workspace_index_query_service;
+    #[cfg(test)]
+    mod workspace_index_query_service_tests;
+    pub mod workspace_index_scheduler_service;
     pub mod workspace_index_service;
+    #[cfg(test)]
+    mod workspace_index_service_tests;
     pub mod workspace_index_watcher_service;
     #[cfg(test)]
     pub mod workspace_large_fixture_service;
+    #[cfg(test)]
+    mod workspace_search_everywhere_service_tests;
+    pub mod workspace_search_ranking_service;
     pub mod workspace_service;
+    pub mod workspace_symbol_index_service;
     pub mod workspace_text_search_service;
 }
 
@@ -58,12 +79,14 @@ pub fn run() {
         .manage(services::terminal_service::TerminalRuntime::default())
         .manage(services::device_log_service::DeviceLogRuntime::default())
         .manage(services::workspace_index_service::WorkspaceIndexRuntime::default())
+        .manage(services::workspace_index_manager_service::WorkspaceIndexManagerRuntime::default())
         .manage(services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime::default())
         .invoke_handler(tauri::generate_handler![
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,
             commands::workspace::get_workspace_index_state,
             commands::workspace::query_workspace_quick_open,
+            commands::workspace::query_workspace_search_everywhere,
             commands::workspace::update_workspace_index_files,
             commands::workspace::refresh_workspace_index,
             commands::workspace::refresh_workspace_index_with_changes,

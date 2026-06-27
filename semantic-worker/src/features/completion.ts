@@ -2,6 +2,7 @@ import { collectDocumentSymbolsForPath } from "./document-analysis.js"
 import { loadWorkspace } from "../sdk/workspace-loader.js"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
 import { completeArkuiApis } from "../sdk/arkui-api-index.js"
+import { completeArktsKeywords } from "./arkts-keywords.js"
 import { findArkuiContext } from "./arkui-context.js"
 
 import type {
@@ -45,6 +46,10 @@ export function resolveCompletion(
 
   if (content.includes("struct ") || content.includes("@Component")) {
     push({ label: "build()", detail: "Component lifecycle method", kind: "method", source: "arkts" })
+  }
+
+  for (const keyword of completeArktsKeywords(content, position)) {
+    push(keyword)
   }
 
   for (const symbol of workspace.documents.flatMap((document) =>

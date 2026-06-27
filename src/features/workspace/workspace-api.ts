@@ -277,6 +277,7 @@ export type WorkspaceApi = {
   listWorkspaceDirectory?(rootPath: string, directoryPath: string): Promise<WorkspaceDirectoryEntry[]>;
   getWorkspaceIndexState?(rootPath: string): Promise<WorkspaceIndexState>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
+  queryWorkspaceSearchEverywhere?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
@@ -487,6 +488,7 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       status: "empty",
       rootPath: null,
       filePaths: [],
+      symbols: [],
       indexedAt: null,
       partialReason: null,
     };
@@ -494,6 +496,16 @@ export const defaultWorkspaceApi: WorkspaceApi = {
   async queryWorkspaceQuickOpen(rootPath, query, limit) {
     if (hasTauriRuntime()) {
       return invoke<SearchCandidate[]>("query_workspace_quick_open", { rootPath, query, limit });
+    }
+
+    void rootPath;
+    void query;
+    void limit;
+    return [];
+  },
+  async queryWorkspaceSearchEverywhere(rootPath, query, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<SearchCandidate[]>("query_workspace_search_everywhere", { rootPath, query, limit });
     }
 
     void rootPath;
@@ -513,6 +525,7 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       status: "empty",
       rootPath: null,
       filePaths: [],
+      symbols: [],
       indexedAt: null,
       partialReason: null,
     };
@@ -527,6 +540,7 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       status: "empty",
       rootPath: null,
       filePaths: [],
+      symbols: [],
       indexedAt: null,
       partialReason: null,
     };
@@ -542,6 +556,7 @@ export const defaultWorkspaceApi: WorkspaceApi = {
         status: "empty",
         rootPath: null,
         filePaths: [],
+        symbols: [],
         indexedAt: null,
         partialReason: null,
       },

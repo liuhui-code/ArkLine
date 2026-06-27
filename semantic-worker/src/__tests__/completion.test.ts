@@ -126,6 +126,38 @@ describe("semantic worker completion", () => {
     ])
   })
 
+  it("includes common ArkTS syntax keywords by prefix", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkts-keyword-completion-"))
+    tempRoots.push(root)
+    const indexPath = path.join(root, "Index.ets")
+    fs.writeFileSync(
+      indexPath,
+      [
+        "class Example {",
+        "  pri",
+        "}",
+        "",
+      ].join("\n"),
+    )
+
+    const response = session.handle({
+      id: "completion-arkts-keywords",
+      method: "completion",
+      position: { path: indexPath, line: 2, column: 6 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "private", detail: "ArkTS access modifier", kind: "keyword", source: "arkts" }),
+      expect.objectContaining({ label: "protected", detail: "ArkTS access modifier", kind: "keyword", source: "arkts" }),
+      expect.objectContaining({ label: "public", detail: "ArkTS access modifier", kind: "keyword", source: "arkts" }),
+      expect.objectContaining({ label: "readonly", detail: "ArkTS property modifier", kind: "keyword", source: "arkts" }),
+      expect.objectContaining({ label: "static", detail: "ArkTS member modifier", kind: "keyword", source: "arkts" }),
+      expect.objectContaining({ label: "async", detail: "ArkTS async modifier", kind: "keyword", source: "arkts" }),
+    ]))
+  })
+
   it("includes ArkUI common and component attributes after a component chain", () => {
     const session = new SemanticWorkerSession()
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-completion-"))

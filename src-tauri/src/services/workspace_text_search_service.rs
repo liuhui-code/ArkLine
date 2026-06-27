@@ -195,8 +195,9 @@ fn is_word_character(value: char) -> bool {
 
 fn build_summary(line_text: &str, start: usize, end: usize) -> String {
     let summary_radius = 18;
-    let summary_start = start.saturating_sub(summary_radius);
-    let summary_end = usize::min(line_text.len(), end + summary_radius);
+    let summary_start = previous_char_boundary(line_text, start.saturating_sub(summary_radius));
+    let summary_end =
+        next_char_boundary(line_text, usize::min(line_text.len(), end + summary_radius));
     let prefix = if summary_start > 0 { "..." } else { "" };
     let suffix = if summary_end < line_text.len() {
         "..."
@@ -207,6 +208,22 @@ fn build_summary(line_text: &str, start: usize, end: usize) -> String {
         "{prefix}{}{suffix}",
         line_text[summary_start..summary_end].trim()
     )
+}
+
+fn previous_char_boundary(value: &str, index: usize) -> usize {
+    let mut boundary = usize::min(index, value.len());
+    while boundary > 0 && !value.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
+}
+
+fn next_char_boundary(value: &str, index: usize) -> usize {
+    let mut boundary = usize::min(index, value.len());
+    while boundary < value.len() && !value.is_char_boundary(boundary) {
+        boundary += 1;
+    }
+    boundary
 }
 
 fn slice_context(
@@ -369,6 +386,31 @@ mod tests {
             crate::models::workspace::WorkspaceTextSearchQuery::Invalid { .. }
         ));
         assert!(result.matches.is_empty());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn builds_summaries_without_slicing_inside_utf8_characters() {
+        let root = unique_temp_dir("workspace-text-search-unicode-summary");
+        fs::create_dir_all(root.join("entry").join("src")).unwrap();
+        fs::write(
+            root.join("entry").join("src").join("Index.ets"),
+            format!("{}a target width", "汉".repeat(20)),
+        )
+        .unwrap();
+        let root_path = root.to_string_lossy().to_string();
+        let indexed_paths = vec![root
+            .join("entry")
+            .join("src")
+            .join("Index.ets")
+            .to_string_lossy()
+            .to_string()];
+
+        let result = search_workspace_text(&request(&root_path, "target"), &indexed_paths);
+
+        assert_eq!(result.matches.len(), 1);
+        assert!(result.matches[0].summary.contains("target"));
 
         fs::remove_dir_all(root).unwrap();
     }

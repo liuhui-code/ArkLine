@@ -61,4 +61,45 @@ describe("workspace index store", () => {
       "C:\\samples\\ArkDemo\\AppScope\\app.json5",
     ]);
   });
+
+  it("queries search everywhere candidates across classes symbols and files", () => {
+    const store = createWorkspaceIndexStore();
+
+    store.replaceState({
+      status: "ready",
+      rootPath: "C:/samples/ArkDemo",
+      filePaths: ["C:/samples/ArkDemo/entry/src/main/ets/pages/LoginPage.ets"],
+      symbols: [
+        {
+          source: "class",
+          kind: "class",
+          name: "LoginController",
+          path: "C:/samples/ArkDemo/entry/src/main/ets/pages/LoginPage.ets",
+          line: 3,
+          column: 7,
+        },
+        {
+          source: "symbol",
+          kind: "method",
+          name: "submitLogin",
+          path: "C:/samples/ArkDemo/entry/src/main/ets/pages/LoginPage.ets",
+          line: 8,
+          column: 11,
+          container: "LoginController",
+        },
+      ],
+      indexedAt: 1,
+      partialReason: null,
+    });
+
+    expect(store.querySearchEverywhere("login", 8).map((candidate) => ({
+      source: candidate.source,
+      title: candidate.title,
+      line: candidate.line,
+    }))).toEqual([
+      { source: "class", title: "LoginController", line: 3 },
+      { source: "symbol", title: "submitLogin", line: 8 },
+      { source: "file", title: "LoginPage.ets", line: 1 },
+    ]);
+  });
 });

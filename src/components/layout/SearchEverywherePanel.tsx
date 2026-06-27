@@ -3,6 +3,7 @@ import type {
   WorkspaceTextSearchOptions,
   WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
+import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 type SearchEverywherePanelProps = {
   mode: SearchEverywhereMode;
@@ -10,6 +11,7 @@ type SearchEverywherePanelProps = {
   query: string;
   replaceQuery: string;
   result: WorkspaceTextSearchResult;
+  candidates: SearchCandidate[];
   selectedIndex: number;
   partialNotice?: string | null;
   onChangeQuery: (value: string) => void;
@@ -18,6 +20,7 @@ type SearchEverywherePanelProps = {
   onOpenSelected: () => void;
   onSelectResult: (index: number) => void;
   onOpenResult: (result: WorkspaceTextSearchMatch) => void;
+  onOpenCandidate: (candidate: SearchCandidate) => void;
   onToggleCaseSensitive: () => void;
   onToggleWholeWord: () => void;
   onCloseOverlay: () => void;
@@ -31,6 +34,7 @@ export function SearchEverywherePanel({
   query,
   replaceQuery,
   result,
+  candidates,
   selectedIndex,
   partialNotice,
   onChangeQuery,
@@ -39,6 +43,7 @@ export function SearchEverywherePanel({
   onOpenSelected,
   onSelectResult,
   onOpenResult,
+  onOpenCandidate,
   onToggleCaseSensitive,
   onToggleWholeWord,
   onCloseOverlay,
@@ -47,6 +52,7 @@ export function SearchEverywherePanel({
   const regexMode = result.query.kind === "regex" || result.query.kind === "invalid";
   const presentation = searchModePresentation(mode, regexMode);
   const groups = groupSearchMatches(result.matches);
+  const candidateGroups = groupSearchCandidates(candidates);
   const resultsLabel = `${presentation.title} Results`;
 
   return (
@@ -134,6 +140,51 @@ export function SearchEverywherePanel({
         </div>
       ) : null}
       {partialNotice ? <div className="search-everywhere__error" role="status">{partialNotice}</div> : null}
+      {mode === "searchEverywhere" ? (
+        <div className="search-everywhere__body">
+          <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel}>
+            {candidateGroups.map((group) => (
+              <section key={group.source} className="search-result-group" aria-label={`${group.label} ${group.items.length} results`}>
+                <div className="search-result-group__header">
+                  <div>
+                    <span className="search-result-group__file">{group.label}</span>
+                    <span className="search-result-group__path">{group.description}</span>
+                  </div>
+                  <span className="search-result-group__count">{group.items.length}</span>
+                </div>
+                <div className="search-result-group__matches">
+                  {group.items.map(({ item, index }) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`search-result search-result--match${index === selectedIndex ? " search-result--selected" : ""}`}
+                      aria-label={`${item.source} ${item.title} ${item.subtitle}`}
+                      aria-selected={index === selectedIndex}
+                      onMouseEnter={() => onSelectResult(index)}
+                      onClick={() => onOpenCandidate(item)}
+                    >
+                      <span className="search-result__location">{candidateLocation(item)}</span>
+                      <span className="search-result__preview">{item.title}</span>
+                      <span className="search-result__meta">{item.subtitle}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+            {candidates.length === 0 ? (
+              <div className="search-everywhere__empty">No matches</div>
+            ) : null}
+          </div>
+          <div className="search-everywhere__preview" aria-label="Search Everywhere Preview">
+            {candidates[selectedIndex] ? (
+              <div className="search-everywhere__preview-header">
+                <strong>{candidates[selectedIndex].title}</strong>
+                <span>{candidates[selectedIndex].subtitle}</span>
+              </div>
+            ) : <div className="search-everywhere__empty">Select a result to preview</div>}
+          </div>
+        </div>
+      ) : (
       <div className="search-everywhere__body">
         <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel}>
           {groups.map((group) => (
@@ -171,6 +222,7 @@ export function SearchEverywherePanel({
           {selected ? <SearchPreview match={selected} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
         </div>
       </div>
+      )}
     </div>
   );
 }
@@ -227,6 +279,46 @@ function groupSearchMatches(matches: WorkspaceTextSearchMatch[]) {
   });
 
   return groups;
+}
+
+function groupSearchCandidates(candidates: SearchCandidate[]) {
+  const order: SearchCandidate["source"][] = ["class", "symbol", "file", "action", "sdk", "text"];
+  return order
+    .map((source) => ({
+      source,
+      label: candidateGroupLabel(source),
+      description: candidateGroupDescription(source),
+      items: candidates
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.source === source),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+function candidateGroupLabel(source: SearchCandidate["source"]) {
+  if (source === "class") return "Classes";
+  if (source === "symbol") return "Symbols";
+  if (source === "file") return "Files";
+  if (source === "action") return "Actions";
+  if (source === "sdk") return "SDK";
+  return "Text";
+}
+
+function candidateGroupDescription(source: SearchCandidate["source"]) {
+  if (source === "class") return "types and ArkUI structs";
+  if (source === "symbol") return "functions and methods";
+  if (source === "file") return "workspace files";
+  if (source === "action") return "commands";
+  if (source === "sdk") return "SDK declarations";
+  return "content matches";
+}
+
+function candidateLocation(candidate: SearchCandidate) {
+  if (candidate.line && candidate.column) {
+    return `${candidate.line}:${candidate.column}`;
+  }
+
+  return candidate.kind;
 }
 
 function SearchPreview({ match }: { match: WorkspaceTextSearchMatch }) {

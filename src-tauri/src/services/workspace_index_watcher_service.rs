@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use notify::{recommended_watcher, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::normalize_path;
 use crate::services::workspace_service::should_exclude;
@@ -37,15 +38,27 @@ impl WorkspaceIndexWatcherRuntime {
                     return;
                 }
 
+                let changed_paths = event
+                    .paths
+                    .iter()
+                    .map(|path| path.to_string_lossy().to_string())
+                    .collect::<Vec<_>>();
+                let index_manager = callback_app.state::<WorkspaceIndexManagerRuntime>();
+                if index_manager
+                    .schedule_changed_paths(&callback_root_key, &changed_paths)
+                    .is_err()
+                {
+                    return;
+                }
                 let index_runtime = callback_app.state::<WorkspaceIndexRuntime>();
-                let Ok(result) =
-                    index_runtime.refresh_workspace_index_with_changes(&callback_root_key)
-                else {
+                let Ok(results) = index_manager.drain_index_tasks(&index_runtime) else {
                     return;
                 };
 
-                if result.changed {
-                    let _ = callback_app.emit(WORKSPACE_INDEX_CHANGED_EVENT, result);
+                for result in results {
+                    if result.changed {
+                        let _ = callback_app.emit(WORKSPACE_INDEX_CHANGED_EVENT, result);
+                    }
                 }
             })
             .map_err(|error| error.to_string())?;

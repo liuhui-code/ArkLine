@@ -57,7 +57,7 @@ import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/fe
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexRefreshResult, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
-import { createWorkspaceIndexStore, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
+import { createWorkspaceIndexStore, type SearchCandidate, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
 
@@ -189,6 +189,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     query: { kind: "text", query: "" },
     matches: [],
   });
+  const [searchEverywhereCandidates, setSearchEverywhereCandidates] = useState<SearchCandidate[]>([]);
   const [searchEverywhereSelectedIndex, setSearchEverywhereSelectedIndex] = useState(0);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [buildState, setBuildState] = useState(createBuildStore().state);
@@ -1413,7 +1414,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setCompletionSelectedIndex(position === "first" ? 0 : resultCount - 1);
   }
   function moveSearchEverywhereSelection(direction: 1 | -1) {
-    const resultCount = searchEverywhereResult.matches.length;
+    const resultCount = searchEverywhereMode === "searchEverywhere"
+      ? searchEverywhereCandidates.length
+      : searchEverywhereResult.matches.length;
     if (resultCount <= 0) {
       return;
     }
@@ -1428,7 +1431,28 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay("none");
     await navigateToLocation({ path, line, column }, "Usage");
   }
+  async function openSearchEverywhereCandidate(candidate: SearchCandidate) {
+    if (!candidate.path) {
+      return;
+    }
+
+    rememberCurrentLocation();
+    setActiveOverlay("none");
+    await navigateToLocation({
+      path: candidate.path,
+      line: candidate.line ?? 1,
+      column: candidate.column ?? 1,
+    }, "Usage");
+  }
   async function openSelectedSearchEverywhereResult() {
+    if (searchEverywhereMode === "searchEverywhere") {
+      const selectedCandidate = searchEverywhereCandidates[searchEverywhereSelectedIndex];
+      if (selectedCandidate) {
+        await openSearchEverywhereCandidate(selectedCandidate);
+      }
+      return;
+    }
+
     const selected = searchEverywhereResult.matches[searchEverywhereSelectedIndex];
     if (!selected) {
       return;
@@ -1815,6 +1839,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     searchEverywhereRequestRef.current = requestId;
 
     if (!workspace) {
+      setSearchEverywhereCandidates([]);
       setSearchEverywhereResult({
         query: { kind: "text", query: quickOpenQuery.trim() },
         matches: [],
@@ -1823,6 +1848,27 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
 
+    if (searchEverywhereMode === "searchEverywhere") {
+      const indexRequest = workspaceApi.queryWorkspaceSearchEverywhere
+        ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, quickOpenQuery, 24)
+        : Promise.resolve(workspaceIndexRef.current.querySearchEverywhere(quickOpenQuery, 24));
+
+      void indexRequest.then((candidates) => {
+        if (searchEverywhereRequestRef.current !== requestId) {
+          return;
+        }
+
+        setSearchEverywhereCandidates(candidates);
+        setSearchEverywhereResult({
+          query: { kind: "text", query: quickOpenQuery.trim() },
+          matches: [],
+        });
+        setSearchEverywhereSelectedIndex(0);
+      });
+      return;
+    }
+
+    setSearchEverywhereCandidates([]);
     const paths = workspaceIndexRef.current.getTextSearchPaths();
     const hasDirtyDocuments = documentsRef.current.getDocuments().some((document) => document.isDirty);
     const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -1866,7 +1912,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setSearchEverywhereResult(result);
       setSearchEverywhereSelectedIndex(0);
     });
-  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereOptions, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
+  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereMode, searchEverywhereOptions, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
 
   const shellHotkeyContext = useMemo(() => ({
     completionOpen: activeOverlay === "completion",
@@ -2096,7 +2142,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       ) : null}
       {overlayVisible ? (
         <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
-          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} workspacePartialNotice={workspacePartialNotice} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
+          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereCandidates={searchEverywhereCandidates} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} workspacePartialNotice={workspacePartialNotice} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenSearchEverywhereCandidate={(candidate) => void openSearchEverywhereCandidate(candidate)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
       ) : null}
       {projectMutationDialog ? (

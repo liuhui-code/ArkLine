@@ -6,6 +6,7 @@ import type {
   WorkspaceTextSearchOptions,
   WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
+import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 type SearchOverlayContentProps = {
   activeOverlay: OverlayKey;
@@ -18,12 +19,14 @@ type SearchOverlayContentProps = {
   searchEverywhereMode: SearchEverywhereMode;
   searchEverywhereReplaceQuery: string;
   searchEverywhereResult: WorkspaceTextSearchResult;
+  searchEverywhereCandidates: SearchCandidate[];
   searchEverywhereSelectedIndex: number;
   workspacePartialNotice: string | null;
   onChangeQuery: (value: string) => void;
   onChangeSearchEverywhereReplaceQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
   onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
+  onOpenSearchEverywhereCandidate: (candidate: SearchCandidate) => void;
   onOpenProject: (path: string) => void;
   onMoveSearchEverywhereSelection: (direction: 1 | -1) => void;
   onOpenSelectedSearchEverywhereResult: () => void;
@@ -45,12 +48,14 @@ export function SearchOverlayContent({
   searchEverywhereMode,
   searchEverywhereReplaceQuery,
   searchEverywhereResult,
+  searchEverywhereCandidates,
   searchEverywhereSelectedIndex,
   workspacePartialNotice,
   onChangeQuery,
   onChangeSearchEverywhereReplaceQuery,
   onOpenFile,
   onOpenSearchEverywhereResult,
+  onOpenSearchEverywhereCandidate,
   onOpenProject,
   onMoveSearchEverywhereSelection,
   onOpenSelectedSearchEverywhereResult,
@@ -186,6 +191,7 @@ export function SearchOverlayContent({
         query={quickOpenQuery}
         replaceQuery={searchEverywhereReplaceQuery}
         result={searchEverywhereResult}
+        candidates={searchEverywhereCandidates}
         selectedIndex={searchEverywhereSelectedIndex}
         partialNotice={workspacePartialNotice}
         onChangeQuery={onChangeQuery}
@@ -194,6 +200,7 @@ export function SearchOverlayContent({
         onOpenSelected={onOpenSelectedSearchEverywhereResult}
         onSelectResult={onSelectSearchEverywhereResult}
         onOpenResult={onOpenSearchEverywhereResult}
+        onOpenCandidate={onOpenSearchEverywhereCandidate}
         onToggleCaseSensitive={onToggleSearchEverywhereCaseSensitive}
         onToggleWholeWord={onToggleSearchEverywhereWholeWord}
         onCloseOverlay={onCloseOverlay}
