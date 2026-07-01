@@ -174,6 +174,7 @@ fn to_candidate(
     query_terms: &SdkQueryTerms,
 ) -> Option<WorkspaceSearchCandidate> {
     let score = score_sdk_symbol(&symbol, query_terms)?;
+    let container = symbol.container.clone();
     Some(WorkspaceSearchCandidate {
         id: format!("api:{}:{}:{}", symbol.path, symbol.line, symbol.column),
         source: "api".to_string(),
@@ -188,6 +189,9 @@ fn to_candidate(
         column: Some(symbol.column),
         score,
         freshness: "ready".to_string(),
+        container,
+        signature: symbol.signature,
+        visibility: None,
     })
 }
 

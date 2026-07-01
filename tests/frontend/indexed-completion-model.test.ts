@@ -27,7 +27,7 @@ describe("indexed completion model", () => {
   it("converts indexed methods into callable completion items with definition targets", () => {
     expect(candidateToCompletionItem(candidate(), "workspace")).toEqual({
       label: "build()",
-      detail: "Indexed method",
+      detail: "Indexed · method · /workspace/src/main.ets:4",
       kind: "method",
       insertText: "build()",
       filterText: "build",
@@ -39,9 +39,21 @@ describe("indexed completion model", () => {
   it("marks current-file candidates so presentation can rank them ahead of workspace symbols", () => {
     expect(candidateToCompletionItem(candidate({ kind: "class", title: "Index" }), "currentFile")).toMatchObject({
       label: "Index",
-      detail: "Current file class",
+      detail: "Current file · class · /workspace/src/main.ets:4",
       kind: "class",
       filterText: "Index",
+    });
+  });
+
+  it("includes stub signature, container, and visibility in completion detail", () => {
+    expect(candidateToCompletionItem(candidate({
+      title: "loadUser",
+      container: "UserService",
+      visibility: "private",
+      signature: "private async loadUser(id: string): User",
+    }), "currentFile")).toMatchObject({
+      label: "loadUser()",
+      detail: "Current file · private · method · in UserService · private async loadUser(id: string): User · /workspace/src/main.ets:4",
     });
   });
 
@@ -53,9 +65,11 @@ describe("indexed completion model", () => {
       path: "/sdk/ets/component/common.d.ts",
       line: 20927,
       column: 5,
+      container: "TextAttribute",
+      signature: "width(value: Length): TextAttribute",
     }))).toMatchObject({
       label: "width()",
-      detail: "Indexed API method",
+      detail: "Indexed API · method · in TextAttribute · width(value: Length): TextAttribute · /sdk/ets/component/common.d.ts:20927",
       source: "sdk",
       definitionTarget: { path: "/sdk/ets/component/common.d.ts", line: 20927, column: 5 },
     });

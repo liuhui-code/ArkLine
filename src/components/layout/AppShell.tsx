@@ -12,6 +12,7 @@ import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow, type GitToolView } from "@/components/layout/GitToolWindow";
 import { GitTracePanel } from "@/components/layout/GitTracePanel";
+import { IndexExplainPanel } from "@/components/layout/IndexExplainPanel";
 import { candidateToCurrentClassMethod } from "@/components/layout/indexed-completion-model";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
@@ -58,7 +59,7 @@ import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
-import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexQueryScope, type WorkspaceIndexRefreshResult, type WorkspaceIndexTaskStatus, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexExplainResult, type WorkspaceIndexQueryScope, type WorkspaceIndexRefreshResult, type WorkspaceIndexTaskStatus, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import { createWorkspaceIndexStore, type SearchCandidate, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
@@ -68,6 +69,13 @@ type AppShellProps = { workspaceApi?: WorkspaceApi };
 type NavigationLocation = { path: string; line: number; column: number };
 type CompletionSession = { path: string; line: number; replacePrefix: string };
 type CodeActionsStatus = "loading" | "ready" | "empty" | "error";
+type IndexExplainContext = {
+  kind: "search" | "definition" | "symbol" | "completion" | "api";
+  query: string;
+  path?: string;
+  line?: number;
+  column?: number;
+};
 type ProjectMutationDialogState =
   | { kind: "newFile"; parentPath: string; name: string }
   | { kind: "newDirectory"; parentPath: string; name: string };
@@ -254,6 +262,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [completionSession, setCompletionSession] = useState<CompletionSession | null>(null);
   const [usageSearch, setUsageSearch] = useState<UsageSearchState>(idleUsageSearchState());
   const [queryPanelVisible, setQueryPanelVisible] = useState(false);
+  const [latestExplainResult, setLatestExplainResult] = useState<WorkspaceIndexExplainResult | null>(null);
+  const [latestExplainContext, setLatestExplainContext] = useState<IndexExplainContext | null>(null);
+  const [indexExplainPanelVisible, setIndexExplainPanelVisible] = useState(false);
   const [gitToolView, setGitToolView] = useState<GitToolView>("changes");
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
@@ -805,7 +816,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText("SDK settings are still applying");
       return;
     }
-    if (!activePath || !workspaceApi.gotoDefinition) {
+    if (!activePath || (!workspaceApi.gotoDefinition && !workspaceApi.queryDefinitionCandidatesWithReadiness)) {
       if (source === "modifierClick") setDefinitionDebug("Ctrl+Click reached AppShell, but definition lookup is unavailable for the current workspace.");
       setStatusText("Go to Definition unavailable");
       return;
@@ -822,6 +833,81 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     );
     if (source === "modifierClick") {
       setDefinitionDebug(`Ctrl+Click query fired at ${getPathBasename(activePath)}:${request.line}:${request.column}. Waiting for language lookup...`);
+    }
+    if (workspace?.rootPath && workspaceApi.queryDefinitionCandidatesWithReadiness) {
+      const envelope = await workspaceApi.queryDefinitionCandidatesWithReadiness(workspace.rootPath, request);
+      const readinessState = envelope.readiness.state;
+      if (readinessState === "blocked") {
+        const message = envelope.readiness.reason ?? "Definition lookup is blocked while the index is preparing.";
+        if (source === "modifierClick") setDefinitionDebug(`Ctrl+Click blocked: ${message}`);
+        setStatusText(`Go to Definition blocked: ${message}`);
+        return;
+      }
+      const canUseCandidate = readinessState === "ready" || envelope.items.length === 1;
+      if (envelope.items.length > 1 && canUseCandidate) {
+        openEditorQueryPanel();
+        setUsageSearch({
+          status: "ready",
+          items: envelope.items.map((item) => ({
+            path: item.path,
+            line: item.line,
+            column: item.column,
+            preview: item.preview,
+          })),
+          requestedSymbol: request,
+          message: readinessState === "ready" ? undefined : `Index is ${readinessState}; choose an exact definition candidate.`,
+        });
+        setStatusText(`Definition candidates: ${envelope.items.length}`);
+        if (source === "modifierClick") {
+          setDefinitionDebug(`Ctrl+Click found ${envelope.items.length} indexed definition candidates. Choose one from the editor query panel.`);
+        }
+        return;
+      }
+      if (envelope.items.length === 1 && canUseCandidate) {
+        const indexedTarget = envelope.items[0];
+        rememberCurrentLocation();
+        if (normalizePath(indexedTarget.path) !== normalizePath(activePath)) await openFile(indexedTarget.path);
+        setSelectionTarget({
+          line: indexedTarget.line,
+          column: indexedTarget.column,
+          nonce: Date.now(),
+        });
+        setEditorFocusToken((token) => token + 1);
+        setStatusText(
+          `Definition: ${getPathBasename(indexedTarget.path)}:${indexedTarget.line}:${indexedTarget.column}`,
+        );
+        if (source === "modifierClick") {
+          const freshness = readinessState === "ready" ? "Index" : `Index (${readinessState})`;
+          setDefinitionDebug(
+            `${freshness} resolved Ctrl+Click to ${getPathBasename(indexedTarget.path)}:${indexedTarget.line}:${indexedTarget.column}.`,
+          );
+        }
+        focusEditorSoon();
+        return;
+      }
+      if ((readinessState === "partial" || readinessState === "stale") && envelope.items.length > 1) {
+        const message = `Go to Definition has ${envelope.items.length} ${readinessState} candidates; wait for the index to refresh.`;
+        if (source === "modifierClick") setDefinitionDebug(message);
+        setStatusText(message);
+        return;
+      }
+    }
+    if (!workspaceApi.gotoDefinition) {
+      const missPrefix = source === "modifierClick" ? "Ctrl+Click" : "Go to Definition";
+      let missMessage = `${missPrefix} miss: indexed definition lookup returned no target`;
+      const explanation = await explainIndexMiss(
+        "definition",
+        `${getPathBasename(activePath)}:${request.line}:${request.column}`,
+        activePath,
+        request.line,
+        request.column,
+      );
+      if (explanation) {
+        missMessage = `${missPrefix} miss: ${explanation}`;
+      }
+      setDefinitionDebug(missMessage);
+      setStatusText(missMessage);
+      return;
     }
     const target = await workspaceApi.gotoDefinition(request);
     const semanticCandidates = target || !workspaceApi.gotoDefinitionCandidates
@@ -901,7 +987,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       if (explanation) {
         missMessage = `${missPrefix} miss: ${explanation}`;
       }
-      if (source === "modifierClick") setDefinitionDebug(missMessage);
+      setDefinitionDebug(missMessage);
       setStatusText(missMessage);
       return;
     }
@@ -1866,10 +1952,47 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         line: line ?? null,
         column: column ?? null,
       });
+      setLatestExplainResult(explain);
+      setLatestExplainContext({ kind, query, path, line, column });
       return formatIndexExplainMessage(explain);
     } catch {
       return null;
     }
+  }
+
+  async function rebuildIndexFromExplainPanel() {
+    if (!workspace?.rootPath || !workspaceApi.rebuildWorkspaceIndex) {
+      setStatusText("Rebuild Index unavailable");
+      return;
+    }
+    await workspaceApi.rebuildWorkspaceIndex(workspace.rootPath);
+    setStatusText("Rebuild Index requested");
+  }
+
+  async function openSettingsFromExplainPanel() {
+    setIndexExplainPanelVisible(false);
+    await openSettings();
+  }
+
+  function retryLatestExplainQuery() {
+    const context = latestExplainContext;
+    setIndexExplainPanelVisible(false);
+    if (!context) {
+      return;
+    }
+    if (context.kind === "definition") {
+      void goToDefinitionFromEditor(
+        context.line && context.column ? { line: context.line, column: context.column } : undefined,
+        "keyboard",
+      );
+      return;
+    }
+    if (context.kind === "search") {
+      setQuickOpenQuery(context.query);
+      openSearchOverlay("searchEverywhere");
+      return;
+    }
+    setStatusText(`Retry Query: ${context.query}`);
   }
 
   async function applySettings(nextSettings: AppSettings) {
@@ -2455,8 +2578,25 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         className={`definition-debug-banner${definitionDebugText ? " definition-debug-banner--visible" : ""}`}
         hidden={!definitionDebugText}
       >
-        {definitionDebugText}
+        <button
+          type="button"
+          className="definition-debug-banner__button"
+          disabled={!latestExplainResult}
+          onClick={() => setIndexExplainPanelVisible(true)}
+        >
+          {definitionDebugText}
+        </button>
       </div>
+      {indexExplainPanelVisible && latestExplainResult ? (
+        <IndexExplainPanel
+          result={latestExplainResult}
+          query={latestExplainContext?.query ?? ""}
+          onClose={() => setIndexExplainPanelVisible(false)}
+          onRebuildIndex={() => void rebuildIndexFromExplainPanel()}
+          onOpenSettings={() => void openSettingsFromExplainPanel()}
+          onRetryQuery={retryLatestExplainQuery}
+        />
+      ) : null}
       <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} semanticCapability={semanticCapability} statusText={statusText} workspaceName={workspace?.rootName ?? null} workspaceScanText={workspaceScanText} workspaceIndexText={workspaceIndexText} sdkIndexText={sdkIndexText} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
     </div>
   );

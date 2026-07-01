@@ -85,6 +85,10 @@ pub struct WorkspaceIndexedSymbol {
     pub column: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub container: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -165,6 +169,12 @@ pub struct WorkspaceSearchCandidate {
     pub column: Option<usize>,
     pub score: f64,
     pub freshness: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -265,10 +275,17 @@ pub struct WorkspaceIndexDiagnostics {
     pub symbol_count: i64,
     pub content_line_count: i64,
     pub fingerprint_count: i64,
+    pub stub_file_count: i64,
+    pub stub_declaration_count: i64,
+    pub dependency_edge_count: i64,
+    pub unresolved_import_count: i64,
+    pub parser_error_count: i64,
+    pub stale_generation_count: i64,
     pub sdk_symbol_count: i64,
     pub active_sdk_path: Option<String>,
     pub active_sdk_version: Option<String>,
     pub last_error: Option<String>,
+    pub last_explain_status: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

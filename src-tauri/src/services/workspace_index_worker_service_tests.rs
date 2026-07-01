@@ -224,3 +224,109 @@ fn worker_keeps_batch_tasks_for_different_roots_independent() {
     fs::remove_dir_all(first_root).unwrap();
     fs::remove_dir_all(second_root).unwrap();
 }
+
+#[test]
+fn worker_changed_paths_reindexes_reverse_dependencies() {
+    let root = create_empty_workspace("worker-dependency-expansion");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    let page_dir = source_dir.join("pages");
+    let model_dir = source_dir.join("model");
+    fs::create_dir_all(&page_dir).unwrap();
+    fs::create_dir_all(&model_dir).unwrap();
+    let profile_file = page_dir.join("Profile.ets");
+    let user_file = model_dir.join("User.ets");
+    fs::write(
+        &profile_file,
+        "import { User } from \"../model/User\";\nstruct ProfilePage {}\n",
+    )
+    .unwrap();
+    fs::write(&user_file, "export class User {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let sqlite_path = root
+        .join(".arkline")
+        .join("index")
+        .join("workspace-catalog.sqlite");
+    install_profile_delete_probe(
+        &sqlite_path,
+        &profile_file.to_string_lossy().replace('/', "\\"),
+    );
+    fs::write(&user_file, "export class User { name: string }\n").unwrap();
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Normal,
+        changed_paths: vec![user_file.to_string_lossy().to_string()],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 3,
+        reason: "watcher".to_string(),
+    };
+
+    let results = run_index_tasks(&runtime, vec![task], |_| Ok(())).unwrap();
+
+    assert_eq!(results[0].status, "ready");
+    assert_eq!(profile_delete_probe_count(&sqlite_path), 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn worker_config_change_runs_config_change_refresh() {
+    let root = create_empty_workspace("worker-config-change");
+    let config_path = root.join("oh-package.json5");
+    fs::write(&config_path, "{ name: \"demo\" }\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::write(&config_path, "{ name: \"demo-next\" }\n").unwrap();
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Normal,
+        changed_paths: vec![config_path.to_string_lossy().to_string()],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 4,
+        reason: "watcher".to_string(),
+    };
+
+    let results = run_index_tasks(&runtime, vec![task], |_| Ok(())).unwrap();
+
+    assert_eq!(results[0].kind, "config-change");
+    assert_eq!(results[0].reason, "config-change");
+    assert_eq!(results[0].status, "ready");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn install_profile_delete_probe(sqlite_path: &std::path::Path, profile_path: &str) {
+    let connection = rusqlite::Connection::open(sqlite_path).unwrap();
+    connection
+        .execute("create table profile_delete_probe (name text not null)", [])
+        .unwrap();
+    connection
+        .execute(
+            &format!(
+                "create trigger profile_delete_probe_trigger
+                 before delete on workspace_stub_declarations
+                 when old.path = '{}' and old.name = 'ProfilePage'
+                 begin
+                    insert into profile_delete_probe (name) values (old.name);
+                 end",
+                profile_path.replace('\'', "''"),
+            ),
+            [],
+        )
+        .unwrap();
+}
+
+fn profile_delete_probe_count(sqlite_path: &std::path::Path) -> i64 {
+    rusqlite::Connection::open(sqlite_path)
+        .unwrap()
+        .query_row("select count(*) from profile_delete_probe", [], |row| {
+            row.get(0)
+        })
+        .unwrap()
+}

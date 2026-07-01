@@ -9,6 +9,7 @@ mod commands {
     pub mod terminal;
     pub mod windowing;
     pub mod workspace;
+    pub mod workspace_definition;
     pub mod workspace_index;
 }
 
@@ -37,17 +38,22 @@ mod services {
     pub mod terminal_service;
     pub mod terminal_session_service;
     pub mod validation_service;
+    pub mod workspace_arkts_stub_parser_service;
+    #[cfg(test)]
+    mod workspace_arkts_stub_parser_service_tests;
     pub mod workspace_content_index_service;
     #[cfg(test)]
     mod workspace_content_index_service_tests;
     pub mod workspace_content_query_service;
-    pub mod workspace_arkts_stub_parser_service;
+    pub mod workspace_dependency_graph_service;
     #[cfg(test)]
-    mod workspace_arkts_stub_parser_service_tests;
+    mod workspace_dependency_graph_service_tests;
     pub mod workspace_edit_service;
     pub mod workspace_file_fingerprint_service;
     #[cfg(test)]
     mod workspace_file_fingerprint_service_tests;
+    #[cfg(test)]
+    mod workspace_index_dependency_expansion_service_tests;
     pub mod workspace_index_diagnostics_service;
     #[cfg(test)]
     mod workspace_index_diagnostics_service_tests;
@@ -69,11 +75,11 @@ mod services {
     #[cfg(test)]
     mod workspace_index_manager_service_tests;
     pub mod workspace_index_persistence_service;
+    #[cfg(test)]
+    mod workspace_index_query_scope_service_tests;
     pub mod workspace_index_query_service;
     #[cfg(test)]
     mod workspace_index_query_service_tests;
-    #[cfg(test)]
-    mod workspace_index_query_scope_service_tests;
     pub mod workspace_index_readiness_service;
     #[cfg(test)]
     mod workspace_index_readiness_service_tests;
@@ -147,6 +153,7 @@ pub fn run() {
             commands::workspace::query_workspace_candidates_with_readiness,
             commands::workspace::query_workspace_file_symbols,
             commands::workspace::query_workspace_file_symbols_with_readiness,
+            commands::workspace_definition::query_definition_candidates_with_readiness,
             commands::workspace::update_workspace_index_files,
             commands::workspace::refresh_workspace_index,
             commands::workspace::refresh_workspace_index_with_changes,

@@ -41,11 +41,46 @@ fn query_facade_filters_candidates_by_ide_scope() {
     runtime.refresh_workspace_index(&root_path).unwrap();
     index_workspace_sdk_symbols(&root_path, &sdk_path, "test-sdk").unwrap();
 
-    let files = query_workspace_candidates(&runtime, &root_path, "login", WorkspaceIndexQueryScope::Files, 8).unwrap();
-    let classes = query_workspace_candidates(&runtime, &root_path, "login", WorkspaceIndexQueryScope::Classes, 8).unwrap();
-    let symbols = query_workspace_candidates(&runtime, &root_path, "login", WorkspaceIndexQueryScope::Symbols, 8).unwrap();
-    let apis = query_workspace_candidates(&runtime, &root_path, "login", WorkspaceIndexQueryScope::Apis, 8).unwrap();
-    let all = query_workspace_candidates(&runtime, &root_path, "login", WorkspaceIndexQueryScope::All, 8).unwrap();
+    let files = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "login",
+        WorkspaceIndexQueryScope::Files,
+        8,
+    )
+    .unwrap();
+    let classes = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "login",
+        WorkspaceIndexQueryScope::Classes,
+        8,
+    )
+    .unwrap();
+    let symbols = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "login",
+        WorkspaceIndexQueryScope::Symbols,
+        8,
+    )
+    .unwrap();
+    let apis = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "login",
+        WorkspaceIndexQueryScope::Apis,
+        8,
+    )
+    .unwrap();
+    let all = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "login",
+        WorkspaceIndexQueryScope::All,
+        8,
+    )
+    .unwrap();
 
     assert!(files.iter().all(|candidate| candidate.source == "file"));
     assert!(classes.iter().all(|candidate| candidate.source == "class"));
@@ -103,18 +138,56 @@ fn query_facade_reads_file_and_symbol_scopes_from_restored_sqlite_index() {
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
-    WorkspaceIndexRuntime::default().refresh_workspace_index(&root_path).unwrap();
-    sqlite_connection(&root).execute("delete from workspace_symbols", []).unwrap();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    sqlite_connection(&root)
+        .execute("delete from workspace_symbols", [])
+        .unwrap();
     let runtime = WorkspaceIndexRuntime::default();
 
-    let files = query_workspace_candidates(&runtime, &root_path, "restored", WorkspaceIndexQueryScope::Files, 8).unwrap();
-    let classes = query_workspace_candidates(&runtime, &root_path, "restored", WorkspaceIndexQueryScope::Classes, 8).unwrap();
-    let symbols = query_workspace_candidates(&runtime, &root_path, "restored", WorkspaceIndexQueryScope::Symbols, 8).unwrap();
-    let all = query_workspace_candidates(&runtime, &root_path, "restored", WorkspaceIndexQueryScope::All, 8).unwrap();
+    let files = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "restored",
+        WorkspaceIndexQueryScope::Files,
+        8,
+    )
+    .unwrap();
+    let classes = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "restored",
+        WorkspaceIndexQueryScope::Classes,
+        8,
+    )
+    .unwrap();
+    let symbols = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "restored",
+        WorkspaceIndexQueryScope::Symbols,
+        8,
+    )
+    .unwrap();
+    let all = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "restored",
+        WorkspaceIndexQueryScope::All,
+        8,
+    )
+    .unwrap();
 
-    assert!(files.iter().any(|candidate| candidate.source == "file" && candidate.title == "RestoredLogin.ets"));
-    assert!(classes.iter().any(|candidate| candidate.source == "class" && candidate.title == "RestoredLoginController"));
-    assert!(symbols.iter().any(|candidate| candidate.source == "symbol" && candidate.title == "restoredLoginAction"));
+    assert!(files
+        .iter()
+        .any(|candidate| candidate.source == "file" && candidate.title == "RestoredLogin.ets"));
+    assert!(classes.iter().any(
+        |candidate| candidate.source == "class" && candidate.title == "RestoredLoginController"
+    ));
+    assert!(symbols
+        .iter()
+        .any(|candidate| candidate.source == "symbol" && candidate.title == "restoredLoginAction"));
     assert!(all.iter().any(|candidate| candidate.source == "file"));
     assert!(all.iter().any(|candidate| candidate.source == "class"));
     assert!(all.iter().any(|candidate| candidate.source == "symbol"));
@@ -133,16 +206,40 @@ fn query_facade_reads_class_and_symbol_scopes_from_stub_declarations() {
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
-    WorkspaceIndexRuntime::default().refresh_workspace_index(&root_path).unwrap();
-    sqlite_connection(&root).execute("delete from workspace_symbols", []).unwrap();
-    sqlite_connection(&root).execute("delete from workspace_symbol_entities", []).unwrap();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    sqlite_connection(&root)
+        .execute("delete from workspace_symbols", [])
+        .unwrap();
+    sqlite_connection(&root)
+        .execute("delete from workspace_symbol_entities", [])
+        .unwrap();
     let runtime = WorkspaceIndexRuntime::default();
 
-    let classes = query_workspace_candidates(&runtime, &root_path, "stubquery", WorkspaceIndexQueryScope::Classes, 8).unwrap();
-    let symbols = query_workspace_candidates(&runtime, &root_path, "stubquery", WorkspaceIndexQueryScope::Symbols, 8).unwrap();
+    let classes = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "stubquery",
+        WorkspaceIndexQueryScope::Classes,
+        8,
+    )
+    .unwrap();
+    let symbols = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "stubquery",
+        WorkspaceIndexQueryScope::Symbols,
+        8,
+    )
+    .unwrap();
 
-    assert!(classes.iter().any(|candidate| candidate.source == "class" && candidate.title == "StubQueryPage"));
-    assert!(symbols.iter().any(|candidate| candidate.source == "symbol" && candidate.title == "stubQueryAction"));
+    assert!(classes
+        .iter()
+        .any(|candidate| candidate.source == "class" && candidate.title == "StubQueryPage"));
+    assert!(symbols
+        .iter()
+        .any(|candidate| candidate.source == "symbol" && candidate.title == "stubQueryAction"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -158,9 +255,15 @@ fn query_facade_falls_back_to_symbol_entities_when_stub_rows_are_missing() {
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
-    WorkspaceIndexRuntime::default().refresh_workspace_index(&root_path).unwrap();
-    sqlite_connection(&root).execute("delete from workspace_stub_declarations", []).unwrap();
-    sqlite_connection(&root).execute("delete from workspace_stub_files", []).unwrap();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    sqlite_connection(&root)
+        .execute("delete from workspace_stub_declarations", [])
+        .unwrap();
+    sqlite_connection(&root)
+        .execute("delete from workspace_stub_files", [])
+        .unwrap();
     let runtime = WorkspaceIndexRuntime::default();
 
     let symbols = query_workspace_candidates(

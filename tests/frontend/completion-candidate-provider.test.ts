@@ -25,6 +25,19 @@ function workspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi {
   } as WorkspaceApi;
 }
 
+function envelope(items: SearchCandidate[], state: "ready" | "partial" | "stale" = "ready") {
+  return {
+    items,
+    readiness: {
+      rootPath: "/workspace",
+      requestedGeneration: 1,
+      servedGeneration: 1,
+      state,
+      retryable: state !== "ready",
+    },
+  };
+}
+
 const baseRequest = {
   rootPath: "/workspace",
   path: "/workspace/src/main.ets",
@@ -55,6 +68,58 @@ describe("completion candidate provider", () => {
       "PrivateProfile",
       "private",
     ]);
+  });
+
+  it("uses readiness-envelope APIs when available", async () => {
+    const queryWorkspaceFileSymbols = vi.fn(async () => [candidate({ title: "legacyLocal" })]);
+    const queryWorkspaceCandidates = vi.fn(async () => [candidate({ title: "LegacyWorkspace" })]);
+    const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => envelope([candidate({ title: "localBuild" })]));
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => envelope([
+      candidate({ source: "class", kind: "class", title: "PrivateProfile" }),
+    ]));
+    const api = workspaceApi({
+      queryWorkspaceFileSymbols,
+      queryWorkspaceCandidates,
+      queryWorkspaceFileSymbolsWithReadiness,
+      queryWorkspaceCandidatesWithReadiness,
+    });
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "pri",
+      replacePrefix: "pri",
+    });
+
+    expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalled();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalled();
+    expect(queryWorkspaceFileSymbols).not.toHaveBeenCalled();
+    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
+    expect(items.map((item) => item.label)).toEqual([
+      "semanticBuild()",
+      "localBuild()",
+      "PrivateProfile",
+      "private",
+    ]);
+  });
+
+  it("hides stale indexed completions when semantic completion has an exact match", async () => {
+    const api = workspaceApi({
+      completeSymbol: async () => [{ label: "build()", detail: "Semantic method", kind: "method", source: "arkts" }],
+      queryWorkspaceFileSymbolsWithReadiness: async () => envelope([candidate({ title: "build", freshness: "stale" })], "stale"),
+      queryWorkspaceCandidatesWithReadiness: async () => envelope([
+        candidate({ source: "class", kind: "class", title: "BuildProfile", freshness: "stale" }),
+      ], "stale"),
+    });
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "build",
+      replacePrefix: "build",
+    });
+
+    expect(items.map((item) => item.label)).toEqual(["build()"]);
   });
 
   it("does not query workspace-wide symbols without a prefix", async () => {

@@ -21,12 +21,23 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         symbol_count: count_rows(&connection, "workspace_symbols", &root_key)?,
         content_line_count: count_rows(&connection, "workspace_content_lines", &root_key)?,
         fingerprint_count: count_rows(&connection, "workspace_file_fingerprints", &root_key)?,
+        stub_file_count: count_rows(&connection, "workspace_stub_files", &root_key)?,
+        stub_declaration_count: count_rows(&connection, "workspace_stub_declarations", &root_key)?,
+        dependency_edge_count: count_rows(&connection, "workspace_dependency_edges", &root_key)?,
+        unresolved_import_count: count_rows(
+            &connection,
+            "workspace_unresolved_imports",
+            &root_key,
+        )?,
+        parser_error_count: count_rows(&connection, "workspace_stub_parse_errors", &root_key)?,
+        stale_generation_count: count_stale_generations(&connection, &root_key)?,
         sdk_symbol_count: count_sdk_symbols(&connection, &root_key, active_sdk.as_ref())?,
         active_sdk_path: active_sdk
             .as_ref()
             .map(|metadata| denormalize_index_path(&metadata.sdk_path)),
         active_sdk_version: active_sdk.map(|metadata| metadata.sdk_version),
         last_error: None,
+        last_explain_status: None,
     })
 }
 
@@ -80,6 +91,18 @@ fn count_sdk_symbols(
              from workspace_sdk_symbols
              where root_path = ?1 and sdk_path = ?2 and sdk_version = ?3",
             params![root_key, active_sdk.sdk_path, active_sdk.sdk_version],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn count_stale_generations(connection: &Connection, root_key: &str) -> Result<i64, String> {
+    connection
+        .query_row(
+            "select count(*)
+             from workspace_index_task_journal
+             where root_path = ?1 and status = 'stale'",
+            params![root_key],
             |row| row.get(0),
         )
         .map_err(|error| error.to_string())

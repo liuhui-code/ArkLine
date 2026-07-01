@@ -44,7 +44,12 @@ fn explains_excluded_paths_before_touching_index_rows() {
     let result = explain_workspace_index_query(&request(
         &root,
         "symbol",
-        Some(root.join("node_modules").join("pkg.ets").to_string_lossy().to_string()),
+        Some(
+            root.join("node_modules")
+                .join("pkg.ets")
+                .to_string_lossy()
+                .to_string(),
+        ),
     ))
     .unwrap();
 

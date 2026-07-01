@@ -72,4 +72,20 @@ describe("workspace api", () => {
     expect(unlisten).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith("unwatch_workspace_index", { rootPath: "C:/samples/DemoWorkspace" });
   });
+
+  it("returns complete fallback diagnostics outside the desktop runtime", async () => {
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+    const diagnostics = await defaultWorkspaceApi.inspectWorkspaceIndex?.("C:/samples/DemoWorkspace");
+
+    expect(diagnostics).toMatchObject({
+      stubFileCount: 0,
+      stubDeclarationCount: 0,
+      dependencyEdgeCount: 0,
+      unresolvedImportCount: 0,
+      parserErrorCount: 0,
+      staleGenerationCount: 0,
+      lastExplainStatus: null,
+    });
+  });
 });

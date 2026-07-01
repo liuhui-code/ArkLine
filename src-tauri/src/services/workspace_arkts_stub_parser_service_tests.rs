@@ -19,7 +19,12 @@ function bootstrap() {}
     let names = stub
         .declarations
         .iter()
-        .map(|declaration| (declaration.kind.as_str(), declaration.qualified_name.as_str()))
+        .map(|declaration| {
+            (
+                declaration.kind.as_str(),
+                declaration.qualified_name.as_str(),
+            )
+        })
         .collect::<Vec<_>>();
 
     assert!(names.contains(&("struct", "Index")));
@@ -56,7 +61,10 @@ export class UserService {
         .expect("method declaration");
     assert_eq!(method.visibility.as_deref(), Some("private"));
     assert_eq!(method.modifiers, vec!["private", "async"]);
-    assert_eq!(method.signature, "private async loadUser(id: string): Promise<User>");
+    assert_eq!(
+        method.signature,
+        "private async loadUser(id: string): Promise<User>"
+    );
 
     let property = stub
         .declarations

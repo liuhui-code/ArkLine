@@ -1,8 +1,4 @@
-#![allow(dead_code)]
-
-use crate::models::workspace::{
-    ArkTsDeclarationStub, ArkTsExportStub, ArkTsFileStub, ArkTsImportStub, ArkTsParseError,
-};
+use crate::models::workspace::*;
 
 const DECLARATION_KEYWORDS: &[&str] = &["struct", "class", "interface", "enum", "type", "function"];
 const MEMBER_MODIFIERS: &[&str] = &[
@@ -63,21 +59,37 @@ pub fn parse_arkts_file_stub(path: &str, content: &str) -> ArkTsFileStub {
             continue;
         }
 
-        stub.imports.extend(parse_imports(after_decorators, line, leading + 1));
-        stub.exports.extend(parse_named_exports(after_decorators, line, leading + 1));
+        stub.imports
+            .extend(parse_imports(after_decorators, line, leading + 1));
+        stub.exports
+            .extend(parse_named_exports(after_decorators, line, leading + 1));
 
-        if let Some(declaration) = parse_declaration(after_decorators, raw_line, line, &containers, &decorators) {
-            let inline_members = parse_inline_members(after_decorators, raw_line, line, &declaration.name);
-            if declaration.modifiers.iter().any(|modifier| modifier == "export") {
+        if let Some(declaration) =
+            parse_declaration(after_decorators, raw_line, line, &containers, &decorators)
+        {
+            let inline_members =
+                parse_inline_members(after_decorators, raw_line, line, &declaration.name);
+            if declaration
+                .modifiers
+                .iter()
+                .any(|modifier| modifier == "export")
+            {
                 stub.exports.push(ArkTsExportStub {
-                    exported_name: if declaration.modifiers.iter().any(|modifier| modifier == "default") {
+                    exported_name: if declaration
+                        .modifiers
+                        .iter()
+                        .any(|modifier| modifier == "default")
+                    {
                         "default".to_string()
                     } else {
                         declaration.name.clone()
                     },
                     local_name: Some(declaration.name.clone()),
                     source_module: None,
-                    is_default: declaration.modifiers.iter().any(|modifier| modifier == "default"),
+                    is_default: declaration
+                        .modifiers
+                        .iter()
+                        .any(|modifier| modifier == "default"),
                     line,
                     column: declaration.column,
                 });
@@ -91,7 +103,9 @@ pub fn parse_arkts_file_stub(path: &str, content: &str) -> ArkTsFileStub {
             stub.declarations.push(declaration);
             stub.declarations.extend(inline_members);
             decorators.clear();
-        } else if let Some(member) = parse_member(after_decorators, raw_line, line, &containers, &decorators) {
+        } else if let Some(member) =
+            parse_member(after_decorators, raw_line, line, &containers, &decorators)
+        {
             stub.declarations.push(member);
             decorators.clear();
         }
@@ -198,7 +212,11 @@ fn parse_member(
     if !suffix.starts_with('(') && !suffix.starts_with(':') && !suffix.starts_with('?') {
         return None;
     }
-    let kind = if suffix.starts_with('(') { "method" } else { "property" };
+    let kind = if suffix.starts_with('(') {
+        "method"
+    } else {
+        "property"
+    };
     let column = original.find(name).unwrap_or(0) + 1;
     Some(ArkTsDeclarationStub {
         kind: kind.to_string(),
@@ -287,7 +305,11 @@ fn parse_named_exports(value: &str, line: usize, column: usize) -> Vec<ArkTsExpo
 }
 
 fn parse_binding_list(value: &str) -> Vec<(Option<String>, String)> {
-    let inner = value.trim().trim_start_matches('{').trim_end_matches('}').trim();
+    let inner = value
+        .trim()
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .trim();
     if inner.is_empty() {
         return identifier_prefix(value.trim())
             .map(|name| vec![(Some("default".to_string()), name.to_string())])
@@ -365,7 +387,10 @@ fn strip_modifiers(mut value: &str) -> (&str, Vec<String>, Option<String>) {
 }
 
 fn member_suffix(candidate: &str, name_length: usize) -> &str {
-    let mut suffix = candidate.get(name_length..).unwrap_or_default().trim_start();
+    let mut suffix = candidate
+        .get(name_length..)
+        .unwrap_or_default()
+        .trim_start();
     suffix = suffix.strip_prefix('?').unwrap_or(suffix).trim_start();
     if let Some(stripped) = strip_type_parameters(suffix) {
         suffix = stripped.trim_start();
@@ -426,11 +451,13 @@ fn is_container_kind(kind: &str) -> bool {
 }
 
 fn is_control_statement(value: &str) -> bool {
-    ["if", "for", "while", "switch", "catch"].iter().any(|keyword| {
-        value
-            .strip_prefix(keyword)
-            .is_some_and(|rest| rest.starts_with(' ') || rest.starts_with('('))
-    })
+    ["if", "for", "while", "switch", "catch"]
+        .iter()
+        .any(|keyword| {
+            value
+                .strip_prefix(keyword)
+                .is_some_and(|rest| rest.starts_with(' ') || rest.starts_with('('))
+        })
 }
 
 fn find_word(value: &str, word: &str) -> Option<usize> {

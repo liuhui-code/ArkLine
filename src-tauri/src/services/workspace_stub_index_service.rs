@@ -5,6 +5,7 @@ use rusqlite::{params, Connection};
 
 use crate::models::workspace::{ArkTsDeclarationStub, ArkTsFileStub};
 use crate::services::workspace_arkts_stub_parser_service::parse_arkts_file_stub;
+use crate::services::workspace_dependency_graph_service::rebuild_dependency_graph;
 
 pub const ARKTS_STUB_PARSER_VERSION: i64 = 1;
 
@@ -15,12 +16,14 @@ pub fn replace_all_stub_rows(
     indexed_generation: u64,
 ) -> Result<(), String> {
     delete_all_stub_rows(connection, root_key)?;
-    insert_stub_rows_for_files(connection, root_key, file_paths, indexed_generation)
+    insert_stub_rows_for_files(connection, root_key, file_paths, indexed_generation)?;
+    rebuild_dependency_graph(connection, root_key, file_paths)
 }
 
 pub fn replace_changed_stub_rows(
     connection: &Connection,
     root_key: &str,
+    file_paths: &[String],
     changed_paths: &[String],
     removed_paths: &[String],
     indexed_generation: u64,
@@ -36,7 +39,8 @@ pub fn replace_changed_stub_rows(
     for path in &affected_paths {
         delete_stub_rows_for_path(connection, root_key, path)?;
     }
-    insert_stub_rows_for_files(connection, root_key, changed_paths, indexed_generation)
+    insert_stub_rows_for_files(connection, root_key, changed_paths, indexed_generation)?;
+    rebuild_dependency_graph(connection, root_key, file_paths)
 }
 
 fn insert_stub_rows_for_files(
@@ -138,7 +142,11 @@ fn insert_stub_file(
                 stub.path,
                 ARKTS_STUB_PARSER_VERSION,
                 indexed_generation as i64,
-                if stub.parse_errors.is_empty() { "ok" } else { "error" },
+                if stub.parse_errors.is_empty() {
+                    "ok"
+                } else {
+                    "error"
+                },
                 stub.parse_errors.len() as i64,
             ],
         )
@@ -231,7 +239,11 @@ fn normalize_index_path(path: &str) -> String {
 }
 
 fn bool_to_i64(value: bool) -> i64 {
-    if value { 1 } else { 0 }
+    if value {
+        1
+    } else {
+        0
+    }
 }
 
 const STUB_TABLES: &[&str] = &[

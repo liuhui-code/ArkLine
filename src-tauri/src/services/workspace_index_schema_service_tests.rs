@@ -16,6 +16,7 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     assert_eq!(versions.get("content"), Some(&1));
     assert_eq!(versions.get("symbol"), Some(&1));
     assert_eq!(versions.get("stub"), Some(&1));
+    assert_eq!(versions.get("dependency"), Some(&1));
     assert_eq!(versions.get("fingerprint"), Some(&1));
     assert_eq!(versions.get("sdk"), Some(&1));
     assert_eq!(versions.get("task_journal"), Some(&1));
@@ -46,5 +47,5 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(entity_table_count, 1);
-    assert_eq!(schema_count, 8);
+    assert_eq!(schema_count, 9);
 }

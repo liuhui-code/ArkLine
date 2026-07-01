@@ -1,4 +1,7 @@
 use crate::models::workspace::WorkspaceIndexTaskStatus;
+use crate::services::workspace_dependency_graph_service::{
+    has_graph_affecting_config_change, mark_dependency_graph_stale,
+};
 use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, WorkspaceFileFingerprintStatus,
 };
@@ -69,6 +72,19 @@ fn run_index_task_inner(
                 return Ok(Some(skipped_task_result(
                     task,
                     "No changed paths require reindexing",
+                    started_at,
+                )));
+            }
+            if has_graph_affecting_config_change(&changed_paths) {
+                mark_dependency_graph_stale(&task.root_path, "config-change")?;
+                let refresh_result =
+                    index_runtime.refresh_workspace_index_with_changes(&task.root_path)?;
+                let mut config_task = task.clone();
+                config_task.reason = "config-change".to_string();
+                return Ok(Some(refresh_task_result(
+                    &config_task,
+                    "config-change",
+                    refresh_result,
                     started_at,
                 )));
             }

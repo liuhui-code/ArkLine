@@ -10,6 +10,9 @@ use crate::models::workspace::{
 use crate::services::workspace_content_index_service::{
     index_workspace_content, update_workspace_content,
 };
+use crate::services::workspace_dependency_graph_service::{
+    expand_changed_paths, DependencyExpansion,
+};
 use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_fingerprints,
 };
@@ -24,6 +27,8 @@ use crate::services::workspace_service::scan_workspace;
 use crate::services::workspace_symbol_index_service::{
     index_workspace_symbols, query_index_symbols, update_workspace_symbols,
 };
+
+const INDEX_DEPENDENCY_EXPANSION_LIMIT: usize = 500;
 
 #[derive(Debug, Clone)]
 struct IndexedWorkspace {
@@ -128,11 +133,37 @@ impl WorkspaceIndexRuntime {
         added_paths.sort();
         removed_paths.sort();
 
-        let mut content_paths = changed_paths
+        let direct_content_paths = changed_paths
             .iter()
             .map(|path| normalize_index_path(path))
             .filter(|path| current_paths.contains(path))
             .collect::<Vec<_>>();
+        let mut dependency_seed_paths = changed_paths
+            .iter()
+            .map(|path| normalize_index_path(path))
+            .collect::<Vec<_>>();
+        dependency_seed_paths.extend(removed_paths.clone());
+        dependency_seed_paths.sort();
+        dependency_seed_paths.dedup();
+        let dependency_paths = expand_changed_paths(
+            root_path,
+            &dependency_seed_paths,
+            &current_paths,
+            INDEX_DEPENDENCY_EXPANSION_LIMIT,
+        )?;
+        let mut content_paths = match dependency_paths {
+            DependencyExpansion::Expanded(paths) => paths,
+            DependencyExpansion::LimitExceeded => {
+                let state = self.index_workspace_snapshot(&snapshot)?;
+                return Ok(WorkspaceIndexRefreshResult {
+                    state,
+                    changed: true,
+                    added_paths,
+                    removed_paths,
+                });
+            }
+        };
+        content_paths.extend(direct_content_paths);
         content_paths.extend(added_paths.clone());
         content_paths.sort();
         content_paths.dedup();

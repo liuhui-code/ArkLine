@@ -91,6 +91,102 @@ button:disabled {
   display: block;
 }
 
+.definition-debug-banner__button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.definition-debug-banner__button:disabled {
+  cursor: default;
+}
+
+.index-explain-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 54px;
+  z-index: 38;
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 120px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, 0.38);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+.index-explain-panel__header,
+.index-explain-panel__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.index-explain-panel__header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.index-explain-panel__header p {
+  margin: 3px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.index-explain-panel__meta,
+.index-explain-panel__recommendation {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.index-explain-panel__facts {
+  overflow: auto;
+  padding: 6px 12px;
+}
+
+.index-explain-panel__fact {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-subtle) 70%, transparent);
+  font-size: 12px;
+}
+
+.index-explain-panel__fact span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+}
+
+.index-explain-panel__fact--header {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.index-explain-panel__actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 0;
+}
+
 .status-bar__group {
   display: flex;
   align-items: center;

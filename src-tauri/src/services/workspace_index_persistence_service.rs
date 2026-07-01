@@ -172,6 +172,7 @@ fn persist_incremental_sqlite_index_state(
     replace_changed_stub_rows(
         &transaction,
         &root_key,
+        &state.file_paths,
         changed_paths,
         removed_paths,
         indexed_generation(state),
@@ -299,7 +300,12 @@ fn persist_structured_index_rows(
         insert_legacy_symbol(connection, root_key, symbol)?;
         insert_symbol_entity(connection, root_key, symbol)?;
     }
-    replace_all_stub_rows(connection, root_key, &state.file_paths, indexed_generation(state))?;
+    replace_all_stub_rows(
+        connection,
+        root_key,
+        &state.file_paths,
+        indexed_generation(state),
+    )?;
 
     Ok(())
 }
@@ -382,6 +388,8 @@ fn restore_symbols(
                 line: usize::try_from(line).unwrap_or_default(),
                 column: usize::try_from(column).unwrap_or_default(),
                 container: row.get(6)?,
+                signature: None,
+                visibility: None,
             })
         })
         .map_err(|error| error.to_string())?;

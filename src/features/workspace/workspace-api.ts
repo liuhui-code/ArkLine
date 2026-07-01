@@ -75,10 +75,17 @@ export type WorkspaceIndexDiagnostics = {
   symbolCount: number;
   contentLineCount: number;
   fingerprintCount: number;
+  stubFileCount: number;
+  stubDeclarationCount: number;
+  dependencyEdgeCount: number;
+  unresolvedImportCount: number;
+  parserErrorCount: number;
+  staleGenerationCount: number;
   sdkSymbolCount: number;
   activeSdkPath: string | null;
   activeSdkVersion: string | null;
   lastError: string | null;
+  lastExplainStatus: string | null;
 };
 
 export type WorkspaceSdkIndexSummary = {
@@ -363,6 +370,7 @@ export type WorkspaceApi = {
   queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
   explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
@@ -606,10 +614,17 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       symbolCount: 0,
       contentLineCount: 0,
       fingerprintCount: 0,
+      stubFileCount: 0,
+      stubDeclarationCount: 0,
+      dependencyEdgeCount: 0,
+      unresolvedImportCount: 0,
+      parserErrorCount: 0,
+      staleGenerationCount: 0,
       sdkSymbolCount: 0,
       activeSdkPath: null,
       activeSdkVersion: null,
       lastError: null,
+      lastExplainStatus: null,
     };
   },
   async getWorkspaceIndexTaskStatuses(rootPath) {
@@ -742,6 +757,14 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     void filePath;
     void query;
     void limit;
+    return emptyIndexQueryEnvelope(rootPath);
+  },
+  async queryDefinitionCandidatesWithReadiness(rootPath, request) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>("query_definition_candidates_with_readiness", { rootPath, request });
+    }
+
+    void request;
     return emptyIndexQueryEnvelope(rootPath);
   },
   async explainWorkspaceIndexQuery(request) {

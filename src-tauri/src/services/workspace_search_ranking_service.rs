@@ -19,6 +19,9 @@ pub fn build_file_candidates(
             column: None,
             score,
             freshness: freshness.to_string(),
+            container: None,
+            signature: None,
+            visibility: None,
         })
         .collect()
 }

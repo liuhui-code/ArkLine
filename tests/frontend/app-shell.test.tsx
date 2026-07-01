@@ -1905,6 +1905,54 @@ describe("App shell", () => {
     });
   });
 
+  it("does not jump when definition facade returns multiple stale candidates", async () => {
+    const user = userEvent.setup();
+    const gotoDefinition = vi.fn(async () => ({
+      path: "C:/samples/DemoWorkspace/src/legacy.ets",
+      line: 1,
+      column: 1,
+    }));
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      queryDefinitionCandidatesWithReadiness: vi.fn(async () => ({
+        items: [
+          { path: "C:/samples/DemoWorkspace/src/A.ets", line: 1, column: 1, preview: "class A" },
+          { path: "C:/samples/DemoWorkspace/src/B.ets", line: 1, column: 1, preview: "class B" },
+        ],
+        readiness: {
+          rootPath: "C:/samples/DemoWorkspace",
+          requestedGeneration: 3,
+          servedGeneration: 2,
+          state: "stale" as const,
+          reason: "Index is stale",
+          retryable: true,
+        },
+      })),
+      gotoDefinition,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}b{/Control}");
+
+    expect(await screen.findByText("Go to Definition has 2 stale candidates; wait for the index to refresh.")).toBeVisible();
+    expect(gotoDefinition).not.toHaveBeenCalled();
+  });
+
   it("shows index explain text when definition lookup misses", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
@@ -1947,7 +1995,76 @@ describe("App shell", () => {
       rootPath: "C:\\samples\\DemoWorkspace",
       kind: "definition",
     })));
-    expect(await screen.findByText(/Go to Definition miss: SDK API index is not ready for this workspace\. Configure SDK\./)).toBeVisible();
+    const explainButton = await screen.findByRole("button", { name: /Go to Definition miss: SDK API index is not ready for this workspace\. Configure SDK\./ });
+    expect(explainButton).toBeVisible();
+    await user.click(explainButton);
+    expect(await screen.findByRole("region", { name: "Index Explain Panel" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "query" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "missingTarget" })).toBeVisible();
+  });
+
+  it("rebuilds the index from the explain panel", async () => {
+    const user = userEvent.setup();
+    const rebuildWorkspaceIndex = vi.fn(async () => undefined);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "const value = missingTarget;\n",
+      gotoDefinition: vi.fn(async () => null),
+      gotoDefinitionCandidates: vi.fn(async () => []),
+      explainWorkspaceIndexQuery: vi.fn(async () => ({
+        status: "notIndexed" as const,
+        message: "File is not indexed",
+        facts: [{ category: "path", evidence: "main.ets" }],
+        recommendedAction: "rebuildIndex" as const,
+      })),
+      rebuildWorkspaceIndex,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard("{Control>}b{/Control}");
+    await user.click(await screen.findByRole("button", { name: /Go to Definition miss:/ }));
+    await user.click(await screen.findByRole("button", { name: "Rebuild Index" }));
+
+    expect(rebuildWorkspaceIndex).toHaveBeenCalledWith("C:\\samples\\DemoWorkspace");
+  });
+
+  it("opens Settings from the explain panel", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "const value = missingTarget;\n",
+      gotoDefinition: vi.fn(async () => null),
+      gotoDefinitionCandidates: vi.fn(async () => []),
+      explainWorkspaceIndexQuery: vi.fn(async () => ({
+        status: "sdkNotReady" as const,
+        message: "SDK API index is not ready for this workspace",
+        facts: [{ category: "sdk", evidence: "missing" }],
+        recommendedAction: "configureSdk" as const,
+      })),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard("{Control>}b{/Control}");
+    await user.click(await screen.findByRole("button", { name: /Go to Definition miss:/ }));
+    await user.click(await screen.findByRole("button", { name: "Open Settings" }));
+
+    expect(await screen.findByRole("dialog", { name: "Settings" })).toBeVisible();
   });
 
   it("opens SDK declaration targets returned by go to definition", async () => {

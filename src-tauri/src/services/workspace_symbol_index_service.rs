@@ -88,6 +88,8 @@ pub fn index_document_symbols(path: &str, content: &str) -> Vec<WorkspaceIndexed
                 container: container_stack
                     .last()
                     .map(|(container, _)| container.clone()),
+                signature: None,
+                visibility: None,
             });
 
             if is_class_like_kind(kind) && line_text.contains('{') {
@@ -103,6 +105,8 @@ pub fn index_document_symbols(path: &str, content: &str) -> Vec<WorkspaceIndexed
                     line: line_index + 1,
                     column,
                     container: Some(container.clone()),
+                    signature: None,
+                    visibility: None,
                 });
             }
         }
@@ -162,6 +166,9 @@ pub fn query_index_symbols(
             column: Some(symbol.column),
             score,
             freshness: "ready".to_string(),
+            container: symbol.container.clone(),
+            signature: symbol.signature.clone(),
+            visibility: symbol.visibility.clone(),
         })
         .collect()
 }
@@ -372,6 +379,8 @@ mod tests {
                 line: 1,
                 column: 1,
                 container: None,
+                signature: None,
+                visibility: None,
             },
             WorkspaceIndexedSymbol {
                 source: "class".to_string(),
@@ -381,6 +390,8 @@ mod tests {
                 line: 1,
                 column: 1,
                 container: None,
+                signature: None,
+                visibility: None,
             },
         ];
 

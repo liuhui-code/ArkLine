@@ -341,17 +341,17 @@ Expected: project symbol queries become stub-backed without losing legacy behavi
 - Create: `src-tauri/src/services/workspace_dependency_graph_service_tests.rs`
 - Modify: `src-tauri/src/lib.rs`
 
-- [ ] Add tables:
+- [x] Add tables:
   - `workspace_dependency_edges(root_path, from_path, to_path, source_module, kind, line, column)`.
   - `workspace_dependency_reverse(root_path, to_path, from_path)`.
   - `workspace_unresolved_imports(root_path, from_path, source_module, line, column)`.
-- [ ] Resolve relative imports:
+- [x] Resolve relative imports:
   - `./foo`
   - `./foo.ets`
   - `../model/User`
   - directory `index.ets` if present.
-- [ ] Persist unresolved imports separately.
-- [ ] Tests:
+- [x] Persist unresolved imports separately.
+- [x] Tests:
   - relative import resolves to target path.
   - alias import still produces dependency edge.
   - missing target produces unresolved import.
@@ -373,14 +373,14 @@ Expected: direct and reverse dependency edges are queryable.
 - Test: `src-tauri/src/services/workspace_index_worker_service_tests.rs`
 - Test: `src-tauri/src/services/workspace_index_service_tests.rs`
 
-- [ ] For changed-path tasks, expand affected files:
+- [x] For changed-path tasks, expand affected files:
   - include changed files.
   - include direct reverse dependencies.
   - include re-export dependents.
   - cap expansion at `INDEX_DEPENDENCY_EXPANSION_LIMIT = 500`.
-- [ ] If cap is exceeded, schedule/perform a full refresh and mark readiness `partial` until done.
-- [ ] Update fingerprints for both directly changed and affected reindexed files.
-- [ ] Tests:
+- [x] If cap is exceeded, schedule/perform a full refresh and mark readiness `partial` until done.
+- [x] Update fingerprints for both directly changed and affected reindexed files.
+- [x] Tests:
   - changing `model/User.ets` reindexes `pages/Profile.ets` that imports it.
   - deleting imported file records unresolved import and reindexes importer.
   - dependency expansion cap falls back to full refresh.
@@ -402,15 +402,15 @@ Expected: dependent symbol/completion queries update after dependency changes.
 - Test: `src-tauri/src/services/workspace_dependency_graph_service_tests.rs`
 - Test: `src-tauri/src/services/workspace_sdk_index_service_tests.rs`
 
-- [ ] Treat these files as graph-affecting config roots:
+- [x] Treat these files as graph-affecting config roots:
   - `oh-package.json5`
   - `build-profile.json5`
   - `hvigorfile.ts`
   - `tsconfig.json`
   - `module.json5`
-- [ ] When config root changes, invalidate dependency graph and schedule refresh with reason `config-change`.
-- [ ] When active SDK path/version changes, invalidate SDK/API readiness and stale API candidates.
-- [ ] Tests:
+- [x] When config root changes, invalidate dependency graph and schedule refresh with reason `config-change`.
+- [x] When active SDK path/version changes, invalidate SDK/API readiness and stale API candidates.
+- [x] Tests:
   - config change marks dependency graph stale.
   - SDK switch clears stale API candidates and exposes only active SDK.
 
@@ -437,17 +437,17 @@ Expected: config/SDK changes no longer leave old query results silently active.
 - Test: `src-tauri/src/services/workspace_index_query_service_tests.rs`
 - Test: `tests/frontend/app-shell.test.tsx`
 
-- [ ] Add `query_definition_candidates(root_path, request)`:
+- [x] Add `query_definition_candidates(root_path, request)`:
   - semantic language service first when ready.
   - stub import/export resolution second.
   - SDK/API active index third.
   - same-file fallback last.
-- [ ] Return envelope with readiness and candidate list.
-- [ ] UI Ctrl+Click uses readiness:
+- [x] Return envelope with readiness and candidate list.
+- [x] UI Ctrl+Click uses readiness:
   - `blocked`: show status and do not jump.
   - `partial/stale`: allow candidate only when confidence is exact.
   - `ready`: jump as usual.
-- [ ] Tests:
+- [x] Tests:
   - imported class jumps through stub dependency graph.
   - SDK API jumps through active SDK index.
   - stale index returns explainable non-jump state.
@@ -470,15 +470,15 @@ Expected: definition behavior is query-facade-owned and explainable.
 - Test: `tests/frontend/completion-candidate-provider.test.ts`
 - Test: `tests/frontend/indexed-completion-model.test.ts`
 
-- [ ] Use readiness-envelope APIs when available.
-- [ ] Add completion detail from stub metadata:
+- [x] Use readiness-envelope APIs when available.
+- [x] Add completion detail from stub metadata:
   - method signature.
   - class container.
   - visibility.
   - source path and line.
-- [ ] Suppress stale workspace candidates when semantic completion is ready and exact.
-- [ ] Keep index-only fallback for language-service unavailable.
-- [ ] Tests:
+- [x] Suppress stale workspace candidates when semantic completion is ready and exact.
+- [x] Keep index-only fallback for language-service unavailable.
+- [x] Tests:
   - stale indexed completion is hidden when semantic exact match exists.
   - current-file stub method includes signature.
   - SDK/API candidate includes declaration target.
@@ -506,7 +506,7 @@ Expected: completion uses richer stubs without regressing fallback behavior.
 - Modify: `src/features/workspace/workspace-api.ts`
 - Test: `tests/frontend/workspace-api.test.ts`
 
-- [ ] Extend diagnostics with:
+- [x] Extend diagnostics with:
   - `stub_file_count`
   - `stub_declaration_count`
   - `dependency_edge_count`
@@ -514,7 +514,7 @@ Expected: completion uses richer stubs without regressing fallback behavior.
   - `parser_error_count`
   - `stale_generation_count`
   - `last_explain_status`
-- [ ] Tests verify counts after fixture workspace indexing.
+- [x] Tests verify counts after fixture workspace indexing.
 
 Run:
 
@@ -533,17 +533,17 @@ Expected: diagnostics can prove whether stubs and dependency graph are populated
 - Modify: `src/styles/app.css`
 - Test: `tests/frontend/app-shell.test.tsx`
 
-- [ ] Add compact explain panel opened from status/debug message.
-- [ ] Show facts as rows:
+- [x] Add compact explain panel opened from status/debug message.
+- [x] Show facts as rows:
   - category
   - evidence
   - recommendation
-- [ ] Add actions:
+- [x] Add actions:
   - `Rebuild Index`
   - `Open Settings`
   - `Retry Query`
-- [ ] Keep panel non-blocking; it must not replace Search Everywhere or completion.
-- [ ] Tests:
+- [x] Keep panel non-blocking; it must not replace Search Everywhere or completion.
+- [x] Tests:
   - failed Ctrl+Click can open explain panel.
   - `Rebuild Index` calls existing rebuild command.
   - `Open Settings` opens settings modal.

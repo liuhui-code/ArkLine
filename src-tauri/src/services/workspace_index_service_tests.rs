@@ -264,7 +264,7 @@ fn refresh_workspace_index_records_schema_domain_versions() {
         )
         .unwrap();
 
-    assert_eq!(version_count, 8);
+    assert_eq!(version_count, 9);
 
     fs::remove_dir_all(root).unwrap();
 }

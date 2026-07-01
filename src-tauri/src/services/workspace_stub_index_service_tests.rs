@@ -112,7 +112,11 @@ fn parser_error_persists_without_blocking_other_files() {
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     fs::create_dir_all(&source_dir).unwrap();
     fs::write(source_dir.join("Good.ets"), "class GoodController {}\n").unwrap();
-    fs::write(source_dir.join("Broken.ets"), "struct Broken {\n  build() {\n").unwrap();
+    fs::write(
+        source_dir.join("Broken.ets"),
+        "struct Broken {\n  build() {\n",
+    )
+    .unwrap();
     let root_path = root.to_string_lossy().to_string();
 
     WorkspaceIndexRuntime::default()

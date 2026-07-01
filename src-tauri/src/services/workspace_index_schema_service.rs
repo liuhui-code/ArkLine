@@ -4,12 +4,15 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection};
 
+use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
+
 const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("catalog", 1),
     ("content", 1),
     ("entity", 1),
     ("symbol", 1),
     ("stub", 1),
+    ("dependency", 1),
     ("fingerprint", 1),
     ("sdk", 1),
     ("task_journal", 1),
@@ -41,6 +44,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_fingerprint_tables(connection)?;
     create_sdk_tables(connection)?;
     create_task_journal_tables(connection)?;
+    create_dependency_graph_tables(connection)?;
     record_domain_versions(connection)
 }
 

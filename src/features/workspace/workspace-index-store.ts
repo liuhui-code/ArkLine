@@ -21,6 +21,9 @@ export type SearchCandidate = {
   column?: number;
   score: number;
   freshness: SearchCandidateFreshness;
+  container?: string | null;
+  signature?: string | null;
+  visibility?: string | null;
 };
 
 export type WorkspaceIndexedSymbol = {
@@ -186,6 +189,9 @@ function rankSymbols(
       column: symbol.column,
       score,
       freshness,
+      container: symbol.container,
+      signature: undefined,
+      visibility: undefined,
     }));
 }
 

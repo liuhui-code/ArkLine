@@ -43,6 +43,13 @@ fn queries_all_symbols_for_one_file_in_source_order() {
             .collect::<Vec<_>>(),
         vec!["OutlineController", "firstAction", "secondAction"]
     );
+    let first_action = symbols
+        .iter()
+        .find(|symbol| symbol.title == "firstAction")
+        .expect("method should be returned");
+    assert_eq!(first_action.container.as_deref(), Some("OutlineController"));
+    assert_eq!(first_action.signature.as_deref(), Some("firstAction()"));
+    assert_eq!(first_action.visibility.as_deref(), None);
     assert!(symbols.windows(2).all(|pair| pair[0].line <= pair[1].line));
 
     fs::remove_dir_all(root).unwrap();
@@ -108,15 +115,25 @@ fn search_scopes_prefer_stub_declarations_without_legacy_symbols() {
         .execute("delete from workspace_symbol_entities", [])
         .unwrap();
 
-    let classes =
-        query_workspace_entities(&root_path, "stubonly", WorkspaceEntityQueryScope::Classes, 8)
-            .unwrap();
-    let symbols =
-        query_workspace_entities(&root_path, "stubonly", WorkspaceEntityQueryScope::Symbols, 8)
-            .unwrap();
+    let classes = query_workspace_entities(
+        &root_path,
+        "stubonly",
+        WorkspaceEntityQueryScope::Classes,
+        8,
+    )
+    .unwrap();
+    let symbols = query_workspace_entities(
+        &root_path,
+        "stubonly",
+        WorkspaceEntityQueryScope::Symbols,
+        8,
+    )
+    .unwrap();
 
     assert!(classes.iter().any(|candidate| {
-        candidate.source == "class" && candidate.kind == "struct" && candidate.title == "StubOnlyPage"
+        candidate.source == "class"
+            && candidate.kind == "struct"
+            && candidate.title == "StubOnlyPage"
     }));
     let method = symbols
         .iter()
@@ -124,7 +141,10 @@ fn search_scopes_prefer_stub_declarations_without_legacy_symbols() {
         .expect("stub method should be queryable");
     assert_eq!(method.source, "symbol");
     assert!(method.subtitle.contains("StubOnlyPage"));
-    assert!(method.path.as_deref().is_some_and(|path| path.ends_with("StubOnly.ets")));
+    assert!(method
+        .path
+        .as_deref()
+        .is_some_and(|path| path.ends_with("StubOnly.ets")));
     assert!(method.line.is_some_and(|line| line > 0));
 
     fs::remove_dir_all(root).unwrap();
@@ -197,13 +217,17 @@ fn falls_back_to_symbol_entities_when_stub_rows_are_missing() {
             .unwrap();
     }
 
-    let symbols =
-        query_workspace_entities(&root_path, "fallback", WorkspaceEntityQueryScope::Symbols, 8)
-            .unwrap();
+    let symbols = query_workspace_entities(
+        &root_path,
+        "fallback",
+        WorkspaceEntityQueryScope::Symbols,
+        8,
+    )
+    .unwrap();
 
-    assert!(symbols.iter().any(|candidate| {
-        candidate.source == "symbol" && candidate.title == "fallbackAction"
-    }));
+    assert!(symbols
+        .iter()
+        .any(|candidate| { candidate.source == "symbol" && candidate.title == "fallbackAction" }));
 
     fs::remove_dir_all(root).unwrap();
 }

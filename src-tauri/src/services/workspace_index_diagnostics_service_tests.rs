@@ -21,9 +21,10 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     fs::create_dir_all(&source_dir).unwrap();
     fs::write(
         source_dir.join("Index.ets"),
-        "struct Index {\n  build() { Text(\"Diagnostics\") }\n}\n",
+        "import { Profile } from \"./Profile\"\nstruct Index {\n  build() { Text(\"Diagnostics\") }\n}\n",
     )
     .unwrap();
+    fs::write(source_dir.join("Profile.ets"), "export class Profile {}\n").unwrap();
     let root_path = root.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
@@ -35,14 +36,22 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     assert_eq!(diagnostics.schema_versions.get("content"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("symbol"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("stub"), Some(&1));
+    assert_eq!(diagnostics.schema_versions.get("dependency"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("fingerprint"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("sdk"), Some(&1));
-    assert_eq!(diagnostics.file_count, 1);
-    assert_eq!(diagnostics.symbol_count, 2);
-    assert_eq!(diagnostics.content_line_count, 3);
-    assert_eq!(diagnostics.fingerprint_count, 1);
+    assert_eq!(diagnostics.file_count, 2);
+    assert_eq!(diagnostics.symbol_count, 3);
+    assert_eq!(diagnostics.content_line_count, 5);
+    assert_eq!(diagnostics.fingerprint_count, 2);
+    assert_eq!(diagnostics.stub_file_count, 2);
+    assert_eq!(diagnostics.stub_declaration_count, 3);
+    assert_eq!(diagnostics.dependency_edge_count, 1);
+    assert_eq!(diagnostics.unresolved_import_count, 0);
+    assert_eq!(diagnostics.parser_error_count, 0);
+    assert_eq!(diagnostics.stale_generation_count, 0);
     assert_eq!(diagnostics.sdk_symbol_count, 0);
     assert!(diagnostics.last_error.is_none());
+    assert!(diagnostics.last_explain_status.is_none());
 
     fs::remove_dir_all(root).unwrap();
 }

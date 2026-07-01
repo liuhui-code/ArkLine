@@ -65,10 +65,18 @@ export function candidateToCompletionItem(
     : undefined;
   const source = candidate.source === "api" ? "sdk" : scope === "workspace" ? "workspace" : undefined;
   const detailPrefix = scope === "currentFile" ? "Current file" : candidate.source === "api" ? "Indexed API" : "Indexed";
+  const detailParts = [
+    detailPrefix,
+    candidate.visibility,
+    candidate.kind || candidate.source,
+    candidate.container ? `in ${candidate.container}` : undefined,
+    candidate.signature,
+    candidate.path && candidate.line ? `${candidate.path}:${candidate.line}` : undefined,
+  ].filter(Boolean);
 
   return {
     label,
-    detail: `${detailPrefix} ${candidate.kind || candidate.source}`,
+    detail: detailParts.join(" · "),
     kind: candidate.kind || candidate.source,
     insertText: label,
     filterText: candidate.title,

@@ -59,21 +59,23 @@ pub fn query_workspace_file_symbols(
     let root_key = normalize_index_path(root_path);
     let normalized_file_path = normalize_index_path(file_path);
     let freshness = load_index_freshness(&connection, &root_key)?;
-    let symbols = load_file_stub_symbols(&connection, &root_key, &normalized_file_path)
-        .and_then(|symbols| {
+    let symbols = load_file_stub_symbols(&connection, &root_key, &normalized_file_path).and_then(
+        |symbols| {
             if symbols.is_empty() {
-                load_file_symbol_entities(&connection, &root_key, &normalized_file_path)
-                    .and_then(|symbols| {
+                load_file_symbol_entities(&connection, &root_key, &normalized_file_path).and_then(
+                    |symbols| {
                         if symbols.is_empty() {
                             load_legacy_file_symbols(&connection, &root_key, &normalized_file_path)
                         } else {
                             Ok(symbols)
                         }
-                    })
+                    },
+                )
             } else {
                 Ok(symbols)
             }
-        })?;
+        },
+    )?;
     let mut candidates = if query.trim().is_empty() {
         symbols
             .into_iter()
@@ -170,7 +172,8 @@ fn load_stub_symbols(
     let mut statement = connection
         .prepare(
             "select declaration.kind, declaration.name, declaration.path, declaration.line,
-                declaration.column, declaration.container
+                declaration.column, declaration.container, declaration.signature,
+                declaration.visibility
              from workspace_stub_declarations declaration
              join workspace_stub_files file
                 on file.root_path = declaration.root_path and file.path = declaration.path
@@ -194,7 +197,7 @@ fn load_symbol_entities(
 ) -> Result<Vec<WorkspaceIndexedSymbol>, String> {
     let mut statement = connection
         .prepare(
-            "select source, kind, name, path, line, column, container
+            "select source, kind, name, path, line, column, container, signature, visibility
              from workspace_symbol_entities
              where root_path = ?1
              order by source, qualified_name, path, line, column",
@@ -212,6 +215,8 @@ fn load_symbol_entities(
                 line: usize::try_from(line).unwrap_or_default(),
                 column: usize::try_from(column).unwrap_or_default(),
                 container: row.get(6)?,
+                signature: row.get(7)?,
+                visibility: row.get(8)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -227,7 +232,8 @@ fn load_file_stub_symbols(
     let mut statement = connection
         .prepare(
             "select declaration.kind, declaration.name, declaration.path, declaration.line,
-                declaration.column, declaration.container
+                declaration.column, declaration.container, declaration.signature,
+                declaration.visibility
              from workspace_stub_declarations declaration
              join workspace_stub_files file
                 on file.root_path = declaration.root_path and file.path = declaration.path
@@ -252,7 +258,7 @@ fn load_file_symbol_entities(
 ) -> Result<Vec<WorkspaceIndexedSymbol>, String> {
     let mut statement = connection
         .prepare(
-            "select source, kind, name, path, line, column, container
+            "select source, kind, name, path, line, column, container, signature, visibility
              from workspace_symbol_entities
              where root_path = ?1 and path = ?2
              order by line, column, qualified_name",
@@ -289,6 +295,8 @@ fn load_legacy_symbols(
                 line: usize::try_from(line).unwrap_or_default(),
                 column: usize::try_from(column).unwrap_or_default(),
                 container: row.get(6)?,
+                signature: None,
+                visibility: None,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -328,6 +336,8 @@ fn row_to_stub_symbol(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceInde
         line: usize::try_from(line).unwrap_or_default(),
         column: usize::try_from(column).unwrap_or_default(),
         container: row.get(5)?,
+        signature: row.get(6)?,
+        visibility: row.get(7)?,
     })
 }
 
@@ -342,6 +352,8 @@ fn row_to_symbol(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceIndexedSy
         line: usize::try_from(line).unwrap_or_default(),
         column: usize::try_from(column).unwrap_or_default(),
         container: row.get(6)?,
+        signature: row.get(7)?,
+        visibility: row.get(8)?,
     })
 }
 
@@ -368,6 +380,9 @@ fn symbol_to_candidate(
         column: Some(symbol.column),
         score,
         freshness: freshness.to_string(),
+        container: symbol.container,
+        signature: symbol.signature,
+        visibility: symbol.visibility,
     }
 }
 
