@@ -9,6 +9,7 @@ mod commands {
     pub mod terminal;
     pub mod windowing;
     pub mod workspace;
+    pub mod workspace_index;
 }
 
 mod models {
@@ -40,10 +41,30 @@ mod services {
     #[cfg(test)]
     mod workspace_content_index_service_tests;
     pub mod workspace_content_query_service;
+    pub mod workspace_arkts_stub_parser_service;
+    #[cfg(test)]
+    mod workspace_arkts_stub_parser_service_tests;
     pub mod workspace_edit_service;
     pub mod workspace_file_fingerprint_service;
     #[cfg(test)]
     mod workspace_file_fingerprint_service_tests;
+    pub mod workspace_index_diagnostics_service;
+    #[cfg(test)]
+    mod workspace_index_diagnostics_service_tests;
+    pub mod workspace_index_entity_persistence_service;
+    #[cfg(test)]
+    mod workspace_index_entity_persistence_service_tests;
+    pub mod workspace_index_entity_query_service;
+    #[cfg(test)]
+    mod workspace_index_entity_query_service_tests;
+    pub mod workspace_index_explain_service;
+    #[cfg(test)]
+    mod workspace_index_explain_service_tests;
+    #[cfg(test)]
+    mod workspace_index_lifecycle_service_tests;
+    pub mod workspace_index_maintenance_service;
+    #[cfg(test)]
+    mod workspace_index_maintenance_service_tests;
     pub mod workspace_index_manager_service;
     #[cfg(test)]
     mod workspace_index_manager_service_tests;
@@ -51,17 +72,46 @@ mod services {
     pub mod workspace_index_query_service;
     #[cfg(test)]
     mod workspace_index_query_service_tests;
+    #[cfg(test)]
+    mod workspace_index_query_scope_service_tests;
+    pub mod workspace_index_readiness_service;
+    #[cfg(test)]
+    mod workspace_index_readiness_service_tests;
+    #[cfg(test)]
+    mod workspace_index_running_lifecycle_service_tests;
     pub mod workspace_index_scheduler_service;
+    pub mod workspace_index_schema_service;
+    #[cfg(test)]
+    mod workspace_index_schema_service_tests;
     pub mod workspace_index_service;
     #[cfg(test)]
     mod workspace_index_service_tests;
+    pub mod workspace_index_task_journal_service;
+    #[cfg(test)]
+    mod workspace_index_task_journal_service_tests;
+    pub mod workspace_index_task_lifecycle_service;
+    pub mod workspace_index_task_status_service;
+    #[cfg(test)]
+    mod workspace_index_test_fixture_service;
     pub mod workspace_index_watcher_service;
+    pub mod workspace_index_worker_service;
+    #[cfg(test)]
+    mod workspace_index_worker_service_tests;
     #[cfg(test)]
     pub mod workspace_large_fixture_service;
+    pub mod workspace_sdk_index_service;
+    #[cfg(test)]
+    mod workspace_sdk_index_service_tests;
+    pub mod workspace_sdk_parser_service;
+    #[cfg(test)]
+    mod workspace_sdk_persistence_service_tests;
     #[cfg(test)]
     mod workspace_search_everywhere_service_tests;
     pub mod workspace_search_ranking_service;
     pub mod workspace_service;
+    pub mod workspace_stub_index_service;
+    #[cfg(test)]
+    mod workspace_stub_index_service_tests;
     pub mod workspace_symbol_index_service;
     pub mod workspace_text_search_service;
 }
@@ -85,12 +135,23 @@ pub fn run() {
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,
             commands::workspace::get_workspace_index_state,
+            commands::workspace::inspect_workspace_index,
+            commands::workspace::get_workspace_index_task_statuses,
+            commands::workspace::clear_workspace_index,
+            commands::workspace::rebuild_workspace_index,
+            commands::workspace::index_workspace_sdk_symbols,
+            commands::workspace::submit_workspace_sdk_index,
             commands::workspace::query_workspace_quick_open,
             commands::workspace::query_workspace_search_everywhere,
+            commands::workspace::query_workspace_candidates,
+            commands::workspace::query_workspace_candidates_with_readiness,
+            commands::workspace::query_workspace_file_symbols,
+            commands::workspace::query_workspace_file_symbols_with_readiness,
             commands::workspace::update_workspace_index_files,
             commands::workspace::refresh_workspace_index,
             commands::workspace::refresh_workspace_index_with_changes,
             commands::workspace::search_workspace_text,
+            commands::workspace_index::explain_workspace_index_query,
             commands::workspace::watch_workspace_index,
             commands::workspace::unwatch_workspace_index,
             commands::workspace::load_workspace_diff,

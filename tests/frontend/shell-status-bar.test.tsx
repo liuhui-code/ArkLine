@@ -17,6 +17,7 @@ function renderStatusBar(capability: SemanticCapabilityState) {
       workspaceName="Demo"
       workspaceScanText={null}
       workspaceIndexText="Index: ready (2 files)"
+      sdkIndexText={null}
       terminalRunning={false}
       buildMessage="Build idle"
       gitBlameVisible={false}

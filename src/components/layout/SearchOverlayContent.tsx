@@ -7,6 +7,7 @@ import type {
   WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
+import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
 
 type SearchOverlayContentProps = {
   activeOverlay: OverlayKey;
@@ -17,12 +18,14 @@ type SearchOverlayContentProps = {
   recentProjectResults: { path: string; name: string }[];
   searchEverywhereOptions: WorkspaceTextSearchOptions;
   searchEverywhereMode: SearchEverywhereMode;
+  searchEverywhereScope: WorkspaceIndexQueryScope;
   searchEverywhereReplaceQuery: string;
   searchEverywhereResult: WorkspaceTextSearchResult;
   searchEverywhereCandidates: SearchCandidate[];
   searchEverywhereSelectedIndex: number;
   workspacePartialNotice: string | null;
   onChangeQuery: (value: string) => void;
+  onChangeSearchEverywhereScope: (scope: WorkspaceIndexQueryScope) => void;
   onChangeSearchEverywhereReplaceQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
   onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
@@ -46,12 +49,14 @@ export function SearchOverlayContent({
   recentProjectResults,
   searchEverywhereOptions,
   searchEverywhereMode,
+  searchEverywhereScope,
   searchEverywhereReplaceQuery,
   searchEverywhereResult,
   searchEverywhereCandidates,
   searchEverywhereSelectedIndex,
   workspacePartialNotice,
   onChangeQuery,
+  onChangeSearchEverywhereScope,
   onChangeSearchEverywhereReplaceQuery,
   onOpenFile,
   onOpenSearchEverywhereResult,
@@ -187,6 +192,7 @@ export function SearchOverlayContent({
     return (
       <SearchEverywherePanel
         mode={searchEverywhereMode}
+        scope={searchEverywhereScope}
         options={searchEverywhereOptions}
         query={quickOpenQuery}
         replaceQuery={searchEverywhereReplaceQuery}
@@ -195,6 +201,7 @@ export function SearchOverlayContent({
         selectedIndex={searchEverywhereSelectedIndex}
         partialNotice={workspacePartialNotice}
         onChangeQuery={onChangeQuery}
+        onChangeScope={onChangeSearchEverywhereScope}
         onChangeReplaceQuery={onChangeSearchEverywhereReplaceQuery}
         onMoveSelection={onMoveSearchEverywhereSelection}
         onOpenSelected={onOpenSelectedSearchEverywhereResult}

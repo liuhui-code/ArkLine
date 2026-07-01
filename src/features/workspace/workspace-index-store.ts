@@ -1,5 +1,9 @@
 import { rankPaths } from "@/features/search/fuzzy-matcher";
-import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type {
+  WorkspaceIndexQueryScope,
+  WorkspaceIndexReadiness,
+  WorkspaceViewModel,
+} from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 export type WorkspaceIndexStatus = "empty" | "scanning" | "ready" | "partial" | "stale" | "failed";
@@ -8,7 +12,7 @@ export type SearchCandidateFreshness = "ready" | "partial" | "stale";
 
 export type SearchCandidate = {
   id: string;
-  source: "file" | "class" | "symbol" | "text" | "action" | "sdk";
+  source: "file" | "class" | "symbol" | "text" | "action" | "sdk" | "api";
   kind: string;
   title: string;
   subtitle: string;
@@ -36,6 +40,7 @@ export type WorkspaceIndexState = {
   symbols?: WorkspaceIndexedSymbol[];
   indexedAt: number | null;
   partialReason: string | null;
+  queryReadiness?: WorkspaceIndexReadiness | null;
 };
 
 function createInitialState(): WorkspaceIndexState {
@@ -46,6 +51,7 @@ function createInitialState(): WorkspaceIndexState {
     symbols: [],
     indexedAt: null,
     partialReason: null,
+    queryReadiness: null,
   };
 }
 
@@ -81,6 +87,7 @@ export function createWorkspaceIndexStore() {
       state.status = workspace.scanSummary.truncated ? "partial" : "ready";
       state.indexedAt = Date.now();
       state.partialReason = buildPartialReason(workspace);
+      state.queryReadiness = null;
     },
     replaceState(nextState: WorkspaceIndexState) {
       state.rootPath = nextState.rootPath ? normalizePath(nextState.rootPath) : null;
@@ -89,6 +96,13 @@ export function createWorkspaceIndexStore() {
       state.status = nextState.status;
       state.indexedAt = nextState.indexedAt;
       state.partialReason = nextState.partialReason;
+      state.queryReadiness = nextState.queryReadiness ?? null;
+    },
+    replaceQueryReadiness(readiness: WorkspaceIndexReadiness) {
+      state.queryReadiness = {
+        ...readiness,
+        rootPath: normalizePath(readiness.rootPath),
+      };
     },
     reset() {
       Object.assign(state, createInitialState());
@@ -115,6 +129,25 @@ export function createWorkspaceIndexStore() {
       return [...symbolCandidates, ...fileCandidates]
         .sort((left, right) => sourcePriority(left.source) - sourcePriority(right.source) || right.score - left.score)
         .slice(0, limit);
+    },
+    queryCandidates(query: string, scope: WorkspaceIndexQueryScope, limit = 16): SearchCandidate[] {
+      if (scope === "files") {
+        return this.queryQuickOpen(query, limit);
+      }
+
+      if (scope === "classes" || scope === "symbols") {
+        const source = scope === "classes" ? "class" : "symbol";
+        const symbols = state.symbols ?? [];
+        return rankSymbols(symbols, query, Math.max(symbols.length, limit), candidateFreshness(state.status))
+          .filter((candidate) => candidate.source === source)
+          .slice(0, limit);
+      }
+
+      if (scope === "api") {
+        return [];
+      }
+
+      return this.querySearchEverywhere(query, limit);
     },
     getTextSearchPaths() {
       return [...state.filePaths];

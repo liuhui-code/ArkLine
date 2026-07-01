@@ -243,6 +243,33 @@ fn refresh_workspace_index_builds_queryable_content_index() {
 }
 
 #[test]
+fn refresh_workspace_index_records_schema_domain_versions() {
+    let root = unique_temp_dir("workspace-index-schema-versions");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    fs::write(root.join("entry").join("src").join("Index.ets"), "").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let sqlite_file = root
+        .join(".arkline")
+        .join("index")
+        .join("workspace-catalog.sqlite");
+    let connection = Connection::open(&sqlite_file).unwrap();
+    let version_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_index_schema_versions",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(version_count, 8);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn updates_workspace_catalog_incrementally_and_persists_changes() {
     let root = unique_temp_dir("workspace-index-incremental");
     fs::create_dir_all(&root).unwrap();

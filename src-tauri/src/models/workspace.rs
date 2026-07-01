@@ -87,6 +87,69 @@ pub struct WorkspaceIndexedSymbol {
     pub container: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+pub struct ArkTsFileStub {
+    pub path: String,
+    pub module_name: Option<String>,
+    pub imports: Vec<ArkTsImportStub>,
+    pub exports: Vec<ArkTsExportStub>,
+    pub declarations: Vec<ArkTsDeclarationStub>,
+    pub parse_errors: Vec<ArkTsParseError>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+pub struct ArkTsImportStub {
+    pub source_module: String,
+    pub imported_name: Option<String>,
+    pub local_name: String,
+    pub is_type_only: bool,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+pub struct ArkTsExportStub {
+    pub exported_name: String,
+    pub local_name: Option<String>,
+    pub source_module: Option<String>,
+    pub is_default: bool,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+pub struct ArkTsDeclarationStub {
+    pub kind: String,
+    pub name: String,
+    pub qualified_name: String,
+    pub container: Option<String>,
+    pub visibility: Option<String>,
+    pub modifiers: Vec<String>,
+    pub decorators: Vec<String>,
+    pub signature: String,
+    pub line: usize,
+    pub column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+pub struct ArkTsParseError {
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSearchCandidate {
@@ -104,6 +167,62 @@ pub struct WorkspaceSearchCandidate {
     pub freshness: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkspaceIndexReadinessState {
+    Ready,
+    Partial,
+    Stale,
+    Blocked,
+    Missing,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexReadiness {
+    pub root_path: String,
+    pub requested_generation: u64,
+    pub served_generation: Option<u64>,
+    pub state: WorkspaceIndexReadinessState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub retryable: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexQueryEnvelope<T> {
+    pub items: Vec<T>,
+    pub readiness: WorkspaceIndexReadiness,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexExplainRequest {
+    pub root_path: String,
+    pub kind: String,
+    pub query: String,
+    pub path: Option<String>,
+    pub line: Option<u32>,
+    pub column: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexExplainFact {
+    pub category: String,
+    pub evidence: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexExplainResult {
+    pub status: String,
+    pub message: String,
+    pub facts: Vec<WorkspaceIndexExplainFact>,
+    pub recommended_action: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexRefreshResult {
@@ -111,6 +230,45 @@ pub struct WorkspaceIndexRefreshResult {
     pub changed: bool,
     pub added_paths: Vec<String>,
     pub removed_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexTaskStatus {
+    pub task_id: String,
+    pub root_path: String,
+    pub kind: String,
+    pub status: String,
+    pub reason: String,
+    pub generation: u64,
+    pub progress_current: usize,
+    pub progress_total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<u128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<u128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexDiagnostics {
+    pub root_path: String,
+    pub status: String,
+    pub schema_versions: std::collections::HashMap<String, i64>,
+    pub file_count: i64,
+    pub symbol_count: i64,
+    pub content_line_count: i64,
+    pub fingerprint_count: i64,
+    pub sdk_symbol_count: i64,
+    pub active_sdk_path: Option<String>,
+    pub active_sdk_version: Option<String>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

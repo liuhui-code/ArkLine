@@ -6,6 +6,9 @@ use std::time::UNIX_EPOCH;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_stub_index_service::ARKTS_STUB_PARSER_VERSION;
+
 const CONTENT_INDEX_VERSION: i64 = 1;
 const SYMBOL_INDEX_VERSION: i64 = 1;
 
@@ -36,6 +39,7 @@ struct StoredFileFingerprint {
     hash: String,
     content_index_version: i64,
     symbol_index_version: i64,
+    stub_parser_version: i64,
 }
 
 pub fn classify_file_fingerprints(
@@ -94,14 +98,16 @@ pub fn update_file_fingerprints(
             .execute(
                 "insert into workspace_file_fingerprints (
                     root_path, path, mtime_ms, size, hash,
-                    content_index_version, symbol_index_version, indexed_generation
-                 ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                    content_index_version, symbol_index_version, stub_parser_version,
+                    indexed_generation
+                 ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  on conflict(root_path, path) do update set
                     mtime_ms = excluded.mtime_ms,
                     size = excluded.size,
                     hash = excluded.hash,
                     content_index_version = excluded.content_index_version,
                     symbol_index_version = excluded.symbol_index_version,
+                    stub_parser_version = excluded.stub_parser_version,
                     indexed_generation = excluded.indexed_generation",
                 params![
                     root_key,
@@ -111,6 +117,7 @@ pub fn update_file_fingerprints(
                     current.hash,
                     CONTENT_INDEX_VERSION,
                     SYMBOL_INDEX_VERSION,
+                    ARKTS_STUB_PARSER_VERSION,
                     indexed_generation as i64,
                 ],
             )
@@ -145,6 +152,7 @@ fn fingerprint_matches(stored: &StoredFileFingerprint, current: &CurrentFileFing
         && stored.hash == current.hash
         && stored.content_index_version == CONTENT_INDEX_VERSION
         && stored.symbol_index_version == SYMBOL_INDEX_VERSION
+        && stored.stub_parser_version == ARKTS_STUB_PARSER_VERSION
 }
 
 fn load_stored_fingerprint(
@@ -154,7 +162,8 @@ fn load_stored_fingerprint(
 ) -> Result<Option<StoredFileFingerprint>, String> {
     connection
         .query_row(
-            "select mtime_ms, size, hash, content_index_version, symbol_index_version
+            "select mtime_ms, size, hash, content_index_version, symbol_index_version,
+                stub_parser_version
              from workspace_file_fingerprints
              where root_path = ?1 and path = ?2",
             params![root_key, normalize_index_path(path)],
@@ -165,6 +174,7 @@ fn load_stored_fingerprint(
                     hash: row.get(2)?,
                     content_index_version: row.get(3)?,
                     symbol_index_version: row.get(4)?,
+                    stub_parser_version: row.get(5)?,
                 })
             },
         )
@@ -208,23 +218,7 @@ fn open_fingerprint_store(root_path: &str) -> Result<Connection, String> {
 }
 
 fn ensure_schema(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute(
-            "create table if not exists workspace_file_fingerprints (
-                root_path text not null,
-                path text not null,
-                mtime_ms integer not null,
-                size integer not null,
-                hash text not null,
-                content_index_version integer not null,
-                symbol_index_version integer not null,
-                indexed_generation integer not null,
-                primary key (root_path, path)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    ensure_workspace_index_schema(connection)
 }
 
 fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {

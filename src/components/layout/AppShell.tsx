@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BottomToolWindow } from "@/components/layout/BottomToolWindow";
 import { BuildToolWindow } from "@/components/layout/BuildToolWindow";
 import { CodeActionsPalette } from "@/components/layout/CodeActionsPalette";
+import { collectCompletionCandidates } from "@/components/layout/completion-candidate-provider";
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
@@ -11,6 +12,7 @@ import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow, type GitToolView } from "@/components/layout/GitToolWindow";
 import { GitTracePanel } from "@/components/layout/GitTracePanel";
+import { candidateToCurrentClassMethod } from "@/components/layout/indexed-completion-model";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
 import { OverlaySurface } from "@/components/layout/OverlaySurface";
@@ -56,7 +58,8 @@ import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
-import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexRefreshResult, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexQueryScope, type WorkspaceIndexRefreshResult, type WorkspaceIndexTaskStatus, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import { createWorkspaceIndexStore, type SearchCandidate, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
@@ -74,6 +77,8 @@ const COMPLETION_POPUP_MARGIN = 12;
 const COMPLETION_POPUP_GAP = 4;
 const COMPLETION_PAGE_STEP = 6;
 const COMPLETION_POPUP_FALLBACK_POSITION = { top: 96, left: 280 };
+const SDK_INDEX_READY_WAIT_ATTEMPTS = 120;
+const SDK_INDEX_READY_WAIT_INTERVAL_MS = 50;
 const LEFT_SIDEBAR_DEFAULT_WIDTH = 316;
 const LEFT_SIDEBAR_COLLAPSED_WIDTH = 62;
 const LEFT_SIDEBAR_MIN_WIDTH = 220;
@@ -163,6 +168,41 @@ function getIndexStatusText(indexState: WorkspaceIndexState) {
   return `Index: ${indexState.status} (${indexState.filePaths.length.toLocaleString()} files)`;
 }
 
+function getSdkIndexStatusText(statuses: WorkspaceIndexTaskStatus[]) {
+  const sdkStatus = [...statuses].reverse().find((status) => status.kind === "sdk");
+  if (!sdkStatus) {
+    return null;
+  }
+
+  const symbolText = sdkStatus.symbolCount == null
+    ? ""
+    : ` (${sdkStatus.symbolCount.toLocaleString()} symbols)`;
+  return `SDK API: ${sdkStatus.status}${symbolText}`;
+}
+
+function mergeWorkspaceIndexTaskStatus(
+  statuses: WorkspaceIndexTaskStatus[],
+  next: WorkspaceIndexTaskStatus,
+) {
+  const retained = statuses.filter((status) => status.taskId !== next.taskId);
+  return [...retained, next].sort((left, right) => left.generation - right.generation);
+}
+
+function filterSearchCandidatesByScope(candidates: SearchCandidate[], scope: WorkspaceIndexQueryScope) {
+  if (scope === "all") {
+    return candidates;
+  }
+
+  const sourceByScope: Partial<Record<WorkspaceIndexQueryScope, SearchCandidate["source"]>> = {
+    files: "file",
+    classes: "class",
+    symbols: "symbol",
+    api: "api",
+  };
+  const source = sourceByScope[scope];
+  return source ? candidates.filter((candidate) => candidate.source === source) : candidates;
+}
+
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
@@ -180,6 +220,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
+  const [searchEverywhereScope, setSearchEverywhereScope] = useState<WorkspaceIndexQueryScope>("all");
   const [searchEverywhereReplaceQuery, setSearchEverywhereReplaceQuery] = useState("");
   const [searchEverywhereOptions, setSearchEverywhereOptions] = useState<WorkspaceTextSearchOptions>({
     caseSensitive: false,
@@ -220,6 +261,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [currentMethodsVisible, setCurrentMethodsVisible] = useState(false);
   const [currentMethodsQuery, setCurrentMethodsQuery] = useState("");
   const [currentMethodsSelectedIndex, setCurrentMethodsSelectedIndex] = useState(0);
+  const [indexedCurrentMethods, setIndexedCurrentMethods] = useState<{ path: string; methods: CurrentClassMethod[] } | null>(null);
   const [codeActionsVisible, setCodeActionsVisible] = useState(false);
   const [codeActions, setCodeActions] = useState<CodeAction[]>([]);
   const [codeActionsStatus, setCodeActionsStatus] = useState<CodeActionsStatus>("empty");
@@ -229,6 +271,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [workspaceEditApplyState, setWorkspaceEditApplyState] = useState<"idle" | "applying" | "error">("idle");
   const [workspaceEditMessage, setWorkspaceEditMessage] = useState<string | undefined>();
   const [projectMutationDialog, setProjectMutationDialog] = useState<ProjectMutationDialogState | null>(null);
+  const [workspaceIndexTaskStatuses, setWorkspaceIndexTaskStatuses] = useState<WorkspaceIndexTaskStatus[]>([]);
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -265,6 +308,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const workspaceScanText = getWorkspaceScanText(workspace);
   const [workspaceIndexState, setWorkspaceIndexState] = useState<WorkspaceIndexState>(() => ({ ...workspaceIndexRef.current.state }));
   const workspaceIndexText = getIndexStatusText(workspaceIndexState);
+  const sdkIndexText = getSdkIndexStatusText(workspaceIndexTaskStatuses);
   const workspacePartialNotice = workspaceIndexState.partialReason ?? getWorkspacePartialNotice(workspace);
   const settingsApplying = settingsApplyState === "applying";
   const activeDocument = activePath ? documentsRef.current.getDocument(activePath) : undefined;
@@ -322,6 +366,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }
   function openSearchOverlay(mode: SearchEverywhereMode) {
     setSearchEverywhereMode(mode);
+    if (mode === "searchEverywhere") {
+      setSearchEverywhereScope("all");
+    }
     setOverlay("searchEverywhere");
   }
   function handleOverlayQueryChange(value: string) {
@@ -842,10 +889,20 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         }
         return;
       }
-      if (source === "modifierClick") setDefinitionDebug("Ctrl+Click query ran, but both the language service and same-file fallback returned no definition target.");
-      setStatusText(
-        `${source === "modifierClick" ? "Ctrl+Click" : "Go to Definition"} miss: language service and local fallback returned no target`,
+      const missPrefix = source === "modifierClick" ? "Ctrl+Click" : "Go to Definition";
+      let missMessage = `${missPrefix} miss: language service and local fallback returned no target`;
+      const explanation = await explainIndexMiss(
+        "definition",
+        `${getPathBasename(activePath)}:${request.line}:${request.column}`,
+        activePath,
+        request.line,
+        request.column,
       );
+      if (explanation) {
+        missMessage = `${missPrefix} miss: ${explanation}`;
+      }
+      if (source === "modifierClick") setDefinitionDebug(missMessage);
+      setStatusText(missMessage);
       return;
     }
     rememberCurrentLocation();
@@ -878,7 +935,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setStatusText("SDK settings are still applying");
       return;
     }
-    if (!activePath || !workspaceApi.completeSymbol) return void setStatusText("Completion unavailable");
+    if (!activePath) return void setStatusText("Completion unavailable");
     const requestId = completionRequestRef.current + 1;
     completionRequestRef.current = requestId;
     const selection = {
@@ -891,7 +948,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     const query = trigger === "typing" ? replacePrefix : "";
     let results: LanguageCompletionItem[];
     try {
-      results = await workspaceApi.completeSymbol({ path, line: selection.line, column: selection.column, content: currentContent });
+      results = await collectCompletionCandidates({
+        workspaceApi,
+        rootPath: workspace?.rootPath,
+        path,
+        line: selection.line,
+        column: selection.column,
+        content: currentContent,
+        query,
+        replacePrefix,
+      });
     } catch (error) {
       if (completionRequestRef.current !== requestId) {
         return;
@@ -994,8 +1060,25 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay("none");
     setCurrentMethodsQuery("");
     setCurrentMethodsSelectedIndex(0);
+    setIndexedCurrentMethods(null);
     setCurrentMethodsVisible(true);
     setStatusText("Methods in Current Class");
+    void loadIndexedCurrentClassMethods(activePath);
+  }
+
+  async function loadIndexedCurrentClassMethods(path: string) {
+    if (!workspace?.rootPath || !workspaceApi.queryWorkspaceFileSymbols) {
+      return;
+    }
+    try {
+      const candidates = await workspaceApi.queryWorkspaceFileSymbols(workspace.rootPath, path, "", 200);
+      const methods = candidates
+        .filter((candidate) => candidate.source === "symbol" && candidate.kind === "method")
+        .map(candidateToCurrentClassMethod);
+      setIndexedCurrentMethods({ path, methods });
+    } catch {
+      setIndexedCurrentMethods(null);
+    }
   }
   function closeCodeActionsPalette() {
     codeActionResolveRequestRef.current += 1;
@@ -1708,6 +1791,87 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     return selectedPath ?? null;
   }
 
+  async function refreshWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
+    if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) {
+      return;
+    }
+
+    const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
+    if (statuses.length > 0) {
+      setWorkspaceIndexTaskStatuses(statuses);
+    }
+  }
+
+  async function waitForWorkspaceIndexTaskReady(rootPath: string, taskId: string) {
+    if (!workspaceApi.getWorkspaceIndexTaskStatuses) {
+      return;
+    }
+
+    for (let attempt = 0; attempt < SDK_INDEX_READY_WAIT_ATTEMPTS; attempt += 1) {
+      const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
+      const current = statuses.find((status) => status.taskId === taskId);
+      if (current?.status === "ready") {
+        setWorkspaceIndexTaskStatuses(statuses);
+        return;
+      }
+      if (current?.status === "failed") {
+        throw new Error(current.error ?? current.message ?? "SDK index task failed");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, SDK_INDEX_READY_WAIT_INTERVAL_MS));
+    }
+
+    throw new Error("SDK index task timed out");
+  }
+
+  async function indexSdkSymbolsForSettings(nextSettings: AppSettings) {
+    const sdkPath = nextSettings.sdk.harmonySdkPath.trim();
+    if (!workspace?.rootPath || !sdkPath) {
+      return;
+    }
+
+    if (workspaceApi.submitWorkspaceSdkIndex) {
+      setStatusText("SDK API index queued...");
+      const queued = await workspaceApi.submitWorkspaceSdkIndex(workspace.rootPath, sdkPath, "settings");
+      setWorkspaceIndexTaskStatuses((current) => mergeWorkspaceIndexTaskStatus(current, queued));
+      await waitForWorkspaceIndexTaskReady(workspace.rootPath, queued.taskId);
+      return;
+    }
+
+    if (!workspaceApi.indexWorkspaceSdkSymbols) {
+      return;
+    }
+
+    setStatusText("SDK API index updating...");
+    await workspaceApi.indexWorkspaceSdkSymbols(workspace.rootPath, sdkPath, "settings");
+    await refreshWorkspaceIndexTaskStatuses(workspace.rootPath);
+  }
+
+  async function explainIndexMiss(
+    kind: "search" | "definition" | "symbol" | "completion" | "api",
+    query: string,
+    path?: string,
+    line?: number,
+    column?: number,
+  ) {
+    if (!workspace?.rootPath || !workspaceApi.explainWorkspaceIndexQuery) {
+      return null;
+    }
+
+    try {
+      const explain = await workspaceApi.explainWorkspaceIndexQuery({
+        rootPath: workspace.rootPath,
+        kind,
+        query,
+        path: path ?? null,
+        line: line ?? null,
+        column: column ?? null,
+      });
+      return formatIndexExplainMessage(explain);
+    } catch {
+      return null;
+    }
+  }
+
   async function applySettings(nextSettings: AppSettings) {
     setSettingsApplyState("applying");
     setSettingsSaveState("saving");
@@ -1730,6 +1894,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     try {
       await refreshEnvironmentReport();
       await refreshSemanticState({ throwOnError: true });
+      await indexSdkSymbolsForSettings(nextSettings);
     } catch (error) {
       setSettingsApplyState("failed");
       setSettingsSaveState("idle");
@@ -1831,6 +1996,40 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   }, [workspace?.rootPath, workspaceApi]);
 
   useEffect(() => {
+    if (!workspace?.rootPath || !workspaceApi.watchWorkspaceIndexTaskStatuses) {
+      return;
+    }
+
+    let disposed = false;
+    let teardownWatcher: (() => void) | null = null;
+    void workspaceApi.watchWorkspaceIndexTaskStatuses(workspace.rootPath, (status) => {
+      if (disposed) {
+        return;
+      }
+
+      setWorkspaceIndexTaskStatuses((current) => mergeWorkspaceIndexTaskStatus(current, status));
+    })
+      .then((teardown) => {
+        if (disposed) {
+          teardown();
+          return;
+        }
+
+        teardownWatcher = teardown;
+      })
+      .catch((error) => {
+        if (!disposed) {
+          setStatusText(`Workspace index status watcher failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+
+    return () => {
+      disposed = true;
+      teardownWatcher?.();
+    };
+  }, [workspace?.rootPath, workspaceApi]);
+
+  useEffect(() => {
     if (activeOverlay !== "searchEverywhere") {
       return;
     }
@@ -1849,9 +2048,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
 
     if (searchEverywhereMode === "searchEverywhere") {
-      const indexRequest = workspaceApi.queryWorkspaceSearchEverywhere
+      const indexRequest = workspaceApi.queryWorkspaceCandidates
+        ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, quickOpenQuery, searchEverywhereScope, 24)
+        : workspaceApi.queryWorkspaceSearchEverywhere
         ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, quickOpenQuery, 24)
-        : Promise.resolve(workspaceIndexRef.current.querySearchEverywhere(quickOpenQuery, 24));
+          .then((candidates) => filterSearchCandidatesByScope(candidates, searchEverywhereScope))
+        : Promise.resolve(workspaceIndexRef.current.queryCandidates(quickOpenQuery, searchEverywhereScope, 24));
 
       void indexRequest.then((candidates) => {
         if (searchEverywhereRequestRef.current !== requestId) {
@@ -1864,6 +2066,13 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           matches: [],
         });
         setSearchEverywhereSelectedIndex(0);
+        if (candidates.length === 0 && quickOpenQuery.trim()) {
+          void explainIndexMiss("search", quickOpenQuery.trim()).then((explanation) => {
+            if (searchEverywhereRequestRef.current === requestId && explanation) {
+              setStatusText(`Search Everywhere miss: ${explanation}`);
+            }
+          });
+        }
       });
       return;
     }
@@ -1911,8 +2120,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
       setSearchEverywhereResult(result);
       setSearchEverywhereSelectedIndex(0);
+      if (result.query.kind !== "invalid" && result.matches.length === 0 && quickOpenQuery.trim()) {
+        const missLabel = searchOverlayLabel(searchEverywhereMode);
+        void explainIndexMiss("search", quickOpenQuery.trim()).then((explanation) => {
+          if (searchEverywhereRequestRef.current === requestId && explanation) {
+            setStatusText(`${missLabel} miss: ${explanation}`);
+          }
+        });
+      }
     });
-  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereMode, searchEverywhereOptions, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
+  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereMode, searchEverywhereOptions, searchEverywhereScope, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
 
   const shellHotkeyContext = useMemo(() => ({
     completionOpen: activeOverlay === "completion",
@@ -1972,12 +2189,26 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const overlayVisible = activeOverlay !== "none" && activeOverlay !== "completion";
   const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
   const semanticCapability = describeSemanticCapabilities(semanticState, settingsApplyState);
-  const currentClassMethods = useMemo(() => (
+  const localCurrentClassMethods = useMemo(() => (
     collectCurrentClassMethods(
       documentsRef.current.getDocument(activePath ?? "")?.currentContent ?? editorContent,
       editorSelection.line,
     )
   ), [activePath, editorContent, editorSelection.line]);
+  const currentClassMethods = useMemo(() => {
+    const indexed = indexedCurrentMethods;
+    if (!activePath || !indexed || normalizePath(indexed.path) !== normalizePath(activePath)) {
+      return localCurrentClassMethods;
+    }
+    if (indexed.methods.length === 0) {
+      return localCurrentClassMethods;
+    }
+    const localByName = new Map(localCurrentClassMethods.map((method) => [method.name, method]));
+    const scoped = indexed.methods
+      .filter((method) => localByName.size === 0 || localByName.has(method.name))
+      .map((method) => ({ ...method, signature: localByName.get(method.name)?.signature ?? method.signature }));
+    return scoped.length > 0 ? scoped : localCurrentClassMethods;
+  }, [activePath, indexedCurrentMethods, localCurrentClassMethods]);
   const visibleCurrentClassMethods = useMemo(() => {
     const query = currentMethodsQuery.trim().toLowerCase();
     return currentClassMethods.filter((method) => (
@@ -2142,7 +2373,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       ) : null}
       {overlayVisible ? (
         <OverlaySurface activeOverlay={activeOverlay} label={overlayLabel} onClose={() => setActiveOverlay("none")}>
-          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereCandidates={searchEverywhereCandidates} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} workspacePartialNotice={workspacePartialNotice} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenSearchEverywhereCandidate={(candidate) => void openSearchEverywhereCandidate(candidate)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
+          <SearchOverlayContent activeOverlay={activeOverlay} commandPaletteItems={commandPaletteItems} quickOpenQuery={quickOpenQuery} quickOpenResults={quickOpenResults} recentFileResults={recentFileResults} recentProjectResults={recentProjectResults} searchEverywhereOptions={searchEverywhereOptions} searchEverywhereMode={searchEverywhereMode} searchEverywhereScope={searchEverywhereScope} searchEverywhereReplaceQuery={searchEverywhereReplaceQuery} searchEverywhereResult={searchEverywhereResult} searchEverywhereCandidates={searchEverywhereCandidates} searchEverywhereSelectedIndex={searchEverywhereSelectedIndex} workspacePartialNotice={workspacePartialNotice} onChangeQuery={handleOverlayQueryChange} onChangeSearchEverywhereScope={setSearchEverywhereScope} onChangeSearchEverywhereReplaceQuery={setSearchEverywhereReplaceQuery} onOpenFile={(path) => void openFile(path)} onOpenSearchEverywhereResult={(result) => void openSearchEverywhereResult(result.path, result.line, result.column)} onOpenSearchEverywhereCandidate={(candidate) => void openSearchEverywhereCandidate(candidate)} onOpenProject={(path) => void projectOpening.requestProjectOpen(path)} onMoveSearchEverywhereSelection={moveSearchEverywhereSelection} onOpenSelectedSearchEverywhereResult={() => void openSelectedSearchEverywhereResult()} onSelectSearchEverywhereResult={setSearchEverywhereSelectedIndex} onToggleSearchEverywhereCaseSensitive={toggleSearchEverywhereCaseSensitive} onToggleSearchEverywhereWholeWord={toggleSearchEverywhereWholeWord} onSubmitGoToLine={submitGoToLine} onCloseOverlay={() => setActiveOverlay("none")} />
         </OverlaySurface>
       ) : null}
       {projectMutationDialog ? (
@@ -2226,7 +2457,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       >
         {definitionDebugText}
       </div>
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} semanticCapability={semanticCapability} statusText={statusText} workspaceName={workspace?.rootName ?? null} workspaceScanText={workspaceScanText} workspaceIndexText={workspaceIndexText} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} semanticCapability={semanticCapability} statusText={statusText} workspaceName={workspace?.rootName ?? null} workspaceScanText={workspaceScanText} workspaceIndexText={workspaceIndexText} sdkIndexText={sdkIndexText} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ use crate::models::workspace::{
     WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::workspace_content_query_service::{load_candidate_lines, IndexedLine};
+use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
 pub fn index_workspace_content(root_path: &str, indexed_paths: &[String]) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
@@ -133,33 +134,7 @@ fn open_content_index(root_path: &str) -> Result<Connection, String> {
 }
 
 fn ensure_schema(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute(
-            "create table if not exists workspace_content_lines (
-                root_path text not null,
-                path text not null,
-                line integer not null,
-                text text not null,
-                primary key (root_path, path, line)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create index if not exists workspace_content_lines_lookup
-             on workspace_content_lines(root_path, text)",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create virtual table if not exists workspace_content_fts
-             using fts5(root_path unindexed, path unindexed, line unindexed, text)",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    ensure_workspace_index_schema(connection)
 }
 
 fn delete_indexed_path(connection: &Connection, root_key: &str, path: &str) -> Result<(), String> {

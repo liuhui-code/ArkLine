@@ -62,6 +62,40 @@ describe("workspace index store", () => {
     ]);
   });
 
+  it("preserves query readiness metadata for partial and stale index-backed results", () => {
+    const store = createWorkspaceIndexStore();
+
+    store.replaceQueryReadiness({
+      rootPath: "C:/samples/ArkDemo",
+      requestedGeneration: 12,
+      servedGeneration: 12,
+      state: "partial",
+      reason: "scan truncated",
+      retryable: true,
+    });
+
+    expect(store.state.queryReadiness).toEqual({
+      rootPath: "C:\\samples\\ArkDemo",
+      requestedGeneration: 12,
+      servedGeneration: 12,
+      state: "partial",
+      reason: "scan truncated",
+      retryable: true,
+    });
+
+    store.replaceQueryReadiness({
+      rootPath: "C:/samples/ArkDemo",
+      requestedGeneration: 13,
+      servedGeneration: 12,
+      state: "stale",
+      reason: "Served generation 12 is older than requested generation 13",
+      retryable: true,
+    });
+
+    expect(store.state.queryReadiness?.state).toBe("stale");
+    expect(store.state.queryReadiness?.servedGeneration).toBe(12);
+  });
+
   it("queries search everywhere candidates across classes symbols and files", () => {
     const store = createWorkspaceIndexStore();
 
@@ -101,5 +135,33 @@ describe("workspace index store", () => {
       { source: "symbol", title: "submitLogin", line: 8 },
       { source: "file", title: "LoginPage.ets", line: 1 },
     ]);
+  });
+
+  it("queries scoped file candidates without mixed search truncation", () => {
+    const store = createWorkspaceIndexStore();
+    const rootPath = "C:/samples/ArkDemo";
+
+    store.replaceState({
+      status: "ready",
+      rootPath,
+      filePaths: Array.from({ length: 24 }, (_value, index) => `${rootPath}/src/TargetFile${index}.ets`),
+      symbols: Array.from({ length: 24 }, (_value, index) => ({
+        source: "class" as const,
+        kind: "class",
+        name: `TargetClass${index}`,
+        path: `${rootPath}/src/TargetClass${index}.ets`,
+        line: 1,
+        column: 7,
+      })),
+      indexedAt: 1,
+      partialReason: null,
+    });
+
+    const mixedFiles = store.querySearchEverywhere("target", 8).filter((candidate) => candidate.source === "file");
+    const scopedFiles = store.queryCandidates("target", "files", 8);
+
+    expect(mixedFiles).toHaveLength(4);
+    expect(scopedFiles).toHaveLength(8);
+    expect(scopedFiles.every((candidate) => candidate.source === "file")).toBe(true);
   });
 });

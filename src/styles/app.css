@@ -2412,6 +2412,36 @@ button:disabled {
   gap: 4px;
 }
 
+.search-everywhere__scopes {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.search-everywhere__scope {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.search-everywhere__scope:hover {
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.search-everywhere__scope--active {
+  border-color: var(--border-subtle);
+  background: var(--bg-selected);
+  color: var(--text-primary);
+}
+
 .search-everywhere__toggle {
   min-width: 32px;
   justify-content: center;

@@ -138,18 +138,16 @@ Missing:
 
 Current:
 
-- Commands call runtime/content-search functions directly.
-- Search Everywhere mixes file and symbol queries in runtime.
+- `workspace_index_query_service` centralizes quick open, Search Everywhere,
+  scoped file/class/symbol/API lookup, and content search entry points.
+- Search Everywhere now includes indexed SDK/API candidates through the query
+  facade.
 
 Missing:
 
-- Single `workspace_index_query_service` for:
-  - quick open
-  - Search Everywhere
-  - content search
-  - symbol lookup
-  - SDK/API lookup
+- Remaining query facade coverage:
   - definition candidates
+  - UI wiring for Double Shift category tabs
 - Unified fallback rules:
   - memory first when fresh
   - SQLite structured tables when restored
@@ -162,16 +160,16 @@ Missing:
 Current:
 
 - SDK configuration enables semantic worker behavior.
-- SDK symbols are not persisted as indexed search entities.
+- SDK symbols are persisted as indexed search entities.
+- SDK Apply triggers SDK symbol indexing and Search Everywhere can return
+  SDK/API candidates.
 
 Missing:
 
-- SDK symbol catalog table.
 - ArkUI component/property/method signature index.
 - System API declaration targets for jump-to-definition.
 - SDK version and path in index metadata.
-- SDK apply task that rebuilds only SDK-dependent indexes.
-- Search Everywhere source group for SDK/API results.
+- Scheduler-owned SDK rebuild instead of direct Settings Apply call.
 
 ### 6. Content Search Scaling
 
@@ -385,6 +383,11 @@ Acceptance:
   same-file fallback.
 - SDK apply status blocks SDK-dependent jump until ready.
 
+Current progress:
+
+- SDK Apply now routes through the index manager task path.
+- SDK task results are queryable as status-bar-ready task statuses.
+
 ### Phase 6: Diagnostics and UI State
 
 Goal:
@@ -414,6 +417,11 @@ Acceptance:
 - User can inspect why search/jump did not return a result.
 - Rebuild Index clears and rebuilds structured SQLite indexes.
 - Status bar reflects long-running index state.
+
+Current progress:
+
+- Diagnostics, rebuild, and clear-cache commands are present.
+- Status bar can show SDK API index readiness and symbol count.
 
 ### Phase 7: Advanced Search Scaling
 
@@ -476,4 +484,3 @@ Additional phase gates:
 - Query facade: ready/stale/partial fallback tests.
 - SDK index: real SDK fixture tests for component/property/system API lookup.
 - Diagnostics: command tests for counts and failure reporting.
-

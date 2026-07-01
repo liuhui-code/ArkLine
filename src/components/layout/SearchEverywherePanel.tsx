@@ -4,9 +4,11 @@ import type {
   WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
+import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
 
 type SearchEverywherePanelProps = {
   mode: SearchEverywhereMode;
+  scope: WorkspaceIndexQueryScope;
   options: WorkspaceTextSearchOptions;
   query: string;
   replaceQuery: string;
@@ -15,6 +17,7 @@ type SearchEverywherePanelProps = {
   selectedIndex: number;
   partialNotice?: string | null;
   onChangeQuery: (value: string) => void;
+  onChangeScope: (scope: WorkspaceIndexQueryScope) => void;
   onChangeReplaceQuery: (value: string) => void;
   onMoveSelection: (direction: 1 | -1) => void;
   onOpenSelected: () => void;
@@ -28,8 +31,17 @@ type SearchEverywherePanelProps = {
 
 export type SearchEverywhereMode = "searchEverywhere" | "find" | "replace";
 
+const SEARCH_EVERYWHERE_SCOPES: { scope: WorkspaceIndexQueryScope; label: string }[] = [
+  { scope: "all", label: "All" },
+  { scope: "files", label: "Files" },
+  { scope: "classes", label: "Classes" },
+  { scope: "symbols", label: "Symbols" },
+  { scope: "api", label: "API" },
+];
+
 export function SearchEverywherePanel({
   mode,
+  scope,
   options,
   query,
   replaceQuery,
@@ -38,6 +50,7 @@ export function SearchEverywherePanel({
   selectedIndex,
   partialNotice,
   onChangeQuery,
+  onChangeScope,
   onChangeReplaceQuery,
   onMoveSelection,
   onOpenSelected,
@@ -134,6 +147,22 @@ export function SearchEverywherePanel({
           </button>
         </div>
       </div>
+      {mode === "searchEverywhere" ? (
+        <div className="search-everywhere__scopes" role="tablist" aria-label="Search Everywhere Categories">
+          {SEARCH_EVERYWHERE_SCOPES.map((item) => (
+            <button
+              key={item.scope}
+              type="button"
+              role="tab"
+              aria-selected={scope === item.scope}
+              className={`search-everywhere__scope${scope === item.scope ? " search-everywhere__scope--active" : ""}`}
+              onClick={() => onChangeScope(item.scope)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {result.query.kind === "invalid" ? (
         <div className="search-everywhere__error" role="status">
           Invalid regular expression: {result.query.message}
@@ -282,7 +311,7 @@ function groupSearchMatches(matches: WorkspaceTextSearchMatch[]) {
 }
 
 function groupSearchCandidates(candidates: SearchCandidate[]) {
-  const order: SearchCandidate["source"][] = ["class", "symbol", "file", "action", "sdk", "text"];
+  const order: SearchCandidate["source"][] = ["class", "symbol", "file", "api", "action", "sdk", "text"];
   return order
     .map((source) => ({
       source,
@@ -300,6 +329,7 @@ function candidateGroupLabel(source: SearchCandidate["source"]) {
   if (source === "symbol") return "Symbols";
   if (source === "file") return "Files";
   if (source === "action") return "Actions";
+  if (source === "api") return "API";
   if (source === "sdk") return "SDK";
   return "Text";
 }
@@ -309,6 +339,7 @@ function candidateGroupDescription(source: SearchCandidate["source"]) {
   if (source === "symbol") return "functions and methods";
   if (source === "file") return "workspace files";
   if (source === "action") return "commands";
+  if (source === "api") return "SDK and system APIs";
   if (source === "sdk") return "SDK declarations";
   return "content matches";
 }

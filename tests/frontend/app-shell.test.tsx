@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
-import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { LanguageCompletionItem, WorkspaceApi, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 import type { WorkspaceEditPlan } from "@/features/code-actions/workspace-edit-model";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { EditorView } from "@codemirror/view";
@@ -640,6 +640,146 @@ describe("App shell", () => {
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index");
   });
 
+  it("shows index explain text when Search Everywhere has no matches", async () => {
+    const user = userEvent.setup();
+    const explainWorkspaceIndexQuery = vi.fn(async () => ({
+      status: "notIndexed" as const,
+      message: "No indexed evidence explains this query yet",
+      facts: [{ category: "query", evidence: "missingThing" }],
+      recommendedAction: "rebuildIndex" as const,
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ explainWorkspaceIndexQuery })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "missingThing");
+
+    await waitFor(() => expect(explainWorkspaceIndexQuery).toHaveBeenCalledWith(expect.objectContaining({
+      rootPath: "C:\\samples\\DemoWorkspace",
+      kind: "search",
+      query: "missingThing",
+    })));
+    expect(await screen.findByText("Search Everywhere miss: No indexed evidence explains this query yet. Rebuild Index.")).toBeVisible();
+  });
+
+  it("filters Search Everywhere through scoped index categories", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidates = vi.fn(async (_rootPath: string, _query: string, scope: string) => {
+      if (scope === "classes") {
+        return [{
+          id: "class:login",
+          source: "class" as const,
+          kind: "class",
+          title: "LoginController",
+          subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          line: 3,
+          column: 7,
+          score: 120,
+          freshness: "ready" as const,
+        }];
+      }
+
+      return [
+        {
+          id: "class:login",
+          source: "class" as const,
+          kind: "class",
+          title: "LoginController",
+          subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          line: 3,
+          column: 7,
+          score: 120,
+          freshness: "ready" as const,
+        },
+        {
+          id: "api:login",
+          source: "api" as const,
+          kind: "method",
+          title: "loginAction",
+          subtitle: "LoginApi · C:/HarmonyOS/Sdk/login-api.d.ts",
+          path: "C:/HarmonyOS/Sdk/login-api.d.ts",
+          line: 2,
+          column: 3,
+          score: 80,
+          freshness: "ready" as const,
+        },
+      ];
+    });
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidates })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    await waitFor(() => expect(queryWorkspaceCandidates).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "login",
+      "all",
+      24,
+    ));
+    expect(await screen.findByRole("button", { name: /api loginAction/ })).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Classes" }));
+
+    await waitFor(() => expect(queryWorkspaceCandidates).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "login",
+      "classes",
+      24,
+    ));
+    expect(screen.getByRole("tab", { name: "Classes", selected: true })).toBeVisible();
+    expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /api loginAction/ })).not.toBeInTheDocument();
+  });
+
+  it("filters Search Everywhere categories when only the mixed query api is available", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 7,
+        score: 120,
+        freshness: "ready" as const,
+      },
+      {
+        id: "api:login",
+        source: "api" as const,
+        kind: "method",
+        title: "loginAction",
+        subtitle: "LoginApi · C:/HarmonyOS/Sdk/login-api.d.ts",
+        path: "C:/HarmonyOS/Sdk/login-api.d.ts",
+        line: 2,
+        column: 3,
+        score: 80,
+        freshness: "ready" as const,
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({ queryWorkspaceSearchEverywhere });
+    workspaceApi.queryWorkspaceCandidates = undefined;
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+    expect(await screen.findByRole("button", { name: /api loginAction/ })).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Classes" }));
+
+    expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /api loginAction/ })).not.toBeInTheDocument();
+  });
+
   it("refreshes the workspace index from external filesystem changes", async () => {
     const user = userEvent.setup();
     const rootPath = "C:/samples/DemoWorkspace";
@@ -840,6 +980,30 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
+  it("shows index explain text when Find in Files has no matches", async () => {
+    const user = userEvent.setup();
+    const explainWorkspaceIndexQuery = vi.fn(async () => ({
+      status: "notIndexed" as const,
+      message: "No indexed evidence explains this query yet",
+      facts: [{ category: "query", evidence: "missingText" }],
+      recommendedAction: "rebuildIndex" as const,
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ explainWorkspaceIndexQuery })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Find in Files" }));
+    await user.type(await screen.findByLabelText("Find in Files Query"), "missingText");
+
+    await waitFor(() => expect(explainWorkspaceIndexQuery).toHaveBeenCalledWith(expect.objectContaining({
+      rootPath: "C:\\samples\\DemoWorkspace",
+      kind: "search",
+      query: "missingText",
+    })));
+    expect(await screen.findByText("Find in Files miss: No indexed evidence explains this query yet. Rebuild Index.")).toBeVisible();
+  });
+
   it("opens Replace in Files from the menu with a replace input", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -973,6 +1137,59 @@ describe("App shell", () => {
     await user.keyboard("{Enter}");
     expect(screen.queryByRole("dialog", { name: "Methods in Current Class" })).not.toBeInTheDocument();
     expect(await screen.findByText("Method: handleTap(event: ClickEvent)")).toBeVisible();
+  });
+
+  it("uses indexed file symbols for Ctrl+F7 when available", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceFileSymbols = vi.fn(async () => [
+      {
+        id: "symbol:C:/samples/DemoWorkspace/src/main.ets:4:3",
+        source: "symbol" as const,
+        kind: "method",
+        title: "indexedBuild",
+        subtitle: "Index · C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 4,
+        column: 3,
+        score: 0,
+        freshness: "ready" as const,
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => [
+        "@Entry",
+        "@Component",
+        "struct Index {",
+        "  indexedBuild() {}",
+        "}",
+      ].join("\n"),
+      queryWorkspaceFileSymbols,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard("{Control>}{F7}{/Control}");
+
+    expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "C:\\samples\\DemoWorkspace\\src\\main.ets",
+      "",
+      200,
+    );
+    expect(await screen.findByRole("option", { name: /indexedBuild\(\).*line 4/ })).toBeVisible();
   });
 
   it("shows shortcut hints in the command palette", async () => {
@@ -1688,6 +1905,51 @@ describe("App shell", () => {
     });
   });
 
+  it("shows index explain text when definition lookup misses", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "const value = missingTarget;\n",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      gotoDefinition: vi.fn(async () => null),
+      gotoDefinitionCandidates: vi.fn(async () => []),
+      explainWorkspaceIndexQuery: vi.fn(async () => ({
+        status: "sdkNotReady" as const,
+        message: "SDK API index is not ready for this workspace",
+        facts: [{ category: "query", evidence: "missingTarget" }],
+        recommendedAction: "configureSdk" as const,
+      })),
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}b{/Control}");
+
+    await waitFor(() => expect(workspaceApi.explainWorkspaceIndexQuery).toHaveBeenCalledWith(expect.objectContaining({
+      rootPath: "C:\\samples\\DemoWorkspace",
+      kind: "definition",
+    })));
+    expect(await screen.findByText(/Go to Definition miss: SDK API index is not ready for this workspace\. Configure SDK\./)).toBeVisible();
+  });
+
   it("opens SDK declaration targets returned by go to definition", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
@@ -1789,6 +2051,173 @@ describe("App shell", () => {
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build(value)");
+  });
+
+  it("adds indexed file symbols to completion when language completions are empty", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceFileSymbols = vi.fn(async () => [
+      {
+        id: "symbol:C:/samples/DemoWorkspace/src/main.ets:4:3",
+        source: "symbol" as const,
+        kind: "method",
+        title: "indexedBuild",
+        subtitle: "Index · C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 4,
+        column: 3,
+        score: 0,
+        freshness: "ready" as const,
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => []),
+      queryWorkspaceFileSymbols,
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>} {/Control}");
+
+    await waitFor(() => expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "C:\\samples\\DemoWorkspace\\src\\main.ets",
+      "",
+      80,
+    ));
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(within(popup).getByRole("option", { name: /indexedBuild\(\)/ })).toBeVisible();
+  });
+
+  it("opens indexed completion when language service completion is unavailable", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceFileSymbols = vi.fn(async () => [
+      {
+        id: "symbol:C:/samples/DemoWorkspace/src/main.ets:4:3",
+        source: "symbol" as const,
+        kind: "method",
+        title: "indexedBuild",
+        subtitle: "Index · C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 4,
+        column: 3,
+        score: 0,
+        freshness: "ready" as const,
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      queryWorkspaceFileSymbols,
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+    workspaceApi.completeSymbol = undefined;
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>} {/Control}");
+
+    expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
+    expect(screen.getByRole("option", { name: /indexedBuild\(\)/ })).toBeVisible();
+  });
+
+  it("adds workspace indexed symbols and ArkTS keywords to completion", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidates = vi.fn(async () => [
+      {
+        id: "class:C:/samples/DemoWorkspace/src/profile.ets:3:8",
+        source: "class" as const,
+        kind: "class",
+        title: "PrivateProfile",
+        subtitle: "C:/samples/DemoWorkspace/src/profile.ets",
+        path: "C:/samples/DemoWorkspace/src/profile.ets",
+        line: 3,
+        column: 8,
+        score: 0,
+        freshness: "ready" as const,
+      },
+    ]);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      saveFile: async () => undefined,
+      runValidation: async () => [],
+      loadDiff: async () => "",
+      inspectEnvironment: async () => ({ tools: [] }),
+      completeSymbol: vi.fn(async () => []),
+      queryWorkspaceCandidates,
+      loadSettings: async () => defaultSettings(),
+      saveSettings: async () => undefined,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("p");
+    await user.keyboard("r");
+    await user.keyboard("i");
+    await user.keyboard("{Control>} {/Control}");
+
+    await waitFor(() => expect(queryWorkspaceCandidates).toHaveBeenCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "pri",
+      "all",
+      80,
+    ));
+    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
+    expect(within(popup).getByRole("option", { name: /PrivateProfile/ })).toBeVisible();
+    expect(within(popup).getByRole("option", { name: /private/ })).toBeVisible();
   });
 
   it("shows SDK completion signature and source details", async () => {
@@ -4199,6 +4628,72 @@ describe("App shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Apply" }));
     await waitFor(() => expect(saveSettings).toHaveBeenCalled());
+  });
+
+  it("indexes SDK API symbols after applying SDK settings", async () => {
+    const user = userEvent.setup();
+    const saveSettings = vi.fn(async () => undefined);
+    let taskStatusWatcher: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
+    const readySdkStatus: WorkspaceIndexTaskStatus = {
+      taskId: "1:sdk",
+      rootPath: "C:/samples/DemoWorkspace",
+      kind: "sdk",
+      status: "ready",
+      reason: "sdk-apply",
+      generation: 1,
+      progressCurrent: 1,
+      progressTotal: 1,
+      symbolCount: 12,
+    };
+    const indexWorkspaceSdkSymbols = vi.fn(async () => {
+      throw new Error("sync SDK indexing should not be used when submit is available");
+    });
+    const submitWorkspaceSdkIndex = vi.fn(async () => {
+      taskStatusWatcher?.({
+        ...readySdkStatus,
+        taskId: "1:sdk",
+        status: "running",
+        progressCurrent: 0,
+        symbolCount: undefined,
+      });
+      taskStatusWatcher?.(readySdkStatus);
+      return { ...readySdkStatus, status: "queued", progressCurrent: 0, symbolCount: undefined };
+    });
+    const getWorkspaceIndexTaskStatuses = vi.fn(async () => [readySdkStatus]);
+    const watchWorkspaceIndexTaskStatuses = vi.fn(async (_rootPath, onChange) => {
+      taskStatusWatcher = onChange;
+      return () => undefined;
+    });
+    const workspaceApi = createWorkspaceApi({
+      saveSettings,
+      indexWorkspaceSdkSymbols,
+      submitWorkspaceSdkIndex,
+      getWorkspaceIndexTaskStatuses,
+      watchWorkspaceIndexTaskStatuses,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await waitFor(() => expect(watchWorkspaceIndexTaskStatuses).toHaveBeenCalled());
+    saveSettings.mockClear();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(screen.getByRole("tab", { name: "SDK & Tools" }));
+    const sdkPath = await screen.findByLabelText("HarmonyOS / ArkTS SDK Path");
+    await user.clear(sdkPath);
+    await user.type(sdkPath, "D:/HarmonyOS/Sdk/default/openharmony");
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(submitWorkspaceSdkIndex).toHaveBeenCalledWith(
+      expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace/),
+      "D:/HarmonyOS/Sdk/default/openharmony",
+      "settings",
+    ));
+    expect(indexWorkspaceSdkSymbols).not.toHaveBeenCalled();
+    expect(await screen.findByText("SDK settings applied")).toBeVisible();
+    expect(await screen.findByText("SDK API: ready (12 symbols)")).toBeVisible();
   });
 
   it("uses a directory picker for Node Path", async () => {

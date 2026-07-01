@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{
@@ -14,8 +14,9 @@ use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_fingerprints,
 };
 use crate::services::workspace_index_persistence_service::{
-    persist_catalog_cache, persist_index_state, restore_catalog_cache_state,
+    persist_catalog_cache, persist_incremental_index_state, restore_catalog_cache_state,
 };
+use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
 use crate::services::workspace_search_ranking_service::{
     build_file_candidates, sort_search_everywhere_candidates,
 };
@@ -31,9 +32,9 @@ struct IndexedWorkspace {
     symbols: Vec<crate::models::workspace::WorkspaceIndexedSymbol>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndexRuntime {
-    workspaces: Mutex<HashMap<String, IndexedWorkspace>>,
+    workspaces: Arc<Mutex<HashMap<String, IndexedWorkspace>>>,
 }
 
 impl WorkspaceIndexRuntime {
@@ -41,6 +42,7 @@ impl WorkspaceIndexRuntime {
         &self,
         snapshot: &WorkspaceSnapshot,
     ) -> Result<WorkspaceIndexState, String> {
+        migrate_workspace_index_schema(&snapshot.root_path)?;
         let root_path = normalize_index_path(&snapshot.root_path);
         let status = if snapshot.scan_summary.truncated {
             WorkspaceIndexStatus::Partial
@@ -187,6 +189,15 @@ impl WorkspaceIndexRuntime {
             })
     }
 
+    pub fn clear_workspace_index_state(&self, root_path: &str) -> Result<(), String> {
+        let normalized_root = normalize_index_path(root_path);
+        self.workspaces
+            .lock()
+            .map_err(|_| "Workspace index lock poisoned".to_string())?
+            .remove(&normalized_root);
+        Ok(())
+    }
+
     pub fn query_quick_open(
         &self,
         root_path: &str,
@@ -274,7 +285,7 @@ impl WorkspaceIndexRuntime {
         update_workspace_content(root_path, added_paths, removed_paths)?;
         update_file_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
         remove_file_fingerprints(root_path, removed_paths)?;
-        persist_index_state(root_path, &workspace.state)?;
+        persist_incremental_index_state(root_path, &workspace.state, added_paths, removed_paths)?;
 
         Ok(workspace.state)
     }
@@ -335,7 +346,7 @@ impl WorkspaceIndexRuntime {
             .lock()
             .map_err(|_| "Workspace index lock poisoned".to_string())?
             .insert(root_path, indexed);
-        persist_index_state(&snapshot.root_path, &state)?;
+        persist_incremental_index_state(&snapshot.root_path, &state, changed_paths, removed_paths)?;
 
         Ok(state)
     }

@@ -67,6 +67,42 @@ export type WorkspaceIndexRefreshResult = {
   removedPaths: string[];
 };
 
+export type WorkspaceIndexDiagnostics = {
+  rootPath: string;
+  status: string;
+  schemaVersions: Record<string, number>;
+  fileCount: number;
+  symbolCount: number;
+  contentLineCount: number;
+  fingerprintCount: number;
+  sdkSymbolCount: number;
+  activeSdkPath: string | null;
+  activeSdkVersion: string | null;
+  lastError: string | null;
+};
+
+export type WorkspaceSdkIndexSummary = {
+  symbolCount: number;
+};
+
+export type WorkspaceIndexTaskStatus = {
+  taskId: string;
+  rootPath: string;
+  kind: string;
+  status: "queued" | "running" | "ready" | "partial" | "stale" | "failed" | string;
+  reason: string;
+  generation: number;
+  progressCurrent: number;
+  progressTotal: number;
+  startedAt?: number;
+  finishedAt?: number;
+  symbolCount?: number;
+  message?: string;
+  error?: string;
+};
+
+export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" | "api";
+
 export type WorkspaceTextSearchRequest = {
   rootPath: string;
   query: string;
@@ -76,6 +112,7 @@ export type WorkspaceTextSearchRequest = {
 };
 
 export type WorkspaceIndexWatcher = (result: WorkspaceIndexRefreshResult) => void;
+export type WorkspaceIndexTaskStatusWatcher = (status: WorkspaceIndexTaskStatus) => void;
 
 export type WorkspaceLaunchContext = {
   rootPath: string | null;
@@ -228,6 +265,43 @@ export type LanguageCompletionItem = {
   data?: Record<string, unknown>;
 };
 
+export type WorkspaceIndexReadinessState = "ready" | "partial" | "stale" | "blocked" | "missing";
+
+export type WorkspaceIndexReadiness = {
+  rootPath: string;
+  requestedGeneration: number;
+  servedGeneration: number | null;
+  state: WorkspaceIndexReadinessState;
+  reason?: string;
+  retryable: boolean;
+};
+
+export type WorkspaceIndexQueryEnvelope<T> = {
+  items: T[];
+  readiness: WorkspaceIndexReadiness;
+};
+
+export type WorkspaceIndexExplainRequest = {
+  rootPath: string;
+  kind: "search" | "definition" | "symbol" | "completion" | "api";
+  query: string;
+  path?: string | null;
+  line?: number | null;
+  column?: number | null;
+};
+
+export type WorkspaceIndexExplainFact = {
+  category: string;
+  evidence: string;
+};
+
+export type WorkspaceIndexExplainResult = {
+  status: "found" | "notIndexed" | "excluded" | "stale" | "partial" | "sdkNotReady" | "parserFailed" | "unsupported";
+  message: string;
+  facts: WorkspaceIndexExplainFact[];
+  recommendedAction?: "wait" | "rebuildIndex" | "configureSdk" | "openFile" | "reportBug" | null;
+};
+
 export type DocumentSymbol = {
   name: string;
   kind: string;
@@ -276,8 +350,20 @@ export type WorkspaceApi = {
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
   listWorkspaceDirectory?(rootPath: string, directoryPath: string): Promise<WorkspaceDirectoryEntry[]>;
   getWorkspaceIndexState?(rootPath: string): Promise<WorkspaceIndexState>;
+  inspectWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexDiagnostics>;
+  getWorkspaceIndexTaskStatuses?(rootPath: string): Promise<WorkspaceIndexTaskStatus[]>;
+  watchWorkspaceIndexTaskStatuses?(rootPath: string, onChange: WorkspaceIndexTaskStatusWatcher): Promise<() => void>;
+  clearWorkspaceIndex?(rootPath: string): Promise<void>;
+  rebuildWorkspaceIndex?(rootPath: string): Promise<void>;
+  indexWorkspaceSdkSymbols?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceSdkIndexSummary>;
+  submitWorkspaceSdkIndex?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceSearchEverywhere?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
+  queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<SearchCandidate[]>;
+  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number): Promise<SearchCandidate[]>;
+  queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
@@ -440,6 +526,20 @@ async function loadMockDocumentContent(path: string) {
   return "";
 }
 
+function emptyIndexQueryEnvelope<T>(rootPath: string): WorkspaceIndexQueryEnvelope<T> {
+  return {
+    items: [],
+    readiness: {
+      rootPath,
+      requestedGeneration: 0,
+      servedGeneration: null,
+      state: "missing",
+      reason: "No indexed generation is available",
+      retryable: true,
+    },
+  };
+}
+
 export const defaultWorkspaceApi: WorkspaceApi = {
   async pickWorkspaceRoot() {
     if (!hasTauriRuntime()) {
@@ -493,6 +593,95 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       partialReason: null,
     };
   },
+  async inspectWorkspaceIndex(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexDiagnostics>("inspect_workspace_index", { rootPath });
+    }
+
+    return {
+      rootPath,
+      status: "empty",
+      schemaVersions: {},
+      fileCount: 0,
+      symbolCount: 0,
+      contentLineCount: 0,
+      fingerprintCount: 0,
+      sdkSymbolCount: 0,
+      activeSdkPath: null,
+      activeSdkVersion: null,
+      lastError: null,
+    };
+  },
+  async getWorkspaceIndexTaskStatuses(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexTaskStatus[]>("get_workspace_index_task_statuses", { rootPath });
+    }
+
+    void rootPath;
+    return [];
+  },
+  async watchWorkspaceIndexTaskStatuses(rootPath, onChange) {
+    if (!hasTauriRuntime()) {
+      return () => undefined;
+    }
+
+    const unlisten = await listen<WorkspaceIndexTaskStatus>("workspace-index-task-updated", (event) => {
+      if (normalizePath(event.payload.rootPath) !== normalizePath(rootPath)) {
+        return;
+      }
+
+      onChange(event.payload);
+    });
+
+    return () => {
+      unlisten();
+    };
+  },
+  async clearWorkspaceIndex(rootPath) {
+    if (hasTauriRuntime()) {
+      await invoke("clear_workspace_index", { rootPath });
+      return;
+    }
+
+    void rootPath;
+  },
+  async rebuildWorkspaceIndex(rootPath) {
+    if (hasTauriRuntime()) {
+      await invoke("rebuild_workspace_index", { rootPath });
+      return;
+    }
+
+    void rootPath;
+  },
+  async indexWorkspaceSdkSymbols(rootPath, sdkPath, sdkVersion) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceSdkIndexSummary>("index_workspace_sdk_symbols", { rootPath, sdkPath, sdkVersion });
+    }
+
+    void rootPath;
+    void sdkPath;
+    void sdkVersion;
+    return { symbolCount: 0 };
+  },
+  async submitWorkspaceSdkIndex(rootPath, sdkPath, sdkVersion) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexTaskStatus>("submit_workspace_sdk_index", { rootPath, sdkPath, sdkVersion });
+    }
+
+    void rootPath;
+    void sdkPath;
+    void sdkVersion;
+    return {
+      taskId: "local:sdk",
+      rootPath: "",
+      kind: "sdk",
+      status: "ready",
+      reason: "local-fallback",
+      generation: 0,
+      progressCurrent: 1,
+      progressTotal: 1,
+    };
+  },
   async queryWorkspaceQuickOpen(rootPath, query, limit) {
     if (hasTauriRuntime()) {
       return invoke<SearchCandidate[]>("query_workspace_quick_open", { rootPath, query, limit });
@@ -512,6 +701,60 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     void query;
     void limit;
     return [];
+  },
+  async queryWorkspaceCandidates(rootPath, query, scope, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<SearchCandidate[]>("query_workspace_candidates", { rootPath, query, scope, limit });
+    }
+
+    void rootPath;
+    void query;
+    void scope;
+    void limit;
+    return [];
+  },
+  async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>("query_workspace_candidates_with_readiness", { rootPath, query, scope, limit });
+    }
+
+    void query;
+    void scope;
+    void limit;
+    return emptyIndexQueryEnvelope(rootPath);
+  },
+  async queryWorkspaceFileSymbols(rootPath, filePath, query, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<SearchCandidate[]>("query_workspace_file_symbols", { rootPath, filePath, query, limit });
+    }
+
+    void rootPath;
+    void filePath;
+    void query;
+    void limit;
+    return [];
+  },
+  async queryWorkspaceFileSymbolsWithReadiness(rootPath, filePath, query, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>("query_workspace_file_symbols_with_readiness", { rootPath, filePath, query, limit });
+    }
+
+    void filePath;
+    void query;
+    void limit;
+    return emptyIndexQueryEnvelope(rootPath);
+  },
+  async explainWorkspaceIndexQuery(request) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexExplainResult>("explain_workspace_index_query", { request });
+    }
+
+    return {
+      status: "unsupported",
+      message: "Index explain is unavailable outside the desktop runtime",
+      facts: [{ category: "runtime", evidence: request.rootPath }],
+      recommendedAction: "reportBug",
+    };
   },
   async updateWorkspaceIndexFiles(rootPath, addedPaths, removedPaths) {
     if (hasTauriRuntime()) {

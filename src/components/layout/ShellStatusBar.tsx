@@ -14,6 +14,7 @@ type ShellStatusBarProps = {
   workspaceName: string | null;
   workspaceScanText: string | null;
   workspaceIndexText: string;
+  sdkIndexText: string | null;
   terminalRunning: boolean;
   buildMessage: string;
   currentLineBlame?: string | null;
@@ -35,6 +36,7 @@ export function ShellStatusBar({
   workspaceName,
   workspaceScanText,
   workspaceIndexText,
+  sdkIndexText,
   terminalRunning,
   buildMessage,
   currentLineBlame = null,
@@ -52,6 +54,7 @@ export function ShellStatusBar({
         <span className="status-pill status-pill--em">{`Workspace: ${workspaceName ?? "none"}`}</span>
         {workspaceScanText ? <span className="status-pill">{workspaceScanText}</span> : null}
         <span className="status-pill">{workspaceIndexText}</span>
+        {sdkIndexText ? <span className="status-pill">{sdkIndexText}</span> : null}
         <span className="status-pill">{activePath ? getPathBasename(activePath) : "No file selected"}</span>
         <SemanticCapabilityBadge capability={semanticCapability} />
         <SemanticModeBadge semanticState={semanticState} />

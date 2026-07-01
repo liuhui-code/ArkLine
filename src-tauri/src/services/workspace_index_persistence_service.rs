@@ -8,6 +8,14 @@ use serde::{Deserialize, Serialize};
 use crate::models::workspace::{
     WorkspaceIndexState, WorkspaceIndexStatus, WorkspaceIndexedSymbol, WorkspaceSnapshot,
 };
+use crate::services::workspace_index_entity_persistence_service::{
+    insert_legacy_symbol, insert_symbol_entity, persist_metadata_row, replace_changed_files,
+    replace_changed_symbols,
+};
+use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_stub_index_service::{
+    replace_all_stub_rows, replace_changed_stub_rows,
+};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +36,7 @@ pub fn persist_catalog_cache(
         .and_then(|_| persist_sqlite_index_state(&snapshot.root_path, state))
 }
 
+#[allow(dead_code)]
 pub fn persist_index_state(root_path: &str, state: &WorkspaceIndexState) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
@@ -35,6 +44,20 @@ pub fn persist_index_state(root_path: &str, state: &WorkspaceIndexState) -> Resu
 
     persist_json_index_state(root_path, state)?;
     persist_sqlite_index_state(root_path, state)
+}
+
+pub fn persist_incremental_index_state(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    changed_paths: &[String],
+    removed_paths: &[String],
+) -> Result<(), String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(());
+    }
+
+    persist_json_index_state(root_path, state)?;
+    persist_incremental_sqlite_index_state(root_path, state, changed_paths, removed_paths)
 }
 
 pub fn restore_catalog_cache_state(root_path: &str) -> Result<WorkspaceIndexState, String> {
@@ -91,7 +114,7 @@ fn persist_sqlite_index_state(root_path: &str, state: &WorkspaceIndexState) -> R
     };
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
 
-    let connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
+    let mut connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
     ensure_schema(&connection)?;
 
     let root_key = state
@@ -101,6 +124,67 @@ fn persist_sqlite_index_state(root_path: &str, state: &WorkspaceIndexState) -> R
     let state_json = serde_json::to_string(state).map_err(|error| error.to_string())?;
     let updated_at = now_epoch_ms()? as i64;
 
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    persist_catalog_row(&transaction, &root_key, &state_json, updated_at)?;
+    persist_structured_index_rows(&transaction, &root_key, state)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn persist_incremental_sqlite_index_state(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    changed_paths: &[String],
+    removed_paths: &[String],
+) -> Result<(), String> {
+    let cache_path = sqlite_catalog_cache_path(root_path);
+    let Some(parent) = cache_path.parent() else {
+        return Err(format!(
+            "Workspace SQLite catalog cache path has no parent: {}",
+            cache_path.display()
+        ));
+    };
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+
+    let mut connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
+    ensure_schema(&connection)?;
+    let root_key = state
+        .root_path
+        .clone()
+        .unwrap_or_else(|| normalize_index_path(root_path));
+    let state_json = serde_json::to_string(state).map_err(|error| error.to_string())?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    persist_catalog_row(&transaction, &root_key, &state_json, now_epoch_ms()? as i64)?;
+    persist_metadata_row(&transaction, &root_key, state)?;
+    replace_changed_files(&transaction, &root_key, &state.file_paths, removed_paths)?;
+    replace_changed_symbols(
+        &transaction,
+        &root_key,
+        &state.symbols,
+        changed_paths,
+        removed_paths,
+    )?;
+    replace_changed_stub_rows(
+        &transaction,
+        &root_key,
+        changed_paths,
+        removed_paths,
+        indexed_generation(state),
+    )?;
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+fn persist_catalog_row(
+    connection: &Connection,
+    root_key: &str,
+    state_json: &str,
+    updated_at: i64,
+) -> Result<(), String> {
     connection
         .execute(
             "insert into workspace_catalog (root_path, schema_version, state_json, updated_at)
@@ -112,8 +196,6 @@ fn persist_sqlite_index_state(root_path: &str, state: &WorkspaceIndexState) -> R
             params![root_key, state_json, updated_at],
         )
         .map_err(|error| error.to_string())?;
-    persist_structured_index_rows(&connection, &root_key, state)?;
-
     Ok(())
 }
 
@@ -158,63 +240,7 @@ fn restore_sqlite_catalog_cache(root_path: &str) -> Result<WorkspaceIndexState, 
 }
 
 fn ensure_schema(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute(
-            "create table if not exists workspace_catalog (
-                root_path text primary key,
-                schema_version integer not null,
-                state_json text not null,
-                updated_at integer not null
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create table if not exists workspace_files (
-                root_path text not null,
-                path text not null,
-                primary key (root_path, path)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create table if not exists workspace_symbols (
-                root_path text not null,
-                source text not null,
-                kind text not null,
-                name text not null,
-                path text not null,
-                line integer not null,
-                column integer not null,
-                container text,
-                primary key (root_path, source, kind, name, path, line, column)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create table if not exists workspace_index_metadata (
-                root_path text primary key,
-                status text not null,
-                indexed_at integer,
-                partial_reason text,
-                updated_at integer not null
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create index if not exists workspace_symbols_lookup
-             on workspace_symbols(root_path, source, name)",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    ensure_workspace_index_schema(connection)
 }
 
 fn persist_structured_index_rows(
@@ -231,6 +257,12 @@ fn persist_structured_index_rows(
     connection
         .execute(
             "delete from workspace_symbols where root_path = ?1",
+            params![root_key],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "delete from workspace_symbol_entities where root_path = ?1",
             params![root_key],
         )
         .map_err(|error| error.to_string())?;
@@ -264,26 +296,16 @@ fn persist_structured_index_rows(
     }
 
     for symbol in &state.symbols {
-        connection
-            .execute(
-                "insert into workspace_symbols (
-                    root_path, source, kind, name, path, line, column, container
-                 ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    root_key,
-                    symbol.source,
-                    symbol.kind,
-                    symbol.name,
-                    symbol.path,
-                    symbol.line as i64,
-                    symbol.column as i64,
-                    symbol.container,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
+        insert_legacy_symbol(connection, root_key, symbol)?;
+        insert_symbol_entity(connection, root_key, symbol)?;
     }
+    replace_all_stub_rows(connection, root_key, &state.file_paths, indexed_generation(state))?;
 
     Ok(())
+}
+
+fn indexed_generation(state: &WorkspaceIndexState) -> u64 {
+    state.indexed_at.unwrap_or_default() as u64
 }
 
 fn restore_structured_sqlite_catalog_cache(
