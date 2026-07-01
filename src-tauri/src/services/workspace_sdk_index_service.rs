@@ -8,6 +8,7 @@ use crate::models::workspace::WorkspaceSearchCandidate;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_sdk_parser_service::{collect_sdk_symbols, WorkspaceSdkSymbol};
 use crate::services::workspace_search_ranking_service::lexical_match_score;
+use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -43,13 +44,21 @@ pub fn index_workspace_sdk_symbols(
         transaction
             .execute(
                 "insert into workspace_sdk_symbols (
-                    root_path, sdk_path, sdk_version, source, kind, name,
+                    root_path, sdk_path, sdk_version, source, symbol_id, kind, name,
                     path, line, column, container, signature
-                 ) values (?1, ?2, ?3, 'api', ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 ) values (?1, ?2, ?3, 'api', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     root_key,
                     sdk_key,
                     sdk_version,
+                    sdk_symbol_id(
+                        &symbol.path,
+                        &symbol.kind,
+                        symbol.container.as_deref(),
+                        &symbol.name,
+                        symbol.line as i64,
+                        symbol.column as i64,
+                    ),
                     symbol.kind,
                     symbol.name,
                     symbol.path,
@@ -189,8 +198,16 @@ fn to_candidate(
 ) -> Option<WorkspaceSearchCandidate> {
     let score = score_sdk_symbol(&symbol, query_terms)?;
     let container = symbol.container.clone();
+    let id = sdk_symbol_id(
+        &symbol.path,
+        &symbol.kind,
+        symbol.container.as_deref(),
+        &symbol.name,
+        symbol.line as i64,
+        symbol.column as i64,
+    );
     Some(WorkspaceSearchCandidate {
-        id: format!("api:{}:{}:{}", symbol.path, symbol.line, symbol.column),
+        id,
         source: "api".to_string(),
         kind: symbol.kind,
         title: symbol.name,

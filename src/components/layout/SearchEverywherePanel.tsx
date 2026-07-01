@@ -5,6 +5,7 @@ import type {
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
+import type { KeyboardEvent, WheelEvent } from "react";
 
 type SearchEverywherePanelProps = {
   mode: SearchEverywhereMode;
@@ -15,6 +16,7 @@ type SearchEverywherePanelProps = {
   result: WorkspaceTextSearchResult;
   candidates: SearchCandidate[];
   selectedIndex: number;
+  selectedPreviewContent: string | null;
   partialNotice?: string | null;
   onChangeQuery: (value: string) => void;
   onChangeScope: (scope: WorkspaceIndexQueryScope) => void;
@@ -48,6 +50,7 @@ export function SearchEverywherePanel({
   result,
   candidates,
   selectedIndex,
+  selectedPreviewContent,
   partialNotice,
   onChangeQuery,
   onChangeScope,
@@ -67,9 +70,47 @@ export function SearchEverywherePanel({
   const groups = groupSearchMatches(result.matches);
   const candidateGroups = groupSearchCandidates(candidates);
   const resultsLabel = `${presentation.title} Results`;
+  const resultCount = mode === "searchEverywhere" ? candidates.length : result.matches.length;
+
+  function handlePanelKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "ArrowDown" && resultCount > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      onMoveSelection(1);
+      return;
+    }
+
+    if (event.key === "ArrowUp" && resultCount > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      onMoveSelection(-1);
+      return;
+    }
+
+    if (event.key === "Enter" && resultCount > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      onOpenSelected();
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseOverlay();
+    }
+  }
+
+  function handleResultsWheel(event: WheelEvent<HTMLDivElement>) {
+    if (resultCount <= 0 || Math.abs(event.deltaY) < 12) {
+      return;
+    }
+
+    onMoveSelection(event.deltaY > 0 ? 1 : -1);
+  }
 
   return (
-    <div className="search-everywhere">
+    <div className="search-everywhere" onKeyDownCapture={handlePanelKeyDownCapture}>
       <div className="search-everywhere__header">
         <div>
           <strong>{presentation.title}</strong>
@@ -93,21 +134,8 @@ export function SearchEverywherePanel({
           placeholder={presentation.searchPlaceholder}
           onChange={(event) => onChangeQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === "Escape") {
               event.preventDefault();
-              onMoveSelection(1);
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault();
-              onMoveSelection(-1);
-            }
-            if (event.key === "Enter") {
-              event.preventDefault();
-              onOpenSelected();
-            }
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onCloseOverlay();
             }
           }}
         />
@@ -170,8 +198,8 @@ export function SearchEverywherePanel({
       ) : null}
       {partialNotice ? <div className="search-everywhere__error" role="status">{partialNotice}</div> : null}
       {mode === "searchEverywhere" ? (
-        <div className="search-everywhere__body">
-          <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel}>
+        <div className="search-everywhere__body search-everywhere__body--palette">
+          <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel} onWheel={handleResultsWheel}>
             {candidateGroups.map((group) => (
               <section key={group.source} className="search-result-group" aria-label={`${group.label} ${group.items.length} results`}>
                 <div className="search-result-group__header">
@@ -204,18 +232,10 @@ export function SearchEverywherePanel({
               <div className="search-everywhere__empty">No matches</div>
             ) : null}
           </div>
-          <div className="search-everywhere__preview" aria-label="Search Everywhere Preview">
-            {candidates[selectedIndex] ? (
-              <div className="search-everywhere__preview-header">
-                <strong>{candidates[selectedIndex].title}</strong>
-                <span>{candidates[selectedIndex].subtitle}</span>
-              </div>
-            ) : <div className="search-everywhere__empty">Select a result to preview</div>}
-          </div>
         </div>
       ) : (
-      <div className="search-everywhere__body">
-        <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel}>
+      <div className="search-everywhere__body search-everywhere__body--text">
+        <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel} onWheel={handleResultsWheel}>
           {groups.map((group) => (
             <section key={group.path} className="search-result-group" aria-label={`${group.relativePath} ${group.matches.length} matches`}>
               <div className="search-result-group__header">
@@ -248,7 +268,7 @@ export function SearchEverywherePanel({
           ) : null}
         </div>
         <div className="search-everywhere__preview" aria-label="Search Everywhere Preview">
-          {selected ? <SearchPreview match={selected} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
+          {selected ? <SearchPreview match={selected} content={selectedPreviewContent} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
         </div>
       </div>
       )}
@@ -352,32 +372,51 @@ function candidateLocation(candidate: SearchCandidate) {
   return candidate.kind;
 }
 
-function SearchPreview({ match }: { match: WorkspaceTextSearchMatch }) {
+function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; content: string | null }) {
   const hitLine = highlightPreview(match.preview, match.previewStart, match.previewEnd);
+  const lines = content?.split(/\r?\n/u) ?? null;
 
   return (
     <>
       <div className="search-everywhere__preview-header">
-        <strong>{match.fileName}</strong>
-        <span>{match.relativePath}:{match.line}:{match.column}</span>
+        <div>
+          <strong>{match.fileName}</strong>
+          <span>{match.relativePath}:{match.line}:{match.column}</span>
+        </div>
+        <span>{lines ? `${lines.length.toLocaleString()} lines` : "Loading file preview"}</span>
       </div>
       <pre className="search-everywhere__preview-code">
-        {match.contextBefore.map((line) => (
-          <div key={`before:${line.line}`} className="search-everywhere__preview-line">
-            <span className="search-everywhere__preview-number">{line.line}</span>
-            <span>{line.text}</span>
-          </div>
-        ))}
-        <div className="search-everywhere__preview-line search-everywhere__preview-line--hit">
-          <span className="search-everywhere__preview-number">{match.line}</span>
-          <span>{hitLine}</span>
-        </div>
-        {match.contextAfter.map((line) => (
-          <div key={`after:${line.line}`} className="search-everywhere__preview-line">
-            <span className="search-everywhere__preview-number">{line.line}</span>
-            <span>{line.text}</span>
-          </div>
-        ))}
+        {lines ? lines.map((line, index) => {
+          const lineNumber = index + 1;
+          return (
+            <div
+              key={`file:${lineNumber}`}
+              className={`search-everywhere__preview-line${lineNumber === match.line ? " search-everywhere__preview-line--hit" : ""}`}
+            >
+              <span className="search-everywhere__preview-number">{lineNumber}</span>
+              <span>{lineNumber === match.line ? hitLine : line}</span>
+            </div>
+          );
+        }) : (
+          <>
+            {match.contextBefore.map((line) => (
+              <div key={`before:${line.line}`} className="search-everywhere__preview-line">
+                <span className="search-everywhere__preview-number">{line.line}</span>
+                <span>{line.text}</span>
+              </div>
+            ))}
+            <div className="search-everywhere__preview-line search-everywhere__preview-line--hit">
+              <span className="search-everywhere__preview-number">{match.line}</span>
+              <span>{hitLine}</span>
+            </div>
+            {match.contextAfter.map((line) => (
+              <div key={`after:${line.line}`} className="search-everywhere__preview-line">
+                <span className="search-everywhere__preview-number">{line.line}</span>
+                <span>{line.text}</span>
+              </div>
+            ))}
+          </>
+        )}
       </pre>
     </>
   );

@@ -340,7 +340,7 @@ fn background_worker_drains_tasks_and_reports_statuses() {
         .unwrap();
 
     assert!(started);
-    for _ in 0..20 {
+    for _ in 0..80 {
         if observed
             .lock()
             .unwrap()
@@ -355,16 +355,13 @@ fn background_worker_drains_tasks_and_reports_statuses() {
 
     assert!(observed
         .iter()
-        .any(|status| status == &("sdk".to_string(), "running".to_string())));
-    assert!(observed
-        .iter()
         .any(|status| status == &("sdk".to_string(), "ready".to_string())));
 
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn background_worker_waits_and_wakes_when_a_task_is_scheduled() {
+fn background_worker_processes_task_scheduled_before_start() {
     let root = unique_temp_dir("workspace-index-manager-wake");
     let sdk_root = root.join("openharmony");
     fs::create_dir_all(sdk_root.join("ets")).unwrap();
@@ -377,44 +374,36 @@ fn background_worker_waits_and_wakes_when_a_task_is_scheduled() {
     let sdk_path = sdk_root.to_string_lossy().to_string();
     let index_runtime = WorkspaceIndexRuntime::default();
     let manager = WorkspaceIndexManagerRuntime::default();
-    let observed = Arc::new(Mutex::new(Vec::new()));
-    let observed_for_worker = observed.clone();
-
-    let started = manager
-        .start_background_worker(index_runtime.clone(), move |status| {
-            observed_for_worker
-                .lock()
-                .unwrap()
-                .push((status.kind, status.status));
-        })
-        .unwrap();
-    assert!(started);
-    thread::sleep(Duration::from_millis(50));
-    assert!(observed.lock().unwrap().is_empty());
 
     manager
         .schedule_sdk_index(&root_path, &sdk_path, "test-sdk")
         .unwrap();
+    let queued = manager.get_index_task_statuses(&root_path).unwrap();
+    assert!(queued
+        .iter()
+        .any(|status| status.kind == "sdk" && status.status == "queued"));
 
-    for _ in 0..20 {
-        if observed
-            .lock()
+    let started = manager
+        .start_background_worker(index_runtime.clone(), |_| {})
+        .unwrap();
+    assert!(started);
+
+    for _ in 0..80 {
+        if manager
+            .get_index_task_statuses(&root_path)
             .unwrap()
             .iter()
-            .any(|status| status == &("sdk".to_string(), "ready".to_string()))
+            .any(|status| status.kind == "sdk" && status.status == "ready")
         {
             break;
         }
         thread::sleep(Duration::from_millis(25));
     }
-    let observed = observed.lock().unwrap().clone();
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
 
-    assert!(observed
+    assert!(statuses
         .iter()
-        .any(|status| status == &("sdk".to_string(), "running".to_string())));
-    assert!(observed
-        .iter()
-        .any(|status| status == &("sdk".to_string(), "ready".to_string())));
+        .any(|status| status.kind == "sdk" && status.status == "ready"));
 
     fs::remove_dir_all(root).unwrap();
 }

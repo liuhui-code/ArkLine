@@ -7,6 +7,9 @@ use rusqlite::{params, Connection};
 use crate::services::workspace_reference_generic_receiver_service::{
     generic_class_fields, GenericClass,
 };
+use crate::services::workspace_reference_member_access_parser_service::{
+    is_identifier, member_accesses, MemberAccess,
+};
 use crate::services::workspace_reference_receiver_type_service::receiver_type_maps_by_line;
 
 pub fn index_workspace_member_references(
@@ -26,7 +29,7 @@ pub fn index_workspace_member_references(
         if is_declaration_like_line(line) {
             continue;
         }
-        let receiver_types = receiver_types_by_line
+        let mut receiver_types = receiver_types_by_line
             .get(line_index)
             .cloned()
             .unwrap_or_default();
@@ -52,6 +55,13 @@ pub fn index_workspace_member_references(
                 line_index as i64 + 1,
                 indexed_generation,
             )?;
+            if let Some(return_type) = project_target.and_then(|target| target.return_type.as_ref())
+            {
+                receiver_types.insert(
+                    format!("{}.{}", member.owner, member.name),
+                    return_type.to_string(),
+                );
+            }
         }
     }
     Ok(())
@@ -134,7 +144,7 @@ fn load_sdk_member_targets(
 ) -> Result<Vec<MemberTarget>, String> {
     let mut statement = connection
         .prepare(
-            "select symbol.kind, symbol.name, symbol.path, symbol.line, symbol.column,
+            "select symbol.symbol_id, symbol.kind, symbol.name, symbol.path, symbol.line, symbol.column,
                     symbol.container
              from workspace_sdk_symbols symbol
              inner join workspace_sdk_index_metadata metadata
@@ -148,18 +158,11 @@ fn load_sdk_member_targets(
     let rows = statement
         .query_map(params![root_key], |row| {
             Ok(MemberTarget {
-                symbol_id: format!(
-                    "sdk:{}:{}:{}:{}:{}:{}",
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, i64>(4)?,
-                ),
-                name: row.get(1)?,
-                path: row.get(2)?,
-                container: row.get(5)?,
+                symbol_id: row.get(0)?,
+                name: row.get(2)?,
+                path: row.get(3)?,
+                container: row.get(6)?,
+                return_type: None,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -173,7 +176,7 @@ fn load_project_member_targets(
 ) -> Result<Vec<MemberTarget>, String> {
     let mut statement = connection
         .prepare(
-            "select symbol_id, kind, name, path, line, column, container
+            "select symbol_id, kind, name, path, line, column, container, signature
              from workspace_resolved_symbols
              where root_path = ?1
                and source = 'project'
@@ -188,6 +191,11 @@ fn load_project_member_targets(
                 name: row.get(2)?,
                 path: row.get(3)?,
                 container: row.get(6)?,
+                return_type: row
+                    .get::<_, Option<String>>(7)?
+                    .as_deref()
+                    .and_then(signature_member_type)
+                    .map(str::to_string),
             })
         })
         .map_err(|error| error.to_string())?;
@@ -276,111 +284,9 @@ fn resolve_project_member_target<'a>(
         .find(|target| target.matches(receiver_type, member_name))
 }
 
-fn member_accesses(line: &str) -> Vec<MemberAccess<'_>> {
-    let bytes = line.as_bytes();
-    let mut members = Vec::new();
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] != b'.' || index + 1 >= bytes.len() {
-            index += 1;
-            continue;
-        }
-        let member_start = index + 1;
-        if !is_identifier_start(bytes[member_start]) {
-            index += 1;
-            continue;
-        }
-        let mut member_end = member_start + 1;
-        while member_end < bytes.len() && is_identifier_part(bytes[member_end]) {
-            member_end += 1;
-        }
-        if let (Some(owner), Some(name)) = (
-            owner_before_dot(line, index),
-            line.get(member_start..member_end),
-        ) {
-            members.push(MemberAccess {
-                owner,
-                name,
-                column: member_start + 1,
-                end_column: member_end + 1,
-            });
-        }
-        index = member_end;
-    }
-    members
-}
-
-fn owner_before_dot(line: &str, dot_index: usize) -> Option<&str> {
-    let bytes = line.as_bytes();
-    if dot_index == 0 {
-        return None;
-    }
-    let mut end = dot_index;
-    if bytes[end - 1] == b'?' {
-        end -= 1;
-        if end == 0 {
-            return None;
-        }
-    }
-    if bytes[end - 1] == b')' {
-        end = call_expression_start(bytes, end - 1)?;
-    }
-    let mut start = end;
-    while start > 0 && is_identifier_part(bytes[start - 1]) {
-        start -= 1;
-    }
-    while start > 1 && bytes[start - 1] == b'.' {
-        let segment_end = start - 1;
-        let mut segment_start = segment_end;
-        while segment_start > 0 && is_identifier_part(bytes[segment_start - 1]) {
-            segment_start -= 1;
-        }
-        if segment_start == segment_end {
-            break;
-        }
-        start = segment_start;
-    }
-    if start == end {
-        return None;
-    }
-    line.get(start..end)
-}
-
-fn call_expression_start(bytes: &[u8], closing_index: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for index in (0..=closing_index).rev() {
-        match bytes[index] {
-            b')' => depth = depth.saturating_add(1),
-            b'(' => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return Some(index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn is_identifier_start(value: u8) -> bool {
-    value.is_ascii_alphabetic() || value == b'_' || value == b'$'
-}
-
-fn is_identifier_part(value: u8) -> bool {
-    value.is_ascii_alphanumeric() || value == b'_' || value == b'$'
-}
-
 fn is_declaration_like_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     trimmed.starts_with("import ") || trimmed.starts_with("export ")
-}
-
-struct MemberAccess<'a> {
-    owner: &'a str,
-    name: &'a str,
-    column: usize,
-    end_column: usize,
 }
 
 struct MemberTarget {
@@ -388,6 +294,7 @@ struct MemberTarget {
     name: String,
     path: String,
     container: String,
+    return_type: Option<String>,
 }
 
 struct ImportTypeTarget {
@@ -411,4 +318,32 @@ impl MemberTarget {
     fn symbol_id(&self) -> String {
         self.symbol_id.clone()
     }
+}
+
+fn signature_member_type(signature: &str) -> Option<&str> {
+    if let Some(return_start) = signature.rfind("):") {
+        return normalized_member_type(signature.get(return_start + 2..)?.trim_start());
+    }
+    let (_, type_expression) = signature.split_once(':')?;
+    normalized_member_type(type_expression.trim_start())
+}
+
+fn normalized_member_type(type_expression: &str) -> Option<&str> {
+    let type_expression = type_expression.strip_prefix('?').unwrap_or(type_expression);
+    if let Some(inner) = type_expression.strip_prefix("Promise<") {
+        let end = inner.find('>')?;
+        let type_name = inner.get(..end)?.trim();
+        if is_identifier(type_name) {
+            return Some(type_name);
+        }
+        return None;
+    }
+    let end = type_expression
+        .find(|value: char| !value.is_ascii_alphanumeric() && value != '_' && value != '$')
+        .unwrap_or(type_expression.len());
+    let type_name = type_expression.get(..end)?;
+    if !is_identifier(type_name) {
+        return None;
+    }
+    Some(type_name)
 }

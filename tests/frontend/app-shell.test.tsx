@@ -648,10 +648,77 @@ describe("App shell", () => {
     expect(within(results).getByRole("button", { name: /symbol submitLogin/ })).toBeVisible();
     expect(within(results).getByText("Files")).toBeVisible();
     expect(within(results).getByRole("button", { name: /file LoginPage\.ets/ })).toBeVisible();
+    expect(screen.queryByLabelText("Search Everywhere Preview")).not.toBeInTheDocument();
 
     await user.click(within(results).getByRole("button", { name: /class LoginController/ }));
 
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index");
+  });
+
+  it("moves Search Everywhere focus with keyboard and wheel and opens the focused candidate", async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn(async (path: string) => path.endsWith("LoginPage.ets")
+      ? "struct LoginPage {}"
+      : "@Entry\n@Component\nstruct Index {}");
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 7,
+        score: 120,
+        freshness: "ready" as const,
+      },
+      {
+        id: "file:login",
+        source: "file" as const,
+        kind: "file",
+        title: "LoginPage.ets",
+        subtitle: "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        path: "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        line: 1,
+        column: 1,
+        score: 70,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
+    await waitFor(() => {
+      expect(within(results).getByRole("button", { name: /class LoginController/ })).toBeVisible();
+      expect(within(results).getByRole("button", { name: /file LoginPage\.ets/ })).toBeVisible();
+    });
+
+    await user.keyboard("{ArrowDown}");
+    await waitFor(() => {
+      expect(within(results).getByRole("button", { name: /file LoginPage\.ets/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.wheel(results, { deltaY: -120 });
+    await waitFor(() => {
+      expect(within(results).getByRole("button", { name: /class LoginController/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.wheel(results, { deltaY: 120 });
+    await waitFor(() => {
+      expect(within(results).getByRole("button", { name: /file LoginPage\.ets/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    await user.keyboard("{Enter}");
+    expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/LoginPage.ets");
+    });
   });
 
   it("shows index explain text when Search Everywhere has no matches", async () => {
@@ -1020,6 +1087,49 @@ describe("App shell", () => {
     expect(await screen.findByText(/Partial workspace results: scan stopped at 20,000 files/)).toBeVisible();
   });
 
+  it("loads the root project tree when a partial workspace snapshot has no visible files", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/HugeWorkspace";
+    const listWorkspaceDirectory = vi.fn(async () => [
+      {
+        name: "entry",
+        path: `${rootPath}/entry`,
+        kind: "directory" as const,
+        excluded: false,
+        hasChildren: true,
+      },
+    ]);
+
+    render(
+      <AppShell
+        workspaceApi={createWorkspaceApi({
+          listWorkspaceDirectory,
+          openWorkspace: async () => ({
+            rootName: "HugeWorkspace",
+            rootPath,
+            files: [],
+            scanSummary: {
+              scannedFiles: 0,
+              skippedEntries: 0,
+              truncated: true,
+              excludeRules: [".git", "node_modules", "oh_modules"],
+            },
+          }),
+        })}
+      />,
+    );
+
+    await openProject(user, rootPath);
+
+    await waitFor(() => {
+      expect(listWorkspaceDirectory).toHaveBeenCalledWith(
+        "C:\\samples\\HugeWorkspace",
+        "C:\\samples\\HugeWorkspace",
+      );
+    });
+    expect(await screen.findByRole("button", { name: "entry" })).toBeVisible();
+  });
+
   it("searches workspace text with regex and text options, groups relative path results, previews the selected hit, and opens the file", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -1047,6 +1157,9 @@ describe("App shell", () => {
     const preview = screen.getByLabelText("Search Everywhere Preview");
     expect(within(preview).getByText("AppScope/app.json5:3:6")).toBeVisible();
     expect(within(preview).getByText("bundleName")).toBeVisible();
+    await waitFor(() => {
+      expect(within(preview).getByText(/"app": \{/)).toBeVisible();
+    });
 
     await user.click(within(results).getByRole("button", { name: /app\.json5/i }));
 
@@ -1055,6 +1168,52 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content");
     expect(editor).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
     await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("moves Find in Files focus with keyboard and wheel and opens the focused match", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/DemoWorkspace";
+    const firstPath = `${rootPath}/src/First.ets`;
+    const secondPath = `${rootPath}/src/Second.ets`;
+    const openFile = vi.fn(async (path: string) => path.endsWith("Second.ets")
+      ? "struct Second {\n  needleTwo() {}\n}"
+      : "struct First {\n  needleOne() {}\n}");
+
+    render(
+      <AppShell
+        workspaceApi={createWorkspaceApi({
+          openFile,
+          openWorkspace: async () => ({
+            rootName: "DemoWorkspace",
+            rootPath,
+            files: [firstPath, secondPath],
+          }),
+        })}
+      />,
+    );
+
+    await openProject(user, rootPath);
+    await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find in Files Query"), "needle");
+
+    const results = await screen.findByRole("list", { name: "Find in Files Results" });
+    await waitFor(() => {
+      expect(within(results).getByRole("button", { name: /First\.ets.*needleOne/ })).toBeVisible();
+      expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toBeVisible();
+    });
+
+    await user.keyboard("{ArrowDown}");
+    expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.wheel(results, { deltaY: -120 });
+    expect(within(results).getByRole("button", { name: /First\.ets.*needleOne/ })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.wheel(results, { deltaY: 120 });
+    expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+    expect(screen.queryByLabelText("Find in Files Overlay")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Second.ets", pressed: true })).toBeVisible();
   });
 
   it("uses readiness-aware text facade for plain Find in Files when available", async () => {

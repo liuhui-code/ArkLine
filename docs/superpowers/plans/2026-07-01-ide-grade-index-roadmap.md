@@ -91,7 +91,8 @@ Status: mostly implemented.
 - [x] Resolve project declarations into stable `project:<path>:<kind>:<qualified_name>:<line>:<column>` ids.
 - [x] Bind relative imports and re-exports with `target_symbol_id`.
 - [x] Query resolved symbols by id, name, path, and target.
-- [ ] Add namespace/member symbol ids for expressions such as `Text().width`.
+- [x] Add durable SDK member symbol ids for expressions such as `Text().width`.
+- [ ] Add namespace/member symbol ids for project expression chains beyond indexed declarations.
 - [ ] Add SDK/project identity merge rules so SDK APIs and project wrappers can share definition/usages semantics.
 
 Verification:

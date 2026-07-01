@@ -38,16 +38,39 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
 use crate::services::workspace_service::{
-    list_workspace_directory as list_workspace_directory_service, scan_workspace,
+    list_workspace_directory as list_workspace_directory_service, scan_workspace_for_open,
 };
 
 #[tauri::command]
 pub fn open_workspace(
     root_path: String,
+    app_handle: AppHandle,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<WorkspaceSnapshot, String> {
-    let snapshot = scan_workspace(&PathBuf::from(root_path))?;
-    index_runtime.index_workspace_snapshot(&snapshot)?;
+    let app_handle = app_handle.clone();
+    open_workspace_through_manager(
+        index_runtime.inner().clone(),
+        index_manager.inner().clone(),
+        &root_path,
+        move |status| {
+            let _ = app_handle.emit("workspace-index-task-updated", status);
+        },
+    )
+}
+
+pub(super) fn open_workspace_through_manager<F>(
+    index_runtime: WorkspaceIndexRuntime,
+    index_manager: WorkspaceIndexManagerRuntime,
+    root_path: &str,
+    on_status: F,
+) -> Result<WorkspaceSnapshot, String>
+where
+    F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
+{
+    let snapshot = scan_workspace_for_open(&PathBuf::from(root_path))?;
+    index_manager.open_workspace_index(root_path)?;
+    index_manager.start_background_worker(index_runtime, on_status)?;
     Ok(snapshot)
 }
 

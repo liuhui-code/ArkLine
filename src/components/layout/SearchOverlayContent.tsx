@@ -23,6 +23,7 @@ type SearchOverlayContentProps = {
   searchEverywhereResult: WorkspaceTextSearchResult;
   searchEverywhereCandidates: SearchCandidate[];
   searchEverywhereSelectedIndex: number;
+  searchEverywherePreviewContent: string | null;
   workspacePartialNotice: string | null;
   onChangeQuery: (value: string) => void;
   onChangeSearchEverywhereScope: (scope: WorkspaceIndexQueryScope) => void;
@@ -54,6 +55,7 @@ export function SearchOverlayContent({
   searchEverywhereResult,
   searchEverywhereCandidates,
   searchEverywhereSelectedIndex,
+  searchEverywherePreviewContent,
   workspacePartialNotice,
   onChangeQuery,
   onChangeSearchEverywhereScope,
@@ -199,6 +201,7 @@ export function SearchOverlayContent({
         result={searchEverywhereResult}
         candidates={searchEverywhereCandidates}
         selectedIndex={searchEverywhereSelectedIndex}
+        selectedPreviewContent={searchEverywherePreviewContent}
         partialNotice={workspacePartialNotice}
         onChangeQuery={onChangeQuery}
         onChangeScope={onChangeSearchEverywhereScope}

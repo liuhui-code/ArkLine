@@ -30,7 +30,7 @@ type ArkTsEditorProps = {
   selectionTarget?: EditorSelectionTarget | null;
   insertTextTarget?: EditorInsertTextTarget | null;
   onChange: (value: string) => void;
-  onSelectionChange?: (selection: { line: number; column: number }) => void;
+  onSelectionChange?: (selection: { line: number; column: number; selectedText?: string }) => void;
   onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;

@@ -21,41 +21,51 @@ const DEFAULT_EXCLUDES: [&str; 11] = [
 const MAX_WORKSPACE_FILES: usize = 20_000;
 
 pub fn scan_workspace(root_path: &Path) -> Result<WorkspaceSnapshot, String> {
-    if !root_path.exists() {
-        return Err(format!(
-            "Workspace path does not exist: {}",
-            root_path.display()
-        ));
-    }
+    scan_workspace_with_limit(root_path, MAX_WORKSPACE_FILES)
+}
 
-    if !root_path.is_dir() {
-        return Err(format!(
-            "Workspace path is not a directory: {}",
-            root_path.display()
-        ));
-    }
+pub fn scan_workspace_for_open(root_path: &Path) -> Result<WorkspaceSnapshot, String> {
+    validate_workspace_root(root_path)?;
+
+    Ok(WorkspaceSnapshot {
+        root_name: workspace_root_name(root_path),
+        root_path: normalize_path(root_path),
+        files: Vec::new(),
+        scan_summary: WorkspaceScanSummary {
+            scanned_files: 0,
+            skipped_entries: 0,
+            truncated: true,
+            exclude_rules: default_exclude_rules(),
+        },
+    })
+}
+
+fn scan_workspace_with_limit(
+    root_path: &Path,
+    max_files: usize,
+) -> Result<WorkspaceSnapshot, String> {
+    validate_workspace_root(root_path)?;
 
     let mut files = Vec::new();
     let mut scan_summary = WorkspaceScanSummary {
         scanned_files: 0,
         skipped_entries: 0,
         truncated: false,
-        exclude_rules: DEFAULT_EXCLUDES
-            .iter()
-            .map(|rule| (*rule).to_string())
-            .collect(),
+        exclude_rules: default_exclude_rules(),
     };
-    collect_files(root_path, root_path, &mut files, &mut scan_summary)
-        .map_err(|error| error.to_string())?;
+    collect_files(
+        root_path,
+        root_path,
+        max_files,
+        &mut files,
+        &mut scan_summary,
+    )
+    .map_err(|error| error.to_string())?;
     files.sort();
     scan_summary.scanned_files = files.len();
 
     Ok(WorkspaceSnapshot {
-        root_name: root_path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("workspace")
-            .to_string(),
+        root_name: workspace_root_name(root_path),
         root_path: normalize_path(root_path),
         files,
         scan_summary,
@@ -142,11 +152,12 @@ pub fn list_workspace_directory(
 fn collect_files(
     root_path: &Path,
     current: &Path,
+    max_files: usize,
     files: &mut Vec<String>,
     scan_summary: &mut WorkspaceScanSummary,
 ) -> std::io::Result<()> {
     for entry in fs::read_dir(current)? {
-        if files.len() >= MAX_WORKSPACE_FILES {
+        if files.len() >= max_files {
             scan_summary.truncated = true;
             break;
         }
@@ -160,7 +171,7 @@ fn collect_files(
         }
 
         if path.is_dir() {
-            collect_files(root_path, &path, files, scan_summary)?;
+            collect_files(root_path, &path, max_files, files, scan_summary)?;
         } else {
             files.push(normalize_path(&path));
         }
@@ -194,6 +205,39 @@ fn directory_has_visible_children(root_path: &Path, directory_path: &Path) -> bo
     false
 }
 
+fn validate_workspace_root(root_path: &Path) -> Result<(), String> {
+    if !root_path.exists() {
+        return Err(format!(
+            "Workspace path does not exist: {}",
+            root_path.display()
+        ));
+    }
+
+    if !root_path.is_dir() {
+        return Err(format!(
+            "Workspace path is not a directory: {}",
+            root_path.display()
+        ));
+    }
+
+    Ok(())
+}
+
+fn workspace_root_name(root_path: &Path) -> String {
+    root_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("workspace")
+        .to_string()
+}
+
+fn default_exclude_rules() -> Vec<String> {
+    DEFAULT_EXCLUDES
+        .iter()
+        .map(|rule| (*rule).to_string())
+        .collect()
+}
+
 pub fn normalize_path(path: &Path) -> String {
     let value = path.to_string_lossy().to_string();
 
@@ -212,7 +256,9 @@ mod tests {
 
     use crate::models::workspace::WorkspaceDirectoryEntryKind;
 
-    use super::{list_workspace_directory, normalize_path, scan_workspace};
+    use super::{
+        list_workspace_directory, normalize_path, scan_workspace, scan_workspace_for_open,
+    };
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
@@ -272,6 +318,33 @@ mod tests {
         assert_eq!(snapshot.scan_summary.scanned_files, 2);
         assert_eq!(snapshot.scan_summary.skipped_entries, 11);
         assert!(!snapshot.scan_summary.truncated);
+        assert!(snapshot
+            .scan_summary
+            .exclude_rules
+            .contains(&"oh_modules".to_string()));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn open_scan_returns_root_only_partial_snapshot_for_large_workspaces() {
+        let root = unique_temp_dir("workspace-open-root-only");
+        let source_dir = root.join("entry").join("src").join("main").join("ets");
+        fs::create_dir_all(&source_dir).unwrap();
+        for index in 0..1_050 {
+            fs::write(
+                source_dir.join(format!("Page{index:04}.ets")),
+                "struct Page {}\n",
+            )
+            .unwrap();
+        }
+
+        let snapshot = scan_workspace_for_open(&root).unwrap();
+
+        assert_eq!(snapshot.root_path, normalize_path(&root));
+        assert!(snapshot.files.is_empty());
+        assert_eq!(snapshot.scan_summary.scanned_files, 0);
+        assert!(snapshot.scan_summary.truncated);
         assert!(snapshot
             .scan_summary
             .exclude_rules

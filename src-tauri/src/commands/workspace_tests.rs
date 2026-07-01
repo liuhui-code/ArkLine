@@ -6,13 +6,42 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::commands::workspace::{
-    index_workspace_sdk_symbols_through_manager_with_status,
+    index_workspace_sdk_symbols_through_manager_with_status, open_workspace_through_manager,
     schedule_foreground_completion_index_through_manager,
     schedule_visible_files_index_through_manager, submit_workspace_sdk_index_through_manager,
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
+
+#[test]
+fn open_workspace_command_returns_snapshot_and_queues_background_index() {
+    let root = unique_temp_dir("open-workspace-background-index");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("Index.ets"), "struct Index {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let index_manager = WorkspaceIndexManagerRuntime::default();
+
+    let snapshot =
+        open_workspace_through_manager(index_runtime, index_manager.clone(), &root_path, |_| {})
+            .unwrap();
+    let statuses = index_manager.get_index_task_statuses(&root_path).unwrap();
+
+    assert_eq!(snapshot.root_path, root_path);
+    assert!(snapshot.files.is_empty());
+    assert!(snapshot.scan_summary.truncated);
+    assert!(statuses.iter().any(|status| {
+        status.kind == "open-workspace"
+            && matches!(
+                status.status.as_str(),
+                "queued" | "running" | "ready" | "partial"
+            )
+    }));
+
+    fs::remove_dir_all(root).unwrap();
+}
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()

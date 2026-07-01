@@ -153,6 +153,8 @@ mod services {
     mod workspace_large_project_index_tests;
     #[cfg(test)]
     mod workspace_reference_branch_flow_tests;
+    #[cfg(test)]
+    mod workspace_reference_chain_receiver_tests;
     pub mod workspace_reference_declaration_index_service;
     #[cfg(test)]
     mod workspace_reference_deep_generic_tests;
@@ -161,6 +163,7 @@ mod services {
     pub mod workspace_reference_index_service;
     #[cfg(test)]
     mod workspace_reference_index_service_tests;
+    pub mod workspace_reference_member_access_parser_service;
     pub mod workspace_reference_member_index_service;
     #[cfg(test)]
     mod workspace_reference_receiver_tests;
@@ -171,6 +174,7 @@ mod services {
     pub mod workspace_sdk_parser_service;
     #[cfg(test)]
     mod workspace_sdk_persistence_service_tests;
+    pub mod workspace_sdk_schema_service;
     #[cfg(test)]
     mod workspace_search_everywhere_service_tests;
     pub mod workspace_search_ranking_service;
@@ -180,6 +184,7 @@ mod services {
     pub mod workspace_stub_index_service;
     #[cfg(test)]
     mod workspace_stub_index_service_tests;
+    pub mod workspace_symbol_identity_service;
     pub mod workspace_symbol_index_service;
     pub mod workspace_symbol_resolution_alias_service;
     pub mod workspace_symbol_resolution_query_service;

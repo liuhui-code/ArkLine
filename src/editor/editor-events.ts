@@ -182,7 +182,7 @@ export function createDocumentChangeListener(onChange: (value: string) => void) 
 }
 
 export function createSelectionChangeListener(
-  onSelectionChange: (selection: { line: number; column: number }) => void,
+  onSelectionChange: (selection: { line: number; column: number; selectedText?: string }) => void,
 ) {
   return EditorView.updateListener.of((update: ViewUpdate) => {
     if (!update.selectionSet && !update.docChanged) {
@@ -190,15 +190,21 @@ export function createSelectionChangeListener(
     }
 
     const head = update.state.selection.main.head;
+    const range = update.state.selection.main;
     const text = update.state.doc.toString();
     const safeHead = Math.max(0, Math.min(head, text.length));
     const prefix = text.slice(0, safeHead);
     const segments = prefix.split("\n");
     const currentLine = segments.at(-1) ?? "";
+    const selectionFrom = Math.min(range.from, range.to);
+    const selectionTo = Math.max(range.from, range.to);
 
     onSelectionChange({
       line: Math.max(segments.length, 1),
       column: currentLine.length + 1,
+      selectedText: selectionFrom === selectionTo
+        ? undefined
+        : update.state.doc.sliceString(selectionFrom, selectionTo),
     });
   });
 }

@@ -41,6 +41,8 @@ fn indexes_queries_and_reports_sdk_api_symbols() {
     assert_eq!(matches[0].source, "api");
     assert_eq!(matches[0].kind, "method");
     assert_eq!(matches[0].title, "width");
+    assert!(matches[0].id.starts_with("sdk:"));
+    assert!(matches[0].id.contains(":method:Text:width:"));
     assert_eq!(diagnostics.schema_versions.get("sdk"), Some(&1));
     assert_eq!(diagnostics.sdk_symbol_count, 4);
 

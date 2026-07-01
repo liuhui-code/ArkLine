@@ -58,9 +58,7 @@ fn query_sdk_definition_by_symbol_id(
                and metadata.sdk_path = symbol.sdk_path
                and metadata.sdk_version = symbol.sdk_version
              where symbol.root_path = ?1
-               and ('sdk:' || symbol.path || ':' || symbol.kind || ':' ||
-                    coalesce(symbol.container, '') || ':' || symbol.name || ':' ||
-                    symbol.line || ':' || symbol.column) = ?2
+               and symbol.symbol_id = ?2
              limit 1",
         )
         .map_err(|error| error.to_string())?;

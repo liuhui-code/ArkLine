@@ -1,5 +1,6 @@
 use rusqlite::{params, Connection};
 
+use crate::services::workspace_symbol_identity_service::project_symbol_id;
 use crate::services::workspace_symbol_resolution_alias_service::{
     insert_export_alias_symbol, insert_import_alias_symbol, AliasTarget, ExportAliasTarget,
 };
@@ -365,13 +366,12 @@ fn import_binding_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImportBi
 }
 
 pub(crate) fn symbol_id(declaration: &StubDeclarationRow) -> String {
-    format!(
-        "project:{}:{}:{}:{}:{}",
-        declaration.path,
-        declaration.kind,
-        declaration.qualified_name,
+    project_symbol_id(
+        &declaration.path,
+        &declaration.kind,
+        &declaration.qualified_name,
         declaration.line,
-        declaration.column
+        declaration.column,
     )
 }
 

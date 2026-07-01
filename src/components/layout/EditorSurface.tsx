@@ -34,7 +34,7 @@ type EditorSurfaceProps = {
   workspaceName: string | null;
   surfaceRef: RefObject<HTMLElement | null>;
   onChange: (value: string) => void;
-  onSelectionChange: (selection: { line: number; column: number }) => void;
+  onSelectionChange: (selection: { line: number; column: number; selectedText?: string }) => void;
   onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;

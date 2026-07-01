@@ -6,6 +6,7 @@ use rusqlite::{params, Connection};
 
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
+use crate::services::workspace_sdk_schema_service::create_sdk_tables;
 use crate::services::workspace_symbol_resolution_schema_service::create_symbol_resolution_tables;
 
 const SCHEMA_DOMAINS: &[(&str, i64)] = &[
@@ -119,6 +120,7 @@ fn create_catalog_tables(connection: &Connection) -> Result<(), String> {
             "create table if not exists workspace_symbols (
                 root_path text not null,
                 source text not null,
+                symbol_id text,
                 kind text not null,
                 name text not null,
                 path text not null,
@@ -366,47 +368,6 @@ fn ensure_column(
             .execute(alter_sql, [])
             .map_err(|error| error.to_string())?;
     }
-    Ok(())
-}
-
-fn create_sdk_tables(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute(
-            "create table if not exists workspace_sdk_symbols (
-                root_path text not null,
-                sdk_path text not null,
-                sdk_version text not null,
-                source text not null,
-                kind text not null,
-                name text not null,
-                path text not null,
-                line integer not null,
-                column integer not null,
-                container text,
-                signature text,
-                primary key (root_path, sdk_path, sdk_version, kind, name, path, line, column)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create index if not exists workspace_sdk_symbols_lookup
-             on workspace_sdk_symbols(root_path, name, kind)",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create table if not exists workspace_sdk_index_metadata (
-                root_path text primary key,
-                sdk_path text not null,
-                sdk_version text not null,
-                indexed_at integer not null
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

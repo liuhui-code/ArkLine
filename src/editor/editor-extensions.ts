@@ -73,7 +73,7 @@ export function createEditorExtensions(
   path: string,
   appearance: EditorAppearance,
   onChange: (value: string) => void,
-  onSelectionChange?: (selection: { line: number; column: number }) => void,
+  onSelectionChange?: (selection: { line: number; column: number; selectedText?: string }) => void,
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void,
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void,
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,

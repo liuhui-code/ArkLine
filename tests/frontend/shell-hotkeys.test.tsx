@@ -91,6 +91,20 @@ describe("Shell hotkeys", () => {
     expect(screen.getByText("Find in Files")).toBeVisible();
   });
 
+  it("prefills Find in Files from the current editor selection", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    const editor = await openEditor(user);
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{ArrowLeft}{ArrowLeft}{ArrowLeft}");
+    await user.keyboard("{Shift>}{Control>}{ArrowLeft}{/Control}{/Shift}");
+    await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+
+    expect(await screen.findByLabelText("Find in Files Query")).toHaveValue("Index");
+  });
+
   it("opens Replace in Files with Ctrl+Shift+R", async () => {
     const user = userEvent.setup();
     render(<AppShell />);
