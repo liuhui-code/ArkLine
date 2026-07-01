@@ -1,21 +1,29 @@
-use crate::models::workspace::WorkspaceIndexTaskStatus;
+use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
 use crate::services::workspace_dependency_graph_service::{
     has_graph_affecting_config_change, mark_dependency_graph_stale,
 };
 use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, WorkspaceFileFingerprintStatus,
 };
+use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
+use crate::services::workspace_index_chunk_service::chunk_paths;
+use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_state_machine_service::WorkspaceIndexTaskState;
 use crate::services::workspace_index_task_lifecycle_service::task_kind_replaces_pending;
 use crate::services::workspace_index_task_status_service::{
     current_time_millis, failed_task_result, refresh_task_result, skipped_task_result,
-    superseded_task_result_from_task, task_status_from_task, WorkspaceIndexTaskResult,
+    superseded_task_result_from_task, task_status_from_state_transition, WorkspaceIndexTaskResult,
 };
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
 
+pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
+pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 128;
+
+#[allow(dead_code)]
 pub fn run_index_tasks<F>(
     index_runtime: &WorkspaceIndexRuntime,
     tasks: Vec<WorkspaceIndexTask>,
@@ -24,16 +32,47 @@ pub fn run_index_tasks<F>(
 where
     F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
 {
+    run_index_tasks_with_cancellation(
+        index_runtime,
+        tasks
+            .into_iter()
+            .map(|task| {
+                let token = WorkspaceIndexCancellationToken::new(task.generation);
+                (task, token)
+            })
+            .collect(),
+        &mut on_status,
+    )
+}
+
+pub fn run_index_tasks_with_cancellation<F>(
+    index_runtime: &WorkspaceIndexRuntime,
+    tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
+    mut on_status: F,
+) -> Result<Vec<WorkspaceIndexTaskResult>, String>
+where
+    F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
+{
     let mut results = Vec::new();
 
-    for (task_index, task) in tasks.iter().enumerate() {
+    for (task_index, (task, token)) in tasks.iter().enumerate() {
         if is_superseded_by_later_batch_task(&tasks, task_index) {
             results.push(superseded_task_result_from_task(task));
             continue;
         }
-        on_status(task_status_from_task(task, "running", None, None))?;
+        on_status(task_status_from_state_transition(
+            task,
+            WorkspaceIndexTaskState::Queued,
+            WorkspaceIndexTaskState::Running,
+            None,
+            None,
+        )?)?;
+        if token.is_cancelled() {
+            results.push(superseded_task_result_from_task(task));
+            continue;
+        }
         let started_at = current_time_millis();
-        match run_index_task(index_runtime, task.clone(), started_at) {
+        match run_index_task(index_runtime, task.clone(), token, started_at) {
             Ok(Some(result)) => results.push(result),
             Ok(None) => {}
             Err((task, error)) => results.push(failed_task_result(task, error, started_at)),
@@ -43,31 +82,39 @@ where
     Ok(results)
 }
 
-fn is_superseded_by_later_batch_task(tasks: &[WorkspaceIndexTask], task_index: usize) -> bool {
-    let task = &tasks[task_index];
+fn is_superseded_by_later_batch_task(
+    tasks: &[(WorkspaceIndexTask, WorkspaceIndexCancellationToken)],
+    task_index: usize,
+) -> bool {
+    let task = &tasks[task_index].0;
     tasks.iter().skip(task_index + 1).any(|candidate| {
-        candidate.root_path == task.root_path
-            && candidate.generation > task.generation
-            && task_kind_replaces_pending(&candidate.kind, &task.kind)
+        candidate.0.root_path == task.root_path
+            && candidate.0.generation > task.generation
+            && task_kind_replaces_pending(&candidate.0.kind, &task.kind)
     })
 }
 
 fn run_index_task(
     index_runtime: &WorkspaceIndexRuntime,
     task: WorkspaceIndexTask,
+    token: &WorkspaceIndexCancellationToken,
     started_at: u128,
 ) -> Result<Option<WorkspaceIndexTaskResult>, (WorkspaceIndexTask, String)> {
-    run_index_task_inner(index_runtime, &task, started_at).map_err(|error| (task, error))
+    run_index_task_inner(index_runtime, &task, token, started_at).map_err(|error| (task, error))
 }
 
 fn run_index_task_inner(
     index_runtime: &WorkspaceIndexRuntime,
     task: &WorkspaceIndexTask,
+    token: &WorkspaceIndexCancellationToken,
     started_at: u128,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     match task.kind.clone() {
         WorkspaceIndexTaskKind::ChangedPaths => {
             let changed_paths = stale_changed_paths(&task.root_path, &task.changed_paths)?;
+            if token.is_cancelled() {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            }
             if changed_paths.is_empty() {
                 return Ok(Some(skipped_task_result(
                     task,
@@ -77,6 +124,9 @@ fn run_index_task_inner(
             }
             if has_graph_affecting_config_change(&changed_paths) {
                 mark_dependency_graph_stale(&task.root_path, "config-change")?;
+                if token.is_cancelled() {
+                    return Ok(Some(superseded_task_result_from_task(task)));
+                }
                 let refresh_result =
                     index_runtime.refresh_workspace_index_with_changes(&task.root_path)?;
                 let mut config_task = task.clone();
@@ -88,8 +138,14 @@ fn run_index_task_inner(
                     started_at,
                 )));
             }
-            let refresh_result = index_runtime
-                .refresh_workspace_index_for_changed_paths(&task.root_path, &changed_paths)?;
+            if token.is_cancelled() {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            }
+            let Some(refresh_result) =
+                refresh_changed_path_chunks(index_runtime, task, token, changed_paths)?
+            else {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            };
             Ok(Some(refresh_task_result(
                 task,
                 "changed-paths",
@@ -103,14 +159,25 @@ fn run_index_task_inner(
             } else {
                 "refresh-workspace"
             };
-            let refresh_result =
-                index_runtime.refresh_workspace_index_with_changes(&task.root_path)?;
-            Ok(Some(refresh_task_result(
-                task,
-                kind,
-                refresh_result,
-                started_at,
-            )))
+            if token.is_cancelled() {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            }
+            let Some(refresh_outcome) = refresh_workspace_index_in_chunks(
+                index_runtime,
+                &task.root_path,
+                WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE,
+                token,
+            )?
+            else {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            };
+            let mut result = refresh_task_result(task, kind, refresh_outcome.result, started_at);
+            if refresh_outcome.continuation.is_some() {
+                result.status = "partial".to_string();
+                result.message = Some("Full refresh yielded with remaining chunks".to_string());
+            }
+            result.refresh_continuation = refresh_outcome.continuation;
+            Ok(Some(result))
         }
         WorkspaceIndexTaskKind::IndexSdk => {
             let sdk_path = task
@@ -121,6 +188,9 @@ fn run_index_task_inner(
                 .sdk_version
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string());
+            if token.is_cancelled() {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            }
             let summary = index_workspace_sdk_symbols(&task.root_path, &sdk_path, &sdk_version)?;
             Ok(Some(WorkspaceIndexTaskResult {
                 root_path: task.root_path.to_string(),
@@ -133,10 +203,52 @@ fn run_index_task_inner(
                 message: None,
                 error: None,
                 refresh_result: None,
+                refresh_continuation: None,
                 sdk_symbol_count: Some(summary.symbol_count),
             }))
         }
     }
+}
+
+fn refresh_changed_path_chunks(
+    index_runtime: &WorkspaceIndexRuntime,
+    task: &WorkspaceIndexTask,
+    token: &WorkspaceIndexCancellationToken,
+    changed_paths: Vec<String>,
+) -> Result<Option<WorkspaceIndexRefreshResult>, String> {
+    let chunks = chunk_paths(changed_paths, WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE);
+    let mut combined: Option<WorkspaceIndexRefreshResult> = None;
+
+    for chunk in chunks {
+        if token.is_cancelled() {
+            return Ok(None);
+        }
+        let result =
+            index_runtime.refresh_workspace_index_for_changed_paths(&task.root_path, &chunk)?;
+        combined = Some(match combined {
+            Some(previous) => combine_refresh_results(previous, result),
+            None => result,
+        });
+    }
+
+    combined
+        .map(Some)
+        .ok_or_else(|| "No changed path chunks to refresh".to_string())
+}
+
+fn combine_refresh_results(
+    mut previous: WorkspaceIndexRefreshResult,
+    next: WorkspaceIndexRefreshResult,
+) -> WorkspaceIndexRefreshResult {
+    previous.changed = previous.changed || next.changed;
+    previous.added_paths.extend(next.added_paths);
+    previous.added_paths.sort();
+    previous.added_paths.dedup();
+    previous.removed_paths.extend(next.removed_paths);
+    previous.removed_paths.sort();
+    previous.removed_paths.dedup();
+    previous.state = next.state;
+    previous
 }
 
 fn stale_changed_paths(root_path: &str, changed_paths: &[String]) -> Result<Vec<String>, String> {

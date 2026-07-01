@@ -20,7 +20,10 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     assert_eq!(versions.get("fingerprint"), Some(&1));
     assert_eq!(versions.get("sdk"), Some(&1));
     assert_eq!(versions.get("task_journal"), Some(&1));
+    assert_eq!(versions.get("resume"), Some(&1));
     assert_eq!(versions.get("entity"), Some(&1));
+    assert_eq!(versions.get("symbol_resolution"), Some(&1));
+    assert_eq!(versions.get("reference"), Some(&1));
 
     let catalog_count: i64 = connection
         .query_row(
@@ -47,5 +50,14 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(entity_table_count, 1);
-    assert_eq!(schema_count, 9);
+    let resume_table_count: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table' and name = 'workspace_index_resume_tasks'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(resume_table_count, 1);
+    assert_eq!(schema_count, 12);
 }

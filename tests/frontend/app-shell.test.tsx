@@ -314,6 +314,20 @@ describe("App shell", () => {
     expect(openWorkspace).toHaveBeenCalledWith("C:/samples/ArkDemo");
   });
 
+  it("schedules visible-file indexing when a project opens", async () => {
+    const user = userEvent.setup();
+    const scheduleVisibleFilesIndex = vi.fn(async () => undefined);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ scheduleVisibleFilesIndex })} />);
+
+    await openProject(user, "C:/samples/ArkDemo");
+
+    await waitFor(() => expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith("C:\\samples\\ArkDemo", [
+      "C:\\samples\\ArkDemo\\AppScope\\app.json5",
+      "C:\\samples\\ArkDemo\\src\\main.ets",
+    ]));
+  });
+
   it("asks whether to use this window or a new window when a workspace is already loaded", async () => {
     const user = userEvent.setup();
     render(<AppShell workspaceApi={createWorkspaceApi()} />);
@@ -736,6 +750,69 @@ describe("App shell", () => {
     expect(screen.queryByRole("button", { name: /api loginAction/ })).not.toBeInTheDocument();
   });
 
+  it("uses readiness-aware facade candidates for Search Everywhere when available", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidates = vi.fn(async () => []);
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async (_rootPath: string, _query: string, scope: string) => ({
+      items: scope === "classes"
+        ? [{
+          id: "class:login",
+          source: "class" as const,
+          kind: "class",
+          title: "LoginController",
+          subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          line: 3,
+          column: 7,
+          score: 120,
+          freshness: "ready" as const,
+        }]
+        : [{
+          id: "text:login",
+          source: "text" as const,
+          kind: "text",
+          title: "Text(\"Login\")",
+          subtitle: "src/main.ets:4",
+          path: "C:/samples/DemoWorkspace/src/main.ets",
+          line: 4,
+          column: 12,
+          score: 40,
+          freshness: "ready" as const,
+        }],
+      readiness: {
+        rootPath: "C:\\samples\\DemoWorkspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidates, queryWorkspaceCandidatesWithReadiness })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "login",
+      "all",
+      24,
+    ));
+    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: /text Text\("Login"\)/ })).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Classes" }));
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "login",
+      "classes",
+      24,
+    ));
+    expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
+  });
+
   it("filters Search Everywhere categories when only the mixed query api is available", async () => {
     const user = userEvent.setup();
     const queryWorkspaceSearchEverywhere = vi.fn(async () => [
@@ -978,6 +1055,83 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content");
     expect(editor).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
     await waitFor(() => expect(editor).toHaveFocus());
+  });
+
+  it("uses readiness-aware text facade for plain Find in Files when available", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [{
+        id: "text:app-json:3:6",
+        source: "text" as const,
+        kind: "text",
+        title: "\"bundleName\": \"com.demo.app\"",
+        subtitle: "AppScope/app.json5:3",
+        path: "C:/samples/DemoWorkspace/AppScope/app.json5",
+        line: 3,
+        column: 6,
+        score: 40,
+        freshness: "ready" as const,
+        signature: "    \"bundleName\": \"com.demo.app\"",
+      }],
+      readiness: {
+        rootPath: "C:\\samples\\DemoWorkspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+    const searchWorkspaceText = vi.fn(async () => ({
+      query: { kind: "text" as const, query: "bundle" },
+      matches: [],
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness, searchWorkspaceText })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Find in Files" }));
+    await user.type(await screen.findByLabelText("Find in Files Query"), "bundle");
+
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "bundle",
+      "text",
+      60,
+    ));
+    expect(searchWorkspaceText).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getByText("app.json5")).toBeVisible();
+  });
+
+  it("shows partial readiness from indexed Find in Files instead of treating empty results as complete", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [],
+      readiness: {
+        rootPath: "C:\\samples\\DemoWorkspace",
+        requestedGeneration: 7,
+        servedGeneration: 6,
+        state: "partial" as const,
+        reason: "Index is still scanning generated files",
+        retryable: true,
+      },
+    }));
+    const explainWorkspaceIndexQuery = vi.fn(async () => ({
+      status: "notIndexed" as const,
+      message: "No indexed evidence explains this query yet",
+      facts: [{ category: "query", evidence: "missingText" }],
+      recommendedAction: "rebuildIndex" as const,
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness, explainWorkspaceIndexQuery })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Find in Files" }));
+    await user.type(await screen.findByLabelText("Find in Files Query"), "missingText");
+
+    expect(await screen.findByText("Index is still scanning generated files")).toBeVisible();
+    expect(explainWorkspaceIndexQuery).not.toHaveBeenCalled();
   });
 
   it("shows index explain text when Find in Files has no matches", async () => {
@@ -2663,6 +2817,8 @@ describe("App shell", () => {
         line: 1,
         column: 1,
         preview: "@Entry",
+        kind: "fallback",
+        confidence: "fallback",
       },
     ]);
     const workspaceApi = createWorkspaceApi({ saveSettings, gotoDefinition, completeSymbol, findUsages });
@@ -3630,6 +3786,8 @@ describe("App shell", () => {
           line: 2,
           column: 3,
           preview: "\"app\": {",
+          kind: "fallback",
+          confidence: "fallback",
         },
       ]),
       loadSettings: async () => defaultSettings(),

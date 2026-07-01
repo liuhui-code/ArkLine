@@ -47,6 +47,8 @@ import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import { createProblemsStore, type ProblemItem } from "@/features/problems/problems-store";
 import {
+  getRelativeWorkspacePath,
+  parseSearchQuery,
   searchWorkspaceText,
   type WorkspaceTextSearchOptions,
   type WorkspaceTextSearchResult,
@@ -320,7 +322,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [workspaceIndexState, setWorkspaceIndexState] = useState<WorkspaceIndexState>(() => ({ ...workspaceIndexRef.current.state }));
   const workspaceIndexText = getIndexStatusText(workspaceIndexState);
   const sdkIndexText = getSdkIndexStatusText(workspaceIndexTaskStatuses);
-  const workspacePartialNotice = workspaceIndexState.partialReason ?? getWorkspacePartialNotice(workspace);
+  const queryReadinessNotice = workspaceIndexState.queryReadiness
+    && workspaceIndexState.queryReadiness.state !== "ready"
+    && workspaceIndexState.queryReadiness.state !== "missing"
+    ? workspaceIndexState.queryReadiness.reason ?? `Index is ${workspaceIndexState.queryReadiness.state}; results may be incomplete.`
+    : null;
+  const workspacePartialNotice = queryReadinessNotice ?? workspaceIndexState.partialReason ?? getWorkspacePartialNotice(workspace);
   const settingsApplying = settingsApplyState === "applying";
   const activeDocument = activePath ? documentsRef.current.getDocument(activePath) : undefined;
   const { gitTraceState } = useGitTrace({
@@ -701,6 +708,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     setWorkspace(snapshot);
     syncWorkspaceIndex(snapshot);
+    scheduleVisibleFilesIndex(snapshot.rootPath, snapshot.visibleFiles);
     setProjectTreeChildren({});
     setProjectTreeLoadingPaths(new Set());
     if (snapshot.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD) {
@@ -711,6 +719,15 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       settingsRef.current.update({ recentProjects: next });
       void workspaceApi.saveSettings(settingsRef.current.state.settings);
       return next;
+    });
+  }
+
+  function scheduleVisibleFilesIndex(rootPath: string, visibleFiles: string[]) {
+    if (!workspaceApi.scheduleVisibleFilesIndex || visibleFiles.length === 0) {
+      return;
+    }
+    void workspaceApi.scheduleVisibleFilesIndex(rootPath, visibleFiles).catch((error) => {
+      setStatusText(`Visible index scheduling failed: ${error instanceof Error ? error.message : String(error)}`);
     });
   }
 
@@ -853,6 +870,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
             line: item.line,
             column: item.column,
             preview: item.preview,
+            kind: "definition",
+            confidence: "fallback",
           })),
           requestedSymbol: request,
           message: readinessState === "ready" ? undefined : `Index is ${readinessState}; choose an exact definition candidate.`,
@@ -922,6 +941,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           line: item.line,
           column: item.column,
           preview: item.preview,
+          kind: "definition",
+          confidence: "fallback",
         })),
         requestedSymbol: request,
         message: undefined,
@@ -963,6 +984,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
             line: item.line,
             column: item.column,
             preview: item.preview,
+            kind: "definition",
+            confidence: "fallback",
           })),
           requestedSymbol: request,
           message: undefined,
@@ -1112,7 +1135,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
     openEditorQueryPanel();
-    if (!activePath || !workspaceApi.findUsages) {
+    if (!activePath || (!workspaceApi.findUsages && !workspaceApi.queryUsagesWithReadiness)) {
       setUsageSearch({ status: "error", items: [], message: "Find Usages unavailable" });
       return;
     }
@@ -1124,12 +1147,18 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     };
     setUsageSearch({ status: "loading", items: [], requestedSymbol: request });
     try {
-      const items = await workspaceApi.findUsages(request);
+      const envelope = workspace?.rootPath && workspaceApi.queryUsagesWithReadiness
+        ? await workspaceApi.queryUsagesWithReadiness(workspace.rootPath, request)
+        : null;
+      const items = envelope?.items ?? await workspaceApi.findUsages?.(request) ?? [];
+      const readinessMessage = envelope && envelope.readiness.state !== "ready"
+        ? `Index is ${envelope.readiness.state}; usages may be incomplete`
+        : undefined;
       setUsageSearch({
         status: items.length > 0 ? "ready" : "empty",
         items,
         requestedSymbol: request,
-        message: items.length > 0 ? undefined : "No usages found",
+        message: items.length > 0 ? readinessMessage : readinessMessage ?? "No usages found",
       });
       setStatusText(items.length > 0 ? `Usages: ${items.length} matches` : "Usages: none");
     } catch (error) {
@@ -2171,7 +2200,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
 
     if (searchEverywhereMode === "searchEverywhere") {
-      const indexRequest = workspaceApi.queryWorkspaceCandidates
+      const indexRequest = workspaceApi.queryWorkspaceCandidatesWithReadiness
+        ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, quickOpenQuery, searchEverywhereScope, 24)
+          .then((envelope) => envelope.items)
+        : workspaceApi.queryWorkspaceCandidates
         ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, quickOpenQuery, searchEverywhereScope, 24)
         : workspaceApi.queryWorkspaceSearchEverywhere
         ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, quickOpenQuery, 24)
@@ -2204,7 +2236,15 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     const paths = workspaceIndexRef.current.getTextSearchPaths();
     const hasDirtyDocuments = documentsRef.current.getDocuments().some((document) => document.isDirty);
     const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    const searchRequest = canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !hasDirtyDocuments
+    const parsedTextQuery = parseSearchQuery(quickOpenQuery);
+    const queryWorkspaceCandidatesWithReadiness = workspaceApi.queryWorkspaceCandidatesWithReadiness;
+    const canUseIndexedTextFacade = queryWorkspaceCandidatesWithReadiness
+      && parsedTextQuery.kind === "text"
+      && Boolean(parsedTextQuery.query)
+      && !searchEverywhereOptions.caseSensitive
+      && !searchEverywhereOptions.wholeWord
+      && !hasDirtyDocuments;
+    const fallbackTextSearch = () => canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !hasDirtyDocuments
       ? workspaceApi.searchWorkspaceText({
         query: quickOpenQuery,
         rootPath: workspace.rootPath,
@@ -2235,15 +2275,30 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         },
         limit: 60,
       });
+    const searchRequest = canUseIndexedTextFacade
+      ? queryWorkspaceCandidatesWithReadiness(workspace.rootPath, quickOpenQuery, "text", 60)
+        .then((envelope) => {
+          workspaceIndexRef.current.replaceQueryReadiness(envelope.readiness);
+          setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
+          if (envelope.readiness.state === "missing" && envelope.items.length === 0) {
+            return fallbackTextSearch().then((result) => ({ result, suppressMissExplain: false }));
+          }
 
-    void searchRequest.then((result) => {
+          return {
+            result: textCandidatesToSearchResult(workspace.rootPath, quickOpenQuery, envelope.items),
+            suppressMissExplain: envelope.readiness.state !== "ready",
+          };
+        })
+      : fallbackTextSearch().then((result) => ({ result, suppressMissExplain: false }));
+
+    void searchRequest.then(({ result, suppressMissExplain }) => {
       if (searchEverywhereRequestRef.current !== requestId) {
         return;
       }
 
       setSearchEverywhereResult(result);
       setSearchEverywhereSelectedIndex(0);
-      if (result.query.kind !== "invalid" && result.matches.length === 0 && quickOpenQuery.trim()) {
+      if (!suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && quickOpenQuery.trim()) {
         const missLabel = searchOverlayLabel(searchEverywhereMode);
         void explainIndexMiss("search", quickOpenQuery.trim()).then((explanation) => {
           if (searchEverywhereRequestRef.current === requestId && explanation) {
@@ -2644,6 +2699,43 @@ function searchOverlayLabel(mode: SearchEverywhereMode) {
   }
 
   return "Search Everywhere";
+}
+
+function textCandidatesToSearchResult(
+  rootPath: string,
+  query: string,
+  candidates: SearchCandidate[],
+): WorkspaceTextSearchResult {
+  const parsedQuery = parseSearchQuery(query);
+  if (parsedQuery.kind !== "text") {
+    return { query: parsedQuery, matches: [] };
+  }
+
+  return {
+    query: parsedQuery,
+    matches: candidates.flatMap((candidate) => {
+      if (candidate.source !== "text" || !candidate.path || !candidate.line || !candidate.column) {
+        return [];
+      }
+
+      const preview = candidate.signature ?? candidate.title;
+      const previewStart = Math.max(0, candidate.column - 1);
+      const previewEnd = Math.min(preview.length, previewStart + parsedQuery.query.length);
+      return [{
+        path: candidate.path,
+        relativePath: getRelativeWorkspacePath(rootPath, candidate.path),
+        fileName: getPathBasename(candidate.path),
+        line: candidate.line,
+        column: candidate.column,
+        summary: candidate.title,
+        preview,
+        previewStart,
+        previewEnd,
+        contextBefore: [],
+        contextAfter: [],
+      }];
+    }),
+  };
 }
 
 function ProjectMutationDialog({

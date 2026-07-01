@@ -100,6 +100,8 @@ pub struct UsageResult {
     pub line: u32,
     pub column: u32,
     pub preview: String,
+    pub kind: String,
+    pub confidence: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::models::workspace::WorkspaceSearchCandidate;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_sdk_parser_service::{collect_sdk_symbols, WorkspaceSdkSymbol};
+use crate::services::workspace_search_ranking_service::lexical_match_score;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -83,7 +84,13 @@ pub fn query_workspace_sdk_symbols(
     ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let pattern = format!("%{}%", escape_like_pattern(&query_terms.name_query));
-    let fetch_limit = limit.saturating_mul(8).max(limit);
+    let first_char_pattern = query_terms
+        .name_query
+        .chars()
+        .next()
+        .map(|character| format!("%{}%", escape_like_pattern(&character.to_string())))
+        .unwrap_or_else(|| pattern.clone());
+    let fetch_limit = limit.saturating_mul(16).max(limit);
     let mut statement = connection
         .prepare(
             "select symbol.kind, symbol.name, symbol.path, symbol.line, symbol.column,
@@ -93,25 +100,32 @@ pub fn query_workspace_sdk_symbols(
                 on metadata.root_path = symbol.root_path
                and metadata.sdk_path = symbol.sdk_path
                and metadata.sdk_version = symbol.sdk_version
-             where symbol.root_path = ?1 and lower(symbol.name) like ?2 escape '\\'
+             where symbol.root_path = ?1
+               and (
+                    lower(symbol.name) like ?2 escape '\\'
+                    or lower(symbol.name) like ?3 escape '\\'
+               )
              order by symbol.name, symbol.kind, symbol.path, symbol.line
-             limit ?3",
+             limit ?4",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![root_key, pattern, fetch_limit as i64], |row| {
-            let line: i64 = row.get(3)?;
-            let column: i64 = row.get(4)?;
-            Ok(WorkspaceSdkSymbol {
-                kind: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                line: usize::try_from(line).unwrap_or_default(),
-                column: usize::try_from(column).unwrap_or_default(),
-                container: row.get(5)?,
-                signature: row.get(6)?,
-            })
-        })
+        .query_map(
+            params![root_key, pattern, first_char_pattern, fetch_limit as i64],
+            |row| {
+                let line: i64 = row.get(3)?;
+                let column: i64 = row.get(4)?;
+                Ok(WorkspaceSdkSymbol {
+                    kind: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    line: usize::try_from(line).unwrap_or_default(),
+                    column: usize::try_from(column).unwrap_or_default(),
+                    container: row.get(5)?,
+                    signature: row.get(6)?,
+                })
+            },
+        )
         .map_err(|error| error.to_string())?;
 
     let mut candidates = rows
@@ -204,16 +218,7 @@ fn score_sdk_symbol(symbol: &WorkspaceSdkSymbol, query_terms: &SdkQueryTerms) ->
         return None;
     }
 
-    let lowered = symbol.name.to_lowercase();
-    let mut score = if lowered == query_terms.name_query {
-        120.0
-    } else if lowered.starts_with(&query_terms.name_query) {
-        95.0
-    } else if lowered.contains(&query_terms.name_query) {
-        70.0
-    } else {
-        return None;
-    };
+    let mut score = lexical_match_score(&symbol.name, &query_terms.name_query)?;
 
     if query_terms.qualifiers.iter().any(|term| {
         symbol

@@ -11,6 +11,8 @@ mod commands {
     pub mod workspace;
     pub mod workspace_definition;
     pub mod workspace_index;
+    #[cfg(test)]
+    mod workspace_tests;
 }
 
 mod models {
@@ -41,10 +43,20 @@ mod services {
     pub mod workspace_arkts_stub_parser_service;
     #[cfg(test)]
     mod workspace_arkts_stub_parser_service_tests;
+    pub mod workspace_completion_item_service;
+    pub mod workspace_completion_parser_service;
+    pub mod workspace_completion_semantic_service;
+    #[cfg(test)]
+    mod workspace_completion_semantic_service_tests;
     pub mod workspace_content_index_service;
     #[cfg(test)]
     mod workspace_content_index_service_tests;
     pub mod workspace_content_query_service;
+    #[cfg(test)]
+    mod workspace_definition_member_query_tests;
+    #[cfg(test)]
+    mod workspace_definition_query_service_tests;
+    pub mod workspace_definition_reference_service;
     pub mod workspace_dependency_graph_service;
     #[cfg(test)]
     mod workspace_dependency_graph_service_tests;
@@ -52,6 +64,15 @@ mod services {
     pub mod workspace_file_fingerprint_service;
     #[cfg(test)]
     mod workspace_file_fingerprint_service_tests;
+    pub mod workspace_index_cancellation_service;
+    #[cfg(test)]
+    mod workspace_index_cancellation_service_tests;
+    pub mod workspace_index_chunk_service;
+    #[cfg(test)]
+    mod workspace_index_chunk_service_tests;
+    pub mod workspace_index_continuation_task_service;
+    #[cfg(test)]
+    mod workspace_index_continuation_task_service_tests;
     #[cfg(test)]
     mod workspace_index_dependency_expansion_service_tests;
     pub mod workspace_index_diagnostics_service;
@@ -66,11 +87,24 @@ mod services {
     pub mod workspace_index_explain_service;
     #[cfg(test)]
     mod workspace_index_explain_service_tests;
+    pub mod workspace_index_facade_service;
+    #[cfg(test)]
+    mod workspace_index_facade_service_tests;
+    pub mod workspace_index_full_refresh_service;
+    #[cfg(test)]
+    mod workspace_index_full_refresh_service_tests;
+    pub mod workspace_index_health_service;
+    #[cfg(test)]
+    mod workspace_index_health_service_tests;
     #[cfg(test)]
     mod workspace_index_lifecycle_service_tests;
     pub mod workspace_index_maintenance_service;
     #[cfg(test)]
     mod workspace_index_maintenance_service_tests;
+    #[cfg(test)]
+    mod workspace_index_manager_priority_tests;
+    #[cfg(test)]
+    mod workspace_index_manager_resume_tests;
     pub mod workspace_index_manager_service;
     #[cfg(test)]
     mod workspace_index_manager_service_tests;
@@ -83,6 +117,12 @@ mod services {
     pub mod workspace_index_readiness_service;
     #[cfg(test)]
     mod workspace_index_readiness_service_tests;
+    pub mod workspace_index_repair_service;
+    #[cfg(test)]
+    mod workspace_index_repair_service_tests;
+    pub mod workspace_index_resume_service;
+    #[cfg(test)]
+    mod workspace_index_resume_service_tests;
     #[cfg(test)]
     mod workspace_index_running_lifecycle_service_tests;
     pub mod workspace_index_scheduler_service;
@@ -92,6 +132,9 @@ mod services {
     pub mod workspace_index_service;
     #[cfg(test)]
     mod workspace_index_service_tests;
+    pub mod workspace_index_state_machine_service;
+    #[cfg(test)]
+    mod workspace_index_state_machine_service_tests;
     pub mod workspace_index_task_journal_service;
     #[cfg(test)]
     mod workspace_index_task_journal_service_tests;
@@ -99,12 +142,29 @@ mod services {
     pub mod workspace_index_task_status_service;
     #[cfg(test)]
     mod workspace_index_test_fixture_service;
+    pub mod workspace_index_text_candidate_service;
     pub mod workspace_index_watcher_service;
     pub mod workspace_index_worker_service;
     #[cfg(test)]
     mod workspace_index_worker_service_tests;
     #[cfg(test)]
     pub mod workspace_large_fixture_service;
+    #[cfg(test)]
+    mod workspace_large_project_index_tests;
+    #[cfg(test)]
+    mod workspace_reference_branch_flow_tests;
+    pub mod workspace_reference_declaration_index_service;
+    #[cfg(test)]
+    mod workspace_reference_deep_generic_tests;
+    pub mod workspace_reference_generic_receiver_service;
+    pub mod workspace_reference_identifier_index_service;
+    pub mod workspace_reference_index_service;
+    #[cfg(test)]
+    mod workspace_reference_index_service_tests;
+    pub mod workspace_reference_member_index_service;
+    #[cfg(test)]
+    mod workspace_reference_receiver_tests;
+    pub mod workspace_reference_receiver_type_service;
     pub mod workspace_sdk_index_service;
     #[cfg(test)]
     mod workspace_sdk_index_service_tests;
@@ -114,12 +174,27 @@ mod services {
     #[cfg(test)]
     mod workspace_search_everywhere_service_tests;
     pub mod workspace_search_ranking_service;
+    #[cfg(test)]
+    mod workspace_search_ranking_service_tests;
     pub mod workspace_service;
     pub mod workspace_stub_index_service;
     #[cfg(test)]
     mod workspace_stub_index_service_tests;
     pub mod workspace_symbol_index_service;
+    pub mod workspace_symbol_resolution_alias_service;
+    pub mod workspace_symbol_resolution_query_service;
+    #[cfg(test)]
+    mod workspace_symbol_resolution_query_service_tests;
+    pub mod workspace_symbol_resolution_schema_service;
+    pub mod workspace_symbol_resolution_service;
+    #[cfg(test)]
+    mod workspace_symbol_resolution_service_tests;
     pub mod workspace_text_search_service;
+    #[cfg(test)]
+    mod workspace_usage_confidence_tests;
+    pub mod workspace_usage_query_service;
+    #[cfg(test)]
+    mod workspace_usage_query_service_tests;
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -142,9 +217,14 @@ pub fn run() {
             commands::workspace::list_workspace_directory,
             commands::workspace::get_workspace_index_state,
             commands::workspace::inspect_workspace_index,
+            commands::workspace::get_workspace_index_health,
             commands::workspace::get_workspace_index_task_statuses,
             commands::workspace::clear_workspace_index,
             commands::workspace::rebuild_workspace_index,
+            commands::workspace::resume_workspace_indexing,
+            commands::workspace::rebuild_workspace_sdk_index,
+            commands::workspace::inspect_workspace_parser_failures,
+            commands::workspace::inspect_workspace_unresolved_imports,
             commands::workspace::index_workspace_sdk_symbols,
             commands::workspace::submit_workspace_sdk_index,
             commands::workspace::query_workspace_quick_open,
@@ -154,7 +234,11 @@ pub fn run() {
             commands::workspace::query_workspace_file_symbols,
             commands::workspace::query_workspace_file_symbols_with_readiness,
             commands::workspace_definition::query_definition_candidates_with_readiness,
+            commands::workspace_definition::query_usages_with_readiness,
+            commands::workspace_definition::semantic_complete_symbol,
             commands::workspace::update_workspace_index_files,
+            commands::workspace::schedule_foreground_completion_index,
+            commands::workspace::schedule_visible_files_index,
             commands::workspace::refresh_workspace_index,
             commands::workspace::refresh_workspace_index_with_changes,
             commands::workspace::search_workspace_text,

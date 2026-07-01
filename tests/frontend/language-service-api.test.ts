@@ -63,12 +63,16 @@ describe("language service api skeleton", () => {
         line: 1,
         column: 1,
         preview: "@Entry",
+        kind: "fallback",
+        confidence: "fallback",
       },
       {
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
         line: 3,
         column: 8,
         preview: "struct Index {}",
+        kind: "fallback",
+        confidence: "fallback",
       },
     ]);
   });

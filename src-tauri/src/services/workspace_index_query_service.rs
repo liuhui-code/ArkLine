@@ -9,11 +9,16 @@ use crate::models::workspace::{
     WorkspaceTextSearchResult,
 };
 use crate::services::workspace_content_index_service::search_indexed_workspace_content;
+use crate::services::workspace_definition_reference_service::query_reference_definition_candidates;
 use crate::services::workspace_index_entity_query_service::{
     query_workspace_entities, query_workspace_file_symbols, WorkspaceEntityQueryScope,
 };
 use crate::services::workspace_index_readiness_service::readiness_for_query;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_text_candidate_service::text_search_candidates;
+use crate::services::workspace_symbol_resolution_query_service::{
+    query_resolved_symbol_by_id, query_resolved_symbols_by_name_and_path,
+};
 use crate::services::workspace_text_search_service::search_workspace_text as search_filesystem_text;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +28,7 @@ pub enum WorkspaceIndexQueryScope {
     Classes,
     Symbols,
     Apis,
+    Text,
 }
 
 pub fn query_workspace_quick_open(
@@ -61,17 +67,33 @@ pub fn query_workspace_candidates(
     scope: WorkspaceIndexQueryScope,
     limit: usize,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
+    if scope == WorkspaceIndexQueryScope::Text {
+        return text_search_candidates(index_runtime, root_path, query, limit);
+    }
     let entity_scope = match scope {
         WorkspaceIndexQueryScope::All => WorkspaceEntityQueryScope::All,
         WorkspaceIndexQueryScope::Files => WorkspaceEntityQueryScope::Files,
         WorkspaceIndexQueryScope::Classes => WorkspaceEntityQueryScope::Classes,
         WorkspaceIndexQueryScope::Symbols => WorkspaceEntityQueryScope::Symbols,
         WorkspaceIndexQueryScope::Apis => WorkspaceEntityQueryScope::Apis,
+        WorkspaceIndexQueryScope::Text => unreachable!("text scope is handled above"),
     };
-    let candidates = query_workspace_entities(root_path, query, entity_scope, limit)?;
+    let mut candidates = query_workspace_entities(root_path, query, entity_scope, limit)?;
+    if scope == WorkspaceIndexQueryScope::All {
+        candidates.extend(text_search_candidates(
+            index_runtime,
+            root_path,
+            query,
+            limit,
+        )?);
+    }
     if candidates.is_empty() && scope == WorkspaceIndexQueryScope::All {
         return index_runtime.query_search_everywhere(root_path, query, limit);
     }
+    crate::services::workspace_search_ranking_service::sort_search_everywhere_candidates(
+        &mut candidates,
+        limit,
+    );
     Ok(candidates)
 }
 
@@ -162,6 +184,10 @@ fn query_index_definition_candidates(
     root_path: &str,
     request: &LanguageQueryRequest,
 ) -> Result<Vec<DefinitionCandidate>, String> {
+    let reference_candidates = query_reference_definition_candidates(root_path, request)?;
+    if !reference_candidates.is_empty() {
+        return Ok(reference_candidates);
+    }
     let Some(symbol) = symbol_at_position(request) else {
         return Ok(Vec::new());
     };
@@ -169,6 +195,9 @@ fn query_index_definition_candidates(
     let root_key = normalize_index_path(root_path);
     let path_key = normalize_index_path(&request.path);
     let mut candidates = Vec::new();
+    candidates.extend(query_resolved_definition_candidates(
+        root_path, &path_key, &symbol,
+    )?);
     candidates.extend(query_import_definition_candidates(
         &connection,
         &root_key,
@@ -183,6 +212,32 @@ fn query_index_definition_candidates(
         &symbol,
     )?);
     dedupe_definition_candidates(&mut candidates);
+    Ok(candidates)
+}
+
+fn query_resolved_definition_candidates(
+    root_path: &str,
+    path_key: &str,
+    symbol: &str,
+) -> Result<Vec<DefinitionCandidate>, String> {
+    let aliases = query_resolved_symbols_by_name_and_path(root_path, symbol, path_key, 8)?;
+    let mut candidates = Vec::new();
+    for alias in aliases {
+        let Some(target_id) = alias.target_symbol_id else {
+            continue;
+        };
+        let Some(target) = query_resolved_symbol_by_id(root_path, &target_id)? else {
+            continue;
+        };
+        candidates.push(DefinitionCandidate {
+            path: denormalize_index_path(&target.path),
+            line: u32::try_from(target.line).unwrap_or_default(),
+            column: u32::try_from(target.column).unwrap_or_default(),
+            preview: target
+                .signature
+                .unwrap_or_else(|| target.qualified_name.clone()),
+        });
+    }
     Ok(candidates)
 }
 

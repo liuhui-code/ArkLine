@@ -414,12 +414,16 @@ rl.on("line", (line) => {{
                         line: 3,
                         column: 8,
                         preview: "struct Index {}".to_string(),
+                        kind: "fallback".to_string(),
+                        confidence: "fallback".to_string(),
                     },
                     crate::models::language::UsageResult {
                         path: path_text.clone(),
                         line: 5,
                         column: 3,
                         preview: "Index;".to_string(),
+                        kind: "fallback".to_string(),
+                        confidence: "fallback".to_string(),
                     },
                 ]
             );

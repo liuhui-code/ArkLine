@@ -28,9 +28,9 @@ export async function collectCompletionCandidates({
   replacePrefix,
 }: CompletionCandidateRequest): Promise<LanguageCompletionItem[]> {
   const queryText = query || replacePrefix;
-  const semanticRequest = workspaceApi.completeSymbol
-    ? workspaceApi.completeSymbol({ path, line, column, content })
-    : Promise.resolve<LanguageCompletionItem[]>([]);
+  const languageRequest = { path, line, column, content };
+  await scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
+  const semanticRequest = collectSemanticCompletionItems(workspaceApi, rootPath, languageRequest);
   const fileIndexRequest = rootPath && workspaceApi.queryWorkspaceFileSymbolsWithReadiness
     ? workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, queryText, 80).then((envelope) => envelope.items)
     : rootPath && workspaceApi.queryWorkspaceFileSymbols
@@ -57,6 +57,39 @@ export async function collectCompletionCandidates({
     : [];
 
   return mergeCompletionItems(semanticItems, fileIndexedItems, workspaceIndexedItems, keywordCompletionItems(queryText));
+}
+
+async function scheduleForegroundCompletionIndex(
+  workspaceApi: WorkspaceApi,
+  rootPath: string | null | undefined,
+  path: string,
+) {
+  if (!rootPath || !workspaceApi.scheduleForegroundCompletionIndex) {
+    return;
+  }
+  try {
+    await workspaceApi.scheduleForegroundCompletionIndex(rootPath, [path]);
+  } catch {
+    // Completion must stay responsive when foreground reindex scheduling is unavailable.
+  }
+}
+
+async function collectSemanticCompletionItems(
+  workspaceApi: WorkspaceApi,
+  rootPath: string | null | undefined,
+  request: { path: string; line: number; column: number; content: string },
+): Promise<LanguageCompletionItem[]> {
+  if (rootPath && workspaceApi.semanticCompleteSymbol) {
+    try {
+      const envelope = await workspaceApi.semanticCompleteSymbol(rootPath, request);
+      if (envelope.items.length > 0 || !workspaceApi.completeSymbol) {
+        return envelope.items;
+      }
+    } catch {
+      // Fall through to the legacy language-service completion below.
+    }
+  }
+  return workspaceApi.completeSymbol ? workspaceApi.completeSymbol(request) : [];
 }
 
 function isCompletionCandidate(candidate: SearchCandidate) {

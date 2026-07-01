@@ -1,8 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
+use crate::services::workspace_index_chunk_service::WorkspaceIndexRefreshContinuation;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind,
+};
+use crate::services::workspace_index_state_machine_service::{
+    task_state_label, transition_task_state, WorkspaceIndexTaskState,
 };
 
 #[allow(dead_code)]
@@ -18,6 +22,7 @@ pub struct WorkspaceIndexTaskResult {
     pub message: Option<String>,
     pub error: Option<String>,
     pub refresh_result: Option<WorkspaceIndexRefreshResult>,
+    pub refresh_continuation: Option<WorkspaceIndexRefreshContinuation<String>>,
     pub sdk_symbol_count: Option<usize>,
 }
 
@@ -38,6 +43,7 @@ pub fn refresh_task_result(
         message: None,
         error: None,
         refresh_result: Some(refresh_result),
+        refresh_continuation: None,
         sdk_symbol_count: None,
     }
 }
@@ -58,6 +64,7 @@ pub fn failed_task_result(
         message: None,
         error: Some(error),
         refresh_result: None,
+        refresh_continuation: None,
         sdk_symbol_count: None,
     }
 }
@@ -78,6 +85,7 @@ pub fn skipped_task_result(
         message: Some(message.to_string()),
         error: None,
         refresh_result: None,
+        refresh_continuation: None,
         sdk_symbol_count: None,
     }
 }
@@ -87,6 +95,7 @@ pub fn superseded_task_result(mut result: WorkspaceIndexTaskResult) -> Workspace
     result.message = Some("Replaced by a newer index task".to_string());
     result.error = None;
     result.refresh_result = None;
+    result.refresh_continuation = None;
     result.sdk_symbol_count = None;
     result.finished_at = Some(current_time_millis());
     result
@@ -104,6 +113,7 @@ pub fn superseded_task_result_from_task(task: &WorkspaceIndexTask) -> WorkspaceI
         message: Some("Replaced by a newer index task".to_string()),
         error: None,
         refresh_result: None,
+        refresh_continuation: None,
         sdk_symbol_count: None,
     }
 }
@@ -139,6 +149,52 @@ pub fn task_status_from_task(
         symbol_count,
         message,
         error: None,
+    }
+}
+
+pub fn task_status_from_state_transition(
+    task: &WorkspaceIndexTask,
+    current: WorkspaceIndexTaskState,
+    next: WorkspaceIndexTaskState,
+    symbol_count: Option<usize>,
+    message: Option<String>,
+) -> Result<WorkspaceIndexTaskStatus, String> {
+    transition_task_state(current, next)?;
+    Ok(task_status_from_task(
+        task,
+        task_state_label(next),
+        symbol_count,
+        message,
+    ))
+}
+
+pub fn task_status_from_result_transition(
+    result: &WorkspaceIndexTaskResult,
+    current: WorkspaceIndexTaskState,
+) -> Result<WorkspaceIndexTaskStatus, String> {
+    let next = result_state_from_status(&result.status)?;
+    transition_task_state(current, next)?;
+    Ok(task_status_from_result(result))
+}
+
+pub fn task_status_from_publishable_result(
+    result: &WorkspaceIndexTaskResult,
+) -> Result<WorkspaceIndexTaskStatus, String> {
+    if result.status == "skipped" {
+        return Ok(task_status_from_result(result));
+    }
+    task_status_from_result_transition(result, WorkspaceIndexTaskState::Running)
+}
+
+fn result_state_from_status(status: &str) -> Result<WorkspaceIndexTaskState, String> {
+    match status {
+        "ready" => Ok(WorkspaceIndexTaskState::Ready),
+        "partial" => Ok(WorkspaceIndexTaskState::Partial),
+        "failed" => Ok(WorkspaceIndexTaskState::Failed),
+        "superseded" => Ok(WorkspaceIndexTaskState::Superseded),
+        value => Err(format!(
+            "Unsupported workspace index task result status: {value}"
+        )),
     }
 }
 

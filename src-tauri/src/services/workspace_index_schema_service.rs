@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
+use crate::services::workspace_reference_index_service::create_reference_index_tables;
+use crate::services::workspace_symbol_resolution_schema_service::create_symbol_resolution_tables;
 
 const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("catalog", 1),
@@ -13,9 +15,12 @@ const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("symbol", 1),
     ("stub", 1),
     ("dependency", 1),
+    ("symbol_resolution", 1),
+    ("reference", 1),
     ("fingerprint", 1),
     ("sdk", 1),
     ("task_journal", 1),
+    ("resume", 1),
 ];
 
 pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
@@ -44,7 +49,10 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_fingerprint_tables(connection)?;
     create_sdk_tables(connection)?;
     create_task_journal_tables(connection)?;
+    create_resume_tables(connection)?;
     create_dependency_graph_tables(connection)?;
+    create_symbol_resolution_tables(connection)?;
+    create_reference_index_tables(connection)?;
     record_domain_versions(connection)
 }
 
@@ -429,6 +437,33 @@ fn create_task_journal_tables(connection: &Connection) -> Result<(), String> {
         .execute(
             "create index if not exists workspace_index_task_journal_recent
              on workspace_index_task_journal(root_path, generation)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn create_resume_tables(connection: &Connection) -> Result<(), String> {
+    connection
+        .execute(
+            "create table if not exists workspace_index_resume_tasks (
+                root_path text not null,
+                task_key text not null,
+                kind text not null,
+                priority integer not null,
+                reason text not null,
+                generation integer not null,
+                changed_paths_json text not null,
+                updated_at integer not null,
+                primary key (root_path, task_key)
+            )",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "create index if not exists workspace_index_resume_tasks_lookup
+             on workspace_index_resume_tasks(root_path, priority, generation)",
             [],
         )
         .map_err(|error| error.to_string())?;

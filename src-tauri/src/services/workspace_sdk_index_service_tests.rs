@@ -117,6 +117,28 @@ fn ranks_sdk_api_symbols_by_exact_prefix_then_contains_match() {
 }
 
 #[test]
+fn ranks_sdk_api_symbols_by_camel_case_acronym_before_loose_fuzzy_matches() {
+    let workspace = unique_temp_dir("camel-case-ranking");
+    let sdk_root = workspace.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets")).unwrap();
+    fs::create_dir_all(sdk_root.join("toolchains")).unwrap();
+    fs::write(
+        sdk_root.join("ets").join("types.d.ts"),
+        "declare class Tower {}\ndeclare class TextDisplayWidth {}\n",
+    )
+    .unwrap();
+    let workspace_path = workspace.to_string_lossy().to_string();
+    let sdk_path = sdk_root.to_string_lossy().to_string();
+    index_workspace_sdk_symbols(&workspace_path, &sdk_path, "test-sdk").unwrap();
+
+    let matches = query_workspace_sdk_symbols(&workspace_path, "tdw", 8).unwrap();
+
+    assert_eq!(matches[0].title, "TextDisplayWidth");
+
+    fs::remove_dir_all(workspace).unwrap();
+}
+
+#[test]
 fn ranks_sdk_api_symbols_with_container_qualified_queries() {
     let workspace = unique_temp_dir("container-ranking");
     let sdk_root = workspace.join("openharmony");

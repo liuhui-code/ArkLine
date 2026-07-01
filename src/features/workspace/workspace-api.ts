@@ -88,6 +88,41 @@ export type WorkspaceIndexDiagnostics = {
   lastExplainStatus: string | null;
 };
 
+export type WorkspaceIndexQueuePressure = {
+  rootPath: string;
+  pendingTaskCount: number;
+  workspacePendingTaskCount: number;
+  highestPriority: string | null;
+  highestPriorityTaskKind: string | null;
+};
+
+export type WorkspaceIndexHealth = {
+  rootPath: string;
+  status: string;
+  fileCount: number;
+  symbolCount: number;
+  referenceCount: number;
+  sdkApiCount: number;
+  unresolvedImportCount: number;
+  parserFailureCount: number;
+  queuePressure: WorkspaceIndexQueuePressure;
+  repairActions: string[];
+};
+
+export type WorkspaceIndexParserFailure = {
+  path: string;
+  message: string;
+  line: number;
+  column: number;
+};
+
+export type WorkspaceIndexUnresolvedImport = {
+  fromPath: string;
+  sourceModule: string;
+  line: number;
+  column: number;
+};
+
 export type WorkspaceSdkIndexSummary = {
   symbolCount: number;
 };
@@ -108,7 +143,7 @@ export type WorkspaceIndexTaskStatus = {
   error?: string;
 };
 
-export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" | "api";
+export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" | "api" | "text";
 
 export type WorkspaceTextSearchRequest = {
   rootPath: string;
@@ -358,10 +393,15 @@ export type WorkspaceApi = {
   listWorkspaceDirectory?(rootPath: string, directoryPath: string): Promise<WorkspaceDirectoryEntry[]>;
   getWorkspaceIndexState?(rootPath: string): Promise<WorkspaceIndexState>;
   inspectWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexDiagnostics>;
+  getWorkspaceIndexHealth?(rootPath: string): Promise<WorkspaceIndexHealth>;
   getWorkspaceIndexTaskStatuses?(rootPath: string): Promise<WorkspaceIndexTaskStatus[]>;
   watchWorkspaceIndexTaskStatuses?(rootPath: string, onChange: WorkspaceIndexTaskStatusWatcher): Promise<() => void>;
   clearWorkspaceIndex?(rootPath: string): Promise<void>;
   rebuildWorkspaceIndex?(rootPath: string): Promise<void>;
+  resumeWorkspaceIndexing?(rootPath: string): Promise<void>;
+  rebuildWorkspaceSdkIndex?(rootPath: string): Promise<WorkspaceIndexTaskStatus>;
+  inspectWorkspaceParserFailures?(rootPath: string, limit: number): Promise<WorkspaceIndexParserFailure[]>;
+  inspectWorkspaceUnresolvedImports?(rootPath: string, limit: number): Promise<WorkspaceIndexUnresolvedImport[]>;
   indexWorkspaceSdkSymbols?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceSdkIndexSummary>;
   submitWorkspaceSdkIndex?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
@@ -371,8 +411,12 @@ export type WorkspaceApi = {
   queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
+  queryUsagesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<UsageResult>>;
+  semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
+  scheduleForegroundCompletionIndex?(rootPath: string, changedPaths: string[]): Promise<void>;
+  scheduleVisibleFilesIndex?(rootPath: string, changedPaths: string[]): Promise<void>;
   refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
@@ -627,6 +671,30 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       lastExplainStatus: null,
     };
   },
+  async getWorkspaceIndexHealth(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexHealth>("get_workspace_index_health", { rootPath });
+    }
+
+    return {
+      rootPath,
+      status: "stale",
+      fileCount: 0,
+      symbolCount: 0,
+      referenceCount: 0,
+      sdkApiCount: 0,
+      unresolvedImportCount: 0,
+      parserFailureCount: 0,
+      queuePressure: {
+        rootPath,
+        pendingTaskCount: 0,
+        workspacePendingTaskCount: 0,
+        highestPriority: null,
+        highestPriorityTaskKind: null,
+      },
+      repairActions: ["rebuildProjectIndex"],
+    };
+  },
   async getWorkspaceIndexTaskStatuses(rootPath) {
     if (hasTauriRuntime()) {
       return invoke<WorkspaceIndexTaskStatus[]>("get_workspace_index_task_statuses", { rootPath });
@@ -667,6 +735,54 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     }
 
     void rootPath;
+  },
+  async resumeWorkspaceIndexing(rootPath) {
+    if (hasTauriRuntime()) {
+      await invoke("resume_workspace_indexing", { rootPath });
+      return;
+    }
+
+    void rootPath;
+  },
+  async rebuildWorkspaceSdkIndex(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexTaskStatus>("rebuild_workspace_sdk_index", { rootPath });
+    }
+
+    void rootPath;
+    return {
+      taskId: "local:sdk",
+      rootPath: "",
+      kind: "sdk",
+      status: "ready",
+      reason: "local-fallback",
+      generation: 0,
+      progressCurrent: 1,
+      progressTotal: 1,
+      startedAt: undefined,
+      finishedAt: undefined,
+      symbolCount: 0,
+      message: undefined,
+      error: undefined,
+    };
+  },
+  async inspectWorkspaceParserFailures(rootPath, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexParserFailure[]>("inspect_workspace_parser_failures", { rootPath, limit });
+    }
+
+    void rootPath;
+    void limit;
+    return [];
+  },
+  async inspectWorkspaceUnresolvedImports(rootPath, limit) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexUnresolvedImport[]>("inspect_workspace_unresolved_imports", { rootPath, limit });
+    }
+
+    void rootPath;
+    void limit;
+    return [];
   },
   async indexWorkspaceSdkSymbols(rootPath, sdkPath, sdkVersion) {
     if (hasTauriRuntime()) {
@@ -767,6 +883,22 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     void request;
     return emptyIndexQueryEnvelope(rootPath);
   },
+  async queryUsagesWithReadiness(rootPath, request) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexQueryEnvelope<UsageResult>>("query_usages_with_readiness", { rootPath, request });
+    }
+
+    void request;
+    return emptyIndexQueryEnvelope(rootPath);
+  },
+  async semanticCompleteSymbol(rootPath, request) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>("semantic_complete_symbol", { rootPath, request });
+    }
+
+    void request;
+    return emptyIndexQueryEnvelope(rootPath);
+  },
   async explainWorkspaceIndexQuery(request) {
     if (hasTauriRuntime()) {
       return invoke<WorkspaceIndexExplainResult>("explain_workspace_index_query", { request });
@@ -795,6 +927,16 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       indexedAt: null,
       partialReason: null,
     };
+  },
+  async scheduleForegroundCompletionIndex(rootPath, changedPaths) {
+    if (hasTauriRuntime()) {
+      await invoke("schedule_foreground_completion_index", { rootPath, changedPaths });
+    }
+  },
+  async scheduleVisibleFilesIndex(rootPath, changedPaths) {
+    if (hasTauriRuntime()) {
+      await invoke("schedule_visible_files_index", { rootPath, changedPaths });
+    }
   },
   async refreshWorkspaceIndex(rootPath) {
     if (hasTauriRuntime()) {
@@ -1076,12 +1218,16 @@ export const defaultWorkspaceApi: WorkspaceApi = {
         line: 1,
         column: 1,
         preview: "@Entry",
+        kind: "fallback",
+        confidence: "fallback",
       },
       {
         path: normalizePath(request.path),
         line: 3,
         column: 8,
         preview: "struct Index {}",
+        kind: "fallback",
+        confidence: "fallback",
       },
     ];
   },

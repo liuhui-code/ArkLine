@@ -3,14 +3,21 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::models::workspace::{
-    WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexQueryEnvelope,
-    WorkspaceIndexRefreshResult, WorkspaceIndexState, WorkspaceIndexTaskStatus,
+    WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexHealth,
+    WorkspaceIndexParserFailure, WorkspaceIndexQueryEnvelope, WorkspaceIndexRefreshResult,
+    WorkspaceIndexState, WorkspaceIndexTaskStatus, WorkspaceIndexUnresolvedImport,
     WorkspaceSearchCandidate, WorkspaceSnapshot, WorkspaceTextSearchRequest,
     WorkspaceTextSearchResult,
 };
 use crate::services::diff_service::load_workspace_diff_text;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index as inspect_workspace_index_service;
 use crate::services::workspace_index_entity_query_service::query_workspace_file_symbols as query_workspace_file_symbols_service;
+use crate::services::workspace_index_facade_service::{
+    query_facade_file_symbols_with_readiness as query_workspace_file_symbols_with_readiness_facade,
+    query_facade_search_everywhere_with_readiness as query_workspace_candidates_with_readiness_facade,
+    query_facade_text_search_result,
+};
+use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
 use crate::services::workspace_index_maintenance_service::{
     clear_workspace_index as clear_workspace_index_service,
     rebuild_workspace_index as rebuild_workspace_index_service,
@@ -18,11 +25,14 @@ use crate::services::workspace_index_maintenance_service::{
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_query_service::{
     query_workspace_candidates as query_workspace_candidates_service,
-    query_workspace_candidates_with_readiness as query_workspace_candidates_with_readiness_service,
-    query_workspace_file_symbols_with_readiness as query_workspace_file_symbols_with_readiness_service,
     query_workspace_quick_open as query_workspace_quick_open_service,
     query_workspace_search_everywhere as query_workspace_search_everywhere_service,
-    search_workspace_text as search_workspace_text_query_service, WorkspaceIndexQueryScope,
+    WorkspaceIndexQueryScope,
+};
+use crate::services::workspace_index_repair_service::{
+    inspect_parser_failures as inspect_parser_failures_service,
+    inspect_unresolved_imports as inspect_unresolved_imports_service,
+    load_active_sdk_repair_target,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
@@ -63,6 +73,14 @@ pub fn inspect_workspace_index(root_path: String) -> Result<WorkspaceIndexDiagno
 }
 
 #[tauri::command]
+pub fn get_workspace_index_health(
+    root_path: String,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+) -> Result<WorkspaceIndexHealth, String> {
+    get_workspace_index_health_service(&root_path, &index_manager)
+}
+
+#[tauri::command]
 pub fn get_workspace_index_task_statuses(
     root_path: String,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
@@ -84,6 +102,52 @@ pub fn rebuild_workspace_index(
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<(), String> {
     rebuild_workspace_index_service(&index_runtime, &root_path)
+}
+
+#[tauri::command]
+pub fn resume_workspace_indexing(
+    root_path: String,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+) -> Result<(), String> {
+    index_manager.open_workspace_index(&root_path)
+}
+
+#[tauri::command]
+pub fn rebuild_workspace_sdk_index(
+    root_path: String,
+    app_handle: AppHandle,
+    index_runtime: State<'_, WorkspaceIndexRuntime>,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+) -> Result<WorkspaceIndexTaskStatus, String> {
+    let target = load_active_sdk_repair_target(&root_path)?
+        .ok_or_else(|| "No active SDK index metadata available".to_string())?;
+    let app_handle = app_handle.clone();
+    submit_workspace_sdk_index_through_manager(
+        index_runtime.inner().clone(),
+        index_manager.inner().clone(),
+        &root_path,
+        &target.sdk_path,
+        &target.sdk_version,
+        move |status| {
+            let _ = app_handle.emit("workspace-index-task-updated", status);
+        },
+    )
+}
+
+#[tauri::command]
+pub fn inspect_workspace_parser_failures(
+    root_path: String,
+    limit: usize,
+) -> Result<Vec<WorkspaceIndexParserFailure>, String> {
+    inspect_parser_failures_service(&root_path, limit)
+}
+
+#[tauri::command]
+pub fn inspect_workspace_unresolved_imports(
+    root_path: String,
+    limit: usize,
+) -> Result<Vec<WorkspaceIndexUnresolvedImport>, String> {
+    inspect_unresolved_imports_service(&root_path, limit)
 }
 
 #[tauri::command]
@@ -173,7 +237,7 @@ pub fn query_workspace_candidates_with_readiness(
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    query_workspace_candidates_with_readiness_service(
+    query_workspace_candidates_with_readiness_facade(
         &index_runtime,
         &root_path,
         &query,
@@ -200,7 +264,7 @@ pub fn query_workspace_file_symbols_with_readiness(
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    query_workspace_file_symbols_with_readiness_service(
+    query_workspace_file_symbols_with_readiness_facade(
         &index_runtime,
         &root_path,
         &file_path,
@@ -217,6 +281,24 @@ pub fn update_workspace_index_files(
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexState, String> {
     index_runtime.update_workspace_files(&root_path, &added_paths, &removed_paths)
+}
+
+#[tauri::command]
+pub fn schedule_foreground_completion_index(
+    root_path: String,
+    changed_paths: Vec<String>,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+) -> Result<(), String> {
+    schedule_foreground_completion_index_through_manager(&index_manager, &root_path, &changed_paths)
+}
+
+#[tauri::command]
+pub fn schedule_visible_files_index(
+    root_path: String,
+    changed_paths: Vec<String>,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+) -> Result<(), String> {
+    schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)
 }
 
 #[tauri::command]
@@ -246,7 +328,7 @@ pub fn search_workspace_text(
     request: WorkspaceTextSearchRequest,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceTextSearchResult, String> {
-    search_workspace_text_query_service(&index_runtime, request)
+    query_facade_text_search_result(&index_runtime, request)
 }
 
 #[tauri::command]
@@ -281,11 +363,12 @@ fn parse_index_query_scope(scope: &str) -> Result<WorkspaceIndexQueryScope, Stri
         "classes" => Ok(WorkspaceIndexQueryScope::Classes),
         "symbols" => Ok(WorkspaceIndexQueryScope::Symbols),
         "api" => Ok(WorkspaceIndexQueryScope::Apis),
+        "text" => Ok(WorkspaceIndexQueryScope::Text),
         value => Err(format!("Unsupported workspace index query scope: {value}")),
     }
 }
 
-fn index_workspace_sdk_symbols_through_manager_with_status(
+pub(super) fn index_workspace_sdk_symbols_through_manager_with_status(
     index_runtime: &WorkspaceIndexRuntime,
     index_manager: &WorkspaceIndexManagerRuntime,
     root_path: &str,
@@ -315,7 +398,7 @@ fn index_workspace_sdk_symbols_through_manager_with_status(
     ))
 }
 
-fn submit_workspace_sdk_index_through_manager<F>(
+pub(super) fn submit_workspace_sdk_index_through_manager<F>(
     index_runtime: WorkspaceIndexRuntime,
     index_manager: WorkspaceIndexManagerRuntime,
     root_path: &str,
@@ -337,152 +420,27 @@ where
     Ok(queued)
 }
 
+pub(super) fn schedule_foreground_completion_index_through_manager(
+    index_manager: &WorkspaceIndexManagerRuntime,
+    root_path: &str,
+    changed_paths: &[String],
+) -> Result<(), String> {
+    index_manager.schedule_foreground_completion_index(root_path, changed_paths)
+}
+
+pub(super) fn schedule_visible_files_index_through_manager(
+    index_manager: &WorkspaceIndexManagerRuntime,
+    root_path: &str,
+    changed_paths: &[String],
+) -> Result<(), String> {
+    index_manager.schedule_visible_files_index(root_path, changed_paths)
+}
+
 fn emit_workspace_index_task_statuses(
     app_handle: &AppHandle,
     statuses: &[WorkspaceIndexTaskStatus],
 ) {
     for status in statuses {
         let _ = app_handle.emit("workspace-index-task-updated", status);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::{Arc, Mutex};
-    use std::thread;
-    use std::time::Duration;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    use crate::commands::workspace::{
-        index_workspace_sdk_symbols_through_manager_with_status,
-        submit_workspace_sdk_index_through_manager,
-    };
-    use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-    use crate::services::workspace_index_service::WorkspaceIndexRuntime;
-    use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
-            .as_nanos();
-        std::env::temp_dir().join(format!("arkline-command-workspace-{name}-{suffix}"))
-    }
-
-    #[test]
-    fn sdk_index_command_uses_manager_task_result_summary() {
-        let root = unique_temp_dir("sdk-command");
-        let sdk_root = root.join("openharmony");
-        fs::create_dir_all(sdk_root.join("ets")).unwrap();
-        fs::write(
-            sdk_root.join("ets").join("arkui.d.ts"),
-            "declare class Text {\n  width(value: Length): Text;\n}\n",
-        )
-        .unwrap();
-        let root_path = root.to_string_lossy().to_string();
-        let sdk_path = sdk_root.to_string_lossy().to_string();
-        let index_runtime = WorkspaceIndexRuntime::default();
-        let index_manager = WorkspaceIndexManagerRuntime::default();
-
-        let (summary, _) = index_workspace_sdk_symbols_through_manager_with_status(
-            &index_runtime,
-            &index_manager,
-            &root_path,
-            &sdk_path,
-            "test-sdk",
-        )
-        .unwrap();
-        let matches = query_workspace_sdk_symbols(&root_path, "Text width", 8).unwrap();
-
-        assert_eq!(summary.symbol_count, 2);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].title, "width");
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn sdk_index_command_collects_worker_statuses() {
-        let root = unique_temp_dir("sdk-command-status");
-        let sdk_root = root.join("openharmony");
-        fs::create_dir_all(sdk_root.join("ets")).unwrap();
-        fs::write(
-            sdk_root.join("ets").join("arkui.d.ts"),
-            "declare class Text {\n  width(value: Length): Text;\n}\n",
-        )
-        .unwrap();
-        let root_path = root.to_string_lossy().to_string();
-        let sdk_path = sdk_root.to_string_lossy().to_string();
-        let index_runtime = WorkspaceIndexRuntime::default();
-        let index_manager = WorkspaceIndexManagerRuntime::default();
-
-        let (_, statuses) = index_workspace_sdk_symbols_through_manager_with_status(
-            &index_runtime,
-            &index_manager,
-            &root_path,
-            &sdk_path,
-            "test-sdk",
-        )
-        .unwrap();
-
-        assert!(statuses
-            .iter()
-            .any(|status| status.kind == "sdk" && status.status == "running"));
-        assert!(statuses
-            .iter()
-            .any(|status| status.kind == "sdk" && status.status == "ready"));
-
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn submit_sdk_index_command_returns_queued_status_and_finishes_in_background() {
-        let root = unique_temp_dir("sdk-command-submit");
-        let sdk_root = root.join("openharmony");
-        fs::create_dir_all(sdk_root.join("ets")).unwrap();
-        fs::write(
-            sdk_root.join("ets").join("arkui.d.ts"),
-            "declare class Text {\n  width(value: Length): Text;\n}\n",
-        )
-        .unwrap();
-        let root_path = root.to_string_lossy().to_string();
-        let sdk_path = sdk_root.to_string_lossy().to_string();
-        let index_runtime = WorkspaceIndexRuntime::default();
-        let index_manager = WorkspaceIndexManagerRuntime::default();
-        let observed = Arc::new(Mutex::new(Vec::new()));
-        let observed_for_worker = observed.clone();
-
-        let queued = submit_workspace_sdk_index_through_manager(
-            index_runtime,
-            index_manager,
-            &root_path,
-            &sdk_path,
-            "test-sdk",
-            move |status| observed_for_worker.lock().unwrap().push(status.status),
-        )
-        .unwrap();
-
-        assert_eq!(queued.kind, "sdk");
-        assert_eq!(queued.status, "queued");
-        for _ in 0..20 {
-            if observed
-                .lock()
-                .unwrap()
-                .iter()
-                .any(|status| status == "ready")
-            {
-                break;
-            }
-            thread::sleep(Duration::from_millis(25));
-        }
-        assert!(observed
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|status| status == "ready"));
-
-        fs::remove_dir_all(root).unwrap();
     }
 }

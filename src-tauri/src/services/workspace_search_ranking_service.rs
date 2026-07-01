@@ -54,7 +54,7 @@ fn source_priority(source: &str) -> usize {
 }
 
 fn rank_paths(paths: &[String], query: &str, limit: usize) -> Vec<(String, f64)> {
-    let trimmed = query.trim().to_lowercase();
+    let trimmed = query.trim();
     if trimmed.is_empty() {
         return paths
             .iter()
@@ -79,18 +79,63 @@ fn rank_paths(paths: &[String], query: &str, limit: usize) -> Vec<(String, f64)>
 }
 
 fn score_path(path: &str, query: &str) -> Option<f64> {
-    let lower_path = path.to_lowercase();
-    let file_name = lower_path.rsplit(['\\', '/']).next().unwrap_or(&lower_path);
-    let file_stem = file_name
+    let raw_file_name = path.rsplit(['\\', '/']).next().unwrap_or(path);
+    let raw_file_stem = raw_file_name
         .rsplit_once('.')
         .map(|(stem, _)| stem)
-        .unwrap_or(file_name);
+        .unwrap_or(raw_file_name);
+    let lower_path = path.to_lowercase();
+    let query = query.trim().to_lowercase();
+    let mut score = lexical_match_score(raw_file_stem, &query)
+        .or_else(|| lexical_match_score(raw_file_name, &query))
+        .or_else(|| lexical_match_score(path, &query).map(|score| score - 40.0))?;
+
+    if raw_file_stem.eq_ignore_ascii_case(&query) {
+        score += 20.0;
+    } else if raw_file_name.eq_ignore_ascii_case(&query) {
+        score += 10.0;
+    }
+
+    if lower_path.contains(&query) {
+        score += 10.0;
+    }
+
+    Some(score - lower_path.len() as f64 * 0.01)
+}
+
+pub fn lexical_match_score(value: &str, query: &str) -> Option<f64> {
+    let trimmed = query.trim().to_lowercase();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let lowered = value.to_lowercase();
+    let mut score = fuzzy_score(&lowered, &trimmed)?;
+
+    if lowered == trimmed {
+        score += 120.0;
+    } else if lowered.starts_with(&trimmed) {
+        score += 95.0;
+    } else if lowered.contains(&trimmed) {
+        score += 75.0;
+    } else if let Some(acronym) = camel_case_acronym(value) {
+        if acronym == trimmed {
+            score += 65.0;
+        } else if acronym.starts_with(&trimmed) {
+            score += 55.0;
+        }
+    }
+
+    Some(score)
+}
+
+fn fuzzy_score(value: &str, query: &str) -> Option<f64> {
     let mut score = 0.0;
     let mut query_index = 0;
     let query_chars = query.chars().collect::<Vec<_>>();
     let mut run_length = 0.0;
 
-    for character in lower_path.chars() {
+    for character in value.chars() {
         if query_index >= query_chars.len() {
             break;
         }
@@ -112,23 +157,25 @@ fn score_path(path: &str, query: &str) -> Option<f64> {
         return None;
     }
 
-    if file_stem == query {
-        score += 70.0;
-    } else if file_name == query {
-        score += 60.0;
-    } else if file_name.starts_with(query) {
-        score += 45.0;
-    } else if file_name.contains(query) {
-        score += 35.0;
-    }
-
-    if lower_path.contains(query) {
-        score += 10.0;
-    }
-
-    Some(score - lower_path.len() as f64 * 0.01)
+    Some(score)
 }
 
 fn file_name(path: &str) -> String {
     path.rsplit(['\\', '/']).next().unwrap_or(path).to_string()
+}
+
+fn camel_case_acronym(value: &str) -> Option<String> {
+    let mut acronym = String::new();
+    let mut previous_was_separator = true;
+    for character in value.chars() {
+        if !character.is_ascii_alphanumeric() {
+            previous_was_separator = true;
+            continue;
+        }
+        if previous_was_separator || character.is_ascii_uppercase() {
+            acronym.push(character.to_ascii_lowercase());
+        }
+        previous_was_separator = false;
+    }
+    (!acronym.is_empty()).then_some(acronym)
 }

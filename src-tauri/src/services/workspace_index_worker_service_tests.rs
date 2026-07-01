@@ -1,11 +1,14 @@
 use std::fs;
 
+use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::create_empty_workspace;
-use crate::services::workspace_index_worker_service::run_index_tasks;
+use crate::services::workspace_index_worker_service::{
+    run_index_tasks, run_index_tasks_with_cancellation, WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE,
+};
 
 #[test]
 fn worker_records_failed_task_result_instead_of_aborting_the_batch() {
@@ -226,6 +229,43 @@ fn worker_keeps_batch_tasks_for_different_roots_independent() {
 }
 
 #[test]
+fn worker_returns_superseded_when_token_is_cancelled_after_running_status() {
+    let root = create_empty_workspace("worker-cancelled-token");
+    let root_path = root.to_string_lossy().to_string();
+    let task = WorkspaceIndexTask {
+        root_path,
+        kind: WorkspaceIndexTaskKind::RefreshWorkspace,
+        priority: WorkspaceIndexTaskPriority::Normal,
+        changed_paths: Vec::new(),
+        sdk_path: None,
+        sdk_version: None,
+        generation: 7,
+        reason: "manual".to_string(),
+    };
+    let token = WorkspaceIndexCancellationToken::new(7);
+    let token_for_callback = token.clone();
+
+    let results = run_index_tasks_with_cancellation(
+        &WorkspaceIndexRuntime::default(),
+        vec![(task, token)],
+        move |status| {
+            if status.status == "running" {
+                token_for_callback.cancel();
+            }
+            Ok(())
+        },
+    )
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].kind, "refresh-workspace");
+    assert_eq!(results[0].status, "superseded");
+    assert!(results[0].refresh_result.is_none());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn worker_changed_paths_reindexes_reverse_dependencies() {
     let root = create_empty_workspace("worker-dependency-expansion");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
@@ -268,6 +308,44 @@ fn worker_changed_paths_reindexes_reverse_dependencies() {
 
     assert_eq!(results[0].status, "ready");
     assert_eq!(profile_delete_probe_count(&sqlite_path), 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn worker_changed_paths_processes_all_chunks_without_dropping_added_files() {
+    let root = create_empty_workspace("worker-changed-path-chunks");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let mut changed_paths = Vec::new();
+
+    for index in 0..(WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE + 1) {
+        let path = source_dir.join(format!("Chunk{index}.ets"));
+        fs::write(&path, format!("struct Chunk{index} {{}}\n")).unwrap();
+        changed_paths.push(path.to_string_lossy().to_string());
+    }
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Normal,
+        changed_paths,
+        sdk_path: None,
+        sdk_version: None,
+        generation: 8,
+        reason: "watcher".to_string(),
+    };
+
+    let results = run_index_tasks(&runtime, vec![task], |_| Ok(())).unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, "ready");
+    let refresh = results[0].refresh_result.as_ref().unwrap();
+    assert_eq!(
+        refresh.added_paths.len(),
+        WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE + 1
+    );
 
     fs::remove_dir_all(root).unwrap();
 }

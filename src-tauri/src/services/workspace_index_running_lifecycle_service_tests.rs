@@ -5,6 +5,7 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir, unique_temp_dir,
 };
+use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
 #[test]
 fn supersedes_running_sdk_result_when_newer_sdk_is_queued() {
@@ -55,6 +56,9 @@ fn supersedes_running_sdk_result_when_newer_sdk_is_queued() {
     assert!(statuses.iter().any(|status| {
         status.kind == "sdk" && status.status == "queued" && status.generation == 2
     }));
+    assert!(query_workspace_sdk_symbols(&root_path, "OldText width", 8)
+        .unwrap()
+        .is_empty());
 
     fs::remove_dir_all(root).unwrap();
 }

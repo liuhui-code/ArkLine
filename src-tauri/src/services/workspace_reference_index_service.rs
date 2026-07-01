@@ -1,0 +1,261 @@
+#![allow(dead_code)]
+
+use std::fs;
+use std::path::Path;
+
+use rusqlite::{params, Connection};
+
+use crate::services::workspace_reference_declaration_index_service::{
+    index_workspace_declarations, load_workspace_declarations,
+};
+use crate::services::workspace_reference_identifier_index_service::{
+    index_workspace_identifier_references, load_reference_alias_targets,
+};
+use crate::services::workspace_reference_member_index_service::index_workspace_member_references;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSymbolReferenceRow {
+    pub path: String,
+    pub reference_id: String,
+    pub symbol_id: Option<String>,
+    pub name: String,
+    pub kind: String,
+    pub container: Option<String>,
+    pub line: i64,
+    pub column: i64,
+    pub end_line: i64,
+    pub end_column: i64,
+    pub confidence: String,
+}
+
+pub fn create_reference_index_tables(connection: &Connection) -> Result<(), String> {
+    connection
+        .execute(
+            "create table if not exists workspace_symbol_references (
+                root_path text not null,
+                path text not null,
+                reference_id text not null,
+                symbol_id text,
+                name text not null,
+                kind text not null,
+                container text,
+                line integer not null,
+                column integer not null,
+                end_line integer not null,
+                end_column integer not null,
+                confidence text not null,
+                indexed_generation integer not null,
+                primary key (root_path, reference_id)
+            )",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "create index if not exists workspace_symbol_references_symbol_lookup
+             on workspace_symbol_references(root_path, symbol_id)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "create index if not exists workspace_symbol_references_path_lookup
+             on workspace_symbol_references(root_path, path)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "create table if not exists workspace_local_symbol_references (
+                root_path text not null,
+                path text not null,
+                reference_id text not null,
+                name text not null,
+                kind text not null,
+                line integer not null,
+                column integer not null,
+                end_line integer not null,
+                end_column integer not null,
+                confidence text not null,
+                indexed_generation integer not null,
+                primary key (root_path, reference_id)
+            )",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "create index if not exists workspace_local_symbol_references_path_lookup
+             on workspace_local_symbol_references(root_path, path)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub fn replace_workspace_references(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_generation: u64,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "delete from workspace_symbol_references where root_path = ?1",
+            params![root_key],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "delete from workspace_local_symbol_references where root_path = ?1",
+            params![root_key],
+        )
+        .map_err(|error| error.to_string())?;
+    let aliases = load_reference_alias_targets(connection, root_key)?;
+    let declarations = load_workspace_declarations(connection, root_key)?;
+    for path in file_paths.iter().map(|path| normalize_index_path(path)) {
+        if !is_source_file(&path) {
+            continue;
+        }
+        index_workspace_declarations(
+            connection,
+            root_key,
+            &path,
+            &declarations,
+            indexed_generation,
+        )?;
+        let Ok(content) = fs::read_to_string(filesystem_path(&path)) else {
+            continue;
+        };
+        index_workspace_member_references(
+            connection,
+            root_key,
+            &path,
+            &content,
+            indexed_generation,
+        )?;
+        index_workspace_identifier_references(
+            connection,
+            root_key,
+            &path,
+            &content,
+            &aliases,
+            indexed_generation,
+        )?;
+    }
+    Ok(())
+}
+
+pub fn query_references_by_symbol_id(
+    root_path: &str,
+    symbol_id: &str,
+    limit: usize,
+) -> Result<Vec<WorkspaceSymbolReferenceRow>, String> {
+    let connection = Connection::open(sqlite_catalog_cache_path(root_path))
+        .map_err(|error| error.to_string())?;
+    let root_key = normalize_index_path(root_path);
+    let mut statement = connection
+        .prepare(
+            "select path, reference_id, symbol_id, name, kind, container,
+                    line, column, end_line, end_column, confidence
+             from workspace_symbol_references
+             where root_path = ?1 and symbol_id = ?2
+             order by
+                case confidence
+                    when 'exact' then 0
+                    when 'resolvedAlias' then 1
+                    when 'memberResolved' then 2
+                    when 'localScope' then 3
+                    when 'unresolvedLikely' then 4
+                    else 9
+                end,
+                path, line, column
+             limit ?3",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(
+            params![root_key, symbol_id, bounded_limit(limit)],
+            reference_from_row,
+        )
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+pub fn query_reference_at_position(
+    root_path: &str,
+    path: &str,
+    line: u32,
+    column: u32,
+) -> Result<Option<WorkspaceSymbolReferenceRow>, String> {
+    let connection = Connection::open(sqlite_catalog_cache_path(root_path))
+        .map_err(|error| error.to_string())?;
+    let root_key = normalize_index_path(root_path);
+    let path_key = normalize_index_path(path);
+    let mut statement = connection
+        .prepare(
+            "select path, reference_id, symbol_id, name, kind, container,
+                    line, column, end_line, end_column, confidence
+             from workspace_symbol_references
+             where root_path = ?1
+               and path = ?2
+               and line = ?3
+               and column <= ?4
+               and end_column >= ?4
+             order by
+               case kind when 'memberAccess' then 0 when 'identifier' then 1 else 2 end,
+               column desc
+             limit 1",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query_map(
+            params![root_key, path_key, line as i64, column as i64],
+            reference_from_row,
+        )
+        .map_err(|error| error.to_string())?;
+    rows.next().transpose().map_err(|error| error.to_string())
+}
+
+fn reference_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceSymbolReferenceRow> {
+    Ok(WorkspaceSymbolReferenceRow {
+        path: row.get(0)?,
+        reference_id: row.get(1)?,
+        symbol_id: row.get(2)?,
+        name: row.get(3)?,
+        kind: row.get(4)?,
+        container: row.get(5)?,
+        line: row.get(6)?,
+        column: row.get(7)?,
+        end_line: row.get(8)?,
+        end_column: row.get(9)?,
+        confidence: row.get(10)?,
+    })
+}
+
+fn is_source_file(path: &str) -> bool {
+    path.ends_with(".ets") || path.ends_with(".ts") || path.ends_with(".d.ts")
+}
+
+fn filesystem_path(path: &str) -> String {
+    if Path::new(path).exists() {
+        return path.to_string();
+    }
+    path.replace('\\', "/")
+}
+
+fn normalize_index_path(path: &str) -> String {
+    path.replace('/', "\\")
+}
+
+fn sqlite_catalog_cache_path(root_path: &str) -> std::path::PathBuf {
+    Path::new(root_path)
+        .join(".arkline")
+        .join("index")
+        .join("workspace-catalog.sqlite")
+}
+
+fn bounded_limit(limit: usize) -> i64 {
+    i64::try_from(limit.clamp(1, 500)).unwrap_or(500)
+}

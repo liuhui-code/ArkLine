@@ -95,9 +95,18 @@ pub fn rebuild_dependency_graph(
         if let Some(to_path) =
             resolve_relative_import(&import.from_path, &import.source_module, &file_set)
         {
-            insert_dependency_edge(connection, root_key, &import, &to_path)?;
+            insert_dependency_edge(connection, root_key, &import, &to_path, "import")?;
         } else {
             insert_unresolved_import(connection, root_key, &import)?;
+        }
+    }
+    for export in load_re_export_rows(connection, root_key)? {
+        if let Some(to_path) =
+            resolve_relative_import(&export.from_path, &export.source_module, &file_set)
+        {
+            insert_dependency_edge(connection, root_key, &export, &to_path, "export")?;
+        } else {
+            insert_unresolved_import(connection, root_key, &export)?;
         }
     }
     record_dependency_graph_status(connection, root_key, "ready", None)?;
@@ -302,22 +311,49 @@ fn load_import_rows(connection: &Connection, root_key: &str) -> Result<Vec<Impor
         .map_err(|error| error.to_string())
 }
 
+fn load_re_export_rows(connection: &Connection, root_key: &str) -> Result<Vec<ImportRow>, String> {
+    let mut statement = connection
+        .prepare(
+            "select path, source_module, line, column
+             from workspace_stub_exports
+             where root_path = ?1 and source_module is not null
+             order by path, line, column",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![root_key], |row| {
+            let line: i64 = row.get(2)?;
+            let column: i64 = row.get(3)?;
+            Ok(ImportRow {
+                from_path: row.get(0)?,
+                source_module: row.get(1)?,
+                line: usize::try_from(line).unwrap_or_default(),
+                column: usize::try_from(column).unwrap_or_default(),
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
 fn insert_dependency_edge(
     connection: &Connection,
     root_key: &str,
     import: &ImportRow,
     to_path: &str,
+    kind: &str,
 ) -> Result<(), String> {
     connection
         .execute(
             "insert or ignore into workspace_dependency_edges (
                 root_path, from_path, to_path, source_module, kind, line, column
-             ) values (?1, ?2, ?3, ?4, 'import', ?5, ?6)",
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![
                 root_key,
                 import.from_path,
                 to_path,
                 import.source_module,
+                kind,
                 import.line as i64,
                 import.column as i64,
             ],

@@ -263,8 +263,24 @@ fn refresh_workspace_index_records_schema_domain_versions() {
             |row| row.get(0),
         )
         .unwrap();
+    let symbol_resolution_version: i64 = connection
+        .query_row(
+            "select version from workspace_index_schema_versions where domain = 'symbol_resolution'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let reference_version: i64 = connection
+        .query_row(
+            "select version from workspace_index_schema_versions where domain = 'reference'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
 
-    assert_eq!(version_count, 9);
+    assert_eq!(version_count, 11);
+    assert_eq!(symbol_resolution_version, 1);
+    assert_eq!(reference_version, 1);
 
     fs::remove_dir_all(root).unwrap();
 }

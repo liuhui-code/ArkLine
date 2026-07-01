@@ -1502,6 +1502,23 @@ button:disabled {
   white-space: nowrap;
 }
 
+.usages-panel__results {
+  max-height: 260px;
+  padding: 6px;
+}
+
+.usages-panel__item {
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.usages-panel__meta {
+  display: inline-flex;
+  gap: 6px;
+  justify-content: end;
+}
+
 .problem-item,
 .diff-file {
   display: grid;

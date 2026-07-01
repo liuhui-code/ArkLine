@@ -6,26 +6,42 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
+use crate::models::workspace::{
+    WorkspaceIndexQueuePressure, WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus,
+};
+use crate::services::workspace_index_cancellation_service::{
+    cancel_active_tasks_superseded_by_latest, finish_cancellable_tasks, start_cancellable_tasks,
+    WorkspaceIndexCancellationRegistry,
+};
+use crate::services::workspace_index_continuation_task_service::schedule_refresh_continuations;
+use crate::services::workspace_index_resume_service::{
+    clear_completed_resume_tasks, schedule_resume_tasks_from_store,
+};
 use crate::services::workspace_index_scheduler_service::{
-    WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
+    task_priority_label, WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind,
+    WorkspaceIndexTaskPriority,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_state_machine_service::{
+    should_publish_task_result, task_state_label, WorkspaceIndexTaskState,
+};
 use crate::services::workspace_index_task_journal_service::{
     load_recent_task_statuses, store_task_status,
 };
 use crate::services::workspace_index_task_lifecycle_service::task_kind_supersedes_result;
 use crate::services::workspace_index_task_status_service::{
-    superseded_task_result, task_status_from_result, task_status_from_task,
-    WorkspaceIndexTaskResult,
+    superseded_task_result, task_kind_label, task_status_from_publishable_result,
+    task_status_from_state_transition, task_status_from_task, WorkspaceIndexTaskResult,
 };
-use crate::services::workspace_index_worker_service::run_index_tasks;
+use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation;
 
 const BACKGROUND_WORKER_IDLE_TIMEOUT_MS: u64 = 250;
+pub const WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE: usize = 8;
 
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndexManagerRuntime {
     scheduler: Arc<Mutex<WorkspaceIndexScheduler>>,
+    cancellations: Arc<Mutex<WorkspaceIndexCancellationRegistry>>,
     recent_statuses: Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
     worker_running: Arc<AtomicBool>,
     worker_signal: Arc<(Mutex<u64>, Condvar)>,
@@ -37,16 +53,22 @@ impl WorkspaceIndexManagerRuntime {
         self.schedule_workspace_task(
             root_path,
             WorkspaceIndexTaskKind::OpenWorkspace,
-            WorkspaceIndexTaskPriority::UserBlocking,
+            WorkspaceIndexTaskPriority::ForegroundNavigation,
             "open-workspace",
-        )
+        )?;
+        let summary = schedule_resume_tasks_from_store(&self.scheduler, root_path)?;
+        self.store_superseded_statuses(summary.superseded_tasks)?;
+        for root_path in summary.root_paths {
+            self.store_pending_statuses_for_root(&root_path)?;
+        }
+        Ok(())
     }
 
     pub fn refresh_workspace_index(&self, root_path: &str) -> Result<(), String> {
         self.schedule_workspace_task(
             root_path,
             WorkspaceIndexTaskKind::RefreshWorkspace,
-            WorkspaceIndexTaskPriority::Normal,
+            WorkspaceIndexTaskPriority::FullRefresh,
             "refresh-workspace",
         )
     }
@@ -55,6 +77,49 @@ impl WorkspaceIndexManagerRuntime {
         &self,
         root_path: &str,
         changed_paths: &[String],
+    ) -> Result<(), String> {
+        self.schedule_changed_path_task(
+            root_path,
+            changed_paths,
+            WorkspaceIndexTaskPriority::ChangedFiles,
+            "watcher",
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn schedule_foreground_completion_index(
+        &self,
+        root_path: &str,
+        changed_paths: &[String],
+    ) -> Result<(), String> {
+        self.schedule_changed_path_task(
+            root_path,
+            changed_paths,
+            WorkspaceIndexTaskPriority::ForegroundCompletion,
+            "foreground-completion",
+        )
+    }
+
+    #[allow(dead_code)]
+    pub fn schedule_visible_files_index(
+        &self,
+        root_path: &str,
+        changed_paths: &[String],
+    ) -> Result<(), String> {
+        self.schedule_changed_path_task(
+            root_path,
+            changed_paths,
+            WorkspaceIndexTaskPriority::VisibleFiles,
+            "visible-files",
+        )
+    }
+
+    fn schedule_changed_path_task(
+        &self,
+        root_path: &str,
+        changed_paths: &[String],
+        priority: WorkspaceIndexTaskPriority,
+        reason: &str,
     ) -> Result<(), String> {
         if changed_paths.is_empty() {
             return Ok(());
@@ -67,14 +132,20 @@ impl WorkspaceIndexManagerRuntime {
                 .schedule(WorkspaceIndexTask {
                     root_path: root_path.to_string(),
                     kind: WorkspaceIndexTaskKind::ChangedPaths,
-                    priority: WorkspaceIndexTaskPriority::Normal,
+                    priority,
                     changed_paths: changed_paths.to_vec(),
                     sdk_path: None,
                     sdk_version: None,
                     generation: 0,
-                    reason: "watcher".to_string(),
+                    reason: reason.to_string(),
                 })
         };
+        cancel_active_tasks_superseded_by_latest(
+            &self.cancellations,
+            &self.scheduler,
+            root_path,
+            WorkspaceIndexTaskKind::ChangedPaths,
+        )?;
         self.store_superseded_statuses(superseded)?;
         self.store_pending_statuses_for_root(root_path)?;
         self.wake_background_worker()?;
@@ -95,13 +166,19 @@ impl WorkspaceIndexManagerRuntime {
             .schedule(WorkspaceIndexTask {
                 root_path: root_path.to_string(),
                 kind: WorkspaceIndexTaskKind::IndexSdk,
-                priority: WorkspaceIndexTaskPriority::Normal,
+                priority: WorkspaceIndexTaskPriority::SdkIndexing,
                 changed_paths: Vec::new(),
                 sdk_path: Some(sdk_path.to_string()),
                 sdk_version: Some(sdk_version.to_string()),
                 generation: 0,
                 reason: "sdk-apply".to_string(),
             });
+        cancel_active_tasks_superseded_by_latest(
+            &self.cancellations,
+            &self.scheduler,
+            root_path,
+            WorkspaceIndexTaskKind::IndexSdk,
+        )?;
         self.store_cancelled_statuses(cancelled)?;
         self.store_pending_statuses_for_root(root_path)?;
         self.wake_background_worker()?;
@@ -129,9 +206,44 @@ impl WorkspaceIndexManagerRuntime {
                 .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
                 .pending_tasks_for_root(root_path)
                 .into_iter()
-                .map(|task| task_status_from_task(&task, "queued", None, None)),
+                .map(|task| {
+                    task_status_from_task(
+                        &task,
+                        task_state_label(WorkspaceIndexTaskState::Queued),
+                        None,
+                        None,
+                    )
+                }),
         );
         Ok(merge_task_statuses(statuses))
+    }
+
+    #[allow(dead_code)]
+    pub fn get_queue_pressure(
+        &self,
+        root_path: &str,
+    ) -> Result<WorkspaceIndexQueuePressure, String> {
+        let tasks = self
+            .scheduler
+            .lock()
+            .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
+            .pending_tasks();
+        let highest = tasks.iter().max_by(|left, right| {
+            left.priority
+                .cmp(&right.priority)
+                .then_with(|| right.generation.cmp(&left.generation))
+        });
+
+        Ok(WorkspaceIndexQueuePressure {
+            root_path: root_path.to_string(),
+            pending_task_count: tasks.len(),
+            workspace_pending_task_count: tasks
+                .iter()
+                .filter(|task| task.root_path == root_path)
+                .count(),
+            highest_priority: highest.map(|task| task_priority_label(task.priority).to_string()),
+            highest_priority_task_kind: highest.map(|task| task_kind_label(&task.kind).to_string()),
+        })
     }
 
     fn schedule_workspace_task(
@@ -147,7 +259,7 @@ impl WorkspaceIndexManagerRuntime {
                 .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
                 .schedule(WorkspaceIndexTask {
                     root_path: root_path.to_string(),
-                    kind,
+                    kind: kind.clone(),
                     priority,
                     changed_paths: Vec::new(),
                     sdk_path: None,
@@ -156,6 +268,12 @@ impl WorkspaceIndexManagerRuntime {
                     reason: reason.to_string(),
                 })
         };
+        cancel_active_tasks_superseded_by_latest(
+            &self.cancellations,
+            &self.scheduler,
+            root_path,
+            kind,
+        )?;
         self.store_superseded_statuses(superseded)?;
         self.store_pending_statuses_for_root(root_path)?;
         self.wake_background_worker()?;
@@ -192,16 +310,26 @@ impl WorkspaceIndexManagerRuntime {
             .scheduler
             .lock()
             .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
-            .drain_ready();
-        let results = run_index_tasks(index_runtime, tasks, |running_status| {
-            self.store_recent_status(running_status.clone())?;
-            on_status(running_status);
-            Ok::<(), String>(())
-        })?;
+            .drain_ready_batch(WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE);
+        let (guarded_tasks, tokens) = start_cancellable_tasks(&self.cancellations, tasks)?;
+        let results =
+            run_index_tasks_with_cancellation(index_runtime, guarded_tasks, |running_status| {
+                self.store_recent_status(running_status.clone())?;
+                on_status(running_status);
+                Ok::<(), String>(())
+            });
+        finish_cancellable_tasks(&self.cancellations, &tokens)?;
+        let results = results?;
         let results = self.mark_superseded_results(results)?;
+        clear_completed_resume_tasks(&results)?;
+        let continuation_summary = schedule_refresh_continuations(&self.scheduler, &results)?;
+        self.store_superseded_statuses(continuation_summary.superseded_tasks)?;
+        for root_path in continuation_summary.root_paths {
+            self.store_pending_statuses_for_root(&root_path)?;
+        }
 
         for result in &results {
-            let ready_status = task_status_from_result(result);
+            let ready_status = task_status_from_publishable_result(result)?;
             self.store_recent_status(ready_status.clone())?;
             on_status(ready_status);
         }
@@ -293,7 +421,12 @@ impl WorkspaceIndexManagerRuntime {
         for task in tasks {
             store_task_status(
                 root_path,
-                &task_status_from_task(&task, "queued", None, None),
+                &task_status_from_task(
+                    &task,
+                    task_state_label(WorkspaceIndexTaskState::Queued),
+                    None,
+                    None,
+                ),
             )?;
         }
         Ok(())
@@ -301,24 +434,26 @@ impl WorkspaceIndexManagerRuntime {
 
     fn store_cancelled_statuses(&self, tasks: Vec<WorkspaceIndexTask>) -> Result<(), String> {
         for task in tasks {
-            self.store_recent_status(task_status_from_task(
+            self.store_recent_status(task_status_from_state_transition(
                 &task,
-                "cancelled",
+                WorkspaceIndexTaskState::Queued,
+                WorkspaceIndexTaskState::Cancelled,
                 None,
                 Some("Replaced by a newer index task".to_string()),
-            ))?;
+            )?)?;
         }
         Ok(())
     }
 
     fn store_superseded_statuses(&self, tasks: Vec<WorkspaceIndexTask>) -> Result<(), String> {
         for task in tasks {
-            self.store_recent_status(task_status_from_task(
+            self.store_recent_status(task_status_from_state_transition(
                 &task,
-                "superseded",
+                WorkspaceIndexTaskState::Queued,
+                WorkspaceIndexTaskState::Superseded,
                 None,
                 Some("Replaced by a newer index task".to_string()),
-            ))?;
+            )?)?;
         }
         Ok(())
     }
@@ -347,7 +482,7 @@ impl WorkspaceIndexManagerRuntime {
             .pending_tasks_for_root(&result.root_path)
             .iter()
             .any(|task| {
-                task.generation > result.generation
+                !should_publish_task_result(result.generation, task.generation)
                     && task_kind_supersedes_result(&task.kind, &result.kind)
             }))
     }

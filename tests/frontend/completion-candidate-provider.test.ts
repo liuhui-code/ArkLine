@@ -103,6 +103,69 @@ describe("completion candidate provider", () => {
     ]);
   });
 
+  it("prefers workspace semantic completion before legacy language completion", async () => {
+    const completeSymbol = vi.fn(async () => [{ label: "legacyBuild()", detail: "Legacy method", kind: "method", source: "arkts" as const }]);
+    const semanticCompleteSymbol = vi.fn(async () => ({
+      items: [{ label: "indexedBuild()", detail: "Indexed semantic method", kind: "method", source: "workspace" as const }],
+      readiness: {
+        rootPath: "/workspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+    const api = workspaceApi({
+      completeSymbol,
+      semanticCompleteSymbol,
+    });
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "indexed",
+      replacePrefix: "indexed",
+    });
+
+    expect(semanticCompleteSymbol).toHaveBeenCalledWith("/workspace", {
+      path: "/workspace/src/main.ets",
+      line: 3,
+      column: 12,
+      content: "struct Index {}",
+    });
+    expect(completeSymbol).not.toHaveBeenCalled();
+    expect(items.map((item) => item.label)).toEqual(["indexedBuild()"]);
+  });
+
+  it("falls back to legacy language completion when workspace semantic completion is empty", async () => {
+    const completeSymbol = vi.fn(async () => [{ label: "legacyBuild()", detail: "Legacy method", kind: "method", source: "arkts" as const }]);
+    const semanticCompleteSymbol = vi.fn(async () => ({
+      items: [],
+      readiness: {
+        rootPath: "/workspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+    const api = workspaceApi({
+      completeSymbol,
+      semanticCompleteSymbol,
+    });
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "legacy",
+      replacePrefix: "legacy",
+    });
+
+    expect(semanticCompleteSymbol).toHaveBeenCalled();
+    expect(completeSymbol).toHaveBeenCalled();
+    expect(items.map((item) => item.label)).toEqual(["legacyBuild()"]);
+  });
+
   it("hides stale indexed completions when semantic completion has an exact match", async () => {
     const api = workspaceApi({
       completeSymbol: async () => [{ label: "build()", detail: "Semantic method", kind: "method", source: "arkts" }],
@@ -209,5 +272,39 @@ describe("completion candidate provider", () => {
       expect.objectContaining({ label: "localBuild()" }),
       expect.objectContaining({ label: "PrivateProfile" }),
     ]));
+  });
+
+  it("schedules foreground completion indexing before collecting semantic completions", async () => {
+    const events: string[] = [];
+    const scheduleForegroundCompletionIndex = vi.fn(async () => {
+      events.push("schedule-completion-index");
+    });
+    const semanticCompleteSymbol = vi.fn(async () => {
+      events.push("semantic-completion");
+      return {
+        items: [{ label: "indexedBuild()", detail: "Indexed semantic method", kind: "method", source: "workspace" as const }],
+        readiness: {
+          rootPath: "/workspace",
+          requestedGeneration: 1,
+          servedGeneration: 1,
+          state: "ready" as const,
+          retryable: false,
+        },
+      };
+    });
+    const api = workspaceApi({
+      scheduleForegroundCompletionIndex,
+      semanticCompleteSymbol,
+    });
+
+    await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "indexed",
+      replacePrefix: "indexed",
+    });
+
+    expect(scheduleForegroundCompletionIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/main.ets"]);
+    expect(events.slice(0, 2)).toEqual(["schedule-completion-index", "semantic-completion"]);
   });
 });

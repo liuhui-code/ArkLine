@@ -6,6 +6,13 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::scan_workspace;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LargeWorkspaceFixture {
+    pub root_path: String,
+    pub app_path: String,
+    pub service_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LargeWorkspaceFixtureReport {
     pub root_path: String,
     pub requested_files: usize,
@@ -17,6 +24,58 @@ pub struct LargeWorkspaceFixtureReport {
     pub scan_duration: Duration,
     pub index_duration: Duration,
     pub query_duration: Duration,
+}
+
+pub fn create_large_workspace_fixture(
+    name: &str,
+    file_count: usize,
+) -> Result<LargeWorkspaceFixture, String> {
+    let root = unique_temp_dir(name);
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).map_err(|error| error.to_string())?;
+
+    let service_path = source_dir.join("LargeTargetService.ets");
+    fs::write(
+        &service_path,
+        [
+            "export class LargeTargetService {",
+            "  loadLargeTarget() { return \"large\"; }",
+            "}",
+        ]
+        .join("\n"),
+    )
+    .map_err(|error| error.to_string())?;
+
+    let app_path = source_dir.join("LargeApp.ets");
+    fs::write(
+        &app_path,
+        [
+            "import { LargeTargetService } from \"./LargeTargetService\";",
+            "const service = new LargeTargetService();",
+            "service.loadLargeTarget();",
+        ]
+        .join("\n"),
+    )
+    .map_err(|error| error.to_string())?;
+
+    for index in 0..file_count {
+        let bucket = index / 64;
+        let directory = source_dir.join("pages").join(format!("bucket-{bucket:03}"));
+        fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        fs::write(
+            directory.join(format!("FeaturePage{index:03}.ets")),
+            format!(
+                "@Entry\n@Component\nstruct FeaturePage{index:03} {{\n  build() {{\n    Text(\"LARGE_TEXT_MARKER_{index:03}\")\n  }}\n}}\n"
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+    }
+
+    Ok(LargeWorkspaceFixture {
+        root_path: root.to_string_lossy().to_string(),
+        app_path: app_path.to_string_lossy().to_string(),
+        service_path: service_path.to_string_lossy().to_string(),
+    })
 }
 
 pub fn verify_large_workspace_fixture(
@@ -63,6 +122,14 @@ pub fn verify_large_workspace_fixture(
         index_duration,
         query_duration,
     })
+}
+
+fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock should be after unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("arkline-{name}-{suffix}"))
 }
 
 fn generate_large_workspace_fixture(root_path: &Path, file_count: usize) -> Result<(), String> {

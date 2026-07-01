@@ -1,6 +1,7 @@
 use std::fs;
 
 use crate::models::workspace::{WorkspaceIndexedSymbol, WorkspaceSearchCandidate};
+use crate::services::workspace_search_ranking_service::lexical_match_score;
 
 const DECLARATION_KEYWORDS: &[&str] = &["struct", "class", "interface", "enum", "type", "function"];
 const MEMBER_MODIFIERS: &[&str] = &[
@@ -284,34 +285,7 @@ fn brace_delta(line_text: &str) -> i32 {
 }
 
 fn score_symbol(symbol: &WorkspaceIndexedSymbol, query: &str) -> Option<f64> {
-    let name = symbol.name.to_lowercase();
-    if name == query {
-        return Some(120.0);
-    }
-    if name.starts_with(query) {
-        return Some(90.0 - name.len() as f64 * 0.01);
-    }
-    if name.contains(query) {
-        return Some(60.0 - name.len() as f64 * 0.01);
-    }
-    fuzzy_score(&name, query).map(|score| score - name.len() as f64 * 0.01)
-}
-
-fn fuzzy_score(value: &str, query: &str) -> Option<f64> {
-    let mut score = 0.0;
-    let mut query_chars = query.chars();
-    let mut current = query_chars.next()?;
-    for character in value.chars() {
-        if character == current {
-            score += 4.0;
-            if let Some(next) = query_chars.next() {
-                current = next;
-            } else {
-                return Some(score);
-            }
-        }
-    }
-    None
+    lexical_match_score(&symbol.name, query).map(|score| score - symbol.name.len() as f64 * 0.01)
 }
 
 #[cfg(test)]
@@ -359,6 +333,49 @@ mod tests {
         assert_eq!(matches[0].title, "LoginController");
         assert_eq!(matches[1].source, "symbol");
         assert_eq!(matches[1].title, "submitLogin");
+    }
+
+    #[test]
+    fn queries_symbols_by_camel_case_acronym_before_loose_fuzzy_matches() {
+        let symbols = vec![
+            WorkspaceIndexedSymbol {
+                source: "class".to_string(),
+                kind: "class".to_string(),
+                name: "LandingPage".to_string(),
+                path: "/workspace/LandingPage.ets".to_string(),
+                line: 1,
+                column: 1,
+                container: None,
+                signature: None,
+                visibility: None,
+            },
+            WorkspaceIndexedSymbol {
+                source: "class".to_string(),
+                kind: "class".to_string(),
+                name: "LongParserAdapter".to_string(),
+                path: "/workspace/LongParserAdapter.ets".to_string(),
+                line: 1,
+                column: 1,
+                container: None,
+                signature: None,
+                visibility: None,
+            },
+            WorkspaceIndexedSymbol {
+                source: "class".to_string(),
+                kind: "class".to_string(),
+                name: "LocalProfile".to_string(),
+                path: "/workspace/LocalProfile.ets".to_string(),
+                line: 1,
+                column: 1,
+                container: None,
+                signature: None,
+                visibility: None,
+            },
+        ];
+
+        let matches = query_index_symbols(&symbols, "lpa", 8);
+
+        assert_eq!(matches[0].title, "LongParserAdapter");
     }
 
     #[test]

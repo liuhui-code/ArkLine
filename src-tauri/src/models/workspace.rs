@@ -265,6 +265,17 @@ pub struct WorkspaceIndexTaskStatus {
     pub error: Option<String>,
 }
 
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexQueuePressure {
+    pub root_path: String,
+    pub pending_task_count: usize,
+    pub workspace_pending_task_count: usize,
+    pub highest_priority: Option<String>,
+    pub highest_priority_task_kind: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexDiagnostics {
@@ -286,6 +297,46 @@ pub struct WorkspaceIndexDiagnostics {
     pub active_sdk_version: Option<String>,
     pub last_error: Option<String>,
     pub last_explain_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexHealth {
+    pub root_path: String,
+    pub status: String,
+    pub file_count: i64,
+    pub symbol_count: i64,
+    pub reference_count: i64,
+    pub sdk_api_count: i64,
+    pub unresolved_import_count: i64,
+    pub parser_failure_count: i64,
+    pub queue_pressure: WorkspaceIndexQueuePressure,
+    pub repair_actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexParserFailure {
+    pub path: String,
+    pub message: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexUnresolvedImport {
+    pub from_path: String,
+    pub source_module: String,
+    pub line: usize,
+    pub column: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexSdkRepairTarget {
+    pub sdk_path: String,
+    pub sdk_version: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

@@ -3,6 +3,8 @@ export type UsageResult = {
   line: number;
   column: number;
   preview: string;
+  kind: string;
+  confidence: string;
 };
 
 export type UsageSearchState = {

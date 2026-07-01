@@ -15,8 +15,14 @@ pub enum WorkspaceIndexTaskKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WorkspaceIndexTaskPriority {
     Background,
+    SdkIndexing,
+    FullRefresh,
+    ChangedFiles,
+    VisibleFiles,
     Normal,
     UserBlocking,
+    ForegroundCompletion,
+    ForegroundNavigation,
 }
 
 #[allow(dead_code)]
@@ -70,6 +76,10 @@ impl WorkspaceIndexScheduler {
 
     #[allow(dead_code)]
     pub fn drain_ready(&mut self) -> Vec<WorkspaceIndexTask> {
+        self.drain_ready_batch(usize::MAX)
+    }
+
+    pub fn drain_ready_batch(&mut self, max_tasks: usize) -> Vec<WorkspaceIndexTask> {
         let mut tasks = self.tasks.drain(..).collect::<Vec<_>>();
         tasks.sort_by(|left, right| {
             right
@@ -77,6 +87,11 @@ impl WorkspaceIndexScheduler {
                 .cmp(&left.priority)
                 .then_with(|| left.generation.cmp(&right.generation))
         });
+        if max_tasks >= tasks.len() {
+            return tasks;
+        }
+        let remaining = tasks.split_off(max_tasks);
+        self.tasks = remaining.into_iter().collect();
         tasks
     }
 
@@ -88,8 +103,28 @@ impl WorkspaceIndexScheduler {
             .collect()
     }
 
+    #[allow(dead_code)]
+    pub fn pending_tasks(&self) -> Vec<WorkspaceIndexTask> {
+        self.tasks.iter().cloned().collect()
+    }
+
     pub fn has_pending_tasks(&self) -> bool {
         !self.tasks.is_empty()
+    }
+}
+
+#[allow(dead_code)]
+pub fn task_priority_label(priority: WorkspaceIndexTaskPriority) -> &'static str {
+    match priority {
+        WorkspaceIndexTaskPriority::Background => "background",
+        WorkspaceIndexTaskPriority::SdkIndexing => "sdkIndexing",
+        WorkspaceIndexTaskPriority::FullRefresh => "fullRefresh",
+        WorkspaceIndexTaskPriority::ChangedFiles => "changedFiles",
+        WorkspaceIndexTaskPriority::VisibleFiles => "visibleFiles",
+        WorkspaceIndexTaskPriority::Normal => "normal",
+        WorkspaceIndexTaskPriority::UserBlocking => "userBlocking",
+        WorkspaceIndexTaskPriority::ForegroundCompletion => "foregroundCompletion",
+        WorkspaceIndexTaskPriority::ForegroundNavigation => "foregroundNavigation",
     }
 }
 
@@ -211,6 +246,88 @@ mod tests {
 
         assert_eq!(tasks[0].kind, WorkspaceIndexTaskKind::OpenWorkspace);
         assert_eq!(tasks[1].kind, WorkspaceIndexTaskKind::RefreshWorkspace);
+    }
+
+    #[test]
+    fn drains_ide_priority_classes_in_foreground_first_order() {
+        let mut scheduler = WorkspaceIndexScheduler::default();
+        for (root_path, priority) in [
+            ("/background", WorkspaceIndexTaskPriority::Background),
+            ("/sdk", WorkspaceIndexTaskPriority::SdkIndexing),
+            ("/full", WorkspaceIndexTaskPriority::FullRefresh),
+            ("/changed", WorkspaceIndexTaskPriority::ChangedFiles),
+            ("/visible", WorkspaceIndexTaskPriority::VisibleFiles),
+            (
+                "/completion",
+                WorkspaceIndexTaskPriority::ForegroundCompletion,
+            ),
+            (
+                "/navigation",
+                WorkspaceIndexTaskPriority::ForegroundNavigation,
+            ),
+        ] {
+            scheduler.schedule(WorkspaceIndexTask {
+                root_path: root_path.to_string(),
+                kind: WorkspaceIndexTaskKind::RefreshWorkspace,
+                priority,
+                changed_paths: Vec::new(),
+                sdk_path: None,
+                sdk_version: None,
+                generation: 0,
+                reason: "test".to_string(),
+            });
+        }
+
+        let roots = scheduler
+            .drain_ready()
+            .into_iter()
+            .map(|task| task.root_path)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            roots,
+            vec![
+                "/navigation",
+                "/completion",
+                "/visible",
+                "/changed",
+                "/full",
+                "/sdk",
+                "/background",
+            ]
+        );
+    }
+
+    #[test]
+    fn drains_bounded_batches_without_dropping_remaining_tasks() {
+        let mut scheduler = WorkspaceIndexScheduler::default();
+        for root_path in ["/workspace-a", "/workspace-b", "/workspace-c"] {
+            scheduler.schedule(WorkspaceIndexTask {
+                root_path: root_path.to_string(),
+                kind: WorkspaceIndexTaskKind::RefreshWorkspace,
+                priority: WorkspaceIndexTaskPriority::FullRefresh,
+                changed_paths: Vec::new(),
+                sdk_path: None,
+                sdk_version: None,
+                generation: 0,
+                reason: "manual".to_string(),
+            });
+        }
+
+        let first_batch = scheduler.drain_ready_batch(2);
+        let second_batch = scheduler.drain_ready_batch(2);
+
+        assert_eq!(first_batch.len(), 2);
+        assert_eq!(
+            first_batch
+                .iter()
+                .map(|task| task.root_path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/workspace-a", "/workspace-b"]
+        );
+        assert_eq!(second_batch.len(), 1);
+        assert_eq!(second_batch[0].root_path, "/workspace-c");
+        assert!(!scheduler.has_pending_tasks());
     }
 
     #[test]

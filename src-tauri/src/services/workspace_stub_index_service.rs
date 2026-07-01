@@ -6,6 +6,8 @@ use rusqlite::{params, Connection};
 use crate::models::workspace::{ArkTsDeclarationStub, ArkTsFileStub};
 use crate::services::workspace_arkts_stub_parser_service::parse_arkts_file_stub;
 use crate::services::workspace_dependency_graph_service::rebuild_dependency_graph;
+use crate::services::workspace_reference_index_service::replace_workspace_references;
+use crate::services::workspace_symbol_resolution_service::resolve_workspace_symbols;
 
 pub const ARKTS_STUB_PARSER_VERSION: i64 = 1;
 
@@ -17,7 +19,10 @@ pub fn replace_all_stub_rows(
 ) -> Result<(), String> {
     delete_all_stub_rows(connection, root_key)?;
     insert_stub_rows_for_files(connection, root_key, file_paths, indexed_generation)?;
-    rebuild_dependency_graph(connection, root_key, file_paths)
+    rebuild_dependency_graph(connection, root_key, file_paths)?;
+    resolve_workspace_symbols(connection, root_key, indexed_generation)?;
+    replace_workspace_references(connection, root_key, file_paths, indexed_generation)?;
+    Ok(())
 }
 
 pub fn replace_changed_stub_rows(
@@ -40,7 +45,10 @@ pub fn replace_changed_stub_rows(
         delete_stub_rows_for_path(connection, root_key, path)?;
     }
     insert_stub_rows_for_files(connection, root_key, changed_paths, indexed_generation)?;
-    rebuild_dependency_graph(connection, root_key, file_paths)
+    rebuild_dependency_graph(connection, root_key, file_paths)?;
+    resolve_workspace_symbols(connection, root_key, indexed_generation)?;
+    replace_workspace_references(connection, root_key, file_paths, indexed_generation)?;
+    Ok(())
 }
 
 fn insert_stub_rows_for_files(
