@@ -36,6 +36,19 @@ export function createDeviceLogStore({ capacity = 20_000 }: { capacity?: number 
       }
       state = { ...state, entries: trim([...state.entries, ...entries]) };
     },
+    appendRawLineBatches(batches: { deviceId: string; lines: string[] }[]) {
+      const entries = batches.flatMap((batch) => (
+        batch.lines.filter((line) => line.length > 0).map((line) => parseDeviceLogLine(line, batch.deviceId))
+      ));
+      if (entries.length === 0) {
+        return;
+      }
+      if (state.paused) {
+        state = { ...state, pendingEntries: trim([...state.pendingEntries, ...entries]) };
+        return;
+      }
+      state = { ...state, entries: trim([...state.entries, ...entries]) };
+    },
     setPaused(paused: boolean) {
       if (state.paused === paused) {
         return;

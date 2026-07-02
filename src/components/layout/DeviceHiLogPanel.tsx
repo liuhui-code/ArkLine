@@ -5,6 +5,8 @@ import type { DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/dev
 import { createDeviceLogStore } from "@/features/device-log/device-log-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
+const VISIBLE_LOG_WINDOW_SIZE = 120;
+
 const initialFilter: DeviceLogFilterState = {
   query: "",
   regex: false,
@@ -38,8 +40,11 @@ export function DeviceHiLogPanel({
   const previousDeviceIdRef = useRef(deviceId);
   const streamIdRef = useRef<string | null>(null);
   const startRequestVersionRef = useRef(0);
+  const pendingLineBatchesRef = useRef<{ deviceId: string; lines: string[] }[]>([]);
+  const flushFrameRef = useRef<number | null>(null);
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
   const visibleEntries = store.getState().entries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
+  const renderedEntries = visibleEntries.slice(-VISIBLE_LOG_WINDOW_SIZE);
 
   useEffect(() => {
     currentDeviceIdRef.current = deviceId;
@@ -60,13 +65,35 @@ export function DeviceHiLogPanel({
   }
 
   useEffect(() => {
+    function flushPendingLines() {
+      flushFrameRef.current = null;
+      const batches = pendingLineBatchesRef.current;
+      pendingLineBatchesRef.current = [];
+      const activeDeviceBatches = batches.filter((batch) => (
+        currentDeviceIdRef.current && batch.deviceId === currentDeviceIdRef.current
+      ));
+
+      if (activeDeviceBatches.length > 0) {
+        store.appendRawLineBatches(activeDeviceBatches);
+        setStoreVersion((value) => value + 1);
+      }
+    }
+
+    function scheduleFlush() {
+      if (flushFrameRef.current != null) {
+        return;
+      }
+
+      flushFrameRef.current = window.requestAnimationFrame(flushPendingLines);
+    }
+
     function appendLines(nextDeviceId: string, lines: string[]) {
       if (!currentDeviceIdRef.current || nextDeviceId !== currentDeviceIdRef.current) {
         return;
       }
 
-      store.appendRawLines(nextDeviceId, lines);
-      setStoreVersion((value) => value + 1);
+      pendingLineBatchesRef.current.push({ deviceId: nextDeviceId, lines });
+      scheduleFlush();
     }
 
     function handleTestEvent(event: Event) {
@@ -95,6 +122,11 @@ export function DeviceHiLogPanel({
       startRequestVersionRef.current += 1;
       const activeStreamId = streamIdRef.current;
       streamIdRef.current = null;
+      pendingLineBatchesRef.current = [];
+      if (flushFrameRef.current != null) {
+        window.cancelAnimationFrame(flushFrameRef.current);
+        flushFrameRef.current = null;
+      }
       if (activeStreamId) {
         void stopBackendStream(activeStreamId, "Device log stream stopped");
       }
@@ -237,14 +269,19 @@ export function DeviceHiLogPanel({
         {visibleEntries.length === 0 ? (
           <p className="device-log-tool-window__empty">No log entries</p>
         ) : (
-          visibleEntries.map((entry) => (
-            <div key={entry.id} className={`device-log-tool-window__entry device-log-tool-window__entry--${entry.level}`}>
-              <span>{entry.timestamp ?? "--"}</span>
-              <span>{entry.level}</span>
-              <span>{entry.tag || "-"}</span>
-              <span>{entry.message}</span>
+          <>
+            <div className="device-log-tool-window__render-stats">
+              {visibleEntries.length.toLocaleString()} total · {renderedEntries.length.toLocaleString()} rendered
             </div>
-          ))
+            {renderedEntries.map((entry) => (
+              <div key={entry.id} data-testid="device-log-entry" className={`device-log-tool-window__entry device-log-tool-window__entry--${entry.level}`}>
+                <span>{entry.timestamp ?? "--"}</span>
+                <span>{entry.level}</span>
+                <span>{entry.tag || "-"}</span>
+                <span>{entry.message}</span>
+              </div>
+            ))}
+          </>
         )}
       </div>
     </div>

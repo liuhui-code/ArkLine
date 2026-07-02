@@ -1096,6 +1096,76 @@ button:disabled {
   white-space: nowrap;
 }
 
+.context-menu {
+  position: fixed;
+  z-index: 1200;
+  width: 236px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: rgba(24, 31, 42, 0.98);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(15, 23, 42, 0.38);
+  color: #d7dee9;
+}
+
+.context-menu__group {
+  margin: 0;
+}
+
+.context-menu__group--separated {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.context-menu__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-align: left;
+  cursor: default;
+}
+
+.context-menu__item:hover,
+.context-menu__item:focus-visible {
+  outline: none;
+  background: rgba(59, 130, 246, 0.2);
+  color: #f8fbff;
+}
+
+.context-menu__item:disabled {
+  color: rgba(215, 222, 233, 0.36);
+}
+
+.context-menu__item:disabled:hover,
+.context-menu__item:disabled:focus-visible {
+  background: transparent;
+  color: rgba(215, 222, 233, 0.36);
+}
+
+.context-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-menu__shortcut {
+  margin-left: 16px;
+  color: rgba(215, 222, 233, 0.48);
+  font-size: 11px;
+}
+
 .project-mutation-dialog {
   position: fixed;
   inset: 0;
@@ -1890,6 +1960,19 @@ button:disabled {
   font-size: 12px;
 }
 
+.device-log-tool-window__render-stats {
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: #24262b;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  text-align: right;
+}
+
 .device-log-tool-window__entry {
   display: grid;
   grid-template-columns: 130px 56px 140px minmax(0, 1fr);
@@ -2681,6 +2764,49 @@ button:disabled {
   grid-template-columns: 48px minmax(0, 1fr);
   gap: 8px;
   padding: 6px 7px 6px 16px;
+}
+
+.search-everywhere__body--text .search-result--match {
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 28%);
+  align-items: start;
+  gap: 14px;
+  padding: 7px 10px 7px 14px;
+}
+
+.search-result__hit {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.search-result__file-context {
+  min-width: 0;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.search-result__file-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result__absolute-path {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-code);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search-result__location {

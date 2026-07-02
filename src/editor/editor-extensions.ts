@@ -17,11 +17,13 @@ import {
   createDefinitionHoverHandler,
   createDefinitionTriggerHandler,
   createDocumentChangeListener,
+  createEditorContextMenuHandler,
   createSelectionChangeListener,
   createTypingCompletionTriggerListener,
   definitionHoverDecorationField,
   jumpRevealDecorationField,
   type DefinitionHoverState,
+  type EditorContextMenuRequest,
   type EditorLineColumn,
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
@@ -77,6 +79,7 @@ export function createEditorExtensions(
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void,
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void,
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,
+  onContextMenu?: (request: EditorContextMenuRequest) => void,
   gitTrace?: {
     blameAttributions: GitBlameAttribution[];
     selectedLine: number | null;
@@ -111,6 +114,7 @@ export function createEditorExtensions(
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),
     ...(onDefinitionHoverChange ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
     ...(onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
+    ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
     languageCompartment.of(languageExtensionForPath(path)),

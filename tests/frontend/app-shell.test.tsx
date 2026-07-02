@@ -219,6 +219,38 @@ describe("App shell", () => {
     expect(terminalButton).toHaveClass("toolbar__button--active");
   });
 
+  it("supports IDE-style bottom tool tab context menu actions", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Terminal" }),
+    });
+
+    const menu = screen.getByRole("menu", { name: "Terminal tool window actions" });
+    expect(within(menu).getByRole("menuitem", { name: "Show Terminal" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "Hide Tool Window" })).toBeVisible();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Show Terminal" }));
+    expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "false");
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Terminal" }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "Hide Tool Window" }));
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "true");
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Terminal" }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "Show Terminal" }));
+    expect(screen.getByLabelText("Bottom Tool Window")).toHaveAttribute("data-collapsed", "false");
+  });
+
   it("uses an explicit restore action after the bottom tool window is hidden", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -559,6 +591,43 @@ describe("App shell", () => {
     }));
   });
 
+  it("opens workspace edit previews from the project tree context menu", async () => {
+    const user = userEvent.setup();
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: [],
+      summary: (plan as WorkspaceEditPlan).operations.map((operation) => operation.kind),
+    }));
+    render(<AppShell workspaceApi={createWorkspaceApi({ previewWorkspaceEdit })} />);
+
+    await openProject(user);
+    const filesPane = screen.getByRole("region", { name: "Files" });
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: within(filesPane).getByRole("button", { name: "src" }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "New File" }));
+    await user.type(await screen.findByLabelText("New File Name"), "Home.ets");
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+
+    await waitFor(() => expect(previewWorkspaceEdit).toHaveBeenLastCalledWith({
+      workspaceRoot: expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace/),
+      plan: expect.objectContaining({
+        title: "Create File Home.ets",
+        operations: [
+          {
+            kind: "createFile",
+            path: expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace[/\\]src[/\\]Home\.ets/),
+            content: "",
+            overwrite: false,
+          },
+        ],
+      }),
+    }));
+  });
+
   it("opens a file from the workspace into the editor surface", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -573,6 +642,73 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content", undefined, { timeout: 5000 });
     expect(editor).toHaveTextContent("@Entry");
     expect(editor).toHaveTextContent("struct Index {}");
+  });
+
+  it("supports IDE-style editor tab context menu actions", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<App />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByRole("button", { name: "app.json5" }));
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "main.ets", pressed: false }),
+    });
+    const menu = screen.getByRole("menu", { name: "main.ets tab actions" });
+    expect(within(menu).getByRole("menuitem", { name: "Close Others" })).toBeVisible();
+    await user.click(within(menu).getByRole("menuitem", { name: "Copy Path" }));
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/main\.ets$/));
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "main.ets", pressed: false }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "Close Others" }));
+
+    const editor = screen.getByRole("main", { name: "Editor" });
+    expect(within(editor).getByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+    expect(within(editor).queryByRole("button", { name: "app.json5" })).not.toBeInTheDocument();
+  });
+
+  it("supports IDE-style editor content context menu actions", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<App />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editorContent = await screen.findByLabelText("Editor Content");
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: editorContent,
+    });
+    const menu = screen.getByRole("menu", { name: "Editor actions" });
+    expect(within(menu).getByRole("menuitem", { name: "Go to Definition" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "Find Usages" })).toBeVisible();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Copy File Path" }));
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/main\.ets$/));
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: editorContent,
+    });
+    await user.click(screen.getByRole("menuitem", { name: "Format Document" }));
+
+    expect(await screen.findByText("Formatted main.ets")).toBeVisible();
   });
 
   it("opens quick open from the keyboard and filters workspace paths", async () => {
@@ -655,6 +791,48 @@ describe("App shell", () => {
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index");
   });
 
+  it("supports IDE-style context menu actions on Search Everywhere candidates", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 7,
+        score: 120,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
+    const candidate = await within(results).findByRole("button", { name: /class LoginController/ });
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: candidate,
+    });
+
+    const menu = screen.getByRole("menu", { name: "Search result actions" });
+    expect(within(menu).getByRole("menuitem", { name: "Open" })).toBeVisible();
+    await user.click(within(menu).getByRole("menuitem", { name: "Copy Path" }));
+
+    expect(writeText).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets");
+  });
+
   it("moves Search Everywhere focus with keyboard and wheel and opens the focused candidate", async () => {
     const user = userEvent.setup();
     const openFile = vi.fn(async (path: string) => path.endsWith("LoginPage.ets")
@@ -719,6 +897,86 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/LoginPage.ets");
     });
+  });
+
+  it("jumps to the clicked Search Everywhere candidate location", async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn(async () => "line one\nline two\nstruct LoginController {}");
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 8,
+        score: 120,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
+    await user.click(await within(results).findByRole("button", { name: /class LoginController/ }));
+
+    const editor = await screen.findByLabelText("Editor Content");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("X");
+
+    expect(editor).toHaveTextContent("line oneline twostruct XLoginController {}");
+  });
+
+  it("opens the visually selected Search Everywhere candidate with Enter after grouping", async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn(async (path: string) => path.endsWith("LoginPage.ets")
+      ? "struct LoginPage {}"
+      : "line one\nline two\nstruct LoginController {}");
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "file:login",
+        source: "file" as const,
+        kind: "file",
+        title: "LoginPage.ets",
+        subtitle: "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        path: "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        line: 1,
+        column: 1,
+        score: 70,
+        freshness: "ready" as const,
+      },
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 8,
+        score: 120,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
+    const classResult = await within(results).findByRole("button", { name: /class LoginController/ });
+    expect(classResult).toHaveAttribute("aria-selected", "true");
+
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
   });
 
   it("shows index explain text when Search Everywhere has no matches", async () => {
@@ -1141,7 +1399,7 @@ describe("App shell", () => {
     const query = await screen.findByLabelText("Find in Files Query");
     await user.type(query, "entry");
     expect(screen.getByRole("button", { name: "Close Find in Files" })).toBeVisible();
-    expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getByText("main.ets")).toBeVisible();
+    expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getAllByText("main.ets")[0]).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Aa" }));
     expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getByText("No matches")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Aa" }));
@@ -1149,10 +1407,10 @@ describe("App shell", () => {
     await user.type(query, "/bundleName/");
 
     const results = screen.getByRole("list", { name: "Find in Files Results" });
-    expect(within(results).getByText("app.json5")).toBeVisible();
+    expect(within(results).getAllByText("app.json5")[0]).toBeVisible();
     expect(within(results).getByText("AppScope/app.json5")).toBeVisible();
     expect(within(results).getByText("3:6")).toBeVisible();
-    expect(within(results).queryByText("C:\\samples\\DemoWorkspace\\AppScope\\app.json5")).not.toBeInTheDocument();
+    expect(within(results).getByText("C:\\samples\\DemoWorkspace\\AppScope\\app.json5")).toBeVisible();
 
     const preview = screen.getByLabelText("Search Everywhere Preview");
     expect(within(preview).getByText("AppScope/app.json5:3:6")).toBeVisible();
@@ -1211,9 +1469,44 @@ describe("App shell", () => {
     fireEvent.wheel(results, { deltaY: 120 });
     expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
 
+    const secondMatch = within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ });
+    expect(within(secondMatch).getByText("Second.ets")).toBeVisible();
+    expect(within(secondMatch).getByText(/C:[/\\]samples[/\\]DemoWorkspace[/\\]src[/\\]Second\.ets/)).toBeVisible();
+
     await user.keyboard("{Enter}");
     expect(screen.queryByLabelText("Find in Files Overlay")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Second.ets", pressed: true })).toBeVisible();
+    const editor = await screen.findByLabelText("Editor Content");
+    await waitFor(() => expect(editor).toHaveFocus());
+    await user.keyboard("X");
+    expect(editor).toHaveTextContent(/struct Second \{\s*XneedleTwo\(\) \{\}\}/);
+  });
+
+  it("supports IDE-style context menu actions on Find in Files results", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<App />);
+
+    await openProject(user);
+    await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find in Files Query"), "Index");
+
+    const results = await screen.findByRole("list", { name: "Find in Files Results" });
+    const match = await within(results).findByRole("button", { name: /src[/\\]main\.ets:3:8/ });
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: match,
+    });
+
+    const menu = screen.getByRole("menu", { name: "Search result actions" });
+    expect(within(menu).getByRole("menuitem", { name: "Open" })).toBeVisible();
+    await user.click(within(menu).getByRole("menuitem", { name: "Copy Path" }));
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/main\.ets$/));
   });
 
   it("uses readiness-aware text facade for plain Find in Files when available", async () => {

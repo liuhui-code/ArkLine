@@ -14,6 +14,11 @@ export type EditorCaretRect = EditorLineColumn & {
   measured: boolean;
 };
 
+export type EditorContextMenuRequest = EditorLineColumn & {
+  x: number;
+  y: number;
+};
+
 export type DefinitionHoverState = {
   active: boolean;
   selection?: EditorLineColumn;
@@ -241,6 +246,32 @@ export function createDefinitionTriggerHandler(
     },
     contextmenu(event, view) {
       return handleModifierPointerEvent(event, view, true);
+    },
+  });
+}
+
+export function createEditorContextMenuHandler(
+  onContextMenu: (request: EditorContextMenuRequest) => void,
+) {
+  return EditorView.domEventHandlers({
+    contextmenu(event, view) {
+      if (event.ctrlKey || event.metaKey) {
+        return false;
+      }
+
+      const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      const selection = position == null
+        ? toLineColumn(view, view.state.selection.main.head)
+        : toLineColumn(view, position);
+
+      event.preventDefault();
+      view.focus();
+      onContextMenu({
+        ...selection,
+        x: event.clientX,
+        y: event.clientY,
+      });
+      return true;
     },
   });
 }

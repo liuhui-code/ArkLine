@@ -1,3 +1,4 @@
+import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -5,7 +6,7 @@ import type {
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
-import type { KeyboardEvent, WheelEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent } from "react";
 
 type SearchEverywherePanelProps = {
   mode: SearchEverywhereMode;
@@ -64,6 +65,7 @@ export function SearchEverywherePanel({
   onToggleWholeWord,
   onCloseOverlay,
 }: SearchEverywherePanelProps) {
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const selected = result.matches[selectedIndex] ?? null;
   const regexMode = result.query.kind === "regex" || result.query.kind === "invalid";
   const presentation = searchModePresentation(mode, regexMode);
@@ -109,7 +111,51 @@ export function SearchEverywherePanel({
     onMoveSelection(event.deltaY > 0 ? 1 : -1);
   }
 
+  function copyPath(path: string) {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    void navigator.clipboard.writeText(path);
+  }
+
+  function openTextResultContextMenu(event: ReactMouseEvent<HTMLButtonElement>, item: WorkspaceTextSearchMatch, index: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectResult(index);
+    setContextMenu({
+      label: "Search result actions",
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        { id: "open", label: "Open", onSelect: () => onOpenResult(item) },
+        { id: "copy-path", label: "Copy Path", separatorBefore: true, onSelect: () => copyPath(item.path) },
+      ],
+    });
+  }
+
+  function openCandidateContextMenu(event: ReactMouseEvent<HTMLButtonElement>, item: SearchCandidate, index: number) {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectResult(index);
+    setContextMenu({
+      label: "Search result actions",
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        { id: "open", label: "Open", onSelect: () => onOpenCandidate(item) },
+        {
+          id: "copy-path",
+          label: "Copy Path",
+          disabled: !item.path,
+          separatorBefore: true,
+          onSelect: () => item.path ? copyPath(item.path) : undefined,
+        },
+      ],
+    });
+  }
+
   return (
+    <>
     <div className="search-everywhere" onKeyDownCapture={handlePanelKeyDownCapture}>
       <div className="search-everywhere__header">
         <div>
@@ -218,6 +264,7 @@ export function SearchEverywherePanel({
                       aria-label={`${item.source} ${item.title} ${item.subtitle}`}
                       aria-selected={index === selectedIndex}
                       onMouseEnter={() => onSelectResult(index)}
+                      onContextMenu={(event) => openCandidateContextMenu(event, item, index)}
                       onClick={() => onOpenCandidate(item)}
                     >
                       <span className="search-result__location">{candidateLocation(item)}</span>
@@ -254,10 +301,17 @@ export function SearchEverywherePanel({
                     aria-label={`${item.relativePath}:${item.line}:${item.column} ${item.summary}`}
                     aria-selected={index === selectedIndex}
                     onMouseEnter={() => onSelectResult(index)}
+                    onContextMenu={(event) => openTextResultContextMenu(event, item, index)}
                     onClick={() => onOpenResult(item)}
                   >
-                    <span className="search-result__location">{item.line}:{item.column}</span>
-                    <span className="search-result__preview">{item.summary}</span>
+                    <span className="search-result__hit">
+                      <span className="search-result__location">{item.line}:{item.column}</span>
+                      <span className="search-result__preview">{item.summary}</span>
+                    </span>
+                    <span className="search-result__file-context">
+                      <span className="search-result__file-name">{item.fileName}</span>
+                      <span className="search-result__absolute-path">{item.path}</span>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -273,6 +327,8 @@ export function SearchEverywherePanel({
       </div>
       )}
     </div>
+    <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
+    </>
   );
 }
 

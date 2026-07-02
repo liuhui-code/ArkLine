@@ -16,6 +16,7 @@ import {
   setJumpRevealEffect,
   type DefinitionHoverState,
   type EditorCaretRect,
+  type EditorContextMenuRequest,
   type EditorLineColumn,
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
@@ -35,6 +36,7 @@ type ArkTsEditorProps = {
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
@@ -54,6 +56,7 @@ export function ArkTsEditor({
   onDefinitionTrigger,
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
+  onContextMenu,
   blameAttributions = [],
   gitBlameVisible = false,
   selectedBlameLine = null,
@@ -67,6 +70,7 @@ export function ArkTsEditor({
   const onDefinitionTriggerRef = useRef(onDefinitionTrigger);
   const onDefinitionHoverChangeRef = useRef(onDefinitionHoverChange);
   const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
+  const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
 
   onChangeRef.current = onChange;
@@ -75,6 +79,7 @@ export function ArkTsEditor({
   onDefinitionTriggerRef.current = onDefinitionTrigger;
   onDefinitionHoverChangeRef.current = onDefinitionHoverChange;
   onTypingCompletionTriggerRef.current = onTypingCompletionTrigger;
+  onContextMenuRef.current = onContextMenu;
 
   useEffect(() => {
     if (!hostRef.current || viewRef.current) {
@@ -97,6 +102,7 @@ export function ArkTsEditor({
         (selection) => onDefinitionTriggerRef.current?.(selection),
         (state) => onDefinitionHoverChangeRef.current?.(state),
         (selection) => onTypingCompletionTriggerRef.current?.(selection),
+        (request) => onContextMenuRef.current?.(request),
         gitBlameVisible
           ? {
               blameAttributions,

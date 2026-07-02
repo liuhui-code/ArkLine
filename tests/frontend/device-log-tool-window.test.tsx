@@ -86,6 +86,31 @@ describe("Device Log tool window", () => {
     expect(await within(panel).findByText("rendered line")).toBeVisible();
   });
 
+  it("renders only a bounded tail window during high-throughput streams", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    const lines = Array.from({ length: 300 }, (_, index) => (
+      `06-25 15:21:48.123  1234  5678 I C03F00/AppTag com.example.demo: stream line ${index + 1}`
+    ));
+
+    fireEvent(
+      panel,
+      new CustomEvent("arkline-device-log-lines", {
+        bubbles: true,
+        detail: { deviceId: "device-1", lines },
+      }),
+    );
+
+    expect(await within(panel).findByText("stream line 300")).toBeVisible();
+    expect(within(panel).queryByText("stream line 1")).not.toBeInTheDocument();
+    expect(within(panel).getAllByTestId("device-log-entry")).toHaveLength(120);
+    expect(within(panel).getByText("300 total · 120 rendered")).toBeVisible();
+  });
+
   it("keeps the stream across tab switches and stops and clears it on device change", async () => {
     const stopDeviceLogStream = vi.fn(async () => undefined);
     const user = userEvent.setup();

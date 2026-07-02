@@ -82,6 +82,17 @@ describe("device log store", () => {
     expect(store.getState().entries.map((entry) => entry.message)).toEqual(["two", "three", "four"]);
   });
 
+  it("appends multiple raw line batches with one bounded trim", () => {
+    const store = createDeviceLogStore({ capacity: 4 });
+
+    store.appendRawLineBatches([
+      { deviceId: "device-1", lines: ["one", "two"] },
+      { deviceId: "device-1", lines: ["three", "four", "five"] },
+    ]);
+
+    expect(store.getState().entries.map((entry) => entry.message)).toEqual(["two", "three", "four", "five"]);
+  });
+
   it("buffers raw lines while paused but does not expose them until resumed", () => {
     const store = createDeviceLogStore({ capacity: 5 });
 

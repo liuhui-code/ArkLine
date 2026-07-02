@@ -1,12 +1,15 @@
 import {
   useEffect,
   useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type RefObject,
 } from "react";
 import { flushSync } from "react-dom";
+import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 
 type BottomToolWindowProps = {
@@ -16,6 +19,7 @@ type BottomToolWindowProps = {
   maxHeight: number;
   onResizeHeight: (height: number) => void;
   onToggleMaxHeight: () => void;
+  onShowTool: (tool: BottomToolKey) => void;
   onToggleTool: (tool: BottomToolKey) => void;
   onRestore: () => void;
   onClose: () => void;
@@ -45,6 +49,7 @@ export function BottomToolWindow({
   maxHeight,
   onResizeHeight,
   onToggleMaxHeight,
+  onShowTool,
   onToggleTool,
   onRestore,
   onClose,
@@ -57,6 +62,7 @@ export function BottomToolWindow({
 }: BottomToolWindowProps) {
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const isMaximized = Math.abs(height - maxHeight) <= 2;
 
   useEffect(() => {
@@ -118,6 +124,27 @@ export function BottomToolWindow({
     onResizeHeight(nextHeight);
   }
 
+  function openToolContextMenu(event: ReactMouseEvent<HTMLButtonElement>, tool: BottomToolKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    const label = tabLabels[tool];
+    setContextMenu({
+      label: `${label} tool window actions`,
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        { id: "show", label: `Show ${label}`, onSelect: () => onShowTool(tool) },
+        {
+          id: "toggle-max",
+          label: isMaximized ? "Restore Tool Window" : "Maximize Tool Window",
+          disabled: !contentVisible,
+          onSelect: onToggleMaxHeight,
+        },
+        { id: "hide", label: "Hide Tool Window", disabled: !contentVisible, separatorBefore: true, onSelect: onClose },
+      ],
+    });
+  }
+
   return (
     <section
       aria-label="Bottom Tool Window"
@@ -153,6 +180,7 @@ export function BottomToolWindow({
               aria-controls={`bottom-tool-panel-${tool}`}
               className={`bottom-tool-window__tab${activeTool === tool ? " bottom-tool-window__tab--active" : ""}`}
               onClick={() => onToggleTool(tool)}
+              onContextMenu={(event) => openToolContextMenu(event, tool)}
             >
               {tabLabels[tool]}
             </button>
@@ -189,6 +217,7 @@ export function BottomToolWindow({
             </button>
           )}
         </div>
+        <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
       </div>
       <div className="bottom-tool-window__content" hidden={!contentVisible}>
         {activeTool === "problems" ? (

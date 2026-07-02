@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ProjectToolWindow } from "@/components/layout/ProjectToolWindow";
 import { demoArkTsTree } from "@/components/layout/demo-arkts-project";
@@ -143,5 +143,84 @@ describe("Project tool window", () => {
     await user.click(screen.getByRole("button", { name: "entry" }));
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading...");
+  });
+
+  it("opens an IDE-style context menu for project tree rows", async () => {
+    const user = userEvent.setup();
+    const requestMutation = vi.fn();
+    const openFile = vi.fn();
+
+    render(
+      <ProjectToolWindow
+        tree={demoArkTsTree}
+        activePath={null}
+        onOpen={openFile}
+        onRequestMutation={requestMutation}
+      />,
+    );
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "Index.ets" }),
+    });
+
+    const menu = screen.getByRole("menu", { name: "Index.ets actions" });
+    expect(menu).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "Open" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "New File" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "Copy Path" })).toBeVisible();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Open" }));
+
+    expect(openFile).toHaveBeenCalledWith(expect.stringMatching(/Index\.ets$/));
+    expect(screen.queryByRole("menu", { name: "Index.ets actions" })).not.toBeInTheDocument();
+  });
+
+  it("routes project tree context menu creation actions through the existing mutation callback", async () => {
+    const user = userEvent.setup();
+    const requestMutation = vi.fn();
+
+    render(
+      <ProjectToolWindow
+        tree={demoArkTsTree}
+        activePath={null}
+        onOpen={vi.fn()}
+        onRequestMutation={requestMutation}
+      />,
+    );
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "pages" }),
+    });
+    await user.click(screen.getByRole("menuitem", { name: "New Directory" }));
+
+    expect(requestMutation).toHaveBeenCalledWith({
+      action: "newDirectory",
+      parentPath: expect.stringMatching(/pages$/),
+    });
+  });
+
+  it("closes the project context menu when clicking outside", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ProjectToolWindow
+        tree={demoArkTsTree}
+        activePath={null}
+        onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
+      />,
+    );
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("button", { name: "Index.ets" }),
+    });
+    expect(screen.getByRole("menu", { name: "Index.ets actions" })).toBeVisible();
+
+    await user.click(document.body);
+
+    expect(screen.queryByRole("menu", { name: "Index.ets actions" })).not.toBeInTheDocument();
   });
 });

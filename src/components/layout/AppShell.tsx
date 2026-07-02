@@ -213,6 +213,23 @@ function filterSearchCandidatesByScope(candidates: SearchCandidate[], scope: Wor
   return source ? candidates.filter((candidate) => candidate.source === source) : candidates;
 }
 
+function orderSearchEverywhereCandidates(candidates: SearchCandidate[]) {
+  const sourceOrder: Record<SearchCandidate["source"], number> = {
+    class: 0,
+    symbol: 1,
+    file: 2,
+    api: 3,
+    action: 4,
+    sdk: 5,
+    text: 6,
+  };
+
+  return candidates
+    .map((candidate, index) => ({ candidate, index }))
+    .sort((left, right) => sourceOrder[left.candidate.source] - sourceOrder[right.candidate.source] || left.index - right.index)
+    .map(({ candidate }) => candidate);
+}
+
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
@@ -637,6 +654,46 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setSelectionTarget(null);
     setStatusText(tabsRef.current.state.activePath ? `Closed ${getPathBasename(activePath ?? "")}` : "Closed file");
     focusEditorSoon();
+  }
+
+  function closeEditorTab(path: string) {
+    tabsRef.current.closeTab(path);
+    syncTabs();
+    setActiveDocument(tabsRef.current.state.activePath);
+    setStatusText(tabsRef.current.state.activePath ? `Closed ${getPathBasename(path)}` : "Closed file");
+    focusEditorSoon();
+  }
+
+  function closeOtherEditorTabs(path: string) {
+    tabsRef.current.closeOtherTabs(path);
+    syncTabs();
+    setActiveDocument(tabsRef.current.state.activePath);
+    setStatusText(`Closed other tabs for ${getPathBasename(path)}`);
+    focusEditorSoon();
+  }
+
+  function closeEditorTabsToRight(path: string) {
+    tabsRef.current.closeTabsToRight(path);
+    syncTabs();
+    setActiveDocument(tabsRef.current.state.activePath);
+    setStatusText(`Closed tabs to the right of ${getPathBasename(path)}`);
+    focusEditorSoon();
+  }
+
+  function copyEditorTabPath(path: string) {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    void navigator.clipboard.writeText(path);
+    setStatusText(`Copied path ${getPathBasename(path)}`);
+  }
+
+  function copyActiveEditorPath() {
+    if (!activePath || typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    void navigator.clipboard.writeText(activePath);
+    setStatusText(`Copied path ${getPathBasename(activePath)}`);
   }
 
   function hideActiveToolWindow() {
@@ -2228,7 +2285,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           return;
         }
 
-        setSearchEverywhereCandidates(candidates);
+        setSearchEverywhereCandidates(orderSearchEverywhereCandidates(candidates));
         setSearchEverywhereResult({
           query: { kind: "text", query: quickOpenQuery.trim() },
           matches: [],
@@ -2579,7 +2636,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
               onOpenUsage={(item) => void openUsageResult(item)}
             />
           ) : null}
-          <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={handleEditorSelectionChange} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} />
+          <EditorSurface activePath={activePath} content={editorContent} openTabs={openTabs} appearance={editorAppearance} focusToken={editorFocusToken} insertTextTarget={insertTextTarget} selectionTarget={selectionTarget} workspaceName={workspace?.rootName ?? null} surfaceRef={editorSurfaceRef} onChange={handleEditorChange} onSelectionChange={handleEditorSelectionChange} onCaretRectChange={setCompletionAnchor} onDefinitionTrigger={(selection) => void goToDefinitionFromEditor(selection, "modifierClick")} onDefinitionHoverChange={(state) => setDefinitionHoverActive(state.active)} onTypingCompletionTrigger={triggerTypingCompletion} blameAttributions={gitTraceState.blameAttributions} gitBlameVisible={gitBlameVisible} selectedBlameLine={selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine} onGitTraceLineClick={selectGitBlameLine} definitionHoverActive={definitionHoverActive} onSelectTab={setActiveDocument} onCloseTab={closeEditorTab} onCloseOtherTabs={closeOtherEditorTabs} onCloseTabsToRight={closeEditorTabsToRight} onCopyTabPath={copyEditorTabPath} onEditorGoToDefinition={(selection) => void goToDefinitionFromEditor(selection, "keyboard")} onEditorFindUsages={() => void findUsagesFromEditor()} onEditorFormatDocument={() => void formatActiveDocument()} onEditorCopyPath={copyActiveEditorPath} />
         </div>
       </div>
       {selectedBlameAttribution ? (
@@ -2677,7 +2734,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         onRefreshEnvironment={() => void refreshEnvironmentReport()}
       />
       <BottomToolWindow
-        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
+        containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onShowTool={showBottomTool} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
         buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} modules={buildProject?.modules ?? []} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
         gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />} onChangeView={setGitToolView} onOpenFile={(path) => void openFile(path)} />}

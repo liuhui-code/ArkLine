@@ -76,6 +76,29 @@ export function createEditorTabsStore(documents: DocumentStore) {
 
       const nextActiveTab = state.openTabs[closingIndex] ?? state.openTabs[closingIndex - 1] ?? null;
       state.activePath = nextActiveTab?.path ?? null;
+    },
+    closeOtherTabs(path: string) {
+      const targetPath = normalizePath(path);
+      const targetTab = state.openTabs.find((entry) => entry.path === targetPath);
+      if (!targetTab) {
+        return;
+      }
+
+      state.openTabs = [targetTab];
+      state.activePath = targetPath;
+    },
+    closeTabsToRight(path: string) {
+      const targetPath = normalizePath(path);
+      const targetIndex = state.openTabs.findIndex((entry) => entry.path === targetPath);
+      if (targetIndex < 0) {
+        return;
+      }
+
+      const closedPaths = new Set(state.openTabs.slice(targetIndex + 1).map((entry) => entry.path));
+      state.openTabs.splice(targetIndex + 1);
+      if (state.activePath && closedPaths.has(state.activePath)) {
+        state.activePath = targetPath;
+      }
     }
   };
 }

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { WorkspaceDirectoryEntry } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath, splitPathSegments } from "@/features/workspace/workspace-store";
@@ -25,6 +26,12 @@ type TreeEntry = {
   label: string;
   path: string;
   expanded?: boolean;
+};
+
+type ProjectContextTarget = {
+  kind: "directory" | "file";
+  label: string;
+  path: string;
 };
 
 type InternalNode = {
@@ -232,6 +239,15 @@ function collectAncestorDirectories(root: InternalNode, targetPath: string) {
   return ancestors;
 }
 
+function getParentPath(path: string, fallback: string) {
+  const separator = path.includes("\\") ? "\\" : "/";
+  const lastSeparator = path.lastIndexOf(separator);
+  if (lastSeparator <= 0) {
+    return fallback;
+  }
+  return path.slice(0, lastSeparator);
+}
+
 export function ProjectToolWindow({
   tree,
   lazyRoot,
@@ -254,6 +270,7 @@ export function ProjectToolWindow({
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
   const [lazyExpandedDirectories, setLazyExpandedDirectories] = useState<Set<string>>(() => new Set());
   const [pendingFocusPath, setPendingFocusPath] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const expandedDirectories = useMemo(() => {
     if (lazyRoot) {
       return new Set([normalizePath(lazyRoot.path), ...lazyExpandedDirectories]);
@@ -349,6 +366,58 @@ export function ProjectToolWindow({
     setPendingFocusPath(normalizedActivePath);
   }
 
+  function copyPath(path: string) {
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      return;
+    }
+    void navigator.clipboard.writeText(path);
+  }
+
+  function openProjectContextMenu(event: ReactMouseEvent<HTMLElement>, target: ProjectContextTarget) {
+    event.preventDefault();
+    event.stopPropagation();
+    const parentPath = target.kind === "directory" ? target.path : getParentPath(target.path, root.path);
+    const canToggleDirectory = target.kind === "directory";
+
+    setContextMenu({
+      label: `${target.label} actions`,
+      x: event.clientX,
+      y: event.clientY,
+      items: [
+        {
+          id: "open",
+          label: "Open",
+          disabled: target.kind !== "file",
+          onSelect: () => onOpen(target.path),
+        },
+        {
+          id: "new-file",
+          label: "New File",
+          separatorBefore: true,
+          onSelect: () => onRequestMutation({ action: "newFile", parentPath }),
+        },
+        {
+          id: "new-directory",
+          label: "New Directory",
+          onSelect: () => onRequestMutation({ action: "newDirectory", parentPath }),
+        },
+        {
+          id: "toggle-directory",
+          label: canToggleDirectory && expandedDirectories.has(target.path) ? "Collapse" : "Expand",
+          disabled: !canToggleDirectory,
+          separatorBefore: true,
+          onSelect: () => toggleDirectory(target.path),
+        },
+        {
+          id: "copy-path",
+          label: "Copy Path",
+          separatorBefore: true,
+          onSelect: () => copyPath(target.path),
+        },
+      ],
+    });
+  }
+
   return (
     <div className="project-tree-shell">
       <div className="project-tree-toolbar" role="toolbar" aria-label="Project Tree Actions">
@@ -358,7 +427,17 @@ export function ProjectToolWindow({
         <button type="button" className="project-tree-toolbar__button" aria-label="Collapse All" onClick={collapseAll}>-</button>
         <button type="button" className="project-tree-toolbar__button" aria-label="Focus Active File" onClick={focusActiveFile}>*</button>
       </div>
-      <div className="project-tree" role="tree" aria-label="Workspace File Tree">
+      <div
+        className="project-tree"
+        role="tree"
+        aria-label="Workspace File Tree"
+        onContextMenu={(event) => {
+          if (event.target !== event.currentTarget) {
+            return;
+          }
+          openProjectContextMenu(event, { kind: "directory", label: root.label, path: root.path });
+        }}
+      >
         {entries.map((entry) =>
           entry.kind === "directory" ? (
             <button
@@ -368,6 +447,7 @@ export function ProjectToolWindow({
               style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
               aria-expanded={entry.expanded ? "true" : "false"}
               onClick={() => toggleDirectory(entry.path)}
+              onContextMenu={(event) => openProjectContextMenu(event, { kind: "directory", label: entry.label, path: entry.path })}
             >
               <span className="project-tree__caret" aria-hidden="true">
                 {entry.expanded ? "▾" : "▸"}
@@ -403,6 +483,7 @@ export function ProjectToolWindow({
               title={entry.path}
               aria-current={normalizedActivePath === normalizePath(entry.path) ? "true" : undefined}
               onClick={() => onOpen(entry.path)}
+              onContextMenu={(event) => openProjectContextMenu(event, { kind: "file", label: entry.label, path: entry.path })}
             >
               <span className="project-tree__caret" aria-hidden="true" />
               <span className="project-tree__icon project-tree__icon--file" aria-hidden="true" />
@@ -411,6 +492,7 @@ export function ProjectToolWindow({
           ),
         )}
       </div>
+      <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
     </div>
   );
 }
