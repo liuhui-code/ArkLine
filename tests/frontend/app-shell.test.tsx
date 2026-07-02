@@ -1700,7 +1700,7 @@ describe("App shell", () => {
     expect(editor).toHaveTextContent("@EntryX@Componentstruct Index {}");
   });
 
-  it("opens current-class methods with Ctrl+F7, filters, and jumps to the selected method", async () => {
+  it("opens current-class methods with Ctrl+F12, filters, and jumps to the selected method", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -1731,21 +1731,21 @@ describe("App shell", () => {
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}");
-    await user.keyboard("{Control>}{F7}{/Control}");
+    await user.keyboard("{Control>}{F12}{/Control}");
 
-    expect(await screen.findByRole("dialog", { name: "Methods in Current Class" })).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "File Structure" })).toBeVisible();
     expect(screen.getByRole("option", { name: /build\(\).*line 5/ })).toBeVisible();
 
-    await user.type(screen.getByLabelText("Current Class Method Query"), "tap");
+    await user.type(screen.getByLabelText("File Structure Query"), "tap");
     expect(screen.queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /handleTap\(event: ClickEvent\).*line 6/ })).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{Enter}");
-    expect(screen.queryByRole("dialog", { name: "Methods in Current Class" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "File Structure" })).not.toBeInTheDocument();
     expect(await screen.findByText("Method: handleTap(event: ClickEvent)")).toBeVisible();
   });
 
-  it("uses indexed file symbols for Ctrl+F7 when available", async () => {
+  it("uses indexed file symbols for Ctrl+F12 when available", async () => {
     const user = userEvent.setup();
     const queryWorkspaceFileSymbols = vi.fn(async () => [
       {
@@ -1787,7 +1787,7 @@ describe("App shell", () => {
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     await user.click(await screen.findByLabelText("Editor Content"));
-    await user.keyboard("{Control>}{F7}{/Control}");
+    await user.keyboard("{Control>}{F12}{/Control}");
 
     expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
@@ -3293,7 +3293,7 @@ describe("App shell", () => {
     await user.keyboard("{Control>}b{/Control}");
     expect(await screen.findByText("SDK settings are still applying")).toBeVisible();
     await user.keyboard("{Control>} {/Control}");
-    await user.keyboard("{Alt>}{F7}{/Alt}");
+    await user.keyboard("{Control>}{F7}{/Control}");
     await new Promise((resolve) => window.setTimeout(resolve, 160));
 
     expect(gotoDefinition).not.toHaveBeenCalled();
@@ -4250,7 +4250,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    await user.keyboard("{Alt>}{F7}{/Alt}");
+    await user.keyboard("{Control>}{F7}{/Control}");
 
     await waitFor(() => {
       expect(workspaceApi.findUsages).toHaveBeenCalledWith(expect.objectContaining({
@@ -5313,10 +5313,15 @@ describe("App shell", () => {
     expect(screen.queryByRole("row", { name: /Go to Definition Navigation/i })).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Search Keyboard Shortcuts"));
-    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Alt+F7");
+    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Ctrl+F7");
 
     expect(screen.getByRole("row", { name: /Find Usages Navigation/i })).toBeVisible();
     expect(screen.queryByRole("row", { name: /Code Completion Editor/i })).not.toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Search Keyboard Shortcuts"));
+    await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Ctrl+F12");
+
+    expect(screen.getByRole("row", { name: /Show Current Class Methods Navigation/i })).toBeVisible();
 
     await user.clear(screen.getByLabelText("Search Keyboard Shortcuts"));
     await user.type(screen.getByLabelText("Search Keyboard Shortcuts"), "Shift+F");

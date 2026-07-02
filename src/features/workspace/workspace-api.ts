@@ -29,6 +29,7 @@ import {
   type WorkspaceOpenInput
 } from "@/features/workspace/workspace-store";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
+import type { BuildConfiguration } from "@/features/build/build-model";
 
 export type WorkspaceSnapshot = {
   rootName: string;
@@ -444,6 +445,8 @@ export type WorkspaceApi = {
   getCommitTrace?(path: string, commit: string, line: number): Promise<GitCommitTrace | GitTraceUnavailable>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
+  loadBuildConfigurations?(rootPath: string): Promise<BuildConfiguration[]>;
+  saveBuildConfigurations?(rootPath: string, configurations: BuildConfiguration[]): Promise<void>;
   createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionSummary>;
   listTerminalSessions(): Promise<TerminalSessionSummary[]>;
   writeTerminalInput(request: TerminalInputWriteRequest): Promise<void>;
@@ -591,6 +594,8 @@ function emptyIndexQueryEnvelope<T>(rootPath: string): WorkspaceIndexQueryEnvelo
     },
   };
 }
+
+const browserBuildConfigurationStore = new Map<string, BuildConfiguration[]>();
 
 export const defaultWorkspaceApi: WorkspaceApi = {
   async pickWorkspaceRoot() {
@@ -1400,6 +1405,21 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     }
 
     void settings;
+  },
+  async loadBuildConfigurations(rootPath) {
+    if (hasTauriRuntime()) {
+      return invoke<BuildConfiguration[]>("load_build_configurations", { rootPath });
+    }
+
+    return browserBuildConfigurationStore.get(normalizePath(rootPath)) ?? [];
+  },
+  async saveBuildConfigurations(rootPath, configurations) {
+    if (hasTauriRuntime()) {
+      await invoke("save_build_configurations", { rootPath, configurations });
+      return;
+    }
+
+    browserBuildConfigurationStore.set(normalizePath(rootPath), configurations);
   },
   async createTerminalSession(request) {
     if (hasTauriRuntime()) {

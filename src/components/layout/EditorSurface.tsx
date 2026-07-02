@@ -123,7 +123,7 @@ export function EditorSurface({
       y: request.y,
       items: [
         { id: "definition", label: "Go to Definition", shortcut: "Ctrl+B", onSelect: () => onEditorGoToDefinition(request) },
-        { id: "usages", label: "Find Usages", shortcut: "Alt+F7", onSelect: onEditorFindUsages },
+        { id: "usages", label: "Find Usages", shortcut: "Ctrl+F7", onSelect: onEditorFindUsages },
         { id: "format", label: "Format Document", shortcut: "Ctrl+Alt+L", separatorBefore: true, onSelect: onEditorFormatDocument },
         { id: "copy-path", label: "Copy File Path", separatorBefore: true, onSelect: onEditorCopyPath },
       ],

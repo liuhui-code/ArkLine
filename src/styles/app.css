@@ -1305,7 +1305,7 @@ button:disabled {
 
 .build-tool-window {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   background: #1e1f22;
@@ -1343,6 +1343,89 @@ button:disabled {
   color: #b7bcc3;
 }
 
+.build-tool-window__preflight {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  list-style: none;
+}
+
+.build-tool-window__preflight-item {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.build-tool-window__preflight-item strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.build-tool-window__preflight-item--error {
+  border-color: rgba(238, 96, 96, 0.35);
+}
+
+.build-tool-window__preflight-item--warning {
+  border-color: rgba(221, 166, 76, 0.35);
+}
+
+.build-tool-window__pipeline {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(92px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  list-style: none;
+}
+
+.build-tool-window__pipeline-step {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.build-tool-window__pipeline-step span,
+.build-tool-window__pipeline-step strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-tool-window__pipeline-step strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.build-tool-window__pipeline-step--running {
+  border-color: rgba(90, 157, 226, 0.42);
+}
+
+.build-tool-window__pipeline-step--complete {
+  border-color: rgba(101, 177, 124, 0.35);
+}
+
+.build-tool-window__pipeline-step--failed {
+  border-color: rgba(238, 96, 96, 0.42);
+}
+
+.build-tool-window__pipeline-step--skipped {
+  opacity: 0.62;
+}
+
 .build-tool-window__button,
 .build-tool-window__field input,
 .build-tool-window__field select {
@@ -1361,6 +1444,17 @@ button:disabled {
 .build-tool-window__button--primary {
   background: #315f8f;
   border-color: #4378ad;
+}
+
+.build-tool-window__badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(221, 166, 76, 0.35);
+  border-radius: 999px;
+  color: #e4bc7a;
+  font-size: 11px;
 }
 
 .build-tool-window__button:disabled,
@@ -1387,6 +1481,10 @@ button:disabled {
 
 .build-tool-window__field input {
   width: 110px;
+}
+
+.build-tool-window__field--configuration select {
+  width: 180px;
 }
 
 .build-tool-window__output {

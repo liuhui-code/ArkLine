@@ -25,6 +25,7 @@ export type HarmonyBuildRequest = {
   buildMode: "debug" | "release";
   clean: boolean;
   fastMode: boolean;
+  wrapperCommand?: string | null;
 };
 
 export type BuildPlanStep = {
@@ -110,6 +111,16 @@ export type BuildEnvironmentSnapshot = {
   toolchain: BuildToolchainSnapshot;
 };
 
+export type BuildConfiguration = {
+  id: string;
+  name: string;
+  target: BuildTarget;
+  moduleName: string;
+  product: string;
+  buildMode: "debug" | "release";
+  fastMode: boolean;
+};
+
 export type BuildResult = {
   runId: string;
   planId?: string;
@@ -128,11 +139,36 @@ export type HarmonyBuildProject = {
   rootPath: string;
   isHarmonyProject: boolean;
   hasHvigorWrapper: boolean;
+  hvigorWrapperCommand: string | null;
   hasHvigorFile: boolean;
   hasBuildProfile: boolean;
   hasOhPackage: boolean;
   modules: string[];
   defaultModule: string | null;
+};
+
+export type BuildPreflightIssueSeverity = "error" | "warning";
+export type BuildPreflightIssueCode =
+  | "no-workspace"
+  | "not-harmony-project"
+  | "missing-hvigor-wrapper"
+  | "missing-hvigor-file"
+  | "missing-build-profile"
+  | "missing-module"
+  | "missing-sdk-path"
+  | "missing-node-path"
+  | "missing-oh-package";
+
+export type BuildPreflightIssue = {
+  severity: BuildPreflightIssueSeverity;
+  code: BuildPreflightIssueCode;
+  message: string;
+  hint: string;
+};
+
+export type BuildPreflightResult = {
+  canBuild: boolean;
+  issues: BuildPreflightIssue[];
 };
 
 export type BuildRunFinish = {
@@ -153,6 +189,8 @@ export type BuildState = {
   product: string;
   buildMode: "debug" | "release";
   fastMode: boolean;
+  configurations: BuildConfiguration[];
+  activeConfigurationId: string | null;
   output: string;
   problems: ProblemItem[];
   lastResult: BuildResult | null;
@@ -163,4 +201,5 @@ export type BuildState = {
   lastExitCode: number | null;
   lastDurationMs: number | null;
   message: string;
+  preflight: BuildPreflightResult | null;
 };

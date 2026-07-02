@@ -6,6 +6,7 @@ import { planHarmonyBuildCommand } from "@/features/build/build-command-planner"
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import { assessBuildFreshness } from "@/features/build/build-freshness";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
+import { preflightHarmonyBuild } from "@/features/build/build-preflight";
 import { createBuildIntent, createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import { listBuildRunSummaries } from "@/features/build/build-run-summary";
 import { createBuildStore } from "@/features/build/build-store";
@@ -118,6 +119,53 @@ describe("build environment snapshot", () => {
         autoDetect: false,
       },
     });
+  });
+});
+
+describe("build command preflight", () => {
+  it("uses the detected Windows Hvigor wrapper command", () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "C:/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: true,
+      fastMode: false,
+      wrapperCommand: "hvigorw.bat",
+    });
+
+    expect(plan.command).toBe("hvigorw.bat clean --no-daemon && hvigorw.bat assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
+  });
+
+  it("blocks builds when the Harmony project has no Hvigor wrapper", () => {
+    const result = preflightHarmonyBuild({
+      project: {
+        rootPath: "/workspace/Demo",
+        isHarmonyProject: true,
+        hasHvigorWrapper: false,
+        hvigorWrapperCommand: null,
+        hasHvigorFile: true,
+        hasBuildProfile: true,
+        hasOhPackage: true,
+        modules: ["entry"],
+        defaultModule: "entry",
+      },
+      settings: {
+        harmonySdkPath: "/opt/harmony-sdk",
+        semanticWorkerPath: "",
+        nodePath: "/opt/node",
+        autoDetect: false,
+      },
+      target: "hap",
+      moduleName: "entry",
+    });
+
+    expect(result.canBuild).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      severity: "error",
+      code: "missing-hvigor-wrapper",
+    }));
   });
 });
 

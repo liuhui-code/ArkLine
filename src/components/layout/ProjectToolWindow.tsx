@@ -10,7 +10,9 @@ type ProjectToolWindowProps = {
   lazyChildren?: Record<string, WorkspaceDirectoryEntry[]>;
   lazyLoadingPaths?: Set<string>;
   activePath: string | null;
+  selectedPath?: string | null;
   onOpen: (path: string) => void;
+  onSelectPath?: (path: string) => void;
   onLoadDirectory?: (path: string) => void;
   onRequestMutation: (request: ProjectMutationRequest) => void;
 };
@@ -48,16 +50,13 @@ function commonRoot(paths: string[]) {
   if (paths.length === 0) {
     return [];
   }
-
   const splitPaths = paths.map(splitPathSegments);
   const prefix: string[] = [];
-
   splitPaths[0]?.forEach((segment, index) => {
     if (splitPaths.every((parts) => parts[index] === segment)) {
       prefix.push(segment);
     }
   });
-
   return prefix;
 }
 
@@ -69,7 +68,6 @@ function buildTree(tree: FileTreeNode[]) {
   if (splitPaths.length > 0 && splitPaths.every((parts) => parts.length === rootSegments.length)) {
     rootSegments = rootSegments.slice(0, -1);
   }
-
   const rootPath = normalizePath(tree[0]?.path ?? "");
   const rootLabel = rootSegments.at(-1) ?? getPathBasename(rootPath) ?? "Workspace";
   const separator = rootPath.includes("\\") ? "\\" : "/";
@@ -127,7 +125,6 @@ function buildLazyTree(
     loading: loadingPaths.has(rootPath),
   };
   const visited = new Set<string>();
-
   function hydrateDirectory(node: InternalNode) {
     const normalizedPath = normalizePath(node.path);
     if (visited.has(normalizedPath)) {
@@ -153,7 +150,6 @@ function buildLazyTree(
       }
     }
   }
-
   hydrateDirectory(root);
   return root;
 }
@@ -175,7 +171,6 @@ function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
     if (node.kind === "file" || !expanded) {
       return;
     }
-
     if (node.loading) {
       entries.push({
         key: `loading:${node.path}`,
@@ -185,7 +180,6 @@ function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
         path: `${node.path}::loading`,
       });
     }
-
     const children = [...node.children.values()].sort((left, right) => {
       if (left.kind !== right.kind) {
         return left.kind === "directory" ? -1 : 1;
@@ -193,10 +187,8 @@ function buildEntries(root: InternalNode, expandedDirectories: Set<string>) {
 
       return left.label.localeCompare(right.label);
     });
-
     children.forEach((child) => walk(child, depth + 1));
   }
-
   walk(root, 0);
   return entries;
 }
@@ -212,7 +204,6 @@ function collectDirectoryPaths(root: InternalNode) {
     paths.push(node.path);
     node.children.forEach((child) => visit(child));
   }
-
   visit(root);
   return paths;
 }
@@ -225,16 +216,13 @@ function collectAncestorDirectories(root: InternalNode, targetPath: string) {
       ancestors.push(...parents);
       return true;
     }
-
     for (const child of node.children.values()) {
       if (visit(child, node.kind === "directory" ? [...parents, node.path] : parents)) {
         return true;
       }
     }
-
     return false;
   }
-
   visit(root, []);
   return ancestors;
 }
@@ -254,7 +242,9 @@ export function ProjectToolWindow({
   lazyChildren,
   lazyLoadingPaths,
   activePath,
+  selectedPath,
   onOpen,
+  onSelectPath,
   onLoadDirectory,
   onRequestMutation,
 }: ProjectToolWindowProps) {
@@ -267,6 +257,7 @@ export function ProjectToolWindow({
   }, [lazyChildren, lazyLoadingPaths, lazyRoot, tree]);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const normalizedActivePath = activePath ? normalizePath(activePath) : null;
+  const normalizedSelectedPath = selectedPath ? normalizePath(selectedPath) : null;
   const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
   const [lazyExpandedDirectories, setLazyExpandedDirectories] = useState<Set<string>>(() => new Set());
   const [pendingFocusPath, setPendingFocusPath] = useState<string | null>(null);
@@ -443,10 +434,11 @@ export function ProjectToolWindow({
             <button
               key={entry.key}
               type="button"
-              className="project-tree__row project-tree__row--directory"
+              className={`project-tree__row project-tree__row--directory${normalizedSelectedPath === normalizePath(entry.path) ? " project-tree__row--active" : ""}`}
               style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
               aria-expanded={entry.expanded ? "true" : "false"}
-              onClick={() => toggleDirectory(entry.path)}
+              aria-selected={normalizedSelectedPath === normalizePath(entry.path) ? "true" : undefined}
+              onClick={() => { onSelectPath?.(normalizePath(entry.path)); toggleDirectory(entry.path); }}
               onContextMenu={(event) => openProjectContextMenu(event, { kind: "directory", label: entry.label, path: entry.path })}
             >
               <span className="project-tree__caret" aria-hidden="true">
@@ -478,11 +470,12 @@ export function ProjectToolWindow({
                 }
               }}
               type="button"
-              className={`project-tree__row project-tree__row--file${normalizedActivePath === normalizePath(entry.path) ? " project-tree__row--active" : ""}`}
+              className={`project-tree__row project-tree__row--file${normalizedActivePath === normalizePath(entry.path) || normalizedSelectedPath === normalizePath(entry.path) ? " project-tree__row--active" : ""}`}
               style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
               title={entry.path}
               aria-current={normalizedActivePath === normalizePath(entry.path) ? "true" : undefined}
-              onClick={() => onOpen(entry.path)}
+              aria-selected={normalizedSelectedPath === normalizePath(entry.path) ? "true" : undefined}
+              onClick={() => { onSelectPath?.(normalizePath(entry.path)); onOpen(entry.path); }}
               onContextMenu={(event) => openProjectContextMenu(event, { kind: "file", label: entry.label, path: entry.path })}
             >
               <span className="project-tree__caret" aria-hidden="true" />

@@ -99,8 +99,17 @@ describe("indexed completion model", () => {
 
   it("converts indexed file symbols into current-class method entries", () => {
     expect(candidateToCurrentClassMethod(candidate())).toEqual({
+      kind: "method",
       name: "build",
       signature: "build()",
+      line: 4,
+      column: 3,
+    });
+
+    expect(candidateToCurrentClassMethod(candidate({ kind: "property", title: "title", signature: "title: string" }))).toEqual({
+      kind: "member",
+      name: "title",
+      signature: "title: string",
       line: 4,
       column: 3,
     });

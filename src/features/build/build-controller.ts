@@ -2,7 +2,7 @@ import { planHarmonyBuildCommand } from "@/features/build/build-command-planner"
 import { extractBuildArtifacts } from "@/features/build/build-artifacts";
 import { parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
-import type { BuildPlan, BuildResult, BuildState } from "@/features/build/build-model";
+import type { BuildPlan, BuildResult, BuildState, HarmonyBuildProject } from "@/features/build/build-model";
 import { createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import type { AppSettings } from "@/features/settings/settings-store";
 import type { TerminalRunRequest, TerminalRunResult } from "@/features/workspace/workspace-api";
@@ -11,6 +11,7 @@ export type BuildPlanFromStateInput = {
   rootPath: string;
   state: Pick<BuildState, "lastTarget" | "moduleName" | "product" | "buildMode" | "fastMode">;
   clean: boolean;
+  project?: HarmonyBuildProject | null;
 };
 
 export type TerminalBuildRunner = (request: TerminalRunRequest) => Promise<TerminalRunResult>;
@@ -26,6 +27,7 @@ export function createHarmonyBuildPlanFromState(input: BuildPlanFromStateInput):
     buildMode: input.state.buildMode,
     clean: input.clean,
     fastMode: input.state.fastMode,
+    wrapperCommand: input.project?.hvigorWrapperCommand,
   });
 }
 

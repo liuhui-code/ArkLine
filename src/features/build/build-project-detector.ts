@@ -28,7 +28,10 @@ function detectModules(rootPath: string, files: string[]) {
 export function detectHarmonyBuildProject(rootPath: string, files: string[]): HarmonyBuildProject {
   const relativeFiles = files.map((file) => relativePath(rootPath, file));
   const modules = detectModules(rootPath, files);
-  const hasHvigorWrapper = relativeFiles.some((file) => getPathBasename(file) === "hvigorw" || getPathBasename(file) === "hvigorw.bat");
+  const hasUnixWrapper = relativeFiles.some((file) => getPathBasename(file) === "hvigorw");
+  const hasWindowsWrapper = relativeFiles.some((file) => getPathBasename(file) === "hvigorw.bat");
+  const hasHvigorWrapper = hasUnixWrapper || hasWindowsWrapper;
+  const hvigorWrapperCommand = hasUnixWrapper ? "./hvigorw" : hasWindowsWrapper ? "hvigorw.bat" : null;
   const hasHvigorFile = relativeFiles.includes("hvigorfile.ts");
   const hasBuildProfile = relativeFiles.includes("build-profile.json5");
   const hasOhPackage = relativeFiles.includes("oh-package.json5");
@@ -39,6 +42,7 @@ export function detectHarmonyBuildProject(rootPath: string, files: string[]): Ha
     rootPath: normalizePath(rootPath),
     isHarmonyProject,
     hasHvigorWrapper,
+    hvigorWrapperCommand,
     hasHvigorFile,
     hasBuildProfile,
     hasOhPackage,
@@ -55,7 +59,7 @@ export function inferBuildModuleForPath(project: HarmonyBuildProject | null, pat
   if (path) {
     const relative = relativePath(project.rootPath, path);
     const segments = relative.split("/");
-    if (segments.length > 3 && segments[1] === "src" && segments[2] === "main" && project.modules.includes(segments[0])) {
+    if (project.modules.includes(segments[0])) {
       return segments[0];
     }
   }

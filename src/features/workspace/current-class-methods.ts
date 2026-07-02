@@ -1,4 +1,5 @@
 export type CurrentClassMethod = {
+  kind: "method" | "member";
   name: string;
   signature: string;
   line: number;
@@ -12,6 +13,7 @@ type ClassBlock = {
 
 const classStartPattern = /^\s*(?:export\s+)?(?:abstract\s+)?(?:class|struct)\s+[A-Za-z_$][\w$]*[^{]*\{/;
 const methodPattern = /^(\s*)(?:(?:public|private|protected|static|override|async)\s+)*([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*(?::[^{]+)?(?:\{|$)/;
+const memberPattern = /^(\s*)(?:(?:public|private|protected|static|readonly|override)\s+)*(?:@[A-Za-z_$][\w$]*(?:\([^)]*\))?\s*)*([A-Za-z_$][\w$]*)\??\s*(?::\s*([^=;{]+))?(?:\s*=.*)?;?\s*$/;
 const nonMethodNames = new Set(["if", "for", "while", "switch", "catch", "function"]);
 
 export function collectCurrentClassMethods(content: string, caretLine: number): CurrentClassMethod[] {
@@ -31,8 +33,23 @@ export function collectCurrentClassMethods(content: string, caretLine: number): 
         const [, indent, name, args] = match;
         if (!nonMethodNames.has(name) && !line.includes("=>") && !line.trimStart().startsWith(".")) {
           methods.push({
+            kind: "method",
             name,
             signature: `${name}(${args.trim()})`,
+            line: index + 1,
+            column: indent.length + line.slice(indent.length).indexOf(name) + 1,
+          });
+        }
+      }
+
+      const memberMatch = memberPattern.exec(line);
+      if (memberMatch && !line.includes("(") && !line.trimStart().startsWith("@")) {
+        const [, indent, name, typeName] = memberMatch;
+        if (!nonMethodNames.has(name)) {
+          methods.push({
+            kind: "member",
+            name,
+            signature: typeName?.trim() ? `${name}: ${typeName.trim()}` : name,
             line: index + 1,
             column: indent.length + line.slice(indent.length).indexOf(name) + 1,
           });

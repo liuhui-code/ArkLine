@@ -16,6 +16,7 @@ import type { WorkspaceDirectoryEntry, WorkspaceViewModel } from "@/features/wor
 
 type ShellSidebarProps = {
   activePath: string | null;
+  selectedProjectPath: string | null;
   activeTool: LeftToolKey;
   filesVisible: boolean;
   width: number;
@@ -27,6 +28,7 @@ type ShellSidebarProps = {
   projectTreeLoadingPaths: Set<string>;
   filesPaneRef: RefObject<HTMLDivElement | null>;
   onOpenFile: (path: string) => void;
+  onSelectProjectPath: (path: string) => void;
   onLoadProjectDirectory: (path: string) => void;
   onRequestProjectMutation: (request: ProjectMutationRequest) => void;
   onResizeWidth: (width: number) => void;
@@ -35,6 +37,7 @@ type ShellSidebarProps = {
 
 export function ShellSidebar({
   activePath,
+  selectedProjectPath,
   activeTool,
   filesVisible,
   width,
@@ -46,6 +49,7 @@ export function ShellSidebar({
   projectTreeLoadingPaths,
   filesPaneRef,
   onOpenFile,
+  onSelectProjectPath,
   onLoadProjectDirectory,
   onRequestProjectMutation,
   onResizeWidth,
@@ -140,12 +144,14 @@ export function ShellSidebar({
                   lazyLoadingPaths={projectTreeLoadingPaths}
                   tree={workspace.fileTree}
                   activePath={activePath}
+                  selectedPath={selectedProjectPath}
                   onLoadDirectory={onLoadProjectDirectory}
                   onOpen={onOpenFile}
+                  onSelectPath={onSelectProjectPath}
                   onRequestMutation={onRequestProjectMutation}
                 />
               ) : (
-                <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} onOpen={onOpenFile} onRequestMutation={onRequestProjectMutation} />
+                <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} selectedPath={selectedProjectPath} onOpen={onOpenFile} onSelectPath={onSelectProjectPath} onRequestMutation={onRequestProjectMutation} />
               )
             ) : (
               <p>Workspace files will appear here.</p>

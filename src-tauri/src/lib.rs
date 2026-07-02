@@ -1,4 +1,5 @@
 mod commands {
+    pub mod build_configurations;
     pub mod code_actions;
     pub mod device_log;
     pub mod documents;
@@ -27,6 +28,7 @@ mod models {
 mod platform;
 
 mod services {
+    pub mod build_configuration_store;
     pub mod device_log_service;
     pub mod diff_service;
     pub mod document_service;
@@ -255,6 +257,8 @@ pub fn run() {
             commands::documents::save_text_document,
             commands::documents::validate_text_document,
             commands::environment::inspect_environment,
+            commands::build_configurations::load_build_configurations,
+            commands::build_configurations::save_build_configurations,
             commands::settings::load_settings,
             commands::settings::save_settings,
             commands::language::inspect_language_service,

@@ -46,9 +46,11 @@ const arkTsKeywords = [
 ];
 
 export function candidateToCurrentClassMethod(candidate: SearchCandidate): CurrentClassMethod {
+  const kind = candidate.kind === "method" || candidate.kind === "function" ? "method" : "member";
   return {
+    kind,
     name: candidate.title,
-    signature: `${candidate.title}()`,
+    signature: candidate.signature ?? (kind === "method" ? `${candidate.title}()` : candidate.title),
     line: candidate.line ?? 1,
     column: candidate.column ?? 1,
   };

@@ -49,18 +49,18 @@ export function CurrentClassMethodsPalette({
   }
 
   return (
-    <PaletteShell label="Methods in Current Class" description="Ctrl+F7" onClose={onClose}>
+    <PaletteShell label="File Structure" description="Ctrl+F12" onClose={onClose}>
       <div className="current-methods-palette">
         <input
-          aria-label="Current Class Method Query"
+          aria-label="File Structure Query"
           autoFocus
           className="search-overlay__input"
-          placeholder="Search methods"
+          placeholder="Search methods and members"
           value={query}
           onChange={(event) => onChangeQuery(event.target.value)}
           onKeyDown={handleKeyDown}
         />
-        <div className="current-methods-palette__results" role="listbox" aria-label="Current Class Methods">
+        <div className="current-methods-palette__results" role="listbox" aria-label="File Structure Results">
           {methods.map((method, index) => (
             <button
               key={`${method.line}:${method.column}:${method.signature}`}
@@ -75,7 +75,7 @@ export function CurrentClassMethodsPalette({
               <span className="current-methods-palette__line">line {method.line}</span>
             </button>
           ))}
-          {methods.length === 0 ? <div className="current-methods-palette__empty">No methods found in the current class.</div> : null}
+          {methods.length === 0 ? <div className="current-methods-palette__empty">No methods or members found in the current file.</div> : null}
         </div>
       </div>
     </PaletteShell>

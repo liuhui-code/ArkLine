@@ -27,7 +27,7 @@ function labelForTarget(target: BuildTarget) {
   return target.toUpperCase();
 }
 
-function commandForIntent(intent: BuildIntent) {
+function commandForIntent(intent: BuildIntent, wrapperCommand: string) {
   const daemonArg = intent.fastMode ? "" : " --no-daemon";
   const task = taskForTarget(intent.target);
   const moduleArg = intent.scope === "module" && intent.moduleName
@@ -35,7 +35,7 @@ function commandForIntent(intent: BuildIntent) {
     : "";
 
   return [
-    "./hvigorw",
+    wrapperCommand,
     task,
     `--mode ${intent.scope}`,
     moduleArg.trim(),
@@ -47,10 +47,11 @@ function commandForIntent(intent: BuildIntent) {
 export function planHarmonyBuildCommand(request: HarmonyBuildRequest): BuildPlan {
   const intent = createBuildIntent(request);
   const daemonArg = intent.fastMode ? "" : " --no-daemon";
-  const buildCommand = commandForIntent(intent);
+  const wrapperCommand = request.wrapperCommand?.trim() || "./hvigorw";
+  const buildCommand = commandForIntent(intent, wrapperCommand);
   const steps = intent.clean
     ? [
-      { label: "Clean", command: `./hvigorw clean${daemonArg}` },
+      { label: "Clean", command: `${wrapperCommand} clean${daemonArg}` },
       { label: "Build", command: buildCommand },
     ]
     : [{ label: "Build", command: buildCommand }];

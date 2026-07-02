@@ -39,6 +39,7 @@ import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/feat
 import type { BuildState, BuildTarget } from "@/features/build/build-model";
 import { parseBuildProfileProducts } from "@/features/build/build-profile-parser";
 import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
+import { preflightHarmonyBuild } from "@/features/build/build-preflight";
 import { createBuildStore } from "@/features/build/build-store";
 import { formatArkTsDocument } from "@/features/documents/arkts-format";
 import { createDocumentStore } from "@/features/documents/document-store";
@@ -242,6 +243,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [workspace, setWorkspace] = useState<WorkspaceViewModel | null>(null);
   const [projectTreeChildren, setProjectTreeChildren] = useState<Record<string, WorkspaceDirectoryEntry[]>>({});
   const [projectTreeLoadingPaths, setProjectTreeLoadingPaths] = useState<Set<string>>(() => new Set());
+  const [selectedProjectPath, setSelectedProjectPath] = useState<string | null>(null);
   const [openTabs, setOpenTabs] = useState<{ path: string; title: string; isDirty: boolean }[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null), [editorContent, setEditorContent] = useState("");
   const [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
@@ -804,6 +806,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     tabsRef.current.state.openTabs = [];
     tabsRef.current.state.activePath = null;
     setOpenTabs([]);
+    setSelectedProjectPath(null);
     setActiveDocument(null);
     setQuickOpenQuery("");
     projectOpening.closeProjectPicker();
@@ -844,6 +847,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       const snapshot = await workspaceApi.openWorkspace(rootPath);
       applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot));
       resetWorkspaceUi(snapshot.rootName);
+      const configurations = await workspaceApi.loadBuildConfigurations?.(snapshot.rootPath) ?? [];
+      buildStoreRef.current.loadConfigurations(configurations);
+      setBuildState({ ...buildStoreRef.current.state });
       await refreshSemanticState();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1246,7 +1252,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setCurrentMethodsSelectedIndex(0);
     setIndexedCurrentMethods(null);
     setCurrentMethodsVisible(true);
-    setStatusText("Methods in Current Class");
+    setStatusText("File Structure");
     void loadIndexedCurrentClassMethods(activePath);
   }
 
@@ -1257,7 +1263,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     try {
       const candidates = await workspaceApi.queryWorkspaceFileSymbols(workspace.rootPath, path, "", 200);
       const methods = candidates
-        .filter((candidate) => candidate.source === "symbol" && candidate.kind === "method")
+        .filter((candidate) => candidate.source === "symbol" && ["method", "function", "field", "property", "variable"].includes(candidate.kind ?? ""))
         .map(candidateToCurrentClassMethod);
       setIndexedCurrentMethods({ path, methods });
     } catch {
@@ -1631,7 +1637,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setSelectionTarget({ line: method.line, column: method.column, nonce: Date.now() });
     setEditorFocusToken((token) => token + 1);
     setCurrentMethodsVisible(false);
-    setStatusText(`Method: ${method.signature}`);
+    setStatusText(`${method.kind === "member" ? "Member" : "Method"}: ${method.signature}`);
     focusEditorSoon();
   }
   function insertCompletionItem(item: CompletionPresentation) {
@@ -1802,7 +1808,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     clearSettingsSaveResetTimer();
   }, []);
   useEffect(() => {
-    const nextModule = inferBuildModuleForPath(buildProject, activePath);
+    const nextModule = inferBuildModuleForPath(buildProject, selectedProjectPath ?? activePath);
     if (!nextModule || buildStoreRef.current.state.status === "running") {
       return;
     }
@@ -1810,7 +1816,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       buildStoreRef.current.configure({ moduleName: nextModule });
       setBuildState({ ...buildStoreRef.current.state });
     }
-  }, [activePath, buildProject]);
+  }, [activePath, buildProject, selectedProjectPath]);
   useEffect(() => {
     if (!buildProfilePath) {
       buildStoreRef.current.configure({ products: ["default"], product: "default" });
@@ -1858,6 +1864,45 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setBuildState({ ...buildStoreRef.current.state });
   }
 
+  async function persistBuildConfigurations() {
+    if (!workspace?.rootPath) {
+      return;
+    }
+
+    try {
+      await workspaceApi.saveBuildConfigurations?.(workspace.rootPath, buildStoreRef.current.state.configurations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusText(`Save build configuration failed: ${message}`);
+    }
+  }
+
+  async function saveBuildConfiguration() {
+    buildStoreRef.current.saveCurrentConfiguration();
+    setBuildState({ ...buildStoreRef.current.state });
+    showBottomTool("build");
+    await persistBuildConfigurations();
+  }
+
+  async function copyBuildConfiguration() {
+    buildStoreRef.current.copyActiveConfiguration();
+    setBuildState({ ...buildStoreRef.current.state });
+    showBottomTool("build");
+    await persistBuildConfigurations();
+  }
+
+  async function deleteBuildConfiguration() {
+    buildStoreRef.current.deleteActiveConfiguration();
+    setBuildState({ ...buildStoreRef.current.state });
+    showBottomTool("build");
+    await persistBuildConfigurations();
+  }
+
+  function selectBuildConfiguration(configurationId: string) {
+    buildStoreRef.current.selectConfiguration(configurationId);
+    setBuildState({ ...buildStoreRef.current.state });
+  }
+
   async function runBuild(clean = false) {
     if (!workspace?.rootPath) {
       buildStoreRef.current.fail("Open a project before building");
@@ -1872,10 +1917,25 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
 
     const state = buildStoreRef.current.state;
+    const preflight = preflightHarmonyBuild({
+      project: buildProject,
+      settings: settingsRef.current.state.settings.sdk,
+      target: state.lastTarget,
+      moduleName: state.lastTarget === "app" ? null : state.moduleName,
+    });
+    if (!preflight.canBuild) {
+      buildStoreRef.current.failPreflight(preflight);
+      setBuildState({ ...buildStoreRef.current.state });
+      showBottomTool("build");
+      setStatusText("Build preflight failed");
+      return;
+    }
+
     const plan = createHarmonyBuildPlanFromState({
       rootPath: workspace.rootPath,
       state,
       clean,
+      project: buildProject,
     });
     buildRunCounterRef.current += 1;
     const runId = `build-${buildRunCounterRef.current}`;
@@ -2627,7 +2687,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         className="shell-grid"
         style={{ gridTemplateColumns: `${filesVisible ? leftSidebarWidth : LEFT_SIDEBAR_COLLAPSED_WIDTH}px 1fr` }}
       >
-        <ShellSidebar activePath={activePath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} useLazyProjectTree={useLazyProjectTree} projectTreeChildren={projectTreeChildren} projectTreeLoadingPaths={projectTreeLoadingPaths} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onLoadProjectDirectory={loadProjectDirectoryForActiveWorkspace} onRequestProjectMutation={(request) => openProjectMutationDialog(request.action, request.parentPath)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
+        <ShellSidebar activePath={activePath} selectedProjectPath={selectedProjectPath} activeTool={activeLeftTool} filesVisible={filesVisible} width={leftSidebarWidth} minWidth={LEFT_SIDEBAR_MIN_WIDTH} maxWidth={LEFT_SIDEBAR_MAX_WIDTH} workspace={workspace} useLazyProjectTree={useLazyProjectTree} projectTreeChildren={projectTreeChildren} projectTreeLoadingPaths={projectTreeLoadingPaths} filesPaneRef={filesPaneRef} onOpenFile={(path) => void openFile(path)} onSelectProjectPath={setSelectedProjectPath} onLoadProjectDirectory={loadProjectDirectoryForActiveWorkspace} onRequestProjectMutation={(request) => openProjectMutationDialog(request.action, request.parentPath)} onResizeWidth={resizeLeftSidebar} onSelectTool={showLeftTool} />
         <div className="editor-workbench">
           {queryPanelVisible ? (
             <EditorQueryPanel
@@ -2736,7 +2796,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <BottomToolWindow
         containerRef={bottomToolWindowRef} activeTool={activeBottomTool} contentVisible={bottomContentVisible} height={bottomToolHeight} maxHeight={maxBottomToolHeight()} onResizeHeight={resizeBottomToolWindow} onToggleMaxHeight={toggleBottomToolMaxHeight} onShowTool={showBottomTool} onToggleTool={toggleBottomTool} onRestore={() => showBottomTool(activeBottomTool)} onClose={hideBottomToolWindow} problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={setStatusText} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null} />}
-        buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} modules={buildProject?.modules ?? []} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
+        buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspace?.rootPath ?? null} modules={buildProject?.modules ?? []} onChangeTarget={(lastTarget: BuildTarget) => updateBuildState({ lastTarget })} onChangeModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeFastMode={(fastMode) => updateBuildState({ fastMode })} onSelectConfiguration={selectBuildConfiguration} onSaveConfiguration={() => void saveBuildConfiguration()} onCopyConfiguration={() => void copyBuildConfiguration()} onDeleteConfiguration={() => void deleteBuildConfiguration()} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()} />}
         gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={focusEditorSoon} onOpenCommitDiff={openGitTraceCommitDiff} />} onChangeView={setGitToolView} onOpenFile={(path) => void openFile(path)} />}
         deviceLogPanel={<DeviceLogToolWindow active={bottomContentVisible && activeBottomTool === "deviceLog"} workspaceApi={workspaceApi} onStatusChange={setStatusText} />}
       />
