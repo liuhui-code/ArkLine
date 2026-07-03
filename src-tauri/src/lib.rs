@@ -86,12 +86,18 @@ mod services {
     pub mod workspace_index_entity_query_service;
     #[cfg(test)]
     mod workspace_index_entity_query_service_tests;
+    pub mod workspace_index_event_service;
+    #[cfg(test)]
+    mod workspace_index_event_service_tests;
     pub mod workspace_index_explain_service;
     #[cfg(test)]
     mod workspace_index_explain_service_tests;
     pub mod workspace_index_facade_service;
     #[cfg(test)]
     mod workspace_index_facade_service_tests;
+    pub mod workspace_index_file_readiness_service;
+    #[cfg(test)]
+    mod workspace_index_file_readiness_service_tests;
     pub mod workspace_index_full_refresh_service;
     #[cfg(test)]
     mod workspace_index_full_refresh_service_tests;
@@ -119,6 +125,7 @@ mod services {
     pub mod workspace_index_readiness_service;
     #[cfg(test)]
     mod workspace_index_readiness_service_tests;
+    pub mod workspace_index_repair_action_service;
     pub mod workspace_index_repair_service;
     #[cfg(test)]
     mod workspace_index_repair_service_tests;
@@ -137,6 +144,9 @@ mod services {
     pub mod workspace_index_state_machine_service;
     #[cfg(test)]
     mod workspace_index_state_machine_service_tests;
+    pub mod workspace_index_status_projection_service;
+    #[cfg(test)]
+    mod workspace_index_status_projection_service_tests;
     pub mod workspace_index_task_journal_service;
     #[cfg(test)]
     mod workspace_index_task_journal_service_tests;
@@ -250,6 +260,7 @@ pub fn run() {
             commands::workspace::refresh_workspace_index_with_changes,
             commands::workspace::search_workspace_text,
             commands::workspace_index::explain_workspace_index_query,
+            commands::workspace_index::get_workspace_index_file_readiness,
             commands::workspace::watch_workspace_index,
             commands::workspace::unwatch_workspace_index,
             commands::workspace::load_workspace_diff,

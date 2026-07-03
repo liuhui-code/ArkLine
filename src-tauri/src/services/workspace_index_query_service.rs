@@ -67,6 +67,9 @@ pub fn query_workspace_candidates(
     scope: WorkspaceIndexQueryScope,
     limit: usize,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
+    if query.trim().is_empty() {
+        return Ok(Vec::new());
+    }
     if scope == WorkspaceIndexQueryScope::Text {
         return text_search_candidates(index_runtime, root_path, query, limit);
     }
@@ -79,14 +82,6 @@ pub fn query_workspace_candidates(
         WorkspaceIndexQueryScope::Text => unreachable!("text scope is handled above"),
     };
     let mut candidates = query_workspace_entities(root_path, query, entity_scope, limit)?;
-    if scope == WorkspaceIndexQueryScope::All {
-        candidates.extend(text_search_candidates(
-            index_runtime,
-            root_path,
-            query,
-            limit,
-        )?);
-    }
     if candidates.is_empty() && scope == WorkspaceIndexQueryScope::All {
         return index_runtime.query_search_everywhere(root_path, query, limit);
     }

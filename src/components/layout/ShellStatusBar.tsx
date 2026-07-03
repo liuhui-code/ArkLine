@@ -25,6 +25,7 @@ type ShellStatusBarProps = {
   onRefreshGitBlame: () => void;
   onShowCurrentLineBlame: () => void;
   onCloseGitBlame: () => void;
+  onOpenIndexDiagnostics: () => void;
 };
 
 export function ShellStatusBar({
@@ -47,13 +48,21 @@ export function ShellStatusBar({
   onRefreshGitBlame,
   onShowCurrentLineBlame,
   onCloseGitBlame,
+  onOpenIndexDiagnostics,
 }: ShellStatusBarProps) {
   return (
     <footer aria-label="Status Bar" className="status-bar">
       <div aria-label="Status Bar Left" className="status-bar__group status-bar__group--left">
         <span className="status-pill status-pill--em">{`Workspace: ${workspaceName ?? "none"}`}</span>
         {workspaceScanText ? <span className="status-pill">{workspaceScanText}</span> : null}
-        <span className="status-pill">{workspaceIndexText}</span>
+        <button
+          type="button"
+          className="status-pill status-pill--button"
+          aria-label={`Open Index Diagnostics: ${workspaceIndexText}`}
+          onClick={onOpenIndexDiagnostics}
+        >
+          {workspaceIndexText}
+        </button>
         {sdkIndexText ? <span className="status-pill">{sdkIndexText}</span> : null}
         <span className="status-pill">{activePath ? getPathBasename(activePath) : "No file selected"}</span>
         <SemanticCapabilityBadge capability={semanticCapability} />

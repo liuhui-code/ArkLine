@@ -135,6 +135,7 @@ pub fn task_status_from_task(
 ) -> WorkspaceIndexTaskStatus {
     let running = status == "running";
     let terminal = is_terminal_task_status(status);
+    let now = current_time_millis();
     WorkspaceIndexTaskStatus {
         task_id: task_id(&task.generation, task_kind_label(&task.kind)),
         root_path: task.root_path.to_string(),
@@ -144,8 +145,10 @@ pub fn task_status_from_task(
         generation: task.generation,
         progress_current: if terminal { 1 } else { 0 },
         progress_total: 1,
-        started_at: running.then(current_time_millis),
-        finished_at: terminal.then(current_time_millis),
+        started_at: running.then_some(now),
+        last_heartbeat_at: running.then_some(now),
+        stalled: false,
+        finished_at: terminal.then_some(now),
         symbol_count,
         message,
         error: None,
@@ -216,6 +219,8 @@ pub fn task_status_from_result(result: &WorkspaceIndexTaskResult) -> WorkspaceIn
         progress_current: 1,
         progress_total: 1,
         started_at: result.started_at,
+        last_heartbeat_at: result.finished_at.or(result.started_at),
+        stalled: false,
         finished_at: result.finished_at,
         symbol_count: result.sdk_symbol_count,
         message: result.message.clone(),

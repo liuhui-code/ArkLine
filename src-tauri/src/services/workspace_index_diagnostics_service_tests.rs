@@ -2,9 +2,18 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::models::workspace::WorkspaceIndexEvent;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index;
+use crate::services::workspace_index_event_service::store_index_event;
+use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
+use crate::services::workspace_index_resume_service::save_resume_task;
+use crate::services::workspace_index_scheduler_service::{
+    WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
+};
+use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
+use rusqlite::{params, Connection};
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -50,6 +59,9 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     assert_eq!(diagnostics.parser_error_count, 0);
     assert_eq!(diagnostics.stale_generation_count, 0);
     assert_eq!(diagnostics.sdk_symbol_count, 0);
+    assert!(diagnostics.db_size_bytes > 0);
+    assert_eq!(diagnostics.queue_pressure.pending_task_count, 0);
+    assert_eq!(diagnostics.queue_pressure.workspace_pending_task_count, 0);
     assert!(diagnostics.last_error.is_none());
     assert!(diagnostics.last_explain_status.is_none());
 
@@ -78,6 +90,218 @@ fn reports_active_sdk_index_metadata_for_diagnostics() {
     );
     assert_eq!(diagnostics.active_sdk_version.as_deref(), Some("test-sdk"));
     assert_eq!(diagnostics.sdk_symbol_count, 2);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_recent_unified_index_events_for_diagnostics() {
+    let root = unique_temp_dir("workspace-index-diagnostics-events");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("Index.ets"),
+        "struct Index { build() {} }\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager.refresh_workspace_index(&root_path).unwrap();
+    manager.drain_index_task_results(&runtime).unwrap();
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.recent_events.len(), 3);
+    assert_eq!(diagnostics.recent_events[0].phase, "queued");
+    assert_eq!(diagnostics.recent_events[1].phase, "running");
+    assert_eq!(diagnostics.recent_events[2].phase, "ready");
+    assert_eq!(
+        diagnostics.recent_events[2].task_id.as_deref(),
+        Some("1:refresh-workspace")
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_task_timeline_from_unified_index_events() {
+    let root = unique_temp_dir("workspace-index-diagnostics-timeline");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("Index.ets"),
+        "struct Index { build() {} }\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager.refresh_workspace_index(&root_path).unwrap();
+    manager.drain_index_task_results(&runtime).unwrap();
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.timeline.len(), 3);
+    assert_eq!(diagnostics.timeline[0].scope, "task");
+    assert_eq!(diagnostics.timeline[0].phase, "queued");
+    assert_eq!(diagnostics.timeline[0].title, "refresh-workspace queued");
+    assert!(diagnostics.timeline[2].duration_ms.is_some());
+    assert_eq!(
+        diagnostics.timeline[2].task_id.as_deref(),
+        Some("1:refresh-workspace")
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_latest_error_and_query_explain_status_from_events() {
+    let root = unique_temp_dir("workspace-index-diagnostics-latest-events");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let root_key = root_path.replace('/', "\\");
+
+    store_index_event(
+        &root_path,
+        &WorkspaceIndexEvent {
+            event_id: "task:error:100".to_string(),
+            root_path: root_key.clone(),
+            scope: "task".to_string(),
+            kind: "refresh-workspace".to_string(),
+            phase: "failed".to_string(),
+            severity: "error".to_string(),
+            message: "Parser exploded".to_string(),
+            task_id: Some("1:refresh-workspace".to_string()),
+            generation: Some(1),
+            payload_json: "{}".to_string(),
+            created_at: 100,
+        },
+    )
+    .unwrap();
+    store_index_event(
+        &root_path,
+        &WorkspaceIndexEvent {
+            event_id: "query:blocked:200".to_string(),
+            root_path: root_key,
+            scope: "query".to_string(),
+            kind: "definition".to_string(),
+            phase: "blocked".to_string(),
+            severity: "warning".to_string(),
+            message: "SDK index is not ready".to_string(),
+            task_id: None,
+            generation: None,
+            payload_json: "{}".to_string(),
+            created_at: 200,
+        },
+    )
+    .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.last_error.as_deref(), Some("Parser exploded"));
+    assert_eq!(diagnostics.last_explain_status.as_deref(), Some("blocked"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_parser_failure_details_for_diagnostics() {
+    let root = unique_temp_dir("workspace-index-diagnostics-parser-failures");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let broken_path = source_dir.join("Broken.ets");
+    fs::write(&broken_path, "class Broken {\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.parser_failures.len(), 1);
+    assert_eq!(
+        diagnostics.parser_failures[0].path,
+        broken_path.to_string_lossy()
+    );
+    assert_eq!(diagnostics.parser_failures[0].line, 1);
+    assert!(!diagnostics.parser_failures[0].message.is_empty());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_unresolved_import_details_for_diagnostics() {
+    let root = unique_temp_dir("workspace-index-diagnostics-unresolved-imports");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let root_key = root_path.replace('/', "\\");
+    let source_path = root
+        .join("entry")
+        .join("src")
+        .join("main")
+        .join("ets")
+        .join("Index.ets");
+    let path_key = source_path.to_string_lossy().replace('/', "\\");
+    fs::create_dir_all(root.join(".arkline").join("index")).unwrap();
+    let connection = Connection::open(
+        root.join(".arkline")
+            .join("index")
+            .join("workspace-catalog.sqlite"),
+    )
+    .unwrap();
+    ensure_workspace_index_schema(&connection).unwrap();
+    connection
+        .execute(
+            "insert into workspace_unresolved_imports (root_path, from_path, source_module, line, column)
+             values (?1, ?2, './MissingProfile', 2, 8)",
+            params![root_key, path_key],
+        )
+        .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.unresolved_imports.len(), 1);
+    assert_eq!(
+        diagnostics.unresolved_imports[0].source_module,
+        "./MissingProfile"
+    );
+    assert_eq!(diagnostics.unresolved_imports[0].line, 2);
+    assert_eq!(diagnostics.unresolved_imports[0].column, 8);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_resume_repair_action_for_persisted_resume_tasks() {
+    let root = unique_temp_dir("workspace-index-diagnostics-resume-action");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let source_file = source_dir.join("Resume.ets");
+    fs::write(&source_file, "struct Resume {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    save_resume_task(
+        &root_path,
+        &WorkspaceIndexTask {
+            root_path: root_path.clone(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::FullRefresh,
+            changed_paths: vec![source_file.to_string_lossy().to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 7,
+            reason: "full-refresh-continuation:refresh-workspace".to_string(),
+        },
+    )
+    .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert!(diagnostics
+        .repair_actions
+        .iter()
+        .any(|action| action == "resumeIndexing"));
 
     fs::remove_dir_all(root).unwrap();
 }

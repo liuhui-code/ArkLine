@@ -12,6 +12,7 @@ import { EditorSurface } from "@/components/layout/EditorSurface";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitToolWindow, type GitToolView } from "@/components/layout/GitToolWindow";
 import { GitTracePanel } from "@/components/layout/GitTracePanel";
+import { IndexDiagnosticsCenter } from "@/components/layout/IndexDiagnosticsCenter";
 import { IndexExplainPanel } from "@/components/layout/IndexExplainPanel";
 import { candidateToCurrentClassMethod } from "@/components/layout/indexed-completion-model";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
@@ -62,7 +63,7 @@ import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
-import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexExplainResult, type WorkspaceIndexQueryScope, type WorkspaceIndexRefreshResult, type WorkspaceIndexTaskStatus, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import { defaultWorkspaceApi, toWorkspaceViewModel, type EnvironmentReport, type LanguageCompletionItem, type WorkspaceApi, type WorkspaceDirectoryEntry, type WorkspaceEditPreview as WorkspaceEditPreviewModel, type WorkspaceIndexDiagnostics, type WorkspaceIndexExplainResult, type WorkspaceIndexFileReadiness, type WorkspaceIndexQueryScope, type WorkspaceIndexRefreshResult, type WorkspaceIndexTaskStatus, type WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import { createWorkspaceIndexStore, type SearchCandidate, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
@@ -171,12 +172,49 @@ function getWorkspacePartialNotice(workspace: WorkspaceViewModel | null) {
   return `Partial workspace results: scan stopped at ${workspace.scanSummary.scannedFiles.toLocaleString()} files; excluded ${workspace.scanSummary.skippedEntries.toLocaleString()} generated/dependency entries.`;
 }
 
-function getIndexStatusText(indexState: WorkspaceIndexState) {
+function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses: WorkspaceIndexTaskStatus[] = []) {
+  const stalledTasks = taskStatuses.filter((status) => status.kind !== "sdk" && status.stalled);
+  if (stalledTasks.length > 0) {
+    const suffix = stalledTasks.length === 1 ? "task" : "tasks";
+    return `Index: Stalled, ${stalledTasks.length} ${suffix} > 60s`;
+  }
+
+  const activeTask = getActiveProjectIndexTaskStatus(taskStatuses);
+  if (activeTask) {
+    const progressText = activeTask.progressTotal > 0
+      ? ` (${activeTask.progressCurrent}/${activeTask.progressTotal})`
+      : "";
+    return `Index: ${activeTask.status} ${projectIndexTaskLabel(activeTask.kind)}${progressText}`;
+  }
+
   if (indexState.status === "empty") {
     return "Index: empty";
   }
 
+  if (indexState.status === "partial" && indexState.filePaths.length === 0) {
+    return "Index: building project";
+  }
+
   return `Index: ${indexState.status} (${indexState.filePaths.length.toLocaleString()} files)`;
+}
+
+function getActiveProjectIndexTaskStatus(statuses: WorkspaceIndexTaskStatus[]) {
+  return [...statuses]
+    .reverse()
+    .find((status) => status.kind !== "sdk" && (status.status === "queued" || status.status === "running"));
+}
+
+function projectIndexTaskLabel(kind: string) {
+  if (kind === "open-workspace") {
+    return "project";
+  }
+  if (kind === "refresh-workspace") {
+    return "refresh";
+  }
+  if (kind === "changed-paths") {
+    return "changes";
+  }
+  return kind;
 }
 
 function getSdkIndexStatusText(statuses: WorkspaceIndexTaskStatus[]) {
@@ -231,6 +269,10 @@ function orderSearchEverywhereCandidates(candidates: SearchCandidate[]) {
     .map(({ candidate }) => candidate);
 }
 
+function searchEverywhereEntityCandidates(candidates: SearchCandidate[]) {
+  return candidates.filter((candidate) => candidate.source !== "text");
+}
+
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const [filesVisible, setFilesVisible] = useState(true);
@@ -248,6 +290,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [activePath, setActivePath] = useState<string | null>(null), [editorContent, setEditorContent] = useState("");
   const [activeOverlay, setActiveOverlay] = useState<OverlayKey>("none");
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
   const [searchEverywhereScope, setSearchEverywhereScope] = useState<WorkspaceIndexQueryScope>("all");
   const [searchEverywhereReplaceQuery, setSearchEverywhereReplaceQuery] = useState("");
@@ -288,6 +331,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [latestExplainResult, setLatestExplainResult] = useState<WorkspaceIndexExplainResult | null>(null);
   const [latestExplainContext, setLatestExplainContext] = useState<IndexExplainContext | null>(null);
   const [indexExplainPanelVisible, setIndexExplainPanelVisible] = useState(false);
+  const [indexDiagnosticsVisible, setIndexDiagnosticsVisible] = useState(false);
+  const [indexDiagnosticsLoading, setIndexDiagnosticsLoading] = useState(false);
+  const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
+  const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [gitToolView, setGitToolView] = useState<GitToolView>("changes");
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const [statusText, setStatusText] = useState("Mode: shell bootstrap");
@@ -345,7 +392,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   );
   const workspaceScanText = getWorkspaceScanText(workspace);
   const [workspaceIndexState, setWorkspaceIndexState] = useState<WorkspaceIndexState>(() => ({ ...workspaceIndexRef.current.state }));
-  const workspaceIndexText = getIndexStatusText(workspaceIndexState);
+  const workspaceIndexText = getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses);
   const sdkIndexText = getSdkIndexStatusText(workspaceIndexTaskStatuses);
   const queryReadinessNotice = workspaceIndexState.queryReadiness
     && workspaceIndexState.queryReadiness.state !== "ready"
@@ -404,6 +451,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
     setActiveOverlay(overlay);
     setQuickOpenQuery("");
+    setDebouncedSearchQuery("");
     setSearchEverywhereSelectedIndex(0);
     setStatusText(getOverlayLabel(overlay));
   }
@@ -870,12 +918,64 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     return () => { disposed = true; };
   }, [workspace, workspaceApi]);
 
+  function includeVisibleWorkspaceFile(path: string) {
+    if (!workspace) {
+      return;
+    }
+
+    const normalizedPath = normalizePath(path);
+    const normalizedRoot = normalizePath(workspace.rootPath);
+    if (!pathWithinDirectory(normalizedPath, normalizedRoot)) {
+      return;
+    }
+
+    const alreadyVisible = workspace.visibleFiles.some((visiblePath) => normalizePath(visiblePath) === normalizedPath);
+    if (alreadyVisible) {
+      return;
+    }
+
+    setWorkspace((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const currentRoot = normalizePath(current.rootPath);
+      if (!pathWithinDirectory(normalizedPath, currentRoot)
+        || current.visibleFiles.some((visiblePath) => normalizePath(visiblePath) === normalizedPath)) {
+        return current;
+      }
+
+      const visibleFiles = uniqueNormalizedPaths([...current.visibleFiles, normalizedPath]);
+      const nextWorkspace = {
+        ...current,
+        visibleFiles,
+        fileTree: createFileTreeNodes(visibleFiles),
+      };
+      syncWorkspaceIndex(nextWorkspace);
+      return nextWorkspace;
+    });
+
+    if (workspaceApi.updateWorkspaceIndexFiles) {
+      void workspaceApi.updateWorkspaceIndexFiles(normalizedRoot, [normalizedPath], [])
+        .then((state) => {
+          workspaceIndexRef.current.replaceState(state);
+          setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
+        })
+        .catch((error) => {
+          setStatusText(`Workspace index update failed: ${error instanceof Error ? error.message : String(error)}`);
+        });
+    } else {
+      scheduleVisibleFilesIndex(normalizedRoot, [normalizedPath]);
+    }
+  }
+
   async function openFile(path: string) {
     const content = await workspaceApi.openFile(path);
     if (!documentsRef.current.getDocument(path)) documentsRef.current.openDocument(path, content);
     tabsRef.current.openTab(path);
     syncTabs();
     setActiveDocument(path);
+    includeVisibleWorkspaceFile(path);
     codeActionResolveRequestRef.current += 1;
     clearCompletionSession();
     setCompletionAnchor(null);
@@ -1808,6 +1908,17 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     clearSettingsSaveResetTimer();
   }, []);
   useEffect(() => {
+    if (activeOverlay !== "searchEverywhere") {
+      setDebouncedSearchQuery(quickOpenQuery);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchQuery(quickOpenQuery);
+    }, 80);
+    return () => window.clearTimeout(timeout);
+  }, [activeOverlay, quickOpenQuery]);
+  useEffect(() => {
     const nextModule = inferBuildModuleForPath(buildProject, selectedProjectPath ?? activePath);
     if (!nextModule || buildStoreRef.current.state.status === "running") {
       return;
@@ -2047,6 +2158,56 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
   }
 
+  async function refreshIndexDiagnostics() {
+    if (!workspace?.rootPath) {
+      setIndexDiagnostics(null);
+      setCurrentFileReadiness(null);
+      return;
+    }
+
+    setIndexDiagnosticsLoading(true);
+    try {
+      const [diagnostics, statuses, readiness] = await Promise.all([
+        workspaceApi.inspectWorkspaceIndex?.(workspace.rootPath) ?? Promise.resolve(null),
+        workspaceApi.getWorkspaceIndexTaskStatuses?.(workspace.rootPath) ?? Promise.resolve([]),
+        activePath && workspaceApi.getWorkspaceIndexFileReadiness
+          ? workspaceApi.getWorkspaceIndexFileReadiness(workspace.rootPath, activePath)
+          : Promise.resolve(null),
+      ]);
+      setIndexDiagnostics(diagnostics);
+      setWorkspaceIndexTaskStatuses(statuses);
+      setCurrentFileReadiness(readiness);
+    } finally {
+      setIndexDiagnosticsLoading(false);
+    }
+  }
+
+  function openIndexDiagnostics() {
+    setIndexDiagnosticsVisible(true);
+    void refreshIndexDiagnostics();
+  }
+
+  async function resumeIndexingFromDiagnostics() {
+    if (!workspace?.rootPath || !workspaceApi.resumeWorkspaceIndexing) {
+      setStatusText("Resume Indexing unavailable");
+      return;
+    }
+    await workspaceApi.resumeWorkspaceIndexing(workspace.rootPath);
+    await refreshIndexDiagnostics();
+    setStatusText("Resume Indexing requested");
+  }
+
+  async function rebuildSdkIndexFromDiagnostics() {
+    if (!workspace?.rootPath || !workspaceApi.rebuildWorkspaceSdkIndex) {
+      setStatusText("Rebuild SDK Index unavailable");
+      return;
+    }
+    const status = await workspaceApi.rebuildWorkspaceSdkIndex(workspace.rootPath);
+    setWorkspaceIndexTaskStatuses((previous) => mergeWorkspaceIndexTaskStatus(previous, status));
+    await refreshIndexDiagnostics();
+    setStatusText("Rebuild SDK Index requested");
+  }
+
   async function waitForWorkspaceIndexTaskReady(rootPath: string, taskId: string) {
     if (!workspaceApi.getWorkspaceIndexTaskStatuses) {
       return;
@@ -2125,7 +2286,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       return;
     }
     await workspaceApi.rebuildWorkspaceIndex(workspace.rootPath);
-    setStatusText("Rebuild Index requested");
+    if (workspaceApi.refreshWorkspaceIndex) {
+      const state = await workspaceApi.refreshWorkspaceIndex(workspace.rootPath);
+      applyWorkspaceIndexRefreshResult({
+        state,
+        changed: true,
+        addedPaths: state.filePaths,
+        removedPaths: [],
+      });
+    }
+    setStatusText("Rebuild Index completed");
   }
 
   async function openSettingsFromExplainPanel() {
@@ -2284,6 +2454,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
 
     let disposed = false;
     let teardownWatcher: (() => void) | null = null;
+    void refreshWorkspaceIndexTaskStatuses(workspace.rootPath);
     void workspaceApi.watchWorkspaceIndexTaskStatuses(workspace.rootPath, (status) => {
       if (disposed) {
         return;
@@ -2330,29 +2501,41 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
 
     if (searchEverywhereMode === "searchEverywhere") {
+      const query = debouncedSearchQuery;
+      if (!query.trim()) {
+        setSearchEverywhereCandidates([]);
+        setSearchEverywhereResult({
+          query: { kind: "text", query: "" },
+          matches: [],
+        });
+        setSearchEverywhereSelectedIndex(0);
+        return;
+      }
+
       const indexRequest = workspaceApi.queryWorkspaceCandidatesWithReadiness
-        ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, quickOpenQuery, searchEverywhereScope, 24)
+        ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, 24)
           .then((envelope) => envelope.items)
         : workspaceApi.queryWorkspaceCandidates
-        ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, quickOpenQuery, searchEverywhereScope, 24)
+        ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, query, searchEverywhereScope, 24)
         : workspaceApi.queryWorkspaceSearchEverywhere
-        ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, quickOpenQuery, 24)
+        ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, query, 24)
           .then((candidates) => filterSearchCandidatesByScope(candidates, searchEverywhereScope))
-        : Promise.resolve(workspaceIndexRef.current.queryCandidates(quickOpenQuery, searchEverywhereScope, 24));
+        : Promise.resolve(workspaceIndexRef.current.queryCandidates(query, searchEverywhereScope, 24));
 
       void indexRequest.then((candidates) => {
         if (searchEverywhereRequestRef.current !== requestId) {
           return;
         }
 
-        setSearchEverywhereCandidates(orderSearchEverywhereCandidates(candidates));
+        const visibleCandidates = searchEverywhereEntityCandidates(candidates);
+        setSearchEverywhereCandidates(orderSearchEverywhereCandidates(visibleCandidates));
         setSearchEverywhereResult({
-          query: { kind: "text", query: quickOpenQuery.trim() },
+          query: { kind: "text", query: query.trim() },
           matches: [],
         });
         setSearchEverywhereSelectedIndex(0);
-        if (candidates.length === 0 && quickOpenQuery.trim()) {
-          void explainIndexMiss("search", quickOpenQuery.trim()).then((explanation) => {
+        if (visibleCandidates.length === 0 && query.trim()) {
+          void explainIndexMiss("search", query.trim()).then((explanation) => {
             if (searchEverywhereRequestRef.current === requestId && explanation) {
               setStatusText(`Search Everywhere miss: ${explanation}`);
             }
@@ -2363,10 +2546,11 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     }
 
     setSearchEverywhereCandidates([]);
+    const query = debouncedSearchQuery;
     const paths = workspaceIndexRef.current.getTextSearchPaths();
     const hasDirtyDocuments = documentsRef.current.getDocuments().some((document) => document.isDirty);
     const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    const parsedTextQuery = parseSearchQuery(quickOpenQuery);
+    const parsedTextQuery = parseSearchQuery(query);
     const queryWorkspaceCandidatesWithReadiness = workspaceApi.queryWorkspaceCandidatesWithReadiness;
     const canUseIndexedTextFacade = queryWorkspaceCandidatesWithReadiness
       && parsedTextQuery.kind === "text"
@@ -2376,14 +2560,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       && !hasDirtyDocuments;
     const fallbackTextSearch = () => canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !hasDirtyDocuments
       ? workspaceApi.searchWorkspaceText({
-        query: quickOpenQuery,
+        query,
         rootPath: workspace.rootPath,
         options: searchEverywhereOptions,
         limit: 60,
         contextLines: 2,
       })
       : searchWorkspaceText({
-        query: quickOpenQuery,
+        query,
         rootPath: workspace.rootPath,
         paths,
         options: searchEverywhereOptions,
@@ -2406,7 +2590,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         limit: 60,
       });
     const searchRequest = canUseIndexedTextFacade
-      ? queryWorkspaceCandidatesWithReadiness(workspace.rootPath, quickOpenQuery, "text", 60)
+      ? queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, "text", 60)
         .then((envelope) => {
           workspaceIndexRef.current.replaceQueryReadiness(envelope.readiness);
           setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
@@ -2415,7 +2599,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           }
 
           return {
-            result: textCandidatesToSearchResult(workspace.rootPath, quickOpenQuery, envelope.items),
+            result: textCandidatesToSearchResult(workspace.rootPath, query, envelope.items),
             suppressMissExplain: envelope.readiness.state !== "ready",
           };
         })
@@ -2431,14 +2615,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setSearchEverywhereSelectedIndex(0);
       if (!suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && quickOpenQuery.trim()) {
         const missLabel = searchOverlayLabel(searchEverywhereMode);
-        void explainIndexMiss("search", quickOpenQuery.trim()).then((explanation) => {
+        void explainIndexMiss("search", query.trim()).then((explanation) => {
           if (searchEverywhereRequestRef.current === requestId && explanation) {
             setStatusText(`${missLabel} miss: ${explanation}`);
           }
         });
       }
     });
-  }, [activeOverlay, activePath, editorContent, quickOpenQuery, searchEverywhereMode, searchEverywhereOptions, searchEverywhereScope, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
+  }, [activeOverlay, activePath, debouncedSearchQuery, editorContent, searchEverywhereMode, searchEverywhereOptions, searchEverywhereScope, workspace, workspaceApi, workspaceIndexState.indexedAt, workspaceIndexState.status]);
 
   useEffect(() => {
     if (activeOverlay !== "searchEverywhere" || searchEverywhereMode === "searchEverywhere") {
@@ -2825,7 +3009,22 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
           onRetryQuery={retryLatestExplainQuery}
         />
       ) : null}
-      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} semanticCapability={semanticCapability} statusText={statusText} workspaceName={workspace?.rootName ?? null} workspaceScanText={workspaceScanText} workspaceIndexText={workspaceIndexText} sdkIndexText={sdkIndexText} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} />
+      <IndexDiagnosticsCenter
+        open={indexDiagnosticsVisible}
+        loading={indexDiagnosticsLoading}
+        activePath={activePath}
+        currentFileDirty={activeDocument?.isDirty ?? false}
+        diagnostics={indexDiagnostics}
+        fileReadiness={currentFileReadiness}
+        taskStatuses={workspaceIndexTaskStatuses}
+        onClose={() => setIndexDiagnosticsVisible(false)}
+        onRefresh={() => void refreshIndexDiagnostics()}
+        onResumeIndexing={() => void resumeIndexingFromDiagnostics()}
+        onRebuildProjectIndex={() => void rebuildIndexFromExplainPanel()}
+        onRebuildSdkIndex={() => void rebuildSdkIndexFromDiagnostics()}
+        onConfigureSdk={() => void openSettings()}
+      />
+      <ShellStatusBar activeBottomTool={activeBottomTool} activePath={activePath} semanticState={semanticState} semanticCapability={semanticCapability} statusText={statusText} workspaceName={workspace?.rootName ?? null} workspaceScanText={workspaceScanText} workspaceIndexText={workspaceIndexText} sdkIndexText={sdkIndexText} terminalRunning={false} buildMessage={buildState.message} currentLineBlame={currentLineBlame} gitBlameVisible={gitBlameVisible} gitBlameMenuOpen={gitBlameMenuOpen} onToggleGitBlameMenu={toggleGitBlameMenu} onToggleGitBlame={toggleGitBlame} onRefreshGitBlame={refreshGitBlame} onShowCurrentLineBlame={showCurrentLineBlame} onCloseGitBlame={closeGitBlame} onOpenIndexDiagnostics={openIndexDiagnostics} />
     </div>
   );
 }

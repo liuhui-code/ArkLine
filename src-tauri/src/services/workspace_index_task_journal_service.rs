@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::WorkspaceIndexTaskStatus;
+use crate::services::workspace_index_event_service::{event_from_task_status, store_index_event};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
 pub fn store_task_status(root_path: &str, status: &WorkspaceIndexTaskStatus) -> Result<(), String> {
@@ -18,8 +19,8 @@ pub fn store_task_status(root_path: &str, status: &WorkspaceIndexTaskStatus) -> 
             "insert into workspace_index_task_journal (
                 root_path, task_id, kind, status, reason, generation,
                 progress_current, progress_total, started_at, finished_at,
-                symbol_count, message, error, updated_at
-             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, strftime('%s','now') * 1000)
+                last_heartbeat_at, stalled, symbol_count, message, error, updated_at
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, strftime('%s','now') * 1000)
              on conflict(root_path, task_id) do update set
                 kind = excluded.kind,
                 status = excluded.status,
@@ -29,6 +30,8 @@ pub fn store_task_status(root_path: &str, status: &WorkspaceIndexTaskStatus) -> 
                 progress_total = excluded.progress_total,
                 started_at = excluded.started_at,
                 finished_at = excluded.finished_at,
+                last_heartbeat_at = excluded.last_heartbeat_at,
+                stalled = excluded.stalled,
                 symbol_count = excluded.symbol_count,
                 message = excluded.message,
                 error = excluded.error,
@@ -44,12 +47,16 @@ pub fn store_task_status(root_path: &str, status: &WorkspaceIndexTaskStatus) -> 
                 status.progress_total as i64,
                 status.started_at.map(|value| value as i64),
                 status.finished_at.map(|value| value as i64),
+                status.last_heartbeat_at.map(|value| value as i64),
+                if status.stalled { 1_i64 } else { 0_i64 },
                 status.symbol_count.map(|value| value as i64),
                 status.message,
                 status.error,
             ],
         )
         .map_err(|error| error.to_string())?;
+    let event = event_from_task_status(root_path, status);
+    store_index_event(root_path, &event)?;
     Ok(())
 }
 
@@ -67,7 +74,7 @@ pub fn load_recent_task_statuses(
         .prepare(
             "select task_id, root_path, kind, status, reason, generation,
                     progress_current, progress_total, started_at, finished_at,
-                    symbol_count, message, error
+                    last_heartbeat_at, stalled, symbol_count, message, error
              from workspace_index_task_journal
              where root_path = ?1
              order by generation desc, updated_at desc
@@ -87,9 +94,11 @@ pub fn load_recent_task_statuses(
                 progress_total: row.get::<_, i64>(7)? as usize,
                 started_at: row.get::<_, Option<i64>>(8)?.map(|value| value as u128),
                 finished_at: row.get::<_, Option<i64>>(9)?.map(|value| value as u128),
-                symbol_count: row.get::<_, Option<i64>>(10)?.map(|value| value as usize),
-                message: row.get(11)?,
-                error: row.get(12)?,
+                last_heartbeat_at: row.get::<_, Option<i64>>(10)?.map(|value| value as u128),
+                stalled: row.get::<_, i64>(11)? != 0,
+                symbol_count: row.get::<_, Option<i64>>(12)?.map(|value| value as usize),
+                message: row.get(13)?,
+                error: row.get(14)?,
             })
         })
         .map_err(|error| error.to_string())?;

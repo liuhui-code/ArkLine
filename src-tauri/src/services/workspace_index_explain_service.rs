@@ -1,12 +1,25 @@
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::workspace::{
-    WorkspaceIndexExplainFact, WorkspaceIndexExplainRequest, WorkspaceIndexExplainResult,
+    WorkspaceIndexEvent, WorkspaceIndexExplainFact, WorkspaceIndexExplainRequest,
+    WorkspaceIndexExplainResult,
 };
+use crate::services::workspace_index_event_service::store_index_event;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_service::should_exclude;
+
+pub fn explain_and_record_workspace_index_query(
+    request: &WorkspaceIndexExplainRequest,
+) -> Result<WorkspaceIndexExplainResult, String> {
+    let result = explain_workspace_index_query(request)?;
+    let event = event_from_explain_result(request, &result);
+    store_index_event(&request.root_path, &event)?;
+    Ok(result)
+}
 
 pub fn explain_workspace_index_query(
     request: &WorkspaceIndexExplainRequest,
@@ -72,6 +85,69 @@ pub fn explain_workspace_index_query(
         vec![fact("query", request.query.clone())],
         Some("rebuildIndex"),
     ))
+}
+
+fn event_from_explain_result(
+    request: &WorkspaceIndexExplainRequest,
+    result: &WorkspaceIndexExplainResult,
+) -> WorkspaceIndexEvent {
+    let created_at = current_time_millis();
+    let event_nonce = current_time_nanos();
+    WorkspaceIndexEvent {
+        event_id: format!(
+            "query:{}:{}:{event_nonce}",
+            request.kind,
+            normalize_index_path(&request.query)
+        ),
+        root_path: normalize_index_path(&request.root_path),
+        scope: "query".to_string(),
+        kind: request.kind.to_string(),
+        phase: explain_event_phase(&result.status).to_string(),
+        severity: explain_event_severity(&result.status).to_string(),
+        message: result.message.to_string(),
+        task_id: None,
+        generation: None,
+        payload_json: explain_event_payload(request, result),
+        created_at,
+    }
+}
+
+fn current_time_nanos() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default()
+}
+
+fn explain_event_phase(status: &str) -> &'static str {
+    match status {
+        "ready" | "hit" => "hit",
+        "sdkNotReady" | "stale" => "blocked",
+        _ => "miss",
+    }
+}
+
+fn explain_event_severity(status: &str) -> &'static str {
+    match status {
+        "ready" | "hit" => "info",
+        _ => "warning",
+    }
+}
+
+fn explain_event_payload(
+    request: &WorkspaceIndexExplainRequest,
+    result: &WorkspaceIndexExplainResult,
+) -> String {
+    serde_json::json!({
+        "query": request.query,
+        "path": request.path,
+        "line": request.line,
+        "column": request.column,
+        "status": result.status,
+        "recommendedAction": result.recommended_action,
+        "facts": result.facts,
+    })
+    .to_string()
 }
 
 fn result(

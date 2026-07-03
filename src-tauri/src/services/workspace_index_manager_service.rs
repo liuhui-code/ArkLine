@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Condvar, Mutex,
@@ -25,13 +24,17 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_state_machine_service::{
     should_publish_task_result, task_state_label, WorkspaceIndexTaskState,
 };
+use crate::services::workspace_index_status_projection_service::{
+    is_terminal_task_status, project_task_statuses,
+};
 use crate::services::workspace_index_task_journal_service::{
     load_recent_task_statuses, store_task_status,
 };
 use crate::services::workspace_index_task_lifecycle_service::task_kind_supersedes_result;
 use crate::services::workspace_index_task_status_service::{
-    superseded_task_result, task_kind_label, task_status_from_publishable_result,
-    task_status_from_state_transition, task_status_from_task, WorkspaceIndexTaskResult,
+    current_time_millis, superseded_task_result, task_kind_label,
+    task_status_from_publishable_result, task_status_from_state_transition, task_status_from_task,
+    WorkspaceIndexTaskResult,
 };
 use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation;
 
@@ -189,7 +192,10 @@ impl WorkspaceIndexManagerRuntime {
         &self,
         root_path: &str,
     ) -> Result<Vec<WorkspaceIndexTaskStatus>, String> {
-        let mut statuses = load_recent_task_statuses(root_path, 32)?;
+        let mut statuses = load_recent_task_statuses(root_path, 32)?
+            .into_iter()
+            .filter(|status| is_terminal_task_status(&status.status))
+            .collect::<Vec<_>>();
         statuses.extend(
             self.recent_statuses
                 .lock()
@@ -215,7 +221,7 @@ impl WorkspaceIndexManagerRuntime {
                     )
                 }),
         );
-        Ok(merge_task_statuses(statuses))
+        Ok(project_task_statuses(statuses, current_time_millis()))
     }
 
     #[allow(dead_code)]
@@ -486,14 +492,4 @@ impl WorkspaceIndexManagerRuntime {
                     && task_kind_supersedes_result(&task.kind, &result.kind)
             }))
     }
-}
-
-fn merge_task_statuses(statuses: Vec<WorkspaceIndexTaskStatus>) -> Vec<WorkspaceIndexTaskStatus> {
-    let mut by_task_id = HashMap::new();
-    for status in statuses {
-        by_task_id.insert(status.task_id.clone(), status);
-    }
-    let mut merged = by_task_id.into_values().collect::<Vec<_>>();
-    merged.sort_by(|left, right| left.generation.cmp(&right.generation));
-    merged
 }

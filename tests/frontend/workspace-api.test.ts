@@ -85,7 +85,121 @@ describe("workspace api", () => {
       unresolvedImportCount: 0,
       parserErrorCount: 0,
       staleGenerationCount: 0,
+      dbSizeBytes: 0,
+      queuePressure: {
+        rootPath: "C:/samples/DemoWorkspace",
+        pendingTaskCount: 0,
+        workspacePendingTaskCount: 0,
+        highestPriority: null,
+        highestPriorityTaskKind: null,
+      },
       lastExplainStatus: null,
+      repairActions: [],
+      parserFailures: [],
+      unresolvedImports: [],
+      recentEvents: [],
+    });
+  });
+
+  it("invokes workspace index diagnostics with recent events in the desktop runtime", async () => {
+    const diagnostics = {
+      rootPath: "C:/samples/DemoWorkspace",
+      status: "ready",
+      schemaVersions: { event: 1 },
+      fileCount: 1,
+      symbolCount: 1,
+      contentLineCount: 1,
+      fingerprintCount: 1,
+      stubFileCount: 1,
+      stubDeclarationCount: 1,
+      dependencyEdgeCount: 0,
+      unresolvedImportCount: 0,
+      parserErrorCount: 0,
+      staleGenerationCount: 0,
+      sdkSymbolCount: 0,
+      dbSizeBytes: 4096,
+      queuePressure: {
+        rootPath: "C:/samples/DemoWorkspace",
+        pendingTaskCount: 1,
+        workspacePendingTaskCount: 1,
+        highestPriority: "foreground",
+        highestPriorityTaskKind: "foreground-navigation",
+      },
+      activeSdkPath: null,
+      activeSdkVersion: null,
+      lastError: null,
+      lastExplainStatus: null,
+      repairActions: ["resumeIndexing"],
+      parserFailures: [{
+        path: "C:/samples/DemoWorkspace/src/Broken.ets",
+        message: "Unexpected token",
+        line: 3,
+        column: 12,
+      }],
+      unresolvedImports: [{
+        fromPath: "C:/samples/DemoWorkspace/src/Index.ets",
+        sourceModule: "./MissingProfile",
+        line: 5,
+        column: 10,
+      }],
+      recentEvents: [{
+        eventId: "1:refresh-workspace:queued:100",
+        rootPath: "C:/samples/DemoWorkspace",
+        scope: "task",
+        kind: "refresh-workspace",
+        phase: "queued",
+        severity: "info",
+        message: "refresh-workspace queued",
+        taskId: "1:refresh-workspace",
+        generation: 1,
+        payloadJson: "{}",
+        createdAt: 100,
+      }],
+      timeline: [{
+        scope: "task",
+        kind: "refresh-workspace",
+        phase: "queued",
+        title: "refresh-workspace queued",
+        severity: "info",
+        message: "refresh-workspace queued",
+        taskId: "1:refresh-workspace",
+        generation: 1,
+        occurredAt: 100,
+        durationMs: null,
+      }],
+    };
+    invoke.mockResolvedValueOnce(diagnostics);
+
+    await expect(defaultWorkspaceApi.inspectWorkspaceIndex?.("C:/samples/DemoWorkspace")).resolves.toEqual(diagnostics);
+    expect(invoke).toHaveBeenCalledWith("inspect_workspace_index", { rootPath: "C:/samples/DemoWorkspace" });
+  });
+
+  it("invokes current file index readiness in the desktop runtime", async () => {
+    const readiness = {
+      rootPath: "C:/samples/DemoWorkspace",
+      path: "C:/samples/DemoWorkspace/src/main.ets",
+      fileName: "main.ets",
+      fileIndex: "ready",
+      contentIndex: "ready",
+      symbolIndex: "missing",
+      parserStatus: "ready",
+      parserError: null,
+      indexedGeneration: 18,
+      definitionAvailable: false,
+      completionAvailable: true,
+      usagesAvailable: false,
+      searchAvailable: true,
+      reason: "main.ets is in the file index but symbol data is not ready yet.",
+    };
+    invoke.mockResolvedValueOnce(readiness);
+
+    await expect(defaultWorkspaceApi.getWorkspaceIndexFileReadiness?.(
+      "C:/samples/DemoWorkspace",
+      "C:/samples/DemoWorkspace/src/main.ets",
+    )).resolves.toEqual(readiness);
+    expect(invoke).toHaveBeenCalledWith("get_workspace_index_file_readiness", {
+      rootPath: "C:/samples/DemoWorkspace",
+      filePath: "C:/samples/DemoWorkspace/src/main.ets",
     });
   });
 

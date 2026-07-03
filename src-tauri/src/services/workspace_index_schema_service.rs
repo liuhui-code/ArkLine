@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
+use crate::services::workspace_index_event_service::create_index_event_tables;
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
 use crate::services::workspace_sdk_schema_service::create_sdk_tables;
 use crate::services::workspace_symbol_resolution_schema_service::create_symbol_resolution_tables;
@@ -21,6 +22,7 @@ const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("fingerprint", 1),
     ("sdk", 1),
     ("task_journal", 1),
+    ("event", 1),
     ("resume", 1),
 ];
 
@@ -50,6 +52,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_fingerprint_tables(connection)?;
     create_sdk_tables(connection)?;
     create_task_journal_tables(connection)?;
+    create_index_event_tables(connection)?;
     create_resume_tables(connection)?;
     create_dependency_graph_tables(connection)?;
     create_symbol_resolution_tables(connection)?;
@@ -385,6 +388,8 @@ fn create_task_journal_tables(connection: &Connection) -> Result<(), String> {
                 progress_total integer not null,
                 started_at integer,
                 finished_at integer,
+                last_heartbeat_at integer,
+                stalled integer not null default 0,
                 symbol_count integer,
                 message text,
                 error text,
@@ -394,6 +399,18 @@ fn create_task_journal_tables(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| error.to_string())?;
+    ensure_column(
+        connection,
+        "workspace_index_task_journal",
+        "last_heartbeat_at",
+        "alter table workspace_index_task_journal add column last_heartbeat_at integer",
+    )?;
+    ensure_column(
+        connection,
+        "workspace_index_task_journal",
+        "stalled",
+        "alter table workspace_index_task_journal add column stalled integer not null default 0",
+    )?;
     connection
         .execute(
             "create index if not exists workspace_index_task_journal_recent

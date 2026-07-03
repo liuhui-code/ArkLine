@@ -83,10 +83,44 @@ export type WorkspaceIndexDiagnostics = {
   parserErrorCount: number;
   staleGenerationCount: number;
   sdkSymbolCount: number;
+  dbSizeBytes: number;
+  queuePressure: WorkspaceIndexQueuePressure;
   activeSdkPath: string | null;
   activeSdkVersion: string | null;
   lastError: string | null;
   lastExplainStatus: string | null;
+  repairActions: string[];
+  parserFailures: WorkspaceIndexParserFailure[];
+  unresolvedImports: WorkspaceIndexUnresolvedImport[];
+  recentEvents: WorkspaceIndexEvent[];
+  timeline: WorkspaceIndexTimelineItem[];
+};
+
+export type WorkspaceIndexEvent = {
+  eventId: string;
+  rootPath: string;
+  scope: string;
+  kind: string;
+  phase: string;
+  severity: "info" | "warning" | "error" | string;
+  message: string;
+  taskId: string | null;
+  generation: number | null;
+  payloadJson: string;
+  createdAt: number;
+};
+
+export type WorkspaceIndexTimelineItem = {
+  scope: string;
+  kind: string;
+  phase: string;
+  title: string;
+  severity: "info" | "warning" | "error" | string;
+  message: string;
+  taskId: string | null;
+  generation: number | null;
+  occurredAt: number;
+  durationMs: number | null;
 };
 
 export type WorkspaceIndexQueuePressure = {
@@ -108,6 +142,23 @@ export type WorkspaceIndexHealth = {
   parserFailureCount: number;
   queuePressure: WorkspaceIndexQueuePressure;
   repairActions: string[];
+};
+
+export type WorkspaceIndexFileReadiness = {
+  rootPath: string;
+  path: string;
+  fileName: string;
+  fileIndex: "ready" | "missing" | string;
+  contentIndex: "ready" | "missing" | string;
+  symbolIndex: "ready" | "missing" | string;
+  parserStatus: "ready" | "failed" | "unknown" | string;
+  parserError: string | null;
+  indexedGeneration: number | null;
+  definitionAvailable: boolean;
+  completionAvailable: boolean;
+  usagesAvailable: boolean;
+  searchAvailable: boolean;
+  reason: string;
 };
 
 export type WorkspaceIndexParserFailure = {
@@ -138,6 +189,8 @@ export type WorkspaceIndexTaskStatus = {
   progressCurrent: number;
   progressTotal: number;
   startedAt?: number;
+  lastHeartbeatAt?: number;
+  stalled?: boolean;
   finishedAt?: number;
   symbolCount?: number;
   message?: string;
@@ -395,6 +448,7 @@ export type WorkspaceApi = {
   getWorkspaceIndexState?(rootPath: string): Promise<WorkspaceIndexState>;
   inspectWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexDiagnostics>;
   getWorkspaceIndexHealth?(rootPath: string): Promise<WorkspaceIndexHealth>;
+  getWorkspaceIndexFileReadiness?(rootPath: string, filePath: string): Promise<WorkspaceIndexFileReadiness>;
   getWorkspaceIndexTaskStatuses?(rootPath: string): Promise<WorkspaceIndexTaskStatus[]>;
   watchWorkspaceIndexTaskStatuses?(rootPath: string, onChange: WorkspaceIndexTaskStatusWatcher): Promise<() => void>;
   clearWorkspaceIndex?(rootPath: string): Promise<void>;
@@ -670,10 +724,23 @@ export const defaultWorkspaceApi: WorkspaceApi = {
       parserErrorCount: 0,
       staleGenerationCount: 0,
       sdkSymbolCount: 0,
+      dbSizeBytes: 0,
+      queuePressure: {
+        rootPath,
+        pendingTaskCount: 0,
+        workspacePendingTaskCount: 0,
+        highestPriority: null,
+        highestPriorityTaskKind: null,
+      },
       activeSdkPath: null,
       activeSdkVersion: null,
       lastError: null,
       lastExplainStatus: null,
+      repairActions: [],
+      parserFailures: [],
+      unresolvedImports: [],
+      recentEvents: [],
+      timeline: [],
     };
   },
   async getWorkspaceIndexHealth(rootPath) {
@@ -698,6 +765,29 @@ export const defaultWorkspaceApi: WorkspaceApi = {
         highestPriorityTaskKind: null,
       },
       repairActions: ["rebuildProjectIndex"],
+    };
+  },
+  async getWorkspaceIndexFileReadiness(rootPath, filePath) {
+    if (hasTauriRuntime()) {
+      return invoke<WorkspaceIndexFileReadiness>("get_workspace_index_file_readiness", { rootPath, filePath });
+    }
+
+    const fileName = getPathBasename(filePath);
+    return {
+      rootPath,
+      path: filePath,
+      fileName,
+      fileIndex: "missing",
+      contentIndex: "missing",
+      symbolIndex: "missing",
+      parserStatus: "unknown",
+      parserError: null,
+      indexedGeneration: null,
+      definitionAvailable: false,
+      completionAvailable: false,
+      usagesAvailable: false,
+      searchAvailable: true,
+      reason: `${fileName} is not indexed outside the desktop runtime.`,
     };
   },
   async getWorkspaceIndexTaskStatuses(rootPath) {

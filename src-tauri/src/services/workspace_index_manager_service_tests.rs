@@ -234,6 +234,8 @@ fn exposes_latest_index_task_status_for_a_workspace() {
     assert_eq!(queued[0].progress_current, 0);
     assert_eq!(queued[0].progress_total, 1);
     assert!(queued[0].started_at.is_none());
+    assert!(queued[0].last_heartbeat_at.is_none());
+    assert!(!queued[0].stalled);
     assert!(queued[0].finished_at.is_none());
 
     manager.drain_index_task_results(&index_runtime).unwrap();
@@ -246,6 +248,8 @@ fn exposes_latest_index_task_status_for_a_workspace() {
     assert_eq!(completed[0].progress_current, 1);
     assert_eq!(completed[0].progress_total, 1);
     assert!(completed[0].started_at.is_some());
+    assert!(completed[0].last_heartbeat_at.is_some());
+    assert!(!completed[0].stalled);
     assert!(completed[0].finished_at.is_some());
     assert!(completed[0].error.is_none());
 

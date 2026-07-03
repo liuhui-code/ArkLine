@@ -5,7 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::WorkspaceIndexExplainRequest;
-use crate::services::workspace_index_explain_service::explain_workspace_index_query;
+use crate::services::workspace_index_event_service::load_recent_index_events;
+use crate::services::workspace_index_explain_service::{
+    explain_and_record_workspace_index_query, explain_workspace_index_query,
+};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -81,6 +84,36 @@ fn explains_missing_fingerprint_as_not_indexed() {
 }
 
 #[test]
+fn records_query_explain_misses_as_unified_index_events() {
+    let root = unique_temp_dir("explain-records-query-miss");
+    fs::create_dir_all(root.join("src")).unwrap();
+    index_connection(&root);
+    let path = root.join("src").join("Missing.ets");
+    fs::write(&path, "class Missing {}\n").unwrap();
+
+    let result = explain_and_record_workspace_index_query(&request(
+        &root,
+        "symbol",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+    let events = load_recent_index_events(&root.to_string_lossy(), 8).unwrap();
+
+    assert_eq!(result.status, "notIndexed");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].scope, "query");
+    assert_eq!(events[0].kind, "symbol");
+    assert_eq!(events[0].phase, "miss");
+    assert_eq!(events[0].severity, "warning");
+    assert_eq!(events[0].message, "File has no index fingerprint");
+    assert!(events[0]
+        .payload_json
+        .contains("\"recommendedAction\":\"rebuildIndex\""));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn explains_api_queries_without_active_sdk_as_sdk_not_ready() {
     let root = unique_temp_dir("explain-sdk-not-ready");
     fs::create_dir_all(&root).unwrap();
@@ -90,6 +123,28 @@ fn explains_api_queries_without_active_sdk_as_sdk_not_ready() {
 
     assert_eq!(result.status, "sdkNotReady");
     assert_eq!(result.recommended_action.as_deref(), Some("configureSdk"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn records_sdk_not_ready_explain_as_blocked_query_event() {
+    let root = unique_temp_dir("explain-records-sdk-blocked");
+    fs::create_dir_all(&root).unwrap();
+    index_connection(&root);
+
+    let result = explain_and_record_workspace_index_query(&request(&root, "api", None)).unwrap();
+    let events = load_recent_index_events(&root.to_string_lossy(), 8).unwrap();
+
+    assert_eq!(result.status, "sdkNotReady");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].scope, "query");
+    assert_eq!(events[0].kind, "api");
+    assert_eq!(events[0].phase, "blocked");
+    assert_eq!(events[0].severity, "warning");
+    assert!(events[0]
+        .payload_json
+        .contains("\"recommendedAction\":\"configureSdk\""));
 
     fs::remove_dir_all(root).unwrap();
 }

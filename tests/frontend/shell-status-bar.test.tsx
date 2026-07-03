@@ -27,6 +27,7 @@ function renderStatusBar(capability: SemanticCapabilityState) {
       onRefreshGitBlame={() => undefined}
       onShowCurrentLineBlame={() => undefined}
       onCloseGitBlame={() => undefined}
+      onOpenIndexDiagnostics={() => undefined}
     />,
   );
 }
@@ -41,7 +42,7 @@ describe("ShellStatusBar", () => {
       message: "SDK settings are still applying",
     });
 
-    expect(screen.getByText("Index: ready (2 files)")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Open Index Diagnostics: Index: ready (2 files)" })).toBeVisible();
     expect(screen.getByText("SDK: applying")).toBeVisible();
     expect(screen.getByLabelText("SDK Capability")).toHaveAttribute("title", "SDK settings are still applying");
   });

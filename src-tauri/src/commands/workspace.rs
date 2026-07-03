@@ -10,7 +10,7 @@ use crate::models::workspace::{
     WorkspaceTextSearchResult,
 };
 use crate::services::diff_service::load_workspace_diff_text;
-use crate::services::workspace_index_diagnostics_service::inspect_workspace_index as inspect_workspace_index_service;
+use crate::services::workspace_index_diagnostics_service::inspect_workspace_index_with_queue_pressure as inspect_workspace_index_service;
 use crate::services::workspace_index_entity_query_service::query_workspace_file_symbols as query_workspace_file_symbols_service;
 use crate::services::workspace_index_facade_service::{
     query_facade_file_symbols_with_readiness as query_workspace_file_symbols_with_readiness_facade,
@@ -91,8 +91,12 @@ pub fn get_workspace_index_state(
 }
 
 #[tauri::command]
-pub fn inspect_workspace_index(root_path: String) -> Result<WorkspaceIndexDiagnostics, String> {
-    inspect_workspace_index_service(&root_path)
+pub fn inspect_workspace_index(
+    root_path: String,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+) -> Result<WorkspaceIndexDiagnostics, String> {
+    let queue_pressure = index_manager.get_queue_pressure(&root_path)?;
+    inspect_workspace_index_service(&root_path, queue_pressure)
 }
 
 #[tauri::command]
@@ -310,18 +314,36 @@ pub fn update_workspace_index_files(
 pub fn schedule_foreground_completion_index(
     root_path: String,
     changed_paths: Vec<String>,
+    app_handle: AppHandle,
+    index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<(), String> {
-    schedule_foreground_completion_index_through_manager(&index_manager, &root_path, &changed_paths)
+    schedule_foreground_completion_index_through_manager(
+        &index_manager,
+        &root_path,
+        &changed_paths,
+    )?;
+    let app_handle = app_handle.clone();
+    index_manager.start_background_worker(index_runtime.inner().clone(), move |status| {
+        let _ = app_handle.emit("workspace-index-task-updated", status);
+    })?;
+    Ok(())
 }
 
 #[tauri::command]
 pub fn schedule_visible_files_index(
     root_path: String,
     changed_paths: Vec<String>,
+    app_handle: AppHandle,
+    index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<(), String> {
-    schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)
+    schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)?;
+    let app_handle = app_handle.clone();
+    index_manager.start_background_worker(index_runtime.inner().clone(), move |status| {
+        let _ = app_handle.emit("workspace-index-task-updated", status);
+    })?;
+    Ok(())
 }
 
 #[tauri::command]

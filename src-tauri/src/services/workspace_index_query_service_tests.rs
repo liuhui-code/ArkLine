@@ -351,6 +351,44 @@ fn query_facade_routes_plain_text_to_index_and_regex_to_file_search() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn all_scope_excludes_full_text_candidates() {
+    let root = unique_temp_dir("workspace-query-all-no-text");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("Index.ets"),
+        "struct Index {\n  build() { Text(\"QueryFacadeTarget\") }\n}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let all = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "queryfacadetarget",
+        WorkspaceIndexQueryScope::All,
+        8,
+    )
+    .unwrap();
+    let text = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "queryfacadetarget",
+        WorkspaceIndexQueryScope::Text,
+        8,
+    )
+    .unwrap();
+
+    assert!(all.iter().all(|candidate| candidate.source != "text"));
+    assert_eq!(text.len(), 1);
+    assert_eq!(text[0].source, "text");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn plain_request(root_path: &str, query: &str) -> WorkspaceTextSearchRequest {
     WorkspaceTextSearchRequest {
         root_path: root_path.to_string(),
