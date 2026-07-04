@@ -12,9 +12,23 @@ import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/featur
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
 import {
   searchWorkspaceText as searchWorkspaceTextInMemory,
-  type WorkspaceTextSearchOptions,
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
+import type {
+  WorkspaceIndexDiagnostics,
+  WorkspaceIndexExplainRequest,
+  WorkspaceIndexExplainResult,
+  WorkspaceIndexFileReadiness,
+  WorkspaceIndexHealth,
+  WorkspaceIndexParserFailure,
+  WorkspaceIndexQueryEnvelope,
+  WorkspaceIndexQueryScope,
+  WorkspaceIndexTaskStatus,
+  WorkspaceIndexTaskStatusWatcher,
+  WorkspaceIndexUnresolvedImport,
+  WorkspaceSdkIndexSummary,
+  WorkspaceTextSearchRequest,
+} from "@/features/workspace/workspace-index-api-types";
 import {
   collectFallbackCompletions,
   collectFallbackDocumentSymbols,
@@ -30,6 +44,30 @@ import {
 } from "@/features/workspace/workspace-store";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
 import type { BuildConfiguration } from "@/features/build/build-model";
+import { createWorkspaceIndexManagementApi } from "@/features/workspace/workspace-index-management-api";
+import { createWorkspaceIndexQueryApi } from "@/features/workspace/workspace-index-query-api";
+
+export type {
+  WorkspaceIndexDiagnostics,
+  WorkspaceIndexEvent,
+  WorkspaceIndexExplainFact,
+  WorkspaceIndexExplainRequest,
+  WorkspaceIndexExplainResult,
+  WorkspaceIndexFileReadiness,
+  WorkspaceIndexHealth,
+  WorkspaceIndexParserFailure,
+  WorkspaceIndexQueryEnvelope,
+  WorkspaceIndexQueryScope,
+  WorkspaceIndexQueuePressure,
+  WorkspaceIndexReadiness,
+  WorkspaceIndexReadinessState,
+  WorkspaceIndexTaskStatus,
+  WorkspaceIndexTaskStatusWatcher,
+  WorkspaceIndexTimelineItem,
+  WorkspaceIndexUnresolvedImport,
+  WorkspaceSdkIndexSummary,
+  WorkspaceTextSearchRequest,
+} from "@/features/workspace/workspace-index-api-types";
 
 export type WorkspaceSnapshot = {
   rootName: string;
@@ -68,147 +106,7 @@ export type WorkspaceIndexRefreshResult = {
   removedPaths: string[];
 };
 
-export type WorkspaceIndexDiagnostics = {
-  rootPath: string;
-  status: string;
-  schemaVersions: Record<string, number>;
-  fileCount: number;
-  symbolCount: number;
-  contentLineCount: number;
-  fingerprintCount: number;
-  stubFileCount: number;
-  stubDeclarationCount: number;
-  dependencyEdgeCount: number;
-  unresolvedImportCount: number;
-  parserErrorCount: number;
-  staleGenerationCount: number;
-  sdkSymbolCount: number;
-  dbSizeBytes: number;
-  queuePressure: WorkspaceIndexQueuePressure;
-  activeSdkPath: string | null;
-  activeSdkVersion: string | null;
-  lastError: string | null;
-  lastExplainStatus: string | null;
-  repairActions: string[];
-  parserFailures: WorkspaceIndexParserFailure[];
-  unresolvedImports: WorkspaceIndexUnresolvedImport[];
-  recentEvents: WorkspaceIndexEvent[];
-  timeline: WorkspaceIndexTimelineItem[];
-};
-
-export type WorkspaceIndexEvent = {
-  eventId: string;
-  rootPath: string;
-  scope: string;
-  kind: string;
-  phase: string;
-  severity: "info" | "warning" | "error" | string;
-  message: string;
-  taskId: string | null;
-  generation: number | null;
-  payloadJson: string;
-  createdAt: number;
-};
-
-export type WorkspaceIndexTimelineItem = {
-  scope: string;
-  kind: string;
-  phase: string;
-  title: string;
-  severity: "info" | "warning" | "error" | string;
-  message: string;
-  taskId: string | null;
-  generation: number | null;
-  occurredAt: number;
-  durationMs: number | null;
-};
-
-export type WorkspaceIndexQueuePressure = {
-  rootPath: string;
-  pendingTaskCount: number;
-  workspacePendingTaskCount: number;
-  highestPriority: string | null;
-  highestPriorityTaskKind: string | null;
-};
-
-export type WorkspaceIndexHealth = {
-  rootPath: string;
-  status: string;
-  fileCount: number;
-  symbolCount: number;
-  referenceCount: number;
-  sdkApiCount: number;
-  unresolvedImportCount: number;
-  parserFailureCount: number;
-  queuePressure: WorkspaceIndexQueuePressure;
-  repairActions: string[];
-};
-
-export type WorkspaceIndexFileReadiness = {
-  rootPath: string;
-  path: string;
-  fileName: string;
-  fileIndex: "ready" | "missing" | string;
-  contentIndex: "ready" | "missing" | string;
-  symbolIndex: "ready" | "missing" | string;
-  parserStatus: "ready" | "failed" | "unknown" | string;
-  parserError: string | null;
-  indexedGeneration: number | null;
-  definitionAvailable: boolean;
-  completionAvailable: boolean;
-  usagesAvailable: boolean;
-  searchAvailable: boolean;
-  reason: string;
-};
-
-export type WorkspaceIndexParserFailure = {
-  path: string;
-  message: string;
-  line: number;
-  column: number;
-};
-
-export type WorkspaceIndexUnresolvedImport = {
-  fromPath: string;
-  sourceModule: string;
-  line: number;
-  column: number;
-};
-
-export type WorkspaceSdkIndexSummary = {
-  symbolCount: number;
-};
-
-export type WorkspaceIndexTaskStatus = {
-  taskId: string;
-  rootPath: string;
-  kind: string;
-  status: "queued" | "running" | "ready" | "partial" | "stale" | "failed" | string;
-  reason: string;
-  generation: number;
-  progressCurrent: number;
-  progressTotal: number;
-  startedAt?: number;
-  lastHeartbeatAt?: number;
-  stalled?: boolean;
-  finishedAt?: number;
-  symbolCount?: number;
-  message?: string;
-  error?: string;
-};
-
-export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" | "api" | "text";
-
-export type WorkspaceTextSearchRequest = {
-  rootPath: string;
-  query: string;
-  options: WorkspaceTextSearchOptions;
-  limit: number;
-  contextLines: number;
-};
-
 export type WorkspaceIndexWatcher = (result: WorkspaceIndexRefreshResult) => void;
-export type WorkspaceIndexTaskStatusWatcher = (status: WorkspaceIndexTaskStatus) => void;
 
 export type WorkspaceLaunchContext = {
   rootPath: string | null;
@@ -358,44 +256,20 @@ export type LanguageCompletionItem = {
   replacementRange?: TextRange;
   commitCharacters?: string[];
   definitionTarget?: DefinitionTarget;
-  data?: Record<string, unknown>;
+  data?: LanguageCompletionItemData;
 };
 
-export type WorkspaceIndexReadinessState = "ready" | "partial" | "stale" | "blocked" | "missing";
-
-export type WorkspaceIndexReadiness = {
-  rootPath: string;
-  requestedGeneration: number;
-  servedGeneration: number | null;
-  state: WorkspaceIndexReadinessState;
-  reason?: string;
-  retryable: boolean;
+export type CompletionImportPreviewEdit = {
+  kind: "importPreview";
+  targetPath: string;
+  applyMode: "explicit";
 };
 
-export type WorkspaceIndexQueryEnvelope<T> = {
-  items: T[];
-  readiness: WorkspaceIndexReadiness;
-};
-
-export type WorkspaceIndexExplainRequest = {
-  rootPath: string;
-  kind: "search" | "definition" | "symbol" | "completion" | "api";
-  query: string;
-  path?: string | null;
-  line?: number | null;
-  column?: number | null;
-};
-
-export type WorkspaceIndexExplainFact = {
-  category: string;
-  evidence: string;
-};
-
-export type WorkspaceIndexExplainResult = {
-  status: "found" | "notIndexed" | "excluded" | "stale" | "partial" | "sdkNotReady" | "parserFailed" | "unsupported";
-  message: string;
-  facts: WorkspaceIndexExplainFact[];
-  recommendedAction?: "wait" | "rebuildIndex" | "configureSdk" | "openFile" | "reportBug" | null;
+export type LanguageCompletionItemData = {
+  symbolId?: string;
+  importPath?: string;
+  completionEdit?: CompletionImportPreviewEdit;
+  [key: string]: unknown;
 };
 
 export type DocumentSymbol = {
@@ -635,20 +509,6 @@ async function loadMockDocumentContent(path: string) {
   return "";
 }
 
-function emptyIndexQueryEnvelope<T>(rootPath: string): WorkspaceIndexQueryEnvelope<T> {
-  return {
-    items: [],
-    readiness: {
-      rootPath,
-      requestedGeneration: 0,
-      servedGeneration: null,
-      state: "missing",
-      reason: "No indexed generation is available",
-      retryable: true,
-    },
-  };
-}
-
 const browserBuildConfigurationStore = new Map<string, BuildConfiguration[]>();
 
 export const defaultWorkspaceApi: WorkspaceApi = {
@@ -689,411 +549,8 @@ export const defaultWorkspaceApi: WorkspaceApi = {
     const snapshot = await loadWorkspaceSnapshot(rootPath);
     return listDirectoryFromSnapshot(snapshot, directoryPath);
   },
-  async getWorkspaceIndexState(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexState>("get_workspace_index_state", { rootPath });
-    }
-
-    void rootPath;
-    return {
-      status: "empty",
-      rootPath: null,
-      filePaths: [],
-      symbols: [],
-      indexedAt: null,
-      partialReason: null,
-    };
-  },
-  async inspectWorkspaceIndex(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexDiagnostics>("inspect_workspace_index", { rootPath });
-    }
-
-    return {
-      rootPath,
-      status: "empty",
-      schemaVersions: {},
-      fileCount: 0,
-      symbolCount: 0,
-      contentLineCount: 0,
-      fingerprintCount: 0,
-      stubFileCount: 0,
-      stubDeclarationCount: 0,
-      dependencyEdgeCount: 0,
-      unresolvedImportCount: 0,
-      parserErrorCount: 0,
-      staleGenerationCount: 0,
-      sdkSymbolCount: 0,
-      dbSizeBytes: 0,
-      queuePressure: {
-        rootPath,
-        pendingTaskCount: 0,
-        workspacePendingTaskCount: 0,
-        highestPriority: null,
-        highestPriorityTaskKind: null,
-      },
-      activeSdkPath: null,
-      activeSdkVersion: null,
-      lastError: null,
-      lastExplainStatus: null,
-      repairActions: [],
-      parserFailures: [],
-      unresolvedImports: [],
-      recentEvents: [],
-      timeline: [],
-    };
-  },
-  async getWorkspaceIndexHealth(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexHealth>("get_workspace_index_health", { rootPath });
-    }
-
-    return {
-      rootPath,
-      status: "stale",
-      fileCount: 0,
-      symbolCount: 0,
-      referenceCount: 0,
-      sdkApiCount: 0,
-      unresolvedImportCount: 0,
-      parserFailureCount: 0,
-      queuePressure: {
-        rootPath,
-        pendingTaskCount: 0,
-        workspacePendingTaskCount: 0,
-        highestPriority: null,
-        highestPriorityTaskKind: null,
-      },
-      repairActions: ["rebuildProjectIndex"],
-    };
-  },
-  async getWorkspaceIndexFileReadiness(rootPath, filePath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexFileReadiness>("get_workspace_index_file_readiness", { rootPath, filePath });
-    }
-
-    const fileName = getPathBasename(filePath);
-    return {
-      rootPath,
-      path: filePath,
-      fileName,
-      fileIndex: "missing",
-      contentIndex: "missing",
-      symbolIndex: "missing",
-      parserStatus: "unknown",
-      parserError: null,
-      indexedGeneration: null,
-      definitionAvailable: false,
-      completionAvailable: false,
-      usagesAvailable: false,
-      searchAvailable: true,
-      reason: `${fileName} is not indexed outside the desktop runtime.`,
-    };
-  },
-  async getWorkspaceIndexTaskStatuses(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexTaskStatus[]>("get_workspace_index_task_statuses", { rootPath });
-    }
-
-    void rootPath;
-    return [];
-  },
-  async watchWorkspaceIndexTaskStatuses(rootPath, onChange) {
-    if (!hasTauriRuntime()) {
-      return () => undefined;
-    }
-
-    const unlisten = await listen<WorkspaceIndexTaskStatus>("workspace-index-task-updated", (event) => {
-      if (normalizePath(event.payload.rootPath) !== normalizePath(rootPath)) {
-        return;
-      }
-
-      onChange(event.payload);
-    });
-
-    return () => {
-      unlisten();
-    };
-  },
-  async clearWorkspaceIndex(rootPath) {
-    if (hasTauriRuntime()) {
-      await invoke("clear_workspace_index", { rootPath });
-      return;
-    }
-
-    void rootPath;
-  },
-  async rebuildWorkspaceIndex(rootPath) {
-    if (hasTauriRuntime()) {
-      await invoke("rebuild_workspace_index", { rootPath });
-      return;
-    }
-
-    void rootPath;
-  },
-  async resumeWorkspaceIndexing(rootPath) {
-    if (hasTauriRuntime()) {
-      await invoke("resume_workspace_indexing", { rootPath });
-      return;
-    }
-
-    void rootPath;
-  },
-  async rebuildWorkspaceSdkIndex(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexTaskStatus>("rebuild_workspace_sdk_index", { rootPath });
-    }
-
-    void rootPath;
-    return {
-      taskId: "local:sdk",
-      rootPath: "",
-      kind: "sdk",
-      status: "ready",
-      reason: "local-fallback",
-      generation: 0,
-      progressCurrent: 1,
-      progressTotal: 1,
-      startedAt: undefined,
-      finishedAt: undefined,
-      symbolCount: 0,
-      message: undefined,
-      error: undefined,
-    };
-  },
-  async inspectWorkspaceParserFailures(rootPath, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexParserFailure[]>("inspect_workspace_parser_failures", { rootPath, limit });
-    }
-
-    void rootPath;
-    void limit;
-    return [];
-  },
-  async inspectWorkspaceUnresolvedImports(rootPath, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexUnresolvedImport[]>("inspect_workspace_unresolved_imports", { rootPath, limit });
-    }
-
-    void rootPath;
-    void limit;
-    return [];
-  },
-  async indexWorkspaceSdkSymbols(rootPath, sdkPath, sdkVersion) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceSdkIndexSummary>("index_workspace_sdk_symbols", { rootPath, sdkPath, sdkVersion });
-    }
-
-    void rootPath;
-    void sdkPath;
-    void sdkVersion;
-    return { symbolCount: 0 };
-  },
-  async submitWorkspaceSdkIndex(rootPath, sdkPath, sdkVersion) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexTaskStatus>("submit_workspace_sdk_index", { rootPath, sdkPath, sdkVersion });
-    }
-
-    void rootPath;
-    void sdkPath;
-    void sdkVersion;
-    return {
-      taskId: "local:sdk",
-      rootPath: "",
-      kind: "sdk",
-      status: "ready",
-      reason: "local-fallback",
-      generation: 0,
-      progressCurrent: 1,
-      progressTotal: 1,
-    };
-  },
-  async queryWorkspaceQuickOpen(rootPath, query, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<SearchCandidate[]>("query_workspace_quick_open", { rootPath, query, limit });
-    }
-
-    void rootPath;
-    void query;
-    void limit;
-    return [];
-  },
-  async queryWorkspaceSearchEverywhere(rootPath, query, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<SearchCandidate[]>("query_workspace_search_everywhere", { rootPath, query, limit });
-    }
-
-    void rootPath;
-    void query;
-    void limit;
-    return [];
-  },
-  async queryWorkspaceCandidates(rootPath, query, scope, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<SearchCandidate[]>("query_workspace_candidates", { rootPath, query, scope, limit });
-    }
-
-    void rootPath;
-    void query;
-    void scope;
-    void limit;
-    return [];
-  },
-  async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>("query_workspace_candidates_with_readiness", { rootPath, query, scope, limit });
-    }
-
-    void query;
-    void scope;
-    void limit;
-    return emptyIndexQueryEnvelope(rootPath);
-  },
-  async queryWorkspaceFileSymbols(rootPath, filePath, query, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<SearchCandidate[]>("query_workspace_file_symbols", { rootPath, filePath, query, limit });
-    }
-
-    void rootPath;
-    void filePath;
-    void query;
-    void limit;
-    return [];
-  },
-  async queryWorkspaceFileSymbolsWithReadiness(rootPath, filePath, query, limit) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>("query_workspace_file_symbols_with_readiness", { rootPath, filePath, query, limit });
-    }
-
-    void filePath;
-    void query;
-    void limit;
-    return emptyIndexQueryEnvelope(rootPath);
-  },
-  async queryDefinitionCandidatesWithReadiness(rootPath, request) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>("query_definition_candidates_with_readiness", { rootPath, request });
-    }
-
-    void request;
-    return emptyIndexQueryEnvelope(rootPath);
-  },
-  async queryUsagesWithReadiness(rootPath, request) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexQueryEnvelope<UsageResult>>("query_usages_with_readiness", { rootPath, request });
-    }
-
-    void request;
-    return emptyIndexQueryEnvelope(rootPath);
-  },
-  async semanticCompleteSymbol(rootPath, request) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>("semantic_complete_symbol", { rootPath, request });
-    }
-
-    void request;
-    return emptyIndexQueryEnvelope(rootPath);
-  },
-  async explainWorkspaceIndexQuery(request) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexExplainResult>("explain_workspace_index_query", { request });
-    }
-
-    return {
-      status: "unsupported",
-      message: "Index explain is unavailable outside the desktop runtime",
-      facts: [{ category: "runtime", evidence: request.rootPath }],
-      recommendedAction: "reportBug",
-    };
-  },
-  async updateWorkspaceIndexFiles(rootPath, addedPaths, removedPaths) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexState>("update_workspace_index_files", { rootPath, addedPaths, removedPaths });
-    }
-
-    void rootPath;
-    void addedPaths;
-    void removedPaths;
-    return {
-      status: "empty",
-      rootPath: null,
-      filePaths: [],
-      symbols: [],
-      indexedAt: null,
-      partialReason: null,
-    };
-  },
-  async scheduleForegroundCompletionIndex(rootPath, changedPaths) {
-    if (hasTauriRuntime()) {
-      await invoke("schedule_foreground_completion_index", { rootPath, changedPaths });
-    }
-  },
-  async scheduleVisibleFilesIndex(rootPath, changedPaths) {
-    if (hasTauriRuntime()) {
-      await invoke("schedule_visible_files_index", { rootPath, changedPaths });
-    }
-  },
-  async refreshWorkspaceIndex(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexState>("refresh_workspace_index", { rootPath });
-    }
-
-    void rootPath;
-    return {
-      status: "empty",
-      rootPath: null,
-      filePaths: [],
-      symbols: [],
-      indexedAt: null,
-      partialReason: null,
-    };
-  },
-  async refreshWorkspaceIndexWithChanges(rootPath) {
-    if (hasTauriRuntime()) {
-      return invoke<WorkspaceIndexRefreshResult>("refresh_workspace_index_with_changes", { rootPath });
-    }
-
-    void rootPath;
-    return {
-      state: {
-        status: "empty",
-        rootPath: null,
-        filePaths: [],
-        symbols: [],
-        indexedAt: null,
-        partialReason: null,
-      },
-      changed: false,
-      addedPaths: [],
-      removedPaths: [],
-    };
-  },
-  async watchWorkspaceIndex(rootPath, onChange) {
-    if (!hasTauriRuntime()) {
-      return () => undefined;
-    }
-
-    const unlisten = await listen<WorkspaceIndexRefreshResult>("workspace-index-changed", (event) => {
-      const eventRootPath = event.payload.state.rootPath;
-      if (eventRootPath && normalizePath(eventRootPath) !== normalizePath(rootPath)) {
-        return;
-      }
-
-      onChange(event.payload);
-    });
-
-    try {
-      await invoke("watch_workspace_index", { rootPath });
-    } catch (error) {
-      unlisten();
-      throw error;
-    }
-
-    return () => {
-      unlisten();
-      void invoke("unwatch_workspace_index", { rootPath });
-    };
-  },
+  ...createWorkspaceIndexManagementApi({ invoke, listen, hasTauriRuntime, normalizePath, getPathBasename }),
+  ...createWorkspaceIndexQueryApi({ invoke, hasTauriRuntime }),
   async searchWorkspaceText(request) {
     if (hasTauriRuntime()) {
       return invoke<WorkspaceTextSearchResult>("search_workspace_text", { request });

@@ -3,6 +3,7 @@ import type {
   WorkspaceIndexFileReadiness,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
+import type { RecentQueryExplain } from "@/features/workspace/workspace-query-explain-model";
 
 type IndexDiagnosticsCenterProps = {
   open: boolean;
@@ -11,6 +12,7 @@ type IndexDiagnosticsCenterProps = {
   currentFileDirty: boolean;
   diagnostics: WorkspaceIndexDiagnostics | null;
   fileReadiness: WorkspaceIndexFileReadiness | null;
+  recentQueryExplains: RecentQueryExplain[];
   taskStatuses: WorkspaceIndexTaskStatus[];
   onClose: () => void;
   onRefresh: () => void;
@@ -27,6 +29,7 @@ export function IndexDiagnosticsCenter({
   currentFileDirty,
   diagnostics,
   fileReadiness,
+  recentQueryExplains,
   taskStatuses,
   onClose,
   onRefresh,
@@ -137,17 +140,25 @@ export function IndexDiagnosticsCenter({
             <section className="index-diagnostics__section" aria-label="Query Explain">
               <div className="index-diagnostics__section-title">
                 <h3>Query Explain</h3>
-                <span>{queryEvents.length} recent</span>
+                <span>{queryEvents.length + recentQueryExplains.length} recent</span>
               </div>
+              {recentQueryExplains.length > 0 ? recentQueryExplains.map((event) => (
+                <div className="index-diagnostics__event" key={event.id}>
+                  <span>frontend · {event.kind} · {event.query}</span>
+                  <strong>{event.message}</strong>
+                  <code>{event.explain.join("\n")}</code>
+                </div>
+              )) : null}
               {queryEvents.length > 0 ? queryEvents.slice(-5).map((event) => (
                 <div className="index-diagnostics__event" key={event.eventId}>
                   <span>{event.kind} · {event.phase}</span>
                   <strong>{event.message}</strong>
                   <code>{event.payloadJson}</code>
                 </div>
-              )) : (
+              )) : null}
+              {queryEvents.length === 0 && recentQueryExplains.length === 0 ? (
                 <div className="index-diagnostics__empty">No query explain events yet.</div>
-              )}
+              ) : null}
             </section>
 
             <section className="index-diagnostics__section" aria-label="Health / Storage">

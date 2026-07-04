@@ -146,4 +146,35 @@ describe("completion presentation model", () => {
       definitionTarget: { path: "/sdk/ets/component/common.d.ts", line: 20927, column: 5 },
     });
   });
+
+  it("preserves explicit import preview metadata for importable workspace completions", () => {
+    const items = normalizeCompletionItems([
+      {
+        label: "UserService",
+        detail: "class UserService",
+        kind: "class",
+        source: "workspace",
+        data: {
+          symbolId: "project:/src/UserService.ets:class:UserService",
+          importPath: "/project/src/UserService.ets",
+          completionEdit: {
+            kind: "importPreview",
+            targetPath: "/project/src/UserService.ets",
+            applyMode: "explicit",
+          },
+        },
+      },
+    ], {
+      prefix: "User",
+      lineTextBeforeCursor: "const service = new User",
+      trigger: "typing",
+      acceptedLabels: [],
+    });
+
+    expect(items[0].completionEdit).toEqual({
+      kind: "importPreview",
+      targetPath: "/project/src/UserService.ets",
+      applyMode: "explicit",
+    });
+  });
 });

@@ -1,0 +1,219 @@
+import { act, renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { useIndexDiagnosticsController } from "@/components/layout/use-index-diagnostics-controller";
+import type { AppSettings } from "@/features/settings/settings-store";
+import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type {
+  WorkspaceIndexDiagnostics,
+  WorkspaceIndexFileReadiness,
+  WorkspaceIndexTaskStatus,
+} from "@/features/workspace/workspace-index-api-types";
+
+describe("useIndexDiagnosticsController", () => {
+  it("opens diagnostics and loads health, task status, and current file readiness", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const getWorkspaceIndexTaskStatuses = vi.fn(async () => [taskStatus({ taskId: "task-1" })]);
+    const getWorkspaceIndexFileReadiness = vi.fn(async () => readiness());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses,
+        getWorkspaceIndexFileReadiness,
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.indexDiagnosticsVisible).toBe(true);
+    expect(result.current.indexDiagnostics?.fileCount).toBe(12);
+    expect(result.current.workspaceIndexTaskStatuses).toHaveLength(1);
+    expect(result.current.currentFileReadiness?.definitionAvailable).toBe(true);
+    expect(inspectWorkspaceIndex).toHaveBeenCalledWith("/workspace");
+  });
+
+  it("records explain miss details for the explain panel", async () => {
+    const explainWorkspaceIndexQuery = vi.fn(async () => ({
+      status: "notIndexed" as const,
+      message: "No indexed evidence explains this query yet",
+      recommendedAction: "rebuildIndex" as const,
+      facts: [{ category: "query", evidence: "Entry.ets:4:9" }],
+    }));
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({ explainWorkspaceIndexQuery }),
+    })));
+
+    let message: string | null = null;
+    await act(async () => {
+      message = await result.current.explainIndexMiss("definition", "Entry.ets:4:9", "/workspace/Entry.ets", 4, 9);
+    });
+
+    expect(message).toBe("No indexed evidence explains this query yet. Rebuild Index.");
+    expect(result.current.latestExplainResult?.status).toBe("notIndexed");
+    expect(result.current.latestExplainContext).toMatchObject({
+      kind: "definition",
+      query: "Entry.ets:4:9",
+      path: "/workspace/Entry.ets",
+    });
+  });
+
+  it("queues SDK indexing from settings and waits for ready status", async () => {
+    const onStatusChange = vi.fn();
+    const queued = taskStatus({ taskId: "sdk-1", kind: "sdk-index", status: "running" });
+    const ready = taskStatus({ taskId: "sdk-1", kind: "sdk-index", status: "ready" });
+    const submitWorkspaceSdkIndex = vi.fn(async () => queued);
+    const getWorkspaceIndexTaskStatuses = vi.fn(async () => [ready]);
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({ submitWorkspaceSdkIndex, getWorkspaceIndexTaskStatuses }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.indexSdkSymbolsForSettings(settings("/sdk"));
+    });
+
+    expect(submitWorkspaceSdkIndex).toHaveBeenCalledWith("/workspace", "/sdk", "settings");
+    expect(result.current.workspaceIndexTaskStatuses).toEqual([ready]);
+    expect(onStatusChange).toHaveBeenCalledWith("SDK API index queued...");
+  });
+});
+
+function options(overrides: Partial<Parameters<typeof useIndexDiagnosticsController>[0]> = {}) {
+  return {
+    workspaceApi: workspaceApi({}),
+    workspace: workspace(),
+    activePath: "/workspace/Entry.ets",
+    applyWorkspaceIndexRefreshResult: vi.fn(),
+    openSettings: vi.fn(async () => undefined),
+    retryDefinitionQuery: vi.fn(),
+    retrySearchQuery: vi.fn(),
+    onStatusChange: vi.fn(),
+    ...overrides,
+  };
+}
+
+function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
+  return {
+    openDemoWorkspace: vi.fn(),
+    openWorkspace: vi.fn(),
+    openFile: vi.fn(),
+    saveFile: vi.fn(),
+    runValidation: vi.fn(),
+    loadDiff: vi.fn(),
+    inspectEnvironment: vi.fn(),
+    saveSettings: vi.fn(),
+    loadSettings: vi.fn(),
+    ...overrides,
+  } as unknown as WorkspaceApi;
+}
+
+function workspace(): WorkspaceViewModel {
+  return {
+    rootName: "workspace",
+    rootPath: "/workspace",
+    visibleFiles: ["/workspace/Entry.ets"],
+    fileTree: [],
+    scanSummary: {
+      scannedFiles: 1,
+      skippedEntries: 0,
+      truncated: false,
+      excludeRules: [],
+    },
+  };
+}
+
+function diagnostics(): WorkspaceIndexDiagnostics {
+  return {
+    rootPath: "/workspace",
+    status: "ready",
+    schemaVersions: {},
+    fileCount: 12,
+    symbolCount: 30,
+    contentLineCount: 100,
+    fingerprintCount: 12,
+    stubFileCount: 0,
+    stubDeclarationCount: 0,
+    dependencyEdgeCount: 0,
+    unresolvedImportCount: 0,
+    parserErrorCount: 0,
+    staleGenerationCount: 0,
+    sdkSymbolCount: 0,
+    dbSizeBytes: 2048,
+    queuePressure: {
+      rootPath: "/workspace",
+      pendingTaskCount: 0,
+      workspacePendingTaskCount: 0,
+      highestPriority: null,
+      highestPriorityTaskKind: null,
+    },
+    activeSdkPath: null,
+    activeSdkVersion: null,
+    lastError: null,
+    lastExplainStatus: null,
+    repairActions: [],
+    parserFailures: [],
+    unresolvedImports: [],
+    recentEvents: [],
+    timeline: [],
+  };
+}
+
+function readiness(): WorkspaceIndexFileReadiness {
+  return {
+    rootPath: "/workspace",
+    path: "/workspace/Entry.ets",
+    fileName: "Entry.ets",
+    fileIndex: "ready",
+    contentIndex: "ready",
+    symbolIndex: "ready",
+    parserStatus: "ready",
+    parserError: null,
+    indexedGeneration: 1,
+    definitionAvailable: true,
+    completionAvailable: true,
+    usagesAvailable: true,
+    searchAvailable: true,
+    reason: "Ready",
+  };
+}
+
+function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {
+  return {
+    taskId: "task",
+    rootPath: "/workspace",
+    kind: "project-index",
+    status: "ready",
+    reason: "Ready",
+    generation: 1,
+    progressCurrent: 1,
+    progressTotal: 1,
+    ...overrides,
+  };
+}
+
+function settings(harmonySdkPath: string): AppSettings {
+  return {
+    sdk: {
+      harmonySdkPath,
+      semanticWorkerPath: "",
+      nodePath: "",
+      autoDetect: true,
+    },
+    validation: {
+      formatOnSave: false,
+      lintCommand: "arklint",
+      formatCommand: "arkfmt",
+      timeoutMs: 5000,
+    },
+    editor: {
+      fontSize: 13,
+      fontFamily: "Menlo",
+      lineHeight: 1.5,
+      letterSpacing: 0,
+    },
+    recentProjects: [],
+  };
+}

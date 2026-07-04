@@ -1,4 +1,7 @@
-import { collectCompletionCandidates } from "@/components/layout/completion-candidate-provider";
+import {
+  collectCompletionCandidateResult,
+  collectCompletionCandidates,
+} from "@/components/layout/completion-candidate-provider";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
@@ -35,6 +38,10 @@ function envelope(items: SearchCandidate[], state: "ready" | "partial" | "stale"
       state,
       retryable: state !== "ready",
     },
+    explain: [
+      `readiness:${state === "ready" ? "Ready" : state === "partial" ? "Partial" : "Stale"}`,
+      `resultCount:${items.length}`,
+    ],
   };
 }
 
@@ -100,6 +107,54 @@ describe("completion candidate provider", () => {
       "localBuild()",
       "PrivateProfile",
       "private",
+    ]);
+  });
+
+  it("returns envelope explain evidence for completion diagnostics", async () => {
+    const api = workspaceApi({
+      completeSymbol: async () => [],
+      semanticCompleteSymbol: async () => ({
+        items: [],
+        readiness: {
+          rootPath: "/workspace",
+          requestedGeneration: 2,
+          servedGeneration: 1,
+          state: "partial" as const,
+          reason: "Semantic completion is waiting for current file symbols",
+          retryable: true,
+        },
+        explain: [
+          "query:completion",
+          "readiness:Partial",
+          "reason:Semantic completion is waiting for current file symbols",
+        ],
+      }),
+      queryWorkspaceFileSymbolsWithReadiness: async () => ({
+        ...envelope([], "partial"),
+        explain: ["query:fileSymbols", "readiness:Partial"],
+      }),
+      queryWorkspaceCandidatesWithReadiness: async () => ({
+        ...envelope([], "stale"),
+        explain: ["query:searchEverywhere", "readiness:Stale"],
+      }),
+    });
+
+    const result = await collectCompletionCandidateResult({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "missing",
+      replacePrefix: "missing",
+    });
+
+    expect(result.items).toEqual([]);
+    expect(result.explain).toEqual([
+      "query:completion",
+      "readiness:Partial",
+      "reason:Semantic completion is waiting for current file symbols",
+      "query:fileSymbols",
+      "readiness:Partial",
+      "query:searchEverywhere",
+      "readiness:Stale",
     ]);
   });
 

@@ -970,7 +970,7 @@ describe("App shell", () => {
     await waitFor(() => expect(queryWorkspaceSearchEverywhere).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
       "login",
-      24,
+      25,
     ));
     const results = screen.getByRole("list", { name: "Search Everywhere Results" });
     expect(within(results).getByText("Classes")).toBeVisible();
@@ -1197,6 +1197,42 @@ describe("App shell", () => {
     expect(await screen.findByText("Search Everywhere miss: No indexed evidence explains this query yet. Rebuild Index.")).toBeVisible();
   });
 
+  it("uses Search Everywhere envelope explain before running a separate explain query", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [],
+      readiness: {
+        rootPath: "C:\\samples\\DemoWorkspace",
+        requestedGeneration: 7,
+        servedGeneration: 6,
+        state: "partial" as const,
+        reason: "Current query is waiting for the symbol index",
+        retryable: true,
+      },
+      explain: [
+        "query:searchEverywhere",
+        "resultCount:0",
+        "readiness:Partial",
+        "reason:Current query is waiting for the symbol index",
+      ],
+    }));
+    const explainWorkspaceIndexQuery = vi.fn(async () => ({
+      status: "notIndexed" as const,
+      message: "No indexed evidence explains this query yet",
+      facts: [{ category: "query", evidence: "missingThing" }],
+      recommendedAction: "rebuildIndex" as const,
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness, explainWorkspaceIndexQuery })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "missingThing");
+
+    expect(await screen.findByText("Search Everywhere miss: Current query is waiting for the symbol index")).toBeVisible();
+    expect(explainWorkspaceIndexQuery).not.toHaveBeenCalled();
+  });
+
   it("does not query Search Everywhere until the user enters text", async () => {
     const user = userEvent.setup();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
@@ -1224,8 +1260,43 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "login",
       "all",
-      24,
+      25,
     ));
+  });
+
+  it("shows truncation metadata when Search Everywhere has more results than the display cap", async () => {
+    const user = userEvent.setup();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: Array.from({ length: 25 }, (_value, index) => ({
+        id: `file:Result${index}`,
+        source: "file" as const,
+        kind: "file",
+        title: `Result${index}.ets`,
+        subtitle: `C:/samples/DemoWorkspace/src/Result${index}.ets`,
+        path: `C:/samples/DemoWorkspace/src/Result${index}.ets`,
+        line: 1,
+        column: 1,
+        score: 100 - index,
+        freshness: "ready" as const,
+      })),
+      readiness: {
+        rootPath: "C:\\samples\\DemoWorkspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "result");
+
+    expect(await screen.findByText("Showing 24 of at least 25 all result(s). Refine the query to see more.")).toBeVisible();
+    expect(screen.getByRole("button", { name: /file Result23\.ets/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /file Result24\.ets/ })).not.toBeInTheDocument();
   });
 
   it("coalesces rapid Search Everywhere typing into the latest query", async () => {
@@ -1255,7 +1326,7 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "login",
       "all",
-      24,
+      25,
     ));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
   });
@@ -1316,7 +1387,7 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "login",
       "all",
-      24,
+      25,
     ));
     expect(await screen.findByRole("button", { name: /api loginAction/ })).toBeVisible();
 
@@ -1326,7 +1397,7 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "login",
       "classes",
-      24,
+      25,
     ));
     expect(screen.getByRole("tab", { name: "Classes", selected: true })).toBeVisible();
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
@@ -1395,7 +1466,7 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "login",
       "all",
-      24,
+      25,
     ));
     expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: /class LoginController/ })).toBeVisible();
@@ -1406,7 +1477,7 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "login",
       "classes",
-      24,
+      25,
     ));
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
   });
@@ -2996,6 +3067,60 @@ describe("App shell", () => {
     expect(screen.getByRole("cell", { name: "missingTarget" })).toBeVisible();
   });
 
+  it("uses definition envelope explain before running a separate explain query", async () => {
+    const user = userEvent.setup();
+    const explainWorkspaceIndexQuery = vi.fn(async () => ({
+      status: "notIndexed" as const,
+      message: "Separate explain query should not be needed",
+      facts: [],
+      recommendedAction: "rebuildIndex" as const,
+    }));
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "const value = missingTarget;\n",
+      queryDefinitionCandidatesWithReadiness: vi.fn(async () => ({
+        items: [],
+        readiness: {
+          rootPath: "C:/samples/DemoWorkspace",
+          requestedGeneration: 7,
+          servedGeneration: 6,
+          state: "partial" as const,
+          reason: "Definition waits for current file symbol index",
+          retryable: true,
+        },
+        explain: [
+          "query:definition",
+          "usedIndexes:WorkspaceIndex",
+          "resultCount:0",
+          "readiness:Partial",
+          "reason:Definition waits for current file symbol index",
+        ],
+      })),
+      gotoDefinition: vi.fn(async () => null),
+      gotoDefinitionCandidates: vi.fn(async () => []),
+      explainWorkspaceIndexQuery,
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard("{Control>}b{/Control}");
+
+    expect(await screen.findByRole("button", { name: /Go to Definition miss: Definition waits for current file symbol index/ })).toBeVisible();
+    expect(explainWorkspaceIndexQuery).not.toHaveBeenCalled();
+  });
+
   it("rebuilds the index from the explain panel", async () => {
     const user = userEvent.setup();
     const rebuildWorkspaceIndex = vi.fn(async () => undefined);
@@ -3869,6 +3994,58 @@ describe("App shell", () => {
     expect(await screen.findByText("Completion empty")).toBeVisible();
   });
 
+  it("shows completion envelope explain for manual empty completion", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      semanticCompleteSymbol: vi.fn(async () => ({
+        items: [],
+        readiness: {
+          rootPath: "C:/samples/DemoWorkspace",
+          requestedGeneration: 4,
+          servedGeneration: 3,
+          state: "partial" as const,
+          reason: "Completion waits for current file symbols",
+          retryable: true,
+        },
+        explain: [
+          "query:completion",
+          "resultCount:0",
+          "readiness:Partial",
+          "reason:Completion waits for current file symbols",
+        ],
+      })),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{Control>} {/Control}");
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Completion waits for current file symbols");
+    expect(await screen.findByText("Completion empty")).toBeVisible();
+
+    await user.click(await screen.findByRole("button", { name: /Open Index Diagnostics/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Index Diagnostics Center" });
+    const queryExplain = within(dialog).getByRole("region", { name: "Query Explain" });
+    expect(within(queryExplain).getByText("Completion waits for current file symbols")).toBeVisible();
+    expect(within(queryExplain).getByText(/frontend .* completion/)).toBeVisible();
+  });
+
   it("ignores stale completion responses after continued typing", async () => {
     const user = userEvent.setup();
     const firstCompletion = deferred<LanguageCompletionItem[]>();
@@ -4669,6 +4846,52 @@ describe("App shell", () => {
       expect(workspaceApi.openFile).toHaveBeenLastCalledWith("C:/samples/DemoWorkspace/AppScope/app.json5");
     });
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
+  });
+
+  it("shows usages envelope explain when indexed usage lookup has no matches", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openDemoWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\n@Component\nstruct Index {}",
+      queryUsagesWithReadiness: vi.fn(async () => ({
+        items: [],
+        readiness: {
+          rootPath: "C:/samples/DemoWorkspace",
+          requestedGeneration: 11,
+          servedGeneration: 10,
+          state: "partial" as const,
+          reason: "Usage references are still being indexed for the current file",
+          retryable: true,
+        },
+        explain: [
+          "query:usages",
+          "usedIndexes:WorkspaceIndex",
+          "resultCount:0",
+          "readiness:Partial",
+          "reason:Usage references are still being indexed for the current file",
+        ],
+      })),
+      findUsages: vi.fn(async () => []),
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.keyboard("{Control>}{F7}{/Control}");
+
+    const queryPanel = await screen.findByLabelText("Editor Query Panel");
+    expect(within(queryPanel).getByText("Usage references are still being indexed for the current file")).toBeVisible();
+    expect(workspaceApi.findUsages).not.toHaveBeenCalled();
   });
 
   it("shows ambiguous fallback definition candidates in the usages panel", async () => {

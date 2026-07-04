@@ -2,6 +2,8 @@ import { rankPaths } from "@/features/search/fuzzy-matcher";
 import type {
   WorkspaceIndexQueryScope,
   WorkspaceIndexReadiness,
+} from "@/features/workspace/workspace-index-api-types";
+import type {
   WorkspaceViewModel,
 } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";

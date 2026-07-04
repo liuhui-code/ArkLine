@@ -15,7 +15,7 @@ export function UsagesPanel({ state, onOpenUsage }: UsagesPanelProps) {
   }
 
   if (state.status === "empty") {
-    return <div aria-label="Usages Panel">No usages found</div>;
+    return <div aria-label="Usages Panel">{state.message ?? "No usages found"}</div>;
   }
 
   if (state.items.length === 0) {

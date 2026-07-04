@@ -1,4 +1,4 @@
-import type { LanguageCompletionItem } from "@/features/workspace/workspace-api";
+import type { CompletionImportPreviewEdit, LanguageCompletionItem } from "@/features/workspace/workspace-api";
 
 export type CompletionSurface = "suggestionList" | "inlineGhostText";
 export type CompletionTrigger = "manual" | "typing";
@@ -44,6 +44,7 @@ export type CompletionPresentation = {
   sourceLabel: string;
   replacementRange?: LanguageCompletionItem["replacementRange"];
   definitionTarget?: LanguageCompletionItem["definitionTarget"];
+  completionEdit?: CompletionImportPreviewEdit;
   commitCharacters: string[];
   replacementPrefix: string;
   original: LanguageCompletionItem;
@@ -100,8 +101,20 @@ export function normalizeCompletionItems(
       ...(item.documentation !== undefined ? { documentation: item.documentation } : {}),
       ...(item.replacementRange !== undefined ? { replacementRange: item.replacementRange } : {}),
       ...(item.definitionTarget !== undefined ? { definitionTarget: item.definitionTarget } : {}),
+      ...(isImportPreviewEdit(item.data?.completionEdit) ? { completionEdit: item.data.completionEdit } : {}),
     };
   });
+}
+
+function isImportPreviewEdit(value: unknown): value is CompletionImportPreviewEdit {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const edit = value as Partial<CompletionImportPreviewEdit>;
+  return edit.kind === "importPreview"
+    && typeof edit.targetPath === "string"
+    && edit.targetPath.length > 0
+    && edit.applyMode === "explicit";
 }
 
 export function rankCompletionItems(

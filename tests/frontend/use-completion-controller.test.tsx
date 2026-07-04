@@ -1,0 +1,154 @@
+import { act, renderHook } from "@testing-library/react";
+import { useState } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { useCompletionController } from "@/components/layout/use-completion-controller";
+import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { OverlayKey } from "@/components/layout/shell-state";
+
+describe("useCompletionController", () => {
+  it("opens manual completion results in the completion overlay", async () => {
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(async () => [
+          { label: "build()", detail: "Workspace method", kind: "function" },
+        ]),
+      }),
+      onStatusChange,
+    });
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+
+    expect(result.current.overlay).toBe("completion");
+    expect(result.current.completion.completionPopupVisible).toBe(true);
+    expect(result.current.completion.completionPresentationResults.map((item) => item.label)).toEqual(["build()"]);
+    expect(onStatusChange).toHaveBeenCalledWith("Completion: 1 items");
+  });
+
+  it("records envelope explain for empty completion results", async () => {
+    const recordRecentQueryExplain = vi.fn();
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      rootPath: "/workspace",
+      workspaceApi: workspaceApi({
+        semanticCompleteSymbol: vi.fn(async () => ({
+          items: [],
+          readiness: {
+            rootPath: "/workspace",
+            requestedGeneration: 4,
+            servedGeneration: 3,
+            state: "partial" as const,
+            reason: "Completion waits for current file symbols",
+            retryable: true,
+          },
+          explain: [
+            "query:completion",
+            "readiness:Partial",
+            "reason:Completion waits for current file symbols",
+          ],
+        })),
+      }),
+      recordRecentQueryExplain,
+      onStatusChange,
+    });
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+
+    expect(result.current.completion.completionStatus).toBe("empty");
+    expect(result.current.completion.completionMessage).toBe("Completion waits for current file symbols");
+    expect(recordRecentQueryExplain).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "completion",
+      message: "Completion waits for current file symbols",
+      explain: expect.arrayContaining(["reason:Completion waits for current file symbols"]),
+    }));
+    expect(onStatusChange).toHaveBeenCalledWith("Completion empty");
+  });
+
+  it("accepts a completion item and prepares editor insertion", async () => {
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      editorContent: "Button().wid",
+      editorSelection: { line: 1, column: 13 },
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(async () => [
+          { label: "width", insertText: "width(${1:value})", detail: "ArkUI property", kind: "property" },
+        ]),
+      }),
+      onStatusChange,
+    });
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+    const item = result.current.completion.completionPresentationResults[0];
+
+    act(() => {
+      result.current.completion.insertCompletionItem(item);
+    });
+
+    expect(result.current.overlay).toBe("none");
+    expect(result.current.insertTarget).toMatchObject({ text: "width(value)", replaceBefore: 3 });
+    expect(onStatusChange).toHaveBeenCalledWith("Inserted completion: width");
+  });
+});
+
+function renderHarness(overrides: Partial<HarnessOptions> = {}) {
+  return renderHook(() => {
+    const [overlay, setOverlay] = useState<OverlayKey>("none");
+    const [quickOpenQuery, setQuickOpenQuery] = useState("");
+    const [insertTarget, setInsertTarget] = useState<{ text: string; replaceBefore?: number; nonce: number } | null>(null);
+    const completion = useCompletionController({
+      workspaceApi: overrides.workspaceApi ?? workspaceApi({ completeSymbol: vi.fn(async () => []) }),
+      rootPath: overrides.rootPath,
+      activePath: overrides.activePath ?? "/workspace/A.ets",
+      editorContent: overrides.editorContent ?? "build",
+      editorSelection: overrides.editorSelection ?? { line: 1, column: 6 },
+      quickOpenQuery,
+      activeOverlay: overlay,
+      settingsApplying: overrides.settingsApplying ?? false,
+      getActiveContent: () => overrides.editorContent ?? "build",
+      setActiveOverlay: setOverlay,
+      setQuickOpenQuery,
+      setInsertTextTarget: setInsertTarget,
+      bumpEditorFocusToken: overrides.bumpEditorFocusToken ?? vi.fn(),
+      focusEditorSoon: overrides.focusEditorSoon ?? vi.fn(),
+      isEditorFocused: overrides.isEditorFocused ?? vi.fn(() => true),
+      recordRecentQueryExplain: overrides.recordRecentQueryExplain ?? vi.fn(),
+      onStatusChange: overrides.onStatusChange ?? vi.fn(),
+    });
+    return { completion, overlay, quickOpenQuery, insertTarget };
+  });
+}
+
+type HarnessOptions = {
+  workspaceApi: WorkspaceApi;
+  rootPath: string;
+  activePath: string | null;
+  editorContent: string;
+  editorSelection: { line: number; column: number };
+  settingsApplying: boolean;
+  bumpEditorFocusToken: () => void;
+  focusEditorSoon: () => void;
+  isEditorFocused: () => boolean;
+  recordRecentQueryExplain: Parameters<typeof useCompletionController>[0]["recordRecentQueryExplain"];
+  onStatusChange: (message: string) => void;
+};
+
+function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
+  return {
+    openDemoWorkspace: vi.fn(),
+    openWorkspace: vi.fn(),
+    openFile: vi.fn(),
+    saveFile: vi.fn(),
+    runValidation: vi.fn(),
+    loadDiff: vi.fn(),
+    inspectEnvironment: vi.fn(),
+    saveSettings: vi.fn(),
+    loadSettings: vi.fn(),
+    ...overrides,
+  } as unknown as WorkspaceApi;
+}
