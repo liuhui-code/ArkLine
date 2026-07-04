@@ -116,7 +116,7 @@ fn worker_tick_drains_only_one_bounded_task_batch() {
         })
         .unwrap();
 
-    assert_eq!(observed.len(), WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE);
+    assert_eq!(observed.len(), 1);
     let pending = manager
         .get_index_task_statuses(roots.last().unwrap())
         .unwrap();

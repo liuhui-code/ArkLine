@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Statement};
 
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_stub_index_service::ARKTS_STUB_PARSER_VERSION;
@@ -54,6 +54,14 @@ pub fn classify_file_fingerprints(
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let mut changes = Vec::new();
+    let mut select_statement = connection
+        .prepare(
+            "select mtime_ms, size, hash, content_index_version, symbol_index_version,
+                stub_parser_version
+             from workspace_file_fingerprints
+             where root_path = ?1 and path = ?2",
+        )
+        .map_err(|error| error.to_string())?;
 
     for path in paths {
         let Some(current) = current_file_fingerprint(path)? else {
@@ -63,7 +71,7 @@ pub fn classify_file_fingerprints(
             });
             continue;
         };
-        let stored = load_stored_fingerprint(&connection, &root_key, path)?;
+        let stored = load_stored_fingerprint(&mut select_statement, &root_key, path)?;
         let status = if stored.is_some_and(|stored| fingerprint_matches(&stored, &current)) {
             WorkspaceFileFingerprintStatus::Unchanged
         } else {
@@ -87,43 +95,50 @@ pub fn update_file_fingerprints(
         return Ok(());
     }
 
-    let connection = open_fingerprint_store(root_path)?;
+    let mut connection = open_fingerprint_store(root_path)?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let mut insert_statement = transaction
+        .prepare(
+            "insert into workspace_file_fingerprints (
+                root_path, path, mtime_ms, size, hash,
+                content_index_version, symbol_index_version, stub_parser_version,
+                indexed_generation
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             on conflict(root_path, path) do update set
+                mtime_ms = excluded.mtime_ms,
+                size = excluded.size,
+                hash = excluded.hash,
+                content_index_version = excluded.content_index_version,
+                symbol_index_version = excluded.symbol_index_version,
+                stub_parser_version = excluded.stub_parser_version,
+                indexed_generation = excluded.indexed_generation",
+        )
+        .map_err(|error| error.to_string())?;
     for path in paths {
         let Some(current) = current_file_fingerprint(path)? else {
             continue;
         };
-        connection
-            .execute(
-                "insert into workspace_file_fingerprints (
-                    root_path, path, mtime_ms, size, hash,
-                    content_index_version, symbol_index_version, stub_parser_version,
-                    indexed_generation
-                 ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-                 on conflict(root_path, path) do update set
-                    mtime_ms = excluded.mtime_ms,
-                    size = excluded.size,
-                    hash = excluded.hash,
-                    content_index_version = excluded.content_index_version,
-                    symbol_index_version = excluded.symbol_index_version,
-                    stub_parser_version = excluded.stub_parser_version,
-                    indexed_generation = excluded.indexed_generation",
-                params![
-                    root_key,
-                    normalize_index_path(path),
-                    current.mtime_ms,
-                    current.size,
-                    current.hash,
-                    CONTENT_INDEX_VERSION,
-                    SYMBOL_INDEX_VERSION,
-                    ARKTS_STUB_PARSER_VERSION,
-                    indexed_generation as i64,
-                ],
-            )
+        let normalized_path = normalize_index_path(path);
+        insert_statement
+            .execute(params![
+                &root_key,
+                normalized_path,
+                current.mtime_ms,
+                current.size,
+                current.hash,
+                CONTENT_INDEX_VERSION,
+                SYMBOL_INDEX_VERSION,
+                ARKTS_STUB_PARSER_VERSION,
+                indexed_generation as i64,
+            ])
             .map_err(|error| error.to_string())?;
     }
-    Ok(())
+    drop(insert_statement);
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 pub fn remove_file_fingerprints(root_path: &str, paths: &[String]) -> Result<(), String> {
@@ -131,19 +146,26 @@ pub fn remove_file_fingerprints(root_path: &str, paths: &[String]) -> Result<(),
         return Ok(());
     }
 
-    let connection = open_fingerprint_store(root_path)?;
+    let mut connection = open_fingerprint_store(root_path)?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let mut delete_statement = transaction
+        .prepare(
+            "delete from workspace_file_fingerprints
+             where root_path = ?1 and path = ?2",
+        )
+        .map_err(|error| error.to_string())?;
     for path in paths {
-        connection
-            .execute(
-                "delete from workspace_file_fingerprints
-                 where root_path = ?1 and path = ?2",
-                params![root_key, normalize_index_path(path)],
-            )
+        let normalized_path = normalize_index_path(path);
+        delete_statement
+            .execute(params![&root_key, normalized_path])
             .map_err(|error| error.to_string())?;
     }
-    Ok(())
+    drop(delete_statement);
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 fn fingerprint_matches(stored: &StoredFileFingerprint, current: &CurrentFileFingerprint) -> bool {
@@ -156,28 +178,22 @@ fn fingerprint_matches(stored: &StoredFileFingerprint, current: &CurrentFileFing
 }
 
 fn load_stored_fingerprint(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     root_key: &str,
     path: &str,
 ) -> Result<Option<StoredFileFingerprint>, String> {
-    connection
-        .query_row(
-            "select mtime_ms, size, hash, content_index_version, symbol_index_version,
-                stub_parser_version
-             from workspace_file_fingerprints
-             where root_path = ?1 and path = ?2",
-            params![root_key, normalize_index_path(path)],
-            |row| {
-                Ok(StoredFileFingerprint {
-                    mtime_ms: row.get(0)?,
-                    size: row.get(1)?,
-                    hash: row.get(2)?,
-                    content_index_version: row.get(3)?,
-                    symbol_index_version: row.get(4)?,
-                    stub_parser_version: row.get(5)?,
-                })
-            },
-        )
+    let normalized_path = normalize_index_path(path);
+    statement
+        .query_row(params![root_key, normalized_path], |row| {
+            Ok(StoredFileFingerprint {
+                mtime_ms: row.get(0)?,
+                size: row.get(1)?,
+                hash: row.get(2)?,
+                content_index_version: row.get(3)?,
+                symbol_index_version: row.get(4)?,
+                stub_parser_version: row.get(5)?,
+            })
+        })
         .optional()
         .map_err(|error| error.to_string())
 }

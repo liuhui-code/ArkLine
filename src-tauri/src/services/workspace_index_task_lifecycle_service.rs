@@ -1,4 +1,6 @@
-use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskKind;
+use crate::services::workspace_index_scheduler_service::{
+    WorkspaceIndexTask, WorkspaceIndexTaskKind,
+};
 
 pub fn task_kind_replaces_pending(
     new_kind: &WorkspaceIndexTaskKind,
@@ -36,10 +38,23 @@ pub fn task_kind_supersedes_result(new_kind: &WorkspaceIndexTaskKind, result_kin
     }
 }
 
+pub fn task_supersedes_result(
+    task: &WorkspaceIndexTask,
+    result_kind: &str,
+    result_reason: &str,
+) -> bool {
+    task_kind_supersedes_result(&task.kind, result_kind)
+        && (task.kind != WorkspaceIndexTaskKind::ChangedPaths
+            || result_kind != "changed-paths"
+            || task.reason == result_reason)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{task_kind_replaces_pending, task_kind_supersedes_result};
-    use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskKind;
+    use super::{task_kind_replaces_pending, task_kind_supersedes_result, task_supersedes_result};
+    use crate::services::workspace_index_scheduler_service::{
+        WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
+    };
 
     #[test]
     fn defines_pending_task_replacement_matrix() {
@@ -157,5 +172,30 @@ mod tests {
                 "{new_kind:?} superseding {result_kind}"
             );
         }
+    }
+
+    #[test]
+    fn changed_path_results_are_superseded_only_by_matching_reason() {
+        let task = WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::Background,
+            changed_paths: vec!["A.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 2,
+            reason: "full-refresh-deep:refresh-workspace".to_string(),
+        };
+
+        assert!(!task_supersedes_result(
+            &task,
+            "changed-paths",
+            "full-refresh-files:refresh-workspace"
+        ));
+        assert!(task_supersedes_result(
+            &task,
+            "changed-paths",
+            "full-refresh-deep:refresh-workspace"
+        ));
     }
 }

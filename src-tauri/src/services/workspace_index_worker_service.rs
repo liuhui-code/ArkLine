@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
 use crate::services::workspace_dependency_graph_service::{
     has_graph_affecting_config_change, mark_dependency_graph_stale,
@@ -6,7 +8,11 @@ use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, WorkspaceFileFingerprintStatus,
 };
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
-use crate::services::workspace_index_chunk_service::chunk_paths;
+use crate::services::workspace_index_chunk_service::{chunk_paths, plan_refresh_continuation};
+use crate::services::workspace_index_continuation_task_service::{
+    continuation_phase, continuation_phase_label, is_full_refresh_continuation_reason,
+    WorkspaceIndexContinuationPhase,
+};
 use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind,
@@ -19,9 +25,10 @@ use crate::services::workspace_index_task_status_service::{
     superseded_task_result_from_task, task_status_from_state_transition, WorkspaceIndexTaskResult,
 };
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
+use crate::services::workspace_service::scan_workspace;
 
 pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
-pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 128;
+pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 1024;
 
 #[allow(dead_code)]
 pub fn run_index_tasks<F>(
@@ -111,6 +118,22 @@ fn run_index_task_inner(
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     match task.kind.clone() {
         WorkspaceIndexTaskKind::ChangedPaths => {
+            if is_full_refresh_continuation(task) {
+                if token.is_cancelled() {
+                    return Ok(Some(superseded_task_result_from_task(task)));
+                }
+                let Some(result) = refresh_full_refresh_continuation_chunk(
+                    index_runtime,
+                    task,
+                    token,
+                    task.changed_paths.clone(),
+                    started_at,
+                )?
+                else {
+                    return Ok(Some(superseded_task_result_from_task(task)));
+                };
+                return Ok(Some(result));
+            }
             let changed_paths = stale_changed_paths(&task.root_path, &task.changed_paths)?;
             if token.is_cancelled() {
                 return Ok(Some(superseded_task_result_from_task(task)));
@@ -153,12 +176,25 @@ fn run_index_task_inner(
                 started_at,
             )))
         }
-        WorkspaceIndexTaskKind::OpenWorkspace | WorkspaceIndexTaskKind::RefreshWorkspace => {
-            let kind = if task.kind == WorkspaceIndexTaskKind::OpenWorkspace {
-                "open-workspace"
-            } else {
-                "refresh-workspace"
-            };
+        WorkspaceIndexTaskKind::OpenWorkspace => {
+            if token.is_cancelled() {
+                return Ok(Some(superseded_task_result_from_task(task)));
+            }
+            let snapshot = scan_workspace(Path::new(&task.root_path))?;
+            let state = index_runtime.index_workspace_snapshot_for_open(&snapshot)?;
+            Ok(Some(refresh_task_result(
+                task,
+                "open-workspace",
+                WorkspaceIndexRefreshResult {
+                    state,
+                    changed: true,
+                    added_paths: snapshot.files,
+                    removed_paths: Vec::new(),
+                },
+                started_at,
+            )))
+        }
+        WorkspaceIndexTaskKind::RefreshWorkspace => {
             if token.is_cancelled() {
                 return Ok(Some(superseded_task_result_from_task(task)));
             }
@@ -171,7 +207,16 @@ fn run_index_task_inner(
             else {
                 return Ok(Some(superseded_task_result_from_task(task)));
             };
-            let mut result = refresh_task_result(task, kind, refresh_outcome.result, started_at);
+            let mut result = refresh_task_result(
+                task,
+                "refresh-workspace",
+                refresh_outcome.result,
+                started_at,
+            );
+            if let Some(progress) = refresh_outcome.progress {
+                result.progress_current = progress.current_chunk;
+                result.progress_total = progress.total_chunks;
+            }
             if refresh_outcome.continuation.is_some() {
                 result.status = "partial".to_string();
                 result.message = Some("Full refresh yielded with remaining chunks".to_string());
@@ -205,9 +250,62 @@ fn run_index_task_inner(
                 refresh_result: None,
                 refresh_continuation: None,
                 sdk_symbol_count: Some(summary.symbol_count),
+                progress_current: 1,
+                progress_total: 1,
             }))
         }
     }
+}
+
+fn is_full_refresh_continuation(task: &WorkspaceIndexTask) -> bool {
+    is_full_refresh_continuation_reason(&task.reason)
+}
+
+fn refresh_full_refresh_continuation_chunk(
+    index_runtime: &WorkspaceIndexRuntime,
+    task: &WorkspaceIndexTask,
+    token: &WorkspaceIndexCancellationToken,
+    changed_paths: Vec<String>,
+    started_at: u128,
+) -> Result<Option<WorkspaceIndexTaskResult>, String> {
+    let mut continuation = plan_refresh_continuation(
+        &task.root_path,
+        token.generation(),
+        changed_paths,
+        WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE,
+    );
+    let Some(chunk) = continuation.pop_next_chunk() else {
+        return Ok(None);
+    };
+    if token.is_cancelled() {
+        return Ok(None);
+    }
+    let state = match continuation_phase(&task.reason) {
+        WorkspaceIndexContinuationPhase::FileLayer => {
+            index_runtime.update_workspace_file_symbol_layer(&task.root_path, &chunk.paths, &[])?
+        }
+        WorkspaceIndexContinuationPhase::DeepLayer | WorkspaceIndexContinuationPhase::Legacy => {
+            index_runtime.update_workspace_deep_layer(&task.root_path, &chunk.paths, &[])?
+        }
+    };
+    let refresh_result = WorkspaceIndexRefreshResult {
+        state,
+        changed: !chunk.paths.is_empty(),
+        added_paths: chunk.paths,
+        removed_paths: Vec::new(),
+    };
+    let mut result = refresh_task_result(task, "changed-paths", refresh_result, started_at);
+    result.progress_current = chunk.progress.current_chunk;
+    result.progress_total = chunk.progress.total_chunks;
+    if !continuation.is_complete() {
+        result.status = "partial".to_string();
+        result.message = Some(format!(
+            "Full refresh {} continuation yielded",
+            continuation_phase_label(&task.reason)
+        ));
+        result.refresh_continuation = Some(continuation);
+    }
+    Ok(Some(result))
 }
 
 fn refresh_changed_path_chunks(

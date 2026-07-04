@@ -62,9 +62,15 @@ pub fn symbol_completion_from_row(
     let column: i64 = row.get(5)?;
     let symbol_id: String = row.get(6)?;
     let data = include_import_data.then(|| {
+        let normalized_path = path.replace('\\', "/");
         json!({
             "symbolId": symbol_id,
-            "importPath": path,
+            "importPath": normalized_path,
+            "completionEdit": {
+                "kind": "importPreview",
+                "targetPath": normalized_path,
+                "applyMode": "explicit",
+            },
         })
     });
     Ok(CompletionItem {

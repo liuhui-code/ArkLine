@@ -11,7 +11,6 @@ use crate::models::workspace::{
 };
 use crate::services::diff_service::load_workspace_diff_text;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index_with_queue_pressure as inspect_workspace_index_service;
-use crate::services::workspace_index_entity_query_service::query_workspace_file_symbols as query_workspace_file_symbols_service;
 use crate::services::workspace_index_facade_service::{
     query_facade_file_symbols_with_readiness as query_workspace_file_symbols_with_readiness_facade,
     query_facade_search_everywhere_with_readiness as query_workspace_candidates_with_readiness_facade,
@@ -24,7 +23,6 @@ use crate::services::workspace_index_maintenance_service::{
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_query_service::{
-    query_workspace_candidates as query_workspace_candidates_service,
     query_workspace_quick_open as query_workspace_quick_open_service,
     query_workspace_search_everywhere as query_workspace_search_everywhere_service,
     WorkspaceIndexQueryScope,
@@ -247,13 +245,14 @@ pub fn query_workspace_candidates(
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    query_workspace_candidates_service(
+    Ok(query_workspace_candidates_with_readiness_facade(
         &index_runtime,
         &root_path,
         &query,
         parse_index_query_scope(&scope)?,
         limit,
-    )
+    )?
+    .items)
 }
 
 #[tauri::command]
@@ -279,8 +278,16 @@ pub fn query_workspace_file_symbols(
     file_path: String,
     query: String,
     limit: usize,
+    index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    query_workspace_file_symbols_service(&root_path, &file_path, &query, limit)
+    Ok(query_workspace_file_symbols_with_readiness_facade(
+        &index_runtime,
+        &root_path,
+        &file_path,
+        &query,
+        limit,
+    )?
+    .items)
 }
 
 #[tauri::command]

@@ -1,7 +1,6 @@
 use crate::services::build_configuration_store::{
     load_build_configurations as load_build_configurations_from_store,
-    save_build_configurations as save_build_configurations_to_store,
-    BuildConfiguration,
+    save_build_configurations as save_build_configurations_to_store, BuildConfiguration,
 };
 
 #[tauri::command]

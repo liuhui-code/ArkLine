@@ -277,10 +277,26 @@ fn refresh_workspace_index_records_schema_domain_versions() {
             |row| row.get(0),
         )
         .unwrap();
+    let event_version: i64 = connection
+        .query_row(
+            "select version from workspace_index_schema_versions where domain = 'event'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let resume_version: i64 = connection
+        .query_row(
+            "select version from workspace_index_schema_versions where domain = 'resume'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
 
-    assert_eq!(version_count, 11);
+    assert_eq!(version_count, 13);
     assert_eq!(symbol_resolution_version, 1);
     assert_eq!(reference_version, 1);
+    assert_eq!(event_version, 1);
+    assert_eq!(resume_version, 1);
 
     fs::remove_dir_all(root).unwrap();
 }

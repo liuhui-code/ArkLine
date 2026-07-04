@@ -9,13 +9,14 @@ use crate::models::workspace::{
     WorkspaceIndexState, WorkspaceIndexStatus, WorkspaceIndexedSymbol, WorkspaceSnapshot,
 };
 use crate::services::workspace_index_entity_persistence_service::{
-    insert_legacy_symbol, insert_symbol_entity, persist_metadata_row, replace_changed_files,
-    replace_changed_symbols,
+    insert_legacy_symbol, insert_symbol_entity,
+};
+use crate::services::workspace_index_incremental_persistence_service::{
+    persist_incremental_sqlite_deep_state, persist_incremental_sqlite_file_symbol_state,
+    persist_incremental_sqlite_index_state,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
-use crate::services::workspace_stub_index_service::{
-    replace_all_stub_rows, replace_changed_stub_rows,
-};
+use crate::services::workspace_stub_index_service::replace_all_stub_rows;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +37,17 @@ pub fn persist_catalog_cache(
         .and_then(|_| persist_sqlite_index_state(&snapshot.root_path, state))
 }
 
+pub fn persist_catalog_cache_for_open(
+    snapshot: &WorkspaceSnapshot,
+    state: &WorkspaceIndexState,
+) -> Result<(), String> {
+    if !Path::new(&snapshot.root_path).is_dir() {
+        return Ok(());
+    }
+
+    persist_sqlite_index_state_for_open(&snapshot.root_path, state)
+}
+
 #[allow(dead_code)]
 pub fn persist_index_state(root_path: &str, state: &WorkspaceIndexState) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
@@ -49,6 +61,7 @@ pub fn persist_index_state(root_path: &str, state: &WorkspaceIndexState) -> Resu
 pub fn persist_incremental_index_state(
     root_path: &str,
     state: &WorkspaceIndexState,
+    changed_symbols: &[WorkspaceIndexedSymbol],
     changed_paths: &[String],
     removed_paths: &[String],
 ) -> Result<(), String> {
@@ -56,8 +69,46 @@ pub fn persist_incremental_index_state(
         return Ok(());
     }
 
-    persist_json_index_state(root_path, state)?;
-    persist_incremental_sqlite_index_state(root_path, state, changed_paths, removed_paths)
+    persist_incremental_sqlite_index_state(
+        root_path,
+        state,
+        changed_symbols,
+        changed_paths,
+        removed_paths,
+    )
+}
+
+pub fn persist_incremental_file_symbol_state(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    changed_symbols: &[WorkspaceIndexedSymbol],
+    changed_paths: &[String],
+    removed_paths: &[String],
+) -> Result<(), String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(());
+    }
+
+    persist_incremental_sqlite_file_symbol_state(
+        root_path,
+        state,
+        changed_symbols,
+        changed_paths,
+        removed_paths,
+    )
+}
+
+pub fn persist_incremental_deep_index_state(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    changed_paths: &[String],
+    removed_paths: &[String],
+) -> Result<(), String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(());
+    }
+
+    persist_incremental_sqlite_deep_state(root_path, state, changed_paths, removed_paths)
 }
 
 pub fn restore_catalog_cache_state(root_path: &str) -> Result<WorkspaceIndexState, String> {
@@ -105,6 +156,21 @@ fn restore_json_catalog_cache(root_path: &str) -> Result<WorkspaceIndexState, St
 }
 
 fn persist_sqlite_index_state(root_path: &str, state: &WorkspaceIndexState) -> Result<(), String> {
+    persist_sqlite_index_state_with_mode(root_path, state, true)
+}
+
+fn persist_sqlite_index_state_for_open(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+) -> Result<(), String> {
+    persist_sqlite_index_state_with_mode(root_path, state, false)
+}
+
+fn persist_sqlite_index_state_with_mode(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    include_deep_rows: bool,
+) -> Result<(), String> {
     let cache_path = sqlite_catalog_cache_path(root_path);
     let Some(parent) = cache_path.parent() else {
         return Err(format!(
@@ -128,56 +194,10 @@ fn persist_sqlite_index_state(root_path: &str, state: &WorkspaceIndexState) -> R
         .transaction()
         .map_err(|error| error.to_string())?;
     persist_catalog_row(&transaction, &root_key, &state_json, updated_at)?;
-    persist_structured_index_rows(&transaction, &root_key, state)?;
+    persist_structured_index_rows(&transaction, &root_key, state, include_deep_rows)?;
     transaction.commit().map_err(|error| error.to_string())?;
 
     Ok(())
-}
-
-fn persist_incremental_sqlite_index_state(
-    root_path: &str,
-    state: &WorkspaceIndexState,
-    changed_paths: &[String],
-    removed_paths: &[String],
-) -> Result<(), String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace SQLite catalog cache path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-
-    let mut connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
-    ensure_schema(&connection)?;
-    let root_key = state
-        .root_path
-        .clone()
-        .unwrap_or_else(|| normalize_index_path(root_path));
-    let state_json = serde_json::to_string(state).map_err(|error| error.to_string())?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    persist_catalog_row(&transaction, &root_key, &state_json, now_epoch_ms()? as i64)?;
-    persist_metadata_row(&transaction, &root_key, state)?;
-    replace_changed_files(&transaction, &root_key, &state.file_paths, removed_paths)?;
-    replace_changed_symbols(
-        &transaction,
-        &root_key,
-        &state.symbols,
-        changed_paths,
-        removed_paths,
-    )?;
-    replace_changed_stub_rows(
-        &transaction,
-        &root_key,
-        &state.file_paths,
-        changed_paths,
-        removed_paths,
-        indexed_generation(state),
-    )?;
-    transaction.commit().map_err(|error| error.to_string())
 }
 
 fn persist_catalog_row(
@@ -212,6 +232,10 @@ fn restore_sqlite_catalog_cache(root_path: &str) -> Result<WorkspaceIndexState, 
     let connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
+    if let Ok(state) = restore_structured_sqlite_catalog_cache(&connection, &root_key) {
+        return Ok(state);
+    }
+
     let cached_state: Option<(i64, String)> = connection
         .query_row(
             "select schema_version, state_json
@@ -237,7 +261,9 @@ fn restore_sqlite_catalog_cache(root_path: &str) -> Result<WorkspaceIndexState, 
         }
     }
 
-    restore_structured_sqlite_catalog_cache(&connection, &root_key)
+    Err(format!(
+        "Workspace structured SQLite catalog does not exist: {root_key}"
+    ))
 }
 
 fn ensure_schema(connection: &Connection) -> Result<(), String> {
@@ -248,6 +274,7 @@ fn persist_structured_index_rows(
     connection: &Connection,
     root_key: &str,
     state: &WorkspaceIndexState,
+    include_deep_rows: bool,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -300,12 +327,14 @@ fn persist_structured_index_rows(
         insert_legacy_symbol(connection, root_key, symbol)?;
         insert_symbol_entity(connection, root_key, symbol)?;
     }
-    replace_all_stub_rows(
-        connection,
-        root_key,
-        &state.file_paths,
-        indexed_generation(state),
-    )?;
+    if include_deep_rows {
+        replace_all_stub_rows(
+            connection,
+            root_key,
+            &state.file_paths,
+            indexed_generation(state),
+        )?;
+    }
 
     Ok(())
 }

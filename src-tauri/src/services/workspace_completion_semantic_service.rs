@@ -9,6 +9,7 @@ use crate::models::language::{CompletionItem, LanguageQueryRequest};
 use crate::models::workspace::{
     WorkspaceIndexQueryEnvelope, WorkspaceIndexReadiness, WorkspaceIndexState, WorkspaceIndexStatus,
 };
+use crate::services::workspace_completion_expected_type_service::expected_completion_type;
 use crate::services::workspace_completion_item_service::{
     completion_item, dedupe_completion_items, snippet_completion_item, symbol_completion_from_row,
 };
@@ -75,6 +76,7 @@ pub fn query_semantic_completions(
     items.extend(project_symbol_items(root_path, &prefix, limit)?);
     items.extend(sdk_symbol_items(root_path, &prefix, limit)?);
     items.extend(snippet_items(&prefix));
+    apply_expected_type_boost(&mut items, request);
     Ok(dedupe_completion_items(items, limit))
 }
 
@@ -86,7 +88,11 @@ pub fn query_semantic_completions_with_readiness(
 ) -> Result<WorkspaceIndexQueryEnvelope<CompletionItem>, String> {
     let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
     let items = query_semantic_completions(root_path, request, limit)?;
-    Ok(WorkspaceIndexQueryEnvelope { items, readiness })
+    Ok(WorkspaceIndexQueryEnvelope {
+        items,
+        readiness,
+        explain: Vec::new(),
+    })
 }
 
 fn keyword_items(prefix: &str) -> Vec<CompletionItem> {
@@ -143,6 +149,23 @@ fn snippet_items(prefix: &str) -> Vec<CompletionItem> {
             snippet_completion_item(snippet.label, snippet.detail, snippet.insert_text, "arkts")
         })
         .collect()
+}
+
+fn apply_expected_type_boost(items: &mut [CompletionItem], request: &LanguageQueryRequest) {
+    let Some(expected_type) = expected_completion_type(request) else {
+        return;
+    };
+    for item in items.iter_mut() {
+        if item.label.trim_end_matches("()") == expected_type {
+            item.sort_text = Some("00_expected_type".to_string());
+        }
+    }
+    items.sort_by(|left, right| {
+        left.sort_text
+            .as_deref()
+            .unwrap_or("10_default")
+            .cmp(right.sort_text.as_deref().unwrap_or("10_default"))
+    });
 }
 
 fn member_items(
@@ -222,7 +245,8 @@ fn sdk_member_items(
     let suffix = format!("%.{}", receiver_type);
     let mut statement = connection
         .prepare(
-            "select symbol.name, symbol.kind, symbol.signature, symbol.path, symbol.line, symbol.column
+            "select symbol.name, symbol.kind, symbol.signature, symbol.path, symbol.line, symbol.column,
+                    symbol.symbol_id
              from workspace_sdk_symbols symbol
              inner join workspace_sdk_index_metadata metadata
                 on metadata.root_path = symbol.root_path
@@ -241,6 +265,7 @@ fn sdk_member_items(
             let path: String = row.get(3)?;
             let line: i64 = row.get(4)?;
             let column: i64 = row.get(5)?;
+            let symbol_id: String = row.get(6)?;
             Ok(completion_item(
                 &row.get::<_, String>(0)?,
                 &row.get::<_, String>(1)?,
@@ -249,6 +274,7 @@ fn sdk_member_items(
                     .unwrap_or("SDK API"),
                 "sdk",
                 Some(json!({
+                    "symbolId": symbol_id,
                     "importPath": path,
                     "line": line,
                     "column": column,
@@ -319,7 +345,8 @@ fn sdk_symbol_items(
     let pattern = format!("{}%", escape_like_pattern(prefix));
     let mut statement = connection
         .prepare(
-            "select symbol.name, symbol.kind, symbol.signature, symbol.path, symbol.line, symbol.column
+            "select symbol.name, symbol.kind, symbol.signature, symbol.path, symbol.line, symbol.column,
+                    symbol.symbol_id
              from workspace_sdk_symbols symbol
              inner join workspace_sdk_index_metadata metadata
                 on metadata.root_path = symbol.root_path
@@ -335,6 +362,7 @@ fn sdk_symbol_items(
             let path: String = row.get(3)?;
             let line: i64 = row.get(4)?;
             let column: i64 = row.get(5)?;
+            let symbol_id: String = row.get(6)?;
             Ok(completion_item(
                 &row.get::<_, String>(0)?,
                 &row.get::<_, String>(1)?,
@@ -343,6 +371,7 @@ fn sdk_symbol_items(
                     .unwrap_or("SDK API"),
                 "sdk",
                 Some(json!({
+                    "symbolId": symbol_id,
                     "importPath": path,
                     "line": line,
                     "column": column,

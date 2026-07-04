@@ -3,11 +3,12 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::services::workspace_index_resume_service::{
-    clear_resume_tasks_for_root, load_resume_tasks, save_resume_task,
+    clear_completed_resume_tasks, clear_resume_tasks_for_root, load_resume_tasks, save_resume_task,
 };
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
+use crate::services::workspace_index_task_status_service::WorkspaceIndexTaskResult;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -27,6 +28,18 @@ fn continuation_task(root_path: &str, paths: &[&str], generation: u64) -> Worksp
         sdk_version: None,
         generation,
         reason: "full-refresh-continuation:refresh-workspace".to_string(),
+    }
+}
+
+fn continuation_task_with_reason(
+    root_path: &str,
+    paths: &[&str],
+    generation: u64,
+    reason: &str,
+) -> WorkspaceIndexTask {
+    WorkspaceIndexTask {
+        reason: reason.to_string(),
+        ..continuation_task(root_path, paths, generation)
     }
 }
 
@@ -78,6 +91,41 @@ fn clears_resume_tasks_for_root() {
 
     save_resume_task(&root_path, &continuation_task(&root_path, &["A.ets"], 7)).unwrap();
     clear_resume_tasks_for_root(&root_path).unwrap();
+
+    assert!(load_resume_tasks(&root_path).unwrap().is_empty());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn clears_completed_file_layer_resume_task() {
+    let root = unique_temp_dir("workspace-index-resume-clear-file-layer");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let reason = "full-refresh-files:refresh-workspace";
+    save_resume_task(
+        &root_path,
+        &continuation_task_with_reason(&root_path, &["A.ets"], 7, reason),
+    )
+    .unwrap();
+
+    clear_completed_resume_tasks(&[WorkspaceIndexTaskResult {
+        root_path: root_path.clone(),
+        kind: "changed-paths".to_string(),
+        status: "ready".to_string(),
+        reason: reason.to_string(),
+        generation: 7,
+        started_at: Some(100),
+        finished_at: Some(200),
+        message: None,
+        error: None,
+        refresh_result: None,
+        refresh_continuation: None,
+        sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
+    }])
+    .unwrap();
 
     assert!(load_resume_tasks(&root_path).unwrap().is_empty());
 

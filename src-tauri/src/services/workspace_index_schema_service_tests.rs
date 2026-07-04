@@ -20,6 +20,7 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     assert_eq!(versions.get("fingerprint"), Some(&1));
     assert_eq!(versions.get("sdk"), Some(&1));
     assert_eq!(versions.get("task_journal"), Some(&1));
+    assert_eq!(versions.get("event"), Some(&1));
     assert_eq!(versions.get("resume"), Some(&1));
     assert_eq!(versions.get("entity"), Some(&1));
     assert_eq!(versions.get("symbol_resolution"), Some(&1));
@@ -59,5 +60,14 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(resume_table_count, 1);
-    assert_eq!(schema_count, 12);
+    let symbol_path_index_count: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'index' and name = 'workspace_symbols_path_lookup'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(symbol_path_index_count, 1);
+    assert_eq!(schema_count, 13);
 }

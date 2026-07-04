@@ -2,8 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::workspace::WorkspaceIndexEvent;
-use crate::services::workspace_index_diagnostics_service::inspect_workspace_index;
+use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexQueuePressure};
+use crate::services::workspace_index_diagnostics_service::{
+    inspect_workspace_index, inspect_workspace_index_with_queue_pressure,
+};
 use crate::services::workspace_index_event_service::store_index_event;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_resume_service::save_resume_task;
@@ -112,14 +114,16 @@ fn reports_recent_unified_index_events_for_diagnostics() {
     manager.drain_index_task_results(&runtime).unwrap();
     let diagnostics = inspect_workspace_index(&root_path).unwrap();
 
-    assert_eq!(diagnostics.recent_events.len(), 3);
+    assert_eq!(diagnostics.recent_events.len(), 4);
     assert_eq!(diagnostics.recent_events[0].phase, "queued");
     assert_eq!(diagnostics.recent_events[1].phase, "running");
-    assert_eq!(diagnostics.recent_events[2].phase, "ready");
-    assert_eq!(
-        diagnostics.recent_events[2].task_id.as_deref(),
-        Some("1:refresh-workspace")
-    );
+    assert!(diagnostics.recent_events.iter().any(|event| {
+        event.phase == "ready" && event.task_id.as_deref() == Some("1:refresh-workspace")
+    }));
+    assert!(diagnostics
+        .recent_events
+        .iter()
+        .any(|event| event.kind == "changed-paths" && event.phase == "queued"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -142,15 +146,19 @@ fn reports_task_timeline_from_unified_index_events() {
     manager.drain_index_task_results(&runtime).unwrap();
     let diagnostics = inspect_workspace_index(&root_path).unwrap();
 
-    assert_eq!(diagnostics.timeline.len(), 3);
+    assert_eq!(diagnostics.timeline.len(), 4);
     assert_eq!(diagnostics.timeline[0].scope, "task");
     assert_eq!(diagnostics.timeline[0].phase, "queued");
     assert_eq!(diagnostics.timeline[0].title, "refresh-workspace queued");
-    assert!(diagnostics.timeline[2].duration_ms.is_some());
-    assert_eq!(
-        diagnostics.timeline[2].task_id.as_deref(),
-        Some("1:refresh-workspace")
-    );
+    assert!(diagnostics.timeline.iter().any(|event| {
+        event.phase == "ready"
+            && event.task_id.as_deref() == Some("1:refresh-workspace")
+            && event.duration_ms.is_some()
+    }));
+    assert!(diagnostics
+        .timeline
+        .iter()
+        .any(|event| event.phase == "queued" && event.title == "changed-paths queued"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -302,6 +310,62 @@ fn reports_resume_repair_action_for_persisted_resume_tasks() {
         .repair_actions
         .iter()
         .any(|action| action == "resumeIndexing"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_queued_diagnostics_when_workspace_work_is_pending() {
+    let root = unique_temp_dir("workspace-index-diagnostics-queued");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let queue_pressure = WorkspaceIndexQueuePressure {
+        root_path: root_path.clone(),
+        pending_task_count: 1,
+        workspace_pending_task_count: 1,
+        highest_priority: Some("full-refresh".to_string()),
+        highest_priority_task_kind: Some("refresh-workspace".to_string()),
+    };
+
+    let diagnostics =
+        inspect_workspace_index_with_queue_pressure(&root_path, queue_pressure).unwrap();
+
+    assert_eq!(diagnostics.status, "queued");
+    assert_eq!(diagnostics.queue_pressure.workspace_pending_task_count, 1);
+    assert!(!diagnostics
+        .repair_actions
+        .iter()
+        .any(|action| action == "rebuildProjectIndex"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_queued_diagnostics_when_sdk_index_work_is_pending() {
+    let root = unique_temp_dir("workspace-index-diagnostics-sdk-queued");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("Index.ets"), "struct Index {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let queue_pressure = WorkspaceIndexQueuePressure {
+        root_path: root_path.clone(),
+        pending_task_count: 1,
+        workspace_pending_task_count: 1,
+        highest_priority: Some("sdk-indexing".to_string()),
+        highest_priority_task_kind: Some("sdk".to_string()),
+    };
+
+    let diagnostics =
+        inspect_workspace_index_with_queue_pressure(&root_path, queue_pressure).unwrap();
+
+    assert_eq!(diagnostics.status, "queued");
+    assert_eq!(diagnostics.sdk_symbol_count, 0);
+    assert!(!diagnostics
+        .repair_actions
+        .iter()
+        .any(|action| action == "configureSdk" || action == "rebuildSdkIndex"));
 
     fs::remove_dir_all(root).unwrap();
 }

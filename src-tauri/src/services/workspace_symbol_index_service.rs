@@ -13,6 +13,12 @@ const MEMBER_MODIFIERS: &[&str] = &[
     "async",
 ];
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceSymbolUpdate {
+    pub symbols: Vec<WorkspaceIndexedSymbol>,
+    pub changed_symbols: Vec<WorkspaceIndexedSymbol>,
+}
+
 pub fn index_workspace_symbols(file_paths: &[String]) -> Vec<WorkspaceIndexedSymbol> {
     let mut symbols = Vec::new();
 
@@ -32,11 +38,11 @@ pub fn index_workspace_symbols(file_paths: &[String]) -> Vec<WorkspaceIndexedSym
     symbols
 }
 
-pub fn update_workspace_symbols(
+pub fn update_workspace_symbols_with_delta(
     current_symbols: &[WorkspaceIndexedSymbol],
     changed_paths: &[String],
     removed_paths: &[String],
-) -> Vec<WorkspaceIndexedSymbol> {
+) -> WorkspaceSymbolUpdate {
     let changed = changed_paths
         .iter()
         .map(|path| normalize_index_path(path))
@@ -54,7 +60,8 @@ pub fn update_workspace_symbols(
         .cloned()
         .collect::<Vec<_>>();
 
-    symbols.extend(index_workspace_symbols(changed_paths));
+    let changed_symbols = index_workspace_symbols(changed_paths);
+    symbols.extend(changed_symbols.clone());
     symbols.sort_by(|left, right| {
         left.path
             .cmp(&right.path)
@@ -62,7 +69,10 @@ pub fn update_workspace_symbols(
             .then_with(|| left.column.cmp(&right.column))
             .then_with(|| left.name.cmp(&right.name))
     });
-    symbols
+    WorkspaceSymbolUpdate {
+        symbols,
+        changed_symbols,
+    }
 }
 
 pub fn index_document_symbols(path: &str, content: &str) -> Vec<WorkspaceIndexedSymbol> {
@@ -290,7 +300,7 @@ fn score_symbol(symbol: &WorkspaceIndexedSymbol, query: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{index_document_symbols, query_index_symbols, update_workspace_symbols};
+    use super::{index_document_symbols, query_index_symbols, update_workspace_symbols_with_delta};
     use crate::models::workspace::WorkspaceIndexedSymbol;
     use std::fs;
     use std::path::PathBuf;
@@ -412,7 +422,7 @@ mod tests {
             },
         ];
 
-        let updated = update_workspace_symbols(
+        let update = update_workspace_symbols_with_delta(
             &symbols,
             &[
                 kept_path.to_string_lossy().to_string(),
@@ -421,10 +431,16 @@ mod tests {
             &[removed_path.to_string_lossy().to_string()],
         );
 
+        let updated = update.symbols;
         assert!(updated.iter().any(|symbol| symbol.name == "KeptNew"));
         assert!(updated.iter().any(|symbol| symbol.name == "AddedSymbol"));
         assert!(!updated.iter().any(|symbol| symbol.name == "KeptOld"));
         assert!(!updated.iter().any(|symbol| symbol.name == "RemovedSymbol"));
+        assert_eq!(update.changed_symbols.len(), 2);
+        assert!(update
+            .changed_symbols
+            .iter()
+            .all(|symbol| symbol.name != "RemovedSymbol"));
 
         fs::remove_dir_all(root).unwrap();
     }

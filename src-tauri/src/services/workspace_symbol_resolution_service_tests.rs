@@ -133,6 +133,57 @@ fn workspace_refresh_resolves_import_aliases_to_target_declarations() {
 }
 
 #[test]
+fn changed_refresh_preserves_unchanged_resolved_symbol_rows() {
+    let root = create_empty_workspace("symbol-resolution-incremental-preserve");
+    let source_dir = create_workspace_source_dir(&root);
+    let stable_file = source_dir.join("Stable.ets");
+    let changed_file = source_dir.join("Changed.ets");
+    fs::write(&stable_file, "export class StableController {}\n").unwrap();
+    fs::write(&changed_file, "export class BeforeChanged {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let connection = workspace_connection(&root);
+    install_resolved_symbol_delete_probe(&connection, "StableController");
+    fs::write(&changed_file, "export class AfterChanged {}\n").unwrap();
+
+    runtime
+        .refresh_workspace_index_for_changed_paths(
+            &root_path,
+            &[changed_file.to_string_lossy().to_string()],
+        )
+        .unwrap();
+
+    let stable_delete_count: i64 = connection
+        .query_row(
+            "select count(*) from resolved_symbol_delete_probe",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let before_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_resolved_symbols where name = 'BeforeChanged'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let after_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_resolved_symbols where name = 'AfterChanged'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(stable_delete_count, 0);
+    assert_eq!(before_count, 0);
+    assert_eq!(after_count, 1);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn workspace_refresh_records_unresolved_import_symbols() {
     let root = create_empty_workspace("symbol-resolution-unresolved-import");
     let source_dir = create_workspace_source_dir(&root);
@@ -205,6 +256,33 @@ fn assert_table_exists(connection: &Connection, table_name: &str) {
         )
         .unwrap();
     assert_eq!(count, 1, "expected {table_name} table to exist");
+}
+
+fn install_resolved_symbol_delete_probe(connection: &Connection, name: &str) {
+    connection
+        .execute(
+            "create table resolved_symbol_delete_probe (name text not null)",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            &format!(
+                "create trigger resolved_symbol_delete_probe_trigger
+                 before delete on workspace_resolved_symbols
+                 when old.name = '{}'
+                 begin
+                    insert into resolved_symbol_delete_probe (name) values (old.name);
+                 end",
+                sql_literal(name),
+            ),
+            [],
+        )
+        .unwrap();
+}
+
+fn sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 fn workspace_connection(root: &std::path::Path) -> Connection {

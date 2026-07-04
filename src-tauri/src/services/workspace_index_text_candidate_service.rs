@@ -3,6 +3,7 @@ use crate::models::workspace::{
 };
 use crate::services::workspace_index_query_service::search_workspace_text;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_search_ranking_service::sort_text_candidates_by_lexical_match;
 
 pub fn text_search_candidates(
     index_runtime: &WorkspaceIndexRuntime,
@@ -23,7 +24,7 @@ pub fn text_search_candidates(
             context_lines: 0,
         },
     )?;
-    Ok(result
+    let mut candidates = result
         .matches
         .into_iter()
         .enumerate()
@@ -42,5 +43,8 @@ pub fn text_search_candidates(
             signature: Some(matched.preview),
             visibility: None,
         })
-        .collect())
+        .collect::<Vec<_>>();
+    sort_text_candidates_by_lexical_match(&mut candidates, query);
+    candidates.truncate(limit);
+    Ok(candidates)
 }

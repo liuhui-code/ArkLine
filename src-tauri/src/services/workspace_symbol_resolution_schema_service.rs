@@ -52,6 +52,13 @@ pub fn create_symbol_resolution_tables(connection: &Connection) -> Result<(), St
         .map_err(|error| error.to_string())?;
     connection
         .execute(
+            "create index if not exists workspace_resolved_symbols_path_lookup
+             on workspace_resolved_symbols(root_path, path)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
             "create index if not exists workspace_unresolved_symbols_path_lookup
              on workspace_unresolved_symbols(root_path, path)",
             [],

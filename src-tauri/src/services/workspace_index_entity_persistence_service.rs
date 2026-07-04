@@ -1,4 +1,6 @@
-use rusqlite::{params, Connection};
+use std::collections::HashSet;
+
+use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexedSymbol};
 
@@ -67,16 +69,19 @@ pub fn replace_changed_symbols(
         .collect::<Vec<_>>();
     affected_paths.sort();
     affected_paths.dedup();
+    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
 
     for path in &affected_paths {
         delete_symbols_for_path(connection, root_key, path)?;
     }
+    let mut legacy_statement = legacy_symbol_insert_statement(connection)?;
+    let mut entity_statement = symbol_entity_insert_statement(connection)?;
     for symbol in symbols
         .iter()
-        .filter(|symbol| affected_paths.contains(&normalize_index_path(&symbol.path)))
+        .filter(|symbol| affected_path_set.contains(&normalize_index_path(&symbol.path)))
     {
-        insert_legacy_symbol(connection, root_key, symbol)?;
-        insert_symbol_entity(connection, root_key, symbol)?;
+        insert_legacy_symbol_with_statement(&mut legacy_statement, root_key, symbol)?;
+        insert_symbol_entity_with_statement(&mut entity_statement, root_key, symbol)?;
     }
     Ok(())
 }
@@ -86,22 +91,36 @@ pub fn insert_legacy_symbol(
     root_key: &str,
     symbol: &WorkspaceIndexedSymbol,
 ) -> Result<(), String> {
+    let mut statement = legacy_symbol_insert_statement(connection)?;
+    insert_legacy_symbol_with_statement(&mut statement, root_key, symbol)
+}
+
+fn legacy_symbol_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
     connection
-        .execute(
+        .prepare(
             "insert into workspace_symbols (
                 root_path, source, kind, name, path, line, column, container
              ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                root_key,
-                symbol.source,
-                symbol.kind,
-                symbol.name,
-                symbol.path,
-                symbol.line as i64,
-                symbol.column as i64,
-                symbol.container,
-            ],
         )
+        .map_err(|error| error.to_string())
+}
+
+fn insert_legacy_symbol_with_statement(
+    statement: &mut Statement<'_>,
+    root_key: &str,
+    symbol: &WorkspaceIndexedSymbol,
+) -> Result<(), String> {
+    statement
+        .execute(params![
+            root_key,
+            symbol.source,
+            symbol.kind,
+            symbol.name,
+            symbol.path,
+            symbol.line as i64,
+            symbol.column as i64,
+            symbol.container,
+        ])
         .map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -111,28 +130,42 @@ pub fn insert_symbol_entity(
     root_key: &str,
     symbol: &WorkspaceIndexedSymbol,
 ) -> Result<(), String> {
-    let qualified_name = qualified_symbol_name(symbol);
+    let mut statement = symbol_entity_insert_statement(connection)?;
+    insert_symbol_entity_with_statement(&mut statement, root_key, symbol)
+}
+
+fn symbol_entity_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
     connection
-        .execute(
+        .prepare(
             "insert into workspace_symbol_entities (
                 root_path, entity_id, qualified_name, source, kind, name, container,
                 path, line, column, end_line, end_column, visibility, signature, origin
              ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, NULL, 'workspace')",
-            params![
-                root_key,
-                symbol_entity_id(symbol, &qualified_name),
-                qualified_name,
-                symbol.source,
-                symbol.kind,
-                symbol.name,
-                symbol.container,
-                symbol.path,
-                symbol.line as i64,
-                symbol.column as i64,
-                symbol.line as i64,
-                symbol_end_column(symbol) as i64,
-            ],
         )
+        .map_err(|error| error.to_string())
+}
+
+fn insert_symbol_entity_with_statement(
+    statement: &mut Statement<'_>,
+    root_key: &str,
+    symbol: &WorkspaceIndexedSymbol,
+) -> Result<(), String> {
+    let qualified_name = qualified_symbol_name(symbol);
+    statement
+        .execute(params![
+            root_key,
+            symbol_entity_id(symbol, &qualified_name),
+            qualified_name,
+            symbol.source,
+            symbol.kind,
+            symbol.name,
+            symbol.container,
+            symbol.path,
+            symbol.line as i64,
+            symbol.column as i64,
+            symbol.line as i64,
+            symbol_end_column(symbol) as i64,
+        ])
         .map_err(|error| error.to_string())?;
     Ok(())
 }

@@ -9,7 +9,9 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir,
 };
-use crate::services::workspace_reference_index_service::query_references_by_symbol_id;
+use crate::services::workspace_reference_index_service::{
+    query_references_by_symbol_id, replace_workspace_references_with_local_scope,
+};
 use crate::services::workspace_symbol_resolution_query_service::query_resolved_symbols_by_name;
 
 #[test]
@@ -151,6 +153,76 @@ fn queries_references_by_symbol_id_orders_by_confidence_before_path() {
 }
 
 #[test]
+fn changed_refresh_preserves_references_for_unchanged_files() {
+    let root = create_empty_workspace("reference-index-incremental-preserve");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(source_dir.join("Foo.ets"), "export class Foo {}\n").unwrap();
+    let stable_path = source_dir.join("Stable.ets");
+    let changed_path = source_dir.join("Changed.ets");
+    fs::write(
+        &stable_path,
+        [
+            "import { Foo as Bar } from \"./Foo\";",
+            "const stable = new Bar();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    fs::write(
+        &changed_path,
+        [
+            "import { Foo as Bar } from \"./Foo\";",
+            "const before = new Bar();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::write(
+        &changed_path,
+        [
+            "import { Foo as Bar } from \"./Foo\";",
+            "const after = new Bar();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    runtime
+        .refresh_workspace_index_for_changed_paths(
+            &root_path,
+            &[changed_path.to_string_lossy().to_string()],
+        )
+        .unwrap();
+
+    let connection = workspace_connection(&root);
+    let stable_count: i64 = connection
+        .query_row(
+            "select count(*)
+             from workspace_symbol_references
+             where path = ?1 and name = 'Bar'",
+            [stable_path.to_string_lossy().replace('/', "\\")],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let changed_count: i64 = connection
+        .query_row(
+            "select count(*)
+             from workspace_symbol_references
+             where path = ?1 and name = 'Bar'",
+            [changed_path.to_string_lossy().replace('/', "\\")],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(stable_count, 1);
+    assert_eq!(changed_count, 1);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn workspace_refresh_indexes_declarations_as_exact_references() {
     let root = create_empty_workspace("reference-index-declaration");
     let source_dir = create_workspace_source_dir(&root);
@@ -227,6 +299,52 @@ fn workspace_refresh_normalizes_reference_confidence_values() {
             "unresolvedLikely".to_string(),
         ]
     );
+    let local_count: i64 = connection
+        .query_row(
+            "select count(*)
+             from workspace_local_symbol_references",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert_eq!(local_count, 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn deep_reference_refresh_indexes_local_scope_references_on_demand() {
+    let root = create_empty_workspace("reference-index-local-scope");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(source_dir.join("Foo.ets"), "export class Foo {}\n").unwrap();
+    fs::write(
+        source_dir.join("Index.ets"),
+        [
+            "import { Foo as Bar } from \"./Foo\";",
+            "const first = new Bar();",
+            "const localOnly = helper;",
+            "service.load();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    let connection = workspace_connection(&root);
+    replace_workspace_references_with_local_scope(
+        &connection,
+        &root_path.replace('/', "\\"),
+        &[
+            source_dir.join("Foo.ets").to_string_lossy().to_string(),
+            source_dir.join("Index.ets").to_string_lossy().to_string(),
+        ],
+        2,
+    )
+    .unwrap();
+
     let local_rows: Vec<(String, String)> = connection
         .prepare(
             "select name, confidence

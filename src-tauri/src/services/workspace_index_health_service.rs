@@ -13,6 +13,7 @@ pub fn get_workspace_index_health(
     let diagnostics = inspect_workspace_index(root_path)?;
     let queue_pressure = index_manager.get_queue_pressure(root_path)?;
     let status = workspace_index_health_status(&diagnostics.status, diagnostics.sdk_symbol_count);
+    let status = workspace_index_health_status_with_queue(status, &queue_pressure);
     let has_resume_tasks = !load_resume_tasks(root_path)?.is_empty();
     let repair_actions = workspace_index_repair_actions(&WorkspaceIndexRepairActionInput {
         status: status.to_string(),
@@ -34,4 +35,14 @@ pub fn get_workspace_index_health(
         queue_pressure,
         repair_actions,
     })
+}
+
+fn workspace_index_health_status_with_queue<'a>(
+    status: &'a str,
+    queue_pressure: &crate::models::workspace::WorkspaceIndexQueuePressure,
+) -> &'a str {
+    if status != "healthy" && queue_pressure.workspace_pending_task_count > 0 {
+        return "queued";
+    }
+    status
 }

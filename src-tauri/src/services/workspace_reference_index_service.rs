@@ -1,17 +1,23 @@
 #![allow(dead_code)]
 
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
 use rusqlite::{params, Connection};
 
 use crate::services::workspace_reference_declaration_index_service::{
-    index_workspace_declarations, load_workspace_declarations,
+    load_workspace_declarations, load_workspace_declarations_for_paths, DeclarationReference,
+    DeclarationReferenceInserter,
 };
 use crate::services::workspace_reference_identifier_index_service::{
     index_workspace_identifier_references, load_reference_alias_targets,
+    load_reference_alias_targets_for_paths, ReferenceAliasTargets,
 };
-use crate::services::workspace_reference_member_index_service::index_workspace_member_references;
+use crate::services::workspace_reference_member_index_service::{
+    contains_member_access, index_workspace_member_references_with_context,
+    WorkspaceMemberReferenceContext,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceSymbolReferenceRow {
@@ -99,6 +105,75 @@ pub fn replace_workspace_references(
     file_paths: &[String],
     indexed_generation: u64,
 ) -> Result<(), String> {
+    replace_workspace_references_internal(
+        connection,
+        root_key,
+        file_paths,
+        indexed_generation,
+        false,
+    )
+}
+
+pub fn replace_workspace_references_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    indexed_paths: &[String],
+    removed_paths: &[String],
+    indexed_generation: u64,
+) -> Result<(), String> {
+    let mut affected_paths = indexed_paths
+        .iter()
+        .chain(removed_paths.iter())
+        .map(|path| normalize_index_path(path))
+        .collect::<Vec<_>>();
+    affected_paths.sort();
+    affected_paths.dedup();
+    delete_workspace_references_for_paths(connection, root_key, &affected_paths)?;
+    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
+    let aliases = load_reference_alias_targets_for_paths(connection, root_key, &affected_path_set)?;
+    let declarations =
+        load_workspace_declarations_for_paths(connection, root_key, &affected_path_set)?;
+    let contents = load_source_contents(indexed_paths);
+    let member_context = if contents_contain_member_access(&contents) {
+        Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
+    } else {
+        None
+    };
+    index_workspace_references_for_paths(
+        connection,
+        root_key,
+        indexed_paths,
+        indexed_generation,
+        false,
+        &aliases,
+        &declarations,
+        &contents,
+        member_context.as_ref(),
+    )
+}
+
+pub fn replace_workspace_references_with_local_scope(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_generation: u64,
+) -> Result<(), String> {
+    replace_workspace_references_internal(
+        connection,
+        root_key,
+        file_paths,
+        indexed_generation,
+        true,
+    )
+}
+
+fn replace_workspace_references_internal(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_generation: u64,
+    include_local_scope: bool,
+) -> Result<(), String> {
     connection
         .execute(
             "delete from workspace_symbol_references where root_path = ?1",
@@ -113,27 +188,58 @@ pub fn replace_workspace_references(
         .map_err(|error| error.to_string())?;
     let aliases = load_reference_alias_targets(connection, root_key)?;
     let declarations = load_workspace_declarations(connection, root_key)?;
+    let contents = load_source_contents(file_paths);
+    let member_context = if contents_contain_member_access(&contents) {
+        Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
+    } else {
+        None
+    };
+    index_workspace_references_for_paths(
+        connection,
+        root_key,
+        file_paths,
+        indexed_generation,
+        include_local_scope,
+        &aliases,
+        &declarations,
+        &contents,
+        member_context.as_ref(),
+    )
+}
+
+fn index_workspace_references_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_generation: u64,
+    include_local_scope: bool,
+    aliases: &ReferenceAliasTargets,
+    declarations: &HashMap<String, Vec<DeclarationReference>>,
+    contents: &HashMap<String, String>,
+    member_context: Option<&WorkspaceMemberReferenceContext>,
+) -> Result<(), String> {
+    let mut declaration_inserter = DeclarationReferenceInserter::new(connection)?;
     for path in file_paths.iter().map(|path| normalize_index_path(path)) {
         if !is_source_file(&path) {
             continue;
         }
-        index_workspace_declarations(
-            connection,
-            root_key,
-            &path,
-            &declarations,
-            indexed_generation,
-        )?;
-        let Ok(content) = fs::read_to_string(filesystem_path(&path)) else {
+        declaration_inserter.index(root_key, &path, &declarations, indexed_generation)?;
+        if aliases.is_empty() && member_context.is_none() && !include_local_scope {
+            continue;
+        }
+        let Some(content) = contents.get(&path) else {
             continue;
         };
-        index_workspace_member_references(
-            connection,
-            root_key,
-            &path,
-            &content,
-            indexed_generation,
-        )?;
+        if let Some(member_context) = member_context {
+            index_workspace_member_references_with_context(
+                connection,
+                root_key,
+                &path,
+                &content,
+                indexed_generation,
+                member_context,
+            )?;
+        }
         index_workspace_identifier_references(
             connection,
             root_key,
@@ -141,9 +247,52 @@ pub fn replace_workspace_references(
             &content,
             &aliases,
             indexed_generation,
+            include_local_scope,
         )?;
     }
     Ok(())
+}
+
+fn delete_workspace_references_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    paths: &[String],
+) -> Result<(), String> {
+    let mut symbol_statement = connection
+        .prepare("delete from workspace_symbol_references where root_path = ?1 and path = ?2")
+        .map_err(|error| error.to_string())?;
+    let mut local_statement = connection
+        .prepare("delete from workspace_local_symbol_references where root_path = ?1 and path = ?2")
+        .map_err(|error| error.to_string())?;
+    for path in paths {
+        symbol_statement
+            .execute(params![root_key, path])
+            .map_err(|error| error.to_string())?;
+        local_statement
+            .execute(params![root_key, path])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn load_source_contents(file_paths: &[String]) -> HashMap<String, String> {
+    let mut contents = HashMap::new();
+    for path in file_paths.iter().map(|path| normalize_index_path(path)) {
+        if !is_source_file(&path) {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(filesystem_path(&path)) else {
+            continue;
+        };
+        contents.insert(path, content);
+    }
+    contents
+}
+
+fn contents_contain_member_access(contents: &HashMap<String, String>) -> bool {
+    contents
+        .values()
+        .any(|content| contains_member_access(content))
 }
 
 pub fn query_references_by_symbol_id(

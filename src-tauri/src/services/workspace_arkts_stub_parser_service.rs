@@ -1,4 +1,7 @@
 use crate::models::workspace::*;
+use crate::services::workspace_arkts_import_export_parser_service::{
+    parse_imports, parse_named_exports,
+};
 
 const DECLARATION_KEYWORDS: &[&str] = &["struct", "class", "interface", "enum", "type", "function"];
 const MEMBER_MODIFIERS: &[&str] = &[
@@ -59,10 +62,13 @@ pub fn parse_arkts_file_stub(path: &str, content: &str) -> ArkTsFileStub {
             continue;
         }
 
-        stub.imports
-            .extend(parse_imports(after_decorators, line, leading + 1));
-        stub.exports
-            .extend(parse_named_exports(after_decorators, line, leading + 1));
+        if after_decorators.starts_with("import") {
+            stub.imports
+                .extend(parse_imports(after_decorators, line, leading + 1));
+        } else if after_decorators.starts_with("export") {
+            stub.exports
+                .extend(parse_named_exports(after_decorators, line, leading + 1));
+        }
 
         if let Some(declaration) =
             parse_declaration(after_decorators, raw_line, line, &containers, &decorators)
@@ -103,8 +109,11 @@ pub fn parse_arkts_file_stub(path: &str, content: &str) -> ArkTsFileStub {
             stub.declarations.push(declaration);
             stub.declarations.extend(inline_members);
             decorators.clear();
-        } else if let Some(member) =
-            parse_member(after_decorators, raw_line, line, &containers, &decorators)
+        } else if let Some(member) = containers
+            .last()
+            .is_some_and(|container| depth == container.close_depth)
+            .then(|| parse_member(after_decorators, raw_line, line, &containers, &decorators))
+            .flatten()
         {
             stub.declarations.push(member);
             decorators.clear();
@@ -253,103 +262,6 @@ fn declaration_match(value: &str, original: &str) -> Option<DeclarationMatch> {
         });
     }
     None
-}
-
-fn parse_imports(value: &str, line: usize, column: usize) -> Vec<ArkTsImportStub> {
-    let Some(rest) = value.strip_prefix("import") else {
-        return Vec::new();
-    };
-    let rest = rest.trim_start();
-    let (rest, is_type_only) = rest
-        .strip_prefix("type ")
-        .map(|typed| (typed.trim_start(), true))
-        .unwrap_or((rest, false));
-    let Some((bindings, source)) = split_module_clause(rest) else {
-        return Vec::new();
-    };
-    parse_binding_list(bindings)
-        .into_iter()
-        .map(|(imported_name, local_name)| ArkTsImportStub {
-            source_module: source.clone(),
-            imported_name,
-            local_name,
-            is_type_only,
-            line,
-            column,
-        })
-        .collect()
-}
-
-fn parse_named_exports(value: &str, line: usize, column: usize) -> Vec<ArkTsExportStub> {
-    let Some(rest) = value.strip_prefix("export") else {
-        return Vec::new();
-    };
-    let rest = rest.trim_start();
-    if !rest.starts_with('{') {
-        return Vec::new();
-    }
-    let Some((bindings, source)) = split_export_clause(rest) else {
-        return Vec::new();
-    };
-    parse_binding_list(bindings)
-        .into_iter()
-        .map(|(local_name, exported_name)| ArkTsExportStub {
-            exported_name,
-            local_name,
-            source_module: source.clone(),
-            is_default: false,
-            line,
-            column,
-        })
-        .collect()
-}
-
-fn parse_binding_list(value: &str) -> Vec<(Option<String>, String)> {
-    let inner = value
-        .trim()
-        .trim_start_matches('{')
-        .trim_end_matches('}')
-        .trim();
-    if inner.is_empty() {
-        return identifier_prefix(value.trim())
-            .map(|name| vec![(Some("default".to_string()), name.to_string())])
-            .unwrap_or_default();
-    }
-    inner
-        .split(',')
-        .filter_map(|part| {
-            let trimmed = part.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            if let Some((imported, local)) = trimmed.split_once(" as ") {
-                return Some((Some(imported.trim().to_string()), local.trim().to_string()));
-            }
-            Some((Some(trimmed.to_string()), trimmed.to_string()))
-        })
-        .collect()
-}
-
-fn split_module_clause(value: &str) -> Option<(&str, String)> {
-    let (bindings, source_part) = value.split_once(" from ")?;
-    Some((bindings.trim(), quoted_value(source_part)?))
-}
-
-fn split_export_clause(value: &str) -> Option<(&str, Option<String>)> {
-    if let Some((bindings, source_part)) = value.split_once(" from ") {
-        return Some((bindings.trim(), Some(quoted_value(source_part)?)));
-    }
-    Some((value.trim(), None))
-}
-
-fn quoted_value(value: &str) -> Option<String> {
-    let trimmed = value.trim().trim_end_matches(';').trim();
-    let quote = trimmed.chars().next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
-    }
-    let end = trimmed[1..].find(quote)?;
-    Some(trimmed[1..1 + end].to_string())
 }
 
 fn take_leading_decorators(mut value: &str) -> (&str, Vec<String>) {

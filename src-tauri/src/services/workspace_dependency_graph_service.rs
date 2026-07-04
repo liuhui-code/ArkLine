@@ -5,25 +5,13 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct ImportRow {
-    from_path: String,
-    source_module: String,
-    line: usize,
-    column: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DependencyExpansion {
-    Expanded(Vec<String>),
-    LimitExceeded,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DependencyGraphStatus {
-    pub status: String,
-    pub reason: Option<String>,
-}
+use crate::services::workspace_dependency_graph_cleanup_service::{
+    clear_dependency_graph, clear_dependency_graph_for_path,
+};
+use crate::services::workspace_dependency_graph_model_service::ImportRow;
+pub use crate::services::workspace_dependency_graph_model_service::{
+    DependencyExpansion, DependencyGraphStatus,
+};
 
 pub fn create_dependency_graph_tables(connection: &Connection) -> Result<(), String> {
     connection
@@ -84,11 +72,57 @@ pub fn rebuild_dependency_graph(
     file_paths: &[String],
 ) -> Result<(), String> {
     clear_dependency_graph(connection, root_key)?;
+    index_dependency_graph_rows(
+        connection,
+        root_key,
+        file_paths,
+        &load_import_rows(connection, root_key)?,
+        &load_re_export_rows(connection, root_key)?,
+    )?;
+    record_dependency_graph_status(connection, root_key, "ready", None)?;
+    Ok(())
+}
+
+pub fn update_dependency_graph_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_paths: &[String],
+    removed_paths: &[String],
+) -> Result<(), String> {
+    let affected_paths = indexed_paths
+        .iter()
+        .chain(removed_paths.iter())
+        .map(|path| normalize_index_path(path))
+        .collect::<HashSet<_>>();
+    for path in &affected_paths {
+        clear_dependency_graph_for_path(connection, root_key, path)?;
+    }
+    let import_rows = load_import_rows(connection, root_key)?
+        .into_iter()
+        .filter(|row| affected_paths.contains(&row.from_path))
+        .collect::<Vec<_>>();
+    let export_rows = load_re_export_rows(connection, root_key)?
+        .into_iter()
+        .filter(|row| affected_paths.contains(&row.from_path))
+        .collect::<Vec<_>>();
+    index_dependency_graph_rows(connection, root_key, file_paths, &import_rows, &export_rows)?;
+    record_dependency_graph_status(connection, root_key, "ready", None)?;
+    Ok(())
+}
+
+fn index_dependency_graph_rows(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    import_rows: &[ImportRow],
+    export_rows: &[ImportRow],
+) -> Result<(), String> {
     let file_set = file_paths
         .iter()
         .map(|path| normalize_index_path(path))
         .collect::<HashSet<_>>();
-    for import in load_import_rows(connection, root_key)? {
+    for import in import_rows {
         if !is_relative_module(&import.source_module) {
             continue;
         }
@@ -100,7 +134,7 @@ pub fn rebuild_dependency_graph(
             insert_unresolved_import(connection, root_key, &import)?;
         }
     }
-    for export in load_re_export_rows(connection, root_key)? {
+    for export in export_rows {
         if let Some(to_path) =
             resolve_relative_import(&export.from_path, &export.source_module, &file_set)
         {
@@ -109,7 +143,6 @@ pub fn rebuild_dependency_graph(
             insert_unresolved_import(connection, root_key, &export)?;
         }
     }
-    record_dependency_graph_status(connection, root_key, "ready", None)?;
     Ok(())
 }
 
@@ -247,22 +280,6 @@ pub fn expand_changed_paths(
         .collect::<Vec<_>>();
     paths.sort();
     Ok(DependencyExpansion::Expanded(paths))
-}
-
-fn clear_dependency_graph(connection: &Connection, root_key: &str) -> Result<(), String> {
-    for table in [
-        "workspace_dependency_edges",
-        "workspace_dependency_reverse",
-        "workspace_unresolved_imports",
-    ] {
-        connection
-            .execute(
-                &format!("delete from {table} where root_path = ?1"),
-                params![root_key],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
 }
 
 fn record_dependency_graph_status(

@@ -24,6 +24,7 @@ pub fn query_usages_with_readiness(
         return Ok(WorkspaceIndexQueryEnvelope {
             items: Vec::new(),
             readiness,
+            explain: Vec::new(),
         });
     };
     let references = query_references_by_symbol_id(root_path, &symbol_id, limit)?;
@@ -39,7 +40,11 @@ pub fn query_usages_with_readiness(
             confidence: reference.confidence,
         })
         .collect();
-    Ok(WorkspaceIndexQueryEnvelope { items, readiness })
+    Ok(WorkspaceIndexQueryEnvelope {
+        items,
+        readiness,
+        explain: Vec::new(),
+    })
 }
 
 fn target_symbol_id_at_position(

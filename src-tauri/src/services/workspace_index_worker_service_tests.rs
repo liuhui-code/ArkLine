@@ -1,5 +1,7 @@
 use std::fs;
 
+use rusqlite::Connection;
+
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
@@ -168,6 +170,55 @@ fn worker_skips_old_sdk_task_superseded_by_later_sdk_in_the_same_batch() {
     assert_eq!(results[1].status, "ready");
     assert_eq!(results[1].sdk_symbol_count, Some(2));
     assert_eq!(observed, vec![("sdk".to_string(), "running".to_string())]);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn worker_open_workspace_uses_lightweight_index_before_deep_refresh() {
+    let root = create_empty_workspace("worker-open-light-index");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::write(
+        source_dir.join("Index.ets"),
+        "export class OpenLightController {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::OpenWorkspace,
+        priority: WorkspaceIndexTaskPriority::ForegroundNavigation,
+        changed_paths: Vec::new(),
+        sdk_path: None,
+        sdk_version: None,
+        generation: 9,
+        reason: "open-workspace".to_string(),
+    };
+
+    let results = run_index_tasks(&runtime, vec![task], |_| Ok(())).unwrap();
+
+    assert_eq!(results[0].kind, "open-workspace");
+    assert_eq!(results[0].status, "ready");
+    assert_eq!(
+        runtime
+            .query_quick_open(&root_path, "OpenLight", 8)
+            .unwrap()[0]
+            .title,
+        "Index.ets"
+    );
+    let connection = Connection::open(
+        root.join(".arkline")
+            .join("index")
+            .join("workspace-catalog.sqlite"),
+    )
+    .unwrap();
+    let stub_count: i64 = connection
+        .query_row("select count(*) from workspace_stub_files", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(stub_count, 0);
 
     fs::remove_dir_all(root).unwrap();
 }

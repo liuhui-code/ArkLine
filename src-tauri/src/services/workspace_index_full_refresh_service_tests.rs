@@ -40,6 +40,9 @@ fn refresh_workspace_index_in_chunks_yields_after_first_chunk_with_continuation(
         outcome.result.added_paths.len(),
         WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE
     );
+    let progress = outcome.progress.unwrap();
+    assert_eq!(progress.current_chunk, 1);
+    assert_eq!(progress.total_chunks, 2);
     assert_eq!(continuation.remaining_chunk_count(), 1);
     assert_eq!(continuation.next_chunk_paths().unwrap().len(), 2);
     assert_eq!(
@@ -48,7 +51,7 @@ fn refresh_workspace_index_in_chunks_yields_after_first_chunk_with_continuation(
             .unwrap()
             .file_paths
             .len(),
-        WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE
+        WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE + 1
     );
 
     fs::remove_dir_all(root).unwrap();

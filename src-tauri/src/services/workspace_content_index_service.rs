@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{
     WorkspaceTextSearchContextLine, WorkspaceTextSearchMatch, WorkspaceTextSearchQuery,
@@ -16,23 +16,27 @@ pub fn index_workspace_content(root_path: &str, indexed_paths: &[String]) -> Res
         return Ok(());
     }
 
-    let connection = open_content_index(root_path)?;
+    let mut connection = open_content_index(root_path)?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
-    connection
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    transaction
         .execute(
             "delete from workspace_content_lines where root_path = ?1",
             params![root_key],
         )
         .map_err(|error| error.to_string())?;
-    connection
+    transaction
         .execute(
             "delete from workspace_content_fts where root_path = ?1",
             params![root_key],
         )
         .map_err(|error| error.to_string())?;
 
-    index_paths(&connection, root_path, &root_key, indexed_paths)
+    index_paths(&transaction, root_path, &root_key, indexed_paths)?;
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 pub fn update_workspace_content(
@@ -44,14 +48,23 @@ pub fn update_workspace_content(
         return Ok(());
     }
 
-    let connection = open_content_index(root_path)?;
+    let mut connection = open_content_index(root_path)?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
-    for path in removed_paths.iter().chain(added_paths.iter()) {
-        delete_indexed_path(&connection, &root_key, path)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    for path in removed_paths {
+        delete_indexed_path(&transaction, &root_key, path)?;
+    }
+    for path in added_paths {
+        if content_path_exists(&transaction, &root_key, path)? {
+            delete_indexed_path(&transaction, &root_key, path)?;
+        }
     }
 
-    index_paths(&connection, root_path, &root_key, added_paths)
+    index_paths(&transaction, root_path, &root_key, added_paths)?;
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 pub fn search_indexed_workspace_content(
@@ -154,12 +167,45 @@ fn delete_indexed_path(connection: &Connection, root_key: &str, path: &str) -> R
     Ok(())
 }
 
+fn content_path_exists(
+    connection: &Connection,
+    root_key: &str,
+    path: &str,
+) -> Result<bool, String> {
+    let normalized_path = normalize_index_path(path);
+    let count: i64 = connection
+        .query_row(
+            "select count(*)
+             from workspace_content_lines
+             where root_path = ?1 and path = ?2
+             limit 1",
+            params![root_key, normalized_path],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(count > 0)
+}
+
 fn index_paths(
     connection: &Connection,
     root_path: &str,
     root_key: &str,
     indexed_paths: &[String],
 ) -> Result<(), String> {
+    let mut line_statement = connection
+        .prepare(
+            "insert into workspace_content_lines (
+                root_path, path, line, text
+             ) values (?1, ?2, ?3, ?4)",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut fts_statement = connection
+        .prepare(
+            "insert into workspace_content_fts (
+                root_path, path, line, text
+             ) values (?1, ?2, ?3, ?4)",
+        )
+        .map_err(|error| error.to_string())?;
     for indexed_path in indexed_paths {
         let file_path = to_filesystem_path(root_path, indexed_path);
         let Ok(content) = fs::read_to_string(&file_path) else {
@@ -169,7 +215,8 @@ fn index_paths(
         let normalized_path = normalize_index_path(indexed_path);
         for (line_index, line_text) in content.lines().enumerate() {
             insert_indexed_line(
-                connection,
+                &mut line_statement,
+                &mut fts_statement,
                 root_key,
                 &normalized_path,
                 line_index,
@@ -181,27 +228,18 @@ fn index_paths(
 }
 
 fn insert_indexed_line(
-    connection: &Connection,
+    line_statement: &mut Statement<'_>,
+    fts_statement: &mut Statement<'_>,
     root_key: &str,
     path: &str,
     line_index: usize,
     line_text: &str,
 ) -> Result<(), String> {
-    connection
-        .execute(
-            "insert into workspace_content_lines (
-                root_path, path, line, text
-             ) values (?1, ?2, ?3, ?4)",
-            params![root_key, path, (line_index + 1) as i64, line_text],
-        )
+    line_statement
+        .execute(params![root_key, path, (line_index + 1) as i64, line_text])
         .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "insert into workspace_content_fts (
-                root_path, path, line, text
-             ) values (?1, ?2, ?3, ?4)",
-            params![root_key, path, (line_index + 1) as i64, line_text],
-        )
+    fts_statement
+        .execute(params![root_key, path, (line_index + 1) as i64, line_text])
         .map_err(|error| error.to_string())?;
     Ok(())
 }

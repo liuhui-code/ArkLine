@@ -104,7 +104,7 @@ Expected result: full-refresh indexing yields across chunks and continues automa
 - [x] Save remaining continuation chunks before yielding from full refresh.
 - [x] Clear resume records after final chunk reaches ready state.
 - [x] On workspace open, enqueue resumable work after foreground open work but before background maintenance.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_resume_service_tests
@@ -123,20 +123,24 @@ Expected result: large-project indexing can resume instead of restarting from ze
 
 - Modify: `src-tauri/src/services/workspace_index_health_service.rs`
 - Modify: `src-tauri/src/services/workspace_index_health_service_tests.rs`
+- Modify: `src-tauri/src/services/workspace_index_diagnostics_service.rs`
+- Modify: `src-tauri/src/services/workspace_index_diagnostics_service_tests.rs`
 - Modify: `src-tauri/src/commands/workspace.rs`
 - Modify: `src/features/workspace/workspace-api.ts`
 - Modify: `tests/frontend/workspace-api.test.ts`
 
 - [x] Add repair action ids: `rebuildProjectIndex`, `rebuildSdkIndex`, `inspectParserFailures`, `inspectUnresolvedImports`, and `resumeIndexing`.
-- [ ] Add health tests for healthy, partial, stale, failed, missing SDK, queued, and resumable states.
-- [ ] Add command/API wrappers that trigger rebuild or inspection through existing backend services.
+- [x] Add health tests for healthy, partial, stale, failed, missing SDK, queued, and resumable states.
+- [x] Add command/API wrappers that trigger rebuild or inspection through existing backend services.
   - [x] Add `resume_workspace_indexing` / `resumeWorkspaceIndexing` wrapper for persisted resume tasks.
   - [x] Add typed wrappers for SDK rebuild and parser/import inspection flows.
-- [ ] Keep commands idempotent: repeated repair should enqueue or report existing work, not duplicate unbounded tasks.
-- [ ] Run:
+- [x] Project and SDK queued work project diagnostics as `queued`, without suggesting duplicate rebuild/configure actions.
+- [x] Keep commands idempotent: repeated repair should enqueue or report existing work, not duplicate unbounded tasks.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_health_service_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_diagnostics_service_tests
 pnpm exec vitest run tests/frontend/workspace-api.test.ts
 git diff --check
 ```
@@ -156,17 +160,21 @@ Expected result: missing search/navigation/completion behavior has a clear expla
 - Modify: `src-tauri/src/commands/workspace_definition.rs`
 - Modify: `src/features/workspace/workspace-api.ts`
 
-- [ ] Add facade tests for file symbols and global search readiness envelopes.
-- [ ] Move file-symbol query path behind the facade.
-- [ ] Move global text query path behind the facade compatibility wrapper.
-- [ ] Keep old commands as thin wrappers until frontend call sites are fully migrated.
-- [ ] Normalize readiness/explain fields across definition, usages, Search Everywhere, file symbols, completion, and text search.
-- [ ] Run:
+- [x] Add facade tests for file symbols and global search readiness envelopes.
+- [x] Move file-symbol query path behind the facade.
+- [x] Move global text query path behind the facade compatibility wrapper.
+- [x] Move completion query path behind the facade compatibility wrapper.
+- [x] Keep old commands as thin wrappers until frontend call sites are fully migrated.
+- [x] Normalize readiness/explain fields across definition, usages, Search Everywhere, file symbols, completion, and text search.
+- [x] Record facade query explain/readiness events into the unified index event log for diagnostics.
+- [x] Run:
 
 ```bash
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_completion_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_search_tests
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_service_tests
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_query_service_tests
-pnpm exec vitest run tests/frontend/app-shell.test.tsx tests/frontend/workspace-text-search.test.ts
+pnpm exec vitest run tests/frontend/workspace-api.test.ts tests/frontend/workspace-text-search.test.ts tests/frontend/completion-candidate-provider.test.ts tests/frontend/indexed-completion-model.test.ts
 git diff --check
 ```
 
@@ -185,19 +193,25 @@ Expected result: feature behavior is easier to reason about because there is one
 - Modify: `src-tauri/src/services/workspace_usage_query_service.rs`
 - Modify: corresponding focused tests.
 
-- [ ] Add namespace/member symbol ids for expressions like `Text().width` and project member chains.
-- [ ] Resolve broader project class member access from imported receiver types.
-- [ ] Resolve member access from generic and async return contexts where the parser can identify the declared return type.
+- [x] Add namespace/member symbol ids for expressions like `Text().width` and project member chains.
+- [x] Resolve broader project class member access from imported receiver types.
+- [x] Resolve member access from generic and async return contexts where the parser can identify the declared return type.
+- [x] Preserve concrete generic receiver bindings across chained member access, for example `Box<Response<UserService>> -> box.value.data.load`.
 - [x] Track local variable references separately from project symbol references.
 - [x] Add confidence values: `exact`, `resolvedAlias`, `memberResolved`, `localScope`, and `unresolvedLikely`.
 - [x] Group usages by file, kind, and confidence for the UI layer.
 - [x] Resolve conservative `if/else` receiver-type joins without leaking single-branch assignments.
-- [ ] Run:
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_symbol_resolution_service_tests
 cargo test --manifest-path src-tauri/Cargo.toml workspace_reference_index_service_tests
 cargo test --manifest-path src-tauri/Cargo.toml workspace_usage_query_service_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_reference_receiver_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_definition_member_query_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_reference_chain_receiver_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_reference_deep_generic_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_reference_branch_flow_tests
 git diff --check
 ```
 
@@ -210,21 +224,32 @@ Expected result: Ctrl+Click and Find Usages become more reliable for real ArkTS 
 **Files:**
 
 - Modify: `src-tauri/src/services/workspace_completion_semantic_service.rs`
+- Create: `src-tauri/src/services/workspace_completion_expected_type_service.rs`
 - Modify: `src-tauri/src/services/workspace_completion_item_service.rs`
 - Modify: `src-tauri/src/services/workspace_completion_semantic_service_tests.rs`
+- Modify: `src/features/workspace/workspace-api.ts`
+- Create: `src/components/layout/completion-history-store.ts`
+- Modify: `src/components/layout/AppShell.tsx`
+- Modify: `src/components/layout/completion-model.ts`
 - Modify: `src/components/layout/completion-candidate-provider.ts`
+- Create: `tests/frontend/completion-history-store.test.ts`
+- Modify: `tests/frontend/completion-model.test.ts`
 - Modify: `tests/frontend/completion-candidate-provider.test.ts`
 
-- [ ] Add accept-history storage and ranking boost.
-- [ ] Add expected-type boost when local parser context exposes assignment or parameter type.
-- [ ] Add import-edit preview metadata for importable symbols.
-- [ ] Keep actual import insertion behind an explicit apply path.
-- [ ] Add tests for de-duplicating SDK/project symbols by stable identity.
-- [ ] Run:
+- [x] Add accept-history storage and ranking boost.
+- [x] Add expected-type boost when local parser context exposes assignment type.
+- [x] Add expected-type boost when local parser context exposes parameter type.
+- [x] Add import-edit preview metadata for importable project symbols.
+- [x] Keep actual import insertion behind an explicit apply path.
+- [x] Add tests for de-duplicating SDK/project symbols by stable identity.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_completion_semantic_service_tests
-pnpm exec vitest run tests/frontend/completion-candidate-provider.test.ts
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_completion_tests
+pnpm exec vitest run tests/frontend/completion-history-store.test.ts tests/frontend/completion-model.test.ts tests/frontend/completion-candidate-provider.test.ts tests/frontend/indexed-completion-model.test.ts tests/frontend/workspace-api.test.ts
+pnpm exec vitest run tests/frontend/app-shell.test.tsx -t "prioritizes the most recently accepted completion item"
+pnpm exec vitest run tests/frontend/app-shell.test.tsx -t "keeps the closer prefix match ahead"
 git diff --check
 ```
 
@@ -240,19 +265,24 @@ Expected result: completion quality improves without adding hidden edits or unst
 - Modify: `src-tauri/src/services/workspace_search_ranking_service_tests.rs`
 - Modify: `src-tauri/src/services/workspace_index_text_candidate_service.rs`
 - Modify: `src-tauri/src/services/workspace_index_facade_service.rs`
+- Modify: `src/components/layout/search-overlay-model.ts`
+- Create: `tests/frontend/search-overlay-model.test.ts`
 - Modify: corresponding facade/query tests.
 
-- [ ] Apply shared lexical ranking to text candidates.
-- [ ] Add recency signal for recently opened and recently edited files.
-- [ ] Add opened-file signal for currently visible editors.
-- [ ] Add project-proximity signal so nearby files rank above distant matches when lexical score ties.
-- [ ] Add large-result caps per scope with explicit truncation metadata.
-- [ ] Run:
+- [x] Apply shared lexical ranking to text candidates.
+- [x] Add recency signal for recently opened and recently edited files.
+- [x] Add opened-file signal for currently visible editors.
+- [x] Add project-proximity signal so nearby files rank above distant matches when lexical score ties.
+- [x] Add large-result caps per scope with explicit truncation metadata.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_search_ranking_service_tests
-cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_service_tests
-pnpm exec vitest run tests/frontend/app-shell.test.tsx tests/frontend/workspace-text-search.test.ts
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_search_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_query_service_tests
+pnpm exec vitest run tests/frontend/search-overlay-model.test.ts
+pnpm exec vitest run tests/frontend/app-shell.test.tsx -t "Search Everywhere"
+pnpm exec vitest run tests/frontend/workspace-text-search.test.ts tests/frontend/workspace-api.test.ts tests/frontend/workspace-index-store.test.ts
 git diff --check
 ```
 
@@ -280,3 +310,71 @@ This goal is complete when:
 - Completion has semantic ranking, expected type/context signals, import metadata, and stable de-duplication.
 - Search has mature lexical, recency, opened-context, project-proximity, and result-cap behavior.
 - Large-project tests cover the core workflows and stay green.
+
+## Large-Project Performance Audit
+
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml workspace_large_project_index_tests`
+  verifies search, definition, usages, completion, and refresh on the large fixture.
+- [x] `ARKLINE_LARGE_FIXTURE_FILES=1000 cargo test --manifest-path src-tauri/Cargo.toml verifies_generated_large_workspace_fixture_pipeline -- --ignored --nocapture`
+  originally completed with 1,000 files, 1,000 indexed files, 20 quick-open hits, and about 26.4s index time.
+- [x] Content indexing and fingerprint writes now run in SQLite transactions; the 1,000-file full deep index improved to about 12.4s.
+- [x] Stage profiling showed the remaining 1,000-file deep-index bottleneck is `catalog_stub_reference` at about 13.2s; schema, symbols, content, and fingerprints are all sub-second.
+- [x] Workspace open now has a lightweight foreground path that persists file catalog rows without blocking on project-wide symbol, stub, reference, or dependency rows.
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml verifies_generated_large_workspace_open_pipeline -- --ignored --nocapture`
+  completed with 10,000 files, 10,000 indexed files, about 296ms open-index time, and about 154ms quick-open query time after removing project-wide symbol extraction from the foreground open path.
+- [x] Full-refresh continuation now carries all remaining paths instead of only the next chunk, and partial task statuses report real chunk progress through `progressCurrent/progressTotal`.
+- [x] Full-refresh continuation work now requeues across chunks, skips repeated full-workspace scan and stale fingerprint pre-scan for continuation tasks, and avoids per-chunk legacy JSON writes.
+- [x] Incremental content indexing now skips expensive FTS deletes for paths that are not already indexed, preserving modified-file replacement behavior while making full-refresh continuation append mostly linear.
+- [x] Incremental SQLite restore now prefers structured rows over legacy `workspace_catalog.state_json`, and incremental persistence no longer rewrites the full JSON catalog on every chunk.
+- [x] `workspace_resolved_symbols` now has a `(root_path, path)` lookup index, reducing second-chunk symbol-resolution time in the 2,000-file fixture from about 4.51s to about 226ms.
+- [x] The earlier 10,000-file open-plus-background profile was invalid because continuation dropped later chunks; after fixing correctness, the complete 10,000-file profile exposed a path-delete index gap in `workspace_symbols`, with continuation ticks climbing from about 1.6s to about 12s.
+- [x] `workspace_symbols` now has a `(root_path, path)` lookup index, reducing continuous 10,000-file update chunks from about 70s total to about 20s total and reducing the end-to-end open-plus-background profile to about 18.66s.
+- [x] Incremental reference indexing now loads declaration and alias rows only for affected paths and skips global member-reference context when the current chunk has no member access, reducing the 10,000-file end-to-end open-plus-background profile further to about 16.47s with stable 1.5-1.7s continuation ticks.
+- [x] Incremental symbol/entity persistence now reuses prepared statements for changed-symbol inserts, reducing per-chunk symbol persistence from roughly 230-255ms to roughly 130-160ms and lowering the 10,000-file open-plus-background profile to about 15.5s.
+- [x] Incremental stub persistence now reuses prepared statements for stub file/declaration/import/export/error inserts, reducing per-chunk stub insertion from roughly 230-240ms to roughly 160-170ms and lowering the 10,000-file open-plus-background profile to about 14.81s.
+- [x] File fingerprint classification/update/remove now reuse prepared SQLite statements; the 10,000-file update stage profile shows fingerprint persistence at about 60-74ms per 1,024-file chunk, so remaining continuation latency is now dominated by structured persistence, symbol resolution, and reference refresh rather than fingerprint storage.
+- [x] Foreground navigation/completion priority tasks now run as exclusive bounded worker batches, so `OpenWorkspace` can publish before the lower-priority `RefreshWorkspace` tail starts.
+- [x] Incremental stub refresh now updates `workspace_symbol_references` only for changed/removed paths, preserving unchanged file references and avoiding a full-project reference rewrite for every continuation chunk.
+- [x] Incremental symbol resolution now deletes and rebuilds resolved/unresolved rows only for changed/removed paths while keeping unchanged resolved symbols intact.
+- [x] Incremental dependency graph updates now preserve unaffected edges and rebuild only changed/removed path edges, keeping reverse dependency expansion stable without clearing the full graph per chunk.
+- [x] Reference indexing now reuses batch-loaded SDK/project member targets and skips identifier/member scans when there is no possible output; the 1,000-file stage profile improved `catalog_stub_reference` from about 12.16s to about 896ms and `references` from about 12.25s to about 239ms.
+- [x] `ARKLINE_LARGE_FIXTURE_FILES=10000 cargo test --manifest-path src-tauri/Cargo.toml verifies_generated_large_workspace_fixture_pipeline -- --ignored --nocapture`
+  now completes the default 10,000-file full deep-index fixture with about 11.94s index time and 20 quick-open hits.
+- [x] Full-refresh continuation now has explicit `full-refresh-files` and `full-refresh-deep` phases. File/symbol-layer continuation ticks run first and measured about 0.53-0.72s per 1,024-file chunk on the 10,000-file open-plus-background profile; deep persistence follows as background work at about 1.4-1.9s per chunk.
+- [x] Scheduler, resume, and result-supersession rules now keep file-layer and deep-layer changed-path tasks separate by reason, so background deep work cannot merge with or supersede foreground file readiness.
+- [x] Deep-layer continuation now skips duplicate file/symbol/fingerprint persistence and runs only content plus stub/resolution/reference/dependency persistence. The 10,000-file open-plus-background profile improved from about 24.1s to about 16.74s total, with deep ticks reduced to about 0.96-1.04s.
+- [x] Changed stub-row deletion now reuses prepared statements per table, reducing per-chunk stub delete time from roughly 40ms to about 5-8ms and improving the 10,000-file open-plus-background profile to about 16.32s total.
+- [x] Reference refresh now reuses path-delete statements and a declaration-reference insert statement across each chunk. Reference duration improved from roughly 180-260ms to about 126-195ms per chunk, and the 10,000-file open-plus-background profile improved to about 15.53s total with deep ticks around 0.84-0.88s.
+- [x] Symbol resolution now reuses path-delete statements and a resolved-symbol insert statement across each chunk. Resolution duration improved from roughly 170-195ms to about 109-143ms per chunk, and the 10,000-file open-plus-background profile improved to about 14.98s total with deep ticks around 0.78-0.83s.
+- [x] Import/export alias resolution now uses the same reusable resolved-symbol insert statement as project declarations. Resolution duration measured about 70-117ms per 1,024-file chunk, and the 10,000-file open-plus-background profile measured about 14.89s total with first editor readiness around 482ms.
+- [x] Member-reference indexing now reuses one prepared insert statement per indexed file instead of preparing through `connection.execute` for every member access. The generated 10,000-file fixture is not member-write heavy, so reference duration stayed roughly flat at about 126-196ms per 1,024-file chunk; the change mainly protects real ArkTS projects with dense member chains.
+- [x] Stub insert profiling now reports parse and write time separately. The parser was also fixed to avoid treating call expressions inside member bodies, such as `Text("hello")`, as struct/class member declarations. On the 10,000-file profile this reduced stub insert from roughly 160-190ms to about 133-150ms per 1,024-file chunk, reduced downstream resolve/reference work, and lowered the open-plus-background profile to about 13.90s total.
+- [x] Reference refresh now reuses source file content between member-access detection and reference indexing, and member-access detection uses a zero-allocation boolean scan. The generated 10,000-file fixture still measured roughly 106-109ms reference refresh after warmup, so this is mainly a structural cleanup that avoids duplicate reads/context loading rather than a major generated-fixture win.
+- [x] Symbol resolution now uses conditional `(path, name)` lookup maps for import/re-export binding resolution, avoiding repeated declaration scans in import-heavy projects while skipping the map build for pure declaration chunks. The generated 10,000-file page fixture has no import-heavy chunks, so resolve time stayed roughly flat at about 73-86ms after warmup.
+- [x] Pure declaration changed-path chunks now skip import/re-export/unresolved-import resolution entirely after project declaration rows are written. This reduced generated 10,000-file resolve time to about 67-75ms per 1,024-file chunk after warmup, and the open-plus-background profile measured about 13.80s total.
+
+## Query Observability Audit
+
+- [x] Facade query explanations now report query kind, used index layers, result count, readiness state, confidence, skipped commit stage, and readiness reason for blocked/stale/partial queries. This moves definition, usages, Search Everywhere, file symbols, completion, and text search closer to IDEA-style explainability instead of opaque query misses.
+- [x] Facade typed-query envelope projection now lives in a separate service, keeping the facade focused on query routing and preserving room under the 500-line service limit for future diagnostics and readiness behavior.
+- [x] Search Everywhere, file-symbol, and text-search facade query construction now lives in a focused search facade service, reducing the main facade to a thinner routing layer while preserving query explain/readiness behavior.
+- [x] Definition/usages and completion facade query construction now live in focused navigation and completion services. The main facade is now a thin routing and event-recording layer, leaving future work to extend diagnostics without crowding query implementation details.
+- [x] Frontend workspace index API types now live in a focused `workspace-index-api-types` module and are re-exported from the legacy workspace API entry point. This starts reducing the oversized API file before wiring query-envelope explain data into UI diagnostics.
+- [x] Frontend workspace index query command wrappers now live in a focused `workspace-index-query-api` factory and are composed into the legacy `defaultWorkspaceApi`. This keeps existing callers stable while moving Search Everywhere, file-symbol, definition, usages, completion, and explain calls toward a maintainable index API boundary.
+- [x] Frontend workspace index management wrappers now live in a focused `workspace-index-management-api` factory. Diagnostics, health, file readiness, task status watching, SDK indexing, refresh, and workspace index watching are composed into the legacy API without changing callers.
+- [x] Search Everywhere now preserves query-envelope readiness and explain data. Empty result states prefer backend facade explain reasons before issuing a separate explain query, so partial/stale indexed queries can report the real reason directly in the UI status path.
+- [x] Go to Definition and Ctrl+Click miss states now prefer query-envelope explain data from the definition facade before issuing a separate explain query. This keeps foreground navigation diagnostics on the same observable query path as Search Everywhere and avoids losing the real partial/stale index reason.
+- [x] Find Usages empty states now surface query-envelope explain reasons in the usages panel. `Ctrl+F7` can now tell the user when usage references are still partial/stale instead of collapsing every zero-result indexed query into a generic "No usages found" message.
+- [x] Query-envelope explain formatting now lives in a focused frontend model with unit coverage. Search Everywhere, Definition, and Find Usages share the same reason/readiness/result-count interpretation instead of duplicating diagnostic parsing inside `AppShell`.
+- [x] Completion candidate collection now has a result API that preserves semantic, file-symbol, and workspace query-envelope explain evidence while keeping the legacy item-array API compatible. Manual empty completion now shows the real index reason in the completion popup instead of only "No completions".
+- [x] The Index Diagnostics Center now includes recent frontend query explain evidence. Search, Definition, Find Usages, and Completion misses recorded from the UI can be inspected from the status bar diagnostics entry even before the backend event log refresh catches up.
+- [x] Recent query explain retention now lives in a focused workspace store with unit coverage. `AppShell` only records query evidence and renders a snapshot, keeping retention limits and empty-evidence filtering out of the UI shell.
+- [x] Recent query explain React wiring now lives in `useWorkspaceQueryExplains`. `AppShell` no longer owns the store ref or snapshot synchronization details, reducing shell coupling before larger query-controller extraction.
+- [x] Definition miss message construction and envelope-explain formatting now live in a focused definition query model with unit coverage. `AppShell` still orchestrates navigation, but no longer owns the duplicated Ctrl+Click / Go to Definition miss wording rules.
+- [x] Definition candidate projection into the shared editor query panel now lives in the definition query model. Indexed, semantic, and fallback multi-target definition paths use the same candidate-to-panel item mapping instead of duplicating `kind/confidence` construction in `AppShell`.
+- [x] Definition candidate status, panel, debug, and refresh-wait wording now live in the definition query model. `AppShell` no longer owns the repeated "Definition candidates", Ctrl+Click multi-target, or partial/stale wait message construction.
+- [x] Definition query entry, blocked, and resolved-state wording now live in the definition query model. `AppShell` still performs the side effects, but no longer owns the repeated SDK-applying, unavailable, query-started, blocked, resolved, or fallback status/debug messages.
+- [x] Definition readiness-envelope branching now has a pure frontend decision function with unit coverage. `AppShell` consumes `blocked`, `candidates`, `resolved`, `waitForRefresh`, and `defer` outcomes instead of open-coding readiness and candidate-count rules. Indexed, semantic, and fallback multi-candidate results now share one editor-query-panel path.
+- [x] Definition resolved-target and miss side effects now use shared local helpers inside `AppShell`. Indexed, semantic, and fallback jump targets share one navigation/focus/status path, while indexed-only and language/fallback miss paths share one explain/diagnostic recording path.
+
+Next performance priority: reduce the remaining deep-layer cost inside stub insert, symbol resolution, reference refresh, and dependency graph updates without regressing the foreground file/symbol readiness ticks.

@@ -171,9 +171,19 @@ fn generate_large_workspace_fixture(root_path: &Path, file_count: usize) -> Resu
 #[cfg(test)]
 mod tests {
     use super::verify_large_workspace_fixture;
+    use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
+    use crate::services::workspace_content_index_service::index_workspace_content;
+    use crate::services::workspace_file_fingerprint_service::update_file_fingerprints;
+    use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
+    use crate::services::workspace_index_persistence_service::persist_catalog_cache;
+    use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
+    use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+    use crate::services::workspace_service::scan_workspace;
+    use crate::services::workspace_stub_index_service::profile_replace_all_stub_rows;
+    use crate::services::workspace_symbol_index_service::index_workspace_symbols;
     use std::fs;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
@@ -221,6 +231,185 @@ mod tests {
         assert_eq!(report.truncated, file_count > 20_000);
         assert!(report.quick_open_hits > 0);
 
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "Run explicitly to profile large fixture index stages"]
+    fn profiles_generated_large_workspace_fixture_index_stages() {
+        let file_count = std::env::var("ARKLINE_LARGE_FIXTURE_FILES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1_000);
+        let root = unique_temp_dir(&format!("large-workspace-stage-profile-{file_count}"));
+        super::generate_large_workspace_fixture(&root, file_count).unwrap();
+        let snapshot = scan_workspace(&root).unwrap();
+
+        let schema_start = Instant::now();
+        migrate_workspace_index_schema(&snapshot.root_path).unwrap();
+        let schema_duration = schema_start.elapsed();
+
+        let root_path = snapshot.root_path.replace('/', "\\");
+        let file_paths = snapshot
+            .files
+            .iter()
+            .map(|path| path.replace('/', "\\"))
+            .collect::<Vec<_>>();
+        let symbol_start = Instant::now();
+        let symbols = index_workspace_symbols(&file_paths);
+        let symbol_duration = symbol_start.elapsed();
+        let state = WorkspaceIndexState {
+            status: if snapshot.scan_summary.truncated {
+                WorkspaceIndexStatus::Partial
+            } else {
+                WorkspaceIndexStatus::Ready
+            },
+            root_path: Some(root_path.clone()),
+            file_paths,
+            symbols,
+            indexed_at: Some(1),
+            partial_reason: None,
+        };
+
+        let content_start = Instant::now();
+        index_workspace_content(&snapshot.root_path, &state.file_paths).unwrap();
+        let content_duration = content_start.elapsed();
+
+        let catalog_start = Instant::now();
+        persist_catalog_cache(&snapshot, &state).unwrap();
+        let catalog_duration = catalog_start.elapsed();
+        let sqlite_path = root
+            .join(".arkline")
+            .join("index")
+            .join("workspace-catalog.sqlite");
+        let mut connection = rusqlite::Connection::open(&sqlite_path).unwrap();
+        let transaction = connection.transaction().unwrap();
+        let stub_profile =
+            profile_replace_all_stub_rows(&transaction, &root_path, &state.file_paths, 2).unwrap();
+        transaction.commit().unwrap();
+
+        let fingerprint_start = Instant::now();
+        update_file_fingerprints(&snapshot.root_path, &state.file_paths, 1).unwrap();
+        let fingerprint_duration = fingerprint_start.elapsed();
+
+        eprintln!(
+            "Large fixture stage profile: files={file_count}, schema={schema_duration:?}, symbols={symbol_duration:?}, content={content_duration:?}, catalog_stub_reference={catalog_duration:?}, stub_delete={:?}, stub_insert={:?}, graph={:?}, resolve={:?}, references={:?}, fingerprints={fingerprint_duration:?}",
+            stub_profile.delete_duration,
+            stub_profile.insert_duration,
+            stub_profile.graph_duration,
+            stub_profile.resolve_duration,
+            stub_profile.reference_duration
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "Run explicitly for large fixture open-path performance verification"]
+    fn verifies_generated_large_workspace_open_pipeline() {
+        let file_count = std::env::var("ARKLINE_LARGE_FIXTURE_FILES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(10_000);
+        let root = unique_temp_dir(&format!("large-workspace-open-{file_count}"));
+        super::generate_large_workspace_fixture(&root, file_count).unwrap();
+        let snapshot = scan_workspace(&root).unwrap();
+        let runtime = crate::services::workspace_index_service::WorkspaceIndexRuntime::default();
+
+        let index_start = Instant::now();
+        let state = runtime
+            .index_workspace_snapshot_for_open(&snapshot)
+            .unwrap();
+        let index_duration = index_start.elapsed();
+        let query_start = Instant::now();
+        let quick_open_hits = runtime
+            .query_quick_open(&snapshot.root_path, "file-00000", 20)
+            .unwrap()
+            .len();
+        let query_duration = query_start.elapsed();
+
+        eprintln!(
+            "Large fixture open profile: files={file_count}, indexed={}, open_index={index_duration:?}, quick_open={query_duration:?}",
+            state.file_paths.len()
+        );
+
+        assert_eq!(state.file_paths.len(), usize::min(file_count, 20_000));
+        assert!(quick_open_hits > 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "Run explicitly to profile realistic open plus background refresh"]
+    fn profiles_generated_large_workspace_open_background_refresh_pipeline() {
+        let file_count = std::env::var("ARKLINE_LARGE_FIXTURE_FILES")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(1_000);
+        let root = unique_temp_dir(&format!("large-workspace-open-refresh-{file_count}"));
+        super::generate_large_workspace_fixture(&root, file_count).unwrap();
+        let root_path = root.to_string_lossy().to_string();
+        let runtime = WorkspaceIndexRuntime::default();
+        let manager = WorkspaceIndexManagerRuntime::default();
+
+        manager.open_workspace_index(&root_path).unwrap();
+        let total_start = Instant::now();
+        let first_tick_start = Instant::now();
+        let first_results = manager.run_index_worker_once(&runtime, |_| {}).unwrap();
+        let first_tick_duration = first_tick_start.elapsed();
+        let mut tick_durations = vec![first_tick_duration];
+        let mut tick_kinds = vec![first_results
+            .iter()
+            .map(|result| format!("{}:{}", result.kind, result.status))
+            .collect::<Vec<_>>()
+            .join("+")];
+
+        let mut ticks = 1usize;
+        let mut result_count = first_results.len();
+        let mut partial_count = first_results
+            .iter()
+            .filter(|result| result.status == "partial")
+            .count();
+        while manager
+            .get_queue_pressure(&root_path)
+            .unwrap()
+            .workspace_pending_task_count
+            > 0
+        {
+            assert!(
+                ticks < 512,
+                "background refresh did not drain after 512 ticks"
+            );
+            let tick_start = Instant::now();
+            let results = manager.run_index_worker_once(&runtime, |_| {}).unwrap();
+            tick_durations.push(tick_start.elapsed());
+            tick_kinds.push(
+                results
+                    .iter()
+                    .map(|result| format!("{}:{}", result.kind, result.status))
+                    .collect::<Vec<_>>()
+                    .join("+"),
+            );
+            partial_count += results
+                .iter()
+                .filter(|result| result.status == "partial")
+                .count();
+            result_count += results.len();
+            ticks += 1;
+        }
+        let total_duration = total_start.elapsed();
+        let quick_open_start = Instant::now();
+        let quick_open_hits = runtime
+            .query_quick_open(&root_path, "file-00000", 20)
+            .unwrap()
+            .len();
+        let quick_open_duration = quick_open_start.elapsed();
+
+        eprintln!(
+            "Large fixture open+background profile: files={file_count}, first_tick={first_tick_duration:?}, total={total_duration:?}, ticks={ticks}, results={result_count}, partials={partial_count}, quick_open={quick_open_duration:?}, tick_durations={tick_durations:?}, tick_kinds={tick_kinds:?}"
+        );
+
+        assert!(result_count >= 2);
+        assert!(quick_open_hits > 0);
         fs::remove_dir_all(root).unwrap();
     }
 }

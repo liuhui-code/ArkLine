@@ -17,29 +17,31 @@ use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_fingerprints,
 };
 use crate::services::workspace_index_persistence_service::{
-    persist_catalog_cache, persist_incremental_index_state, restore_catalog_cache_state,
+    persist_catalog_cache, persist_catalog_cache_for_open, persist_incremental_index_state,
+    restore_catalog_cache_state,
 };
 use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
+use crate::services::workspace_number_format_service::format_count;
 use crate::services::workspace_search_ranking_service::{
     build_file_candidates, sort_search_everywhere_candidates,
 };
 use crate::services::workspace_service::scan_workspace;
 use crate::services::workspace_symbol_index_service::{
-    index_workspace_symbols, query_index_symbols, update_workspace_symbols,
+    index_workspace_symbols, query_index_symbols, update_workspace_symbols_with_delta,
 };
 
 const INDEX_DEPENDENCY_EXPANSION_LIMIT: usize = 500;
 
 #[derive(Debug, Clone)]
-struct IndexedWorkspace {
-    state: WorkspaceIndexState,
-    file_paths: Vec<String>,
-    symbols: Vec<crate::models::workspace::WorkspaceIndexedSymbol>,
+pub(crate) struct IndexedWorkspace {
+    pub(crate) state: WorkspaceIndexState,
+    pub(crate) file_paths: Vec<String>,
+    pub(crate) symbols: Vec<crate::models::workspace::WorkspaceIndexedSymbol>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndexRuntime {
-    workspaces: Arc<Mutex<HashMap<String, IndexedWorkspace>>>,
+    pub(crate) workspaces: Arc<Mutex<HashMap<String, IndexedWorkspace>>>,
 }
 
 impl WorkspaceIndexRuntime {
@@ -89,6 +91,44 @@ impl WorkspaceIndexRuntime {
             now_epoch_ms()? as u64,
         )?;
 
+        Ok(state)
+    }
+
+    pub fn index_workspace_snapshot_for_open(
+        &self,
+        snapshot: &WorkspaceSnapshot,
+    ) -> Result<WorkspaceIndexState, String> {
+        migrate_workspace_index_schema(&snapshot.root_path)?;
+        let root_path = normalize_index_path(&snapshot.root_path);
+        let status = if snapshot.scan_summary.truncated {
+            WorkspaceIndexStatus::Partial
+        } else {
+            WorkspaceIndexStatus::Ready
+        };
+        let file_paths = snapshot
+            .files
+            .iter()
+            .map(|path| normalize_index_path(path))
+            .collect::<Vec<_>>();
+        let state = WorkspaceIndexState {
+            status,
+            root_path: Some(root_path.clone()),
+            file_paths: file_paths.clone(),
+            symbols: Vec::new(),
+            indexed_at: Some(now_epoch_ms()?),
+            partial_reason: build_partial_reason(snapshot),
+        };
+        let indexed = IndexedWorkspace {
+            state: state.clone(),
+            file_paths,
+            symbols: Vec::new(),
+        };
+
+        self.workspaces
+            .lock()
+            .map_err(|_| "Workspace index lock poisoned".to_string())?
+            .insert(root_path, indexed);
+        persist_catalog_cache_for_open(snapshot, &state)?;
         Ok(state)
     }
 
@@ -288,24 +328,19 @@ impl WorkspaceIndexRuntime {
             .map(|path| normalize_index_path(path))
             .collect::<HashSet<_>>();
         workspace.file_paths.retain(|path| !removed.contains(path));
-        workspace
-            .state
-            .file_paths
-            .retain(|path| !removed.contains(path));
 
+        let mut workspace_path_set = workspace.file_paths.iter().cloned().collect::<HashSet<_>>();
         for path in added_paths.iter().map(|path| normalize_index_path(path)) {
-            if !workspace.file_paths.contains(&path) {
-                workspace.file_paths.push(path.clone());
-            }
-            if !workspace.state.file_paths.contains(&path) {
-                workspace.state.file_paths.push(path);
+            if workspace_path_set.insert(path.clone()) {
+                workspace.file_paths.push(path);
             }
         }
 
         workspace.file_paths.sort();
-        workspace.state.file_paths.sort();
-        workspace.symbols =
-            update_workspace_symbols(&workspace.symbols, added_paths, removed_paths);
+        workspace.state.file_paths = workspace.file_paths.clone();
+        let symbol_update =
+            update_workspace_symbols_with_delta(&workspace.symbols, added_paths, removed_paths);
+        workspace.symbols = symbol_update.symbols;
         workspace.state.symbols = workspace.symbols.clone();
         workspace.state.indexed_at = Some(now_epoch_ms()?);
 
@@ -316,7 +351,13 @@ impl WorkspaceIndexRuntime {
         update_workspace_content(root_path, added_paths, removed_paths)?;
         update_file_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
         remove_file_fingerprints(root_path, removed_paths)?;
-        persist_incremental_index_state(root_path, &workspace.state, added_paths, removed_paths)?;
+        persist_incremental_index_state(
+            root_path,
+            &workspace.state,
+            &symbol_update.changed_symbols,
+            added_paths,
+            removed_paths,
+        )?;
 
         Ok(workspace.state)
     }
@@ -358,7 +399,9 @@ impl WorkspaceIndexRuntime {
             .iter()
             .map(|path| normalize_index_path(path))
             .collect::<Vec<_>>();
-        let symbols = update_workspace_symbols(previous_symbols, changed_paths, removed_paths);
+        let symbol_update =
+            update_workspace_symbols_with_delta(previous_symbols, changed_paths, removed_paths);
+        let symbols = symbol_update.symbols;
         let state = WorkspaceIndexState {
             status,
             root_path: Some(root_path.clone()),
@@ -377,7 +420,13 @@ impl WorkspaceIndexRuntime {
             .lock()
             .map_err(|_| "Workspace index lock poisoned".to_string())?
             .insert(root_path, indexed);
-        persist_incremental_index_state(&snapshot.root_path, &state, changed_paths, removed_paths)?;
+        persist_incremental_index_state(
+            &snapshot.root_path,
+            &state,
+            &symbol_update.changed_symbols,
+            changed_paths,
+            removed_paths,
+        )?;
 
         Ok(state)
     }
@@ -439,16 +488,4 @@ fn now_epoch_ms() -> Result<u128, String> {
 
 fn normalize_index_path(path: &str) -> String {
     path.replace('/', "\\")
-}
-
-fn format_count(value: usize) -> String {
-    let digits = value.to_string();
-    let mut formatted = String::new();
-    for (index, character) in digits.chars().rev().enumerate() {
-        if index > 0 && index % 3 == 0 {
-            formatted.push(',');
-        }
-        formatted.push(character);
-    }
-    formatted.chars().rev().collect()
 }

@@ -24,6 +24,8 @@ pub struct WorkspaceIndexTaskResult {
     pub refresh_result: Option<WorkspaceIndexRefreshResult>,
     pub refresh_continuation: Option<WorkspaceIndexRefreshContinuation<String>>,
     pub sdk_symbol_count: Option<usize>,
+    pub progress_current: usize,
+    pub progress_total: usize,
 }
 
 pub fn refresh_task_result(
@@ -45,6 +47,8 @@ pub fn refresh_task_result(
         refresh_result: Some(refresh_result),
         refresh_continuation: None,
         sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
     }
 }
 
@@ -66,6 +70,8 @@ pub fn failed_task_result(
         refresh_result: None,
         refresh_continuation: None,
         sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
     }
 }
 
@@ -87,6 +93,8 @@ pub fn skipped_task_result(
         refresh_result: None,
         refresh_continuation: None,
         sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
     }
 }
 
@@ -97,6 +105,8 @@ pub fn superseded_task_result(mut result: WorkspaceIndexTaskResult) -> Workspace
     result.refresh_result = None;
     result.refresh_continuation = None;
     result.sdk_symbol_count = None;
+    result.progress_current = 1;
+    result.progress_total = 1;
     result.finished_at = Some(current_time_millis());
     result
 }
@@ -115,6 +125,8 @@ pub fn superseded_task_result_from_task(task: &WorkspaceIndexTask) -> WorkspaceI
         refresh_result: None,
         refresh_continuation: None,
         sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
     }
 }
 
@@ -216,8 +228,8 @@ pub fn task_status_from_result(result: &WorkspaceIndexTaskResult) -> WorkspaceIn
         status: result.status.to_string(),
         reason: result.reason.to_string(),
         generation: result.generation,
-        progress_current: 1,
-        progress_total: 1,
+        progress_current: result.progress_current,
+        progress_total: result.progress_total,
         started_at: result.started_at,
         last_heartbeat_at: result.finished_at.or(result.started_at),
         stalled: false,

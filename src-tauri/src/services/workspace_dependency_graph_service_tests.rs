@@ -241,6 +241,62 @@ fn transitive_reverse_dependency_query_returns_importers() {
 }
 
 #[test]
+fn changed_refresh_preserves_unaffected_dependency_edges() {
+    let root = fixture_workspace(
+        "dependency-incremental-preserve",
+        &[
+            (
+                "entry/src/main/ets/pages/Stable.ets",
+                "import { StableModel } from \"../model/StableModel\";\nstruct StablePage {}\n",
+            ),
+            (
+                "entry/src/main/ets/model/StableModel.ets",
+                "export class StableModel {}\n",
+            ),
+            (
+                "entry/src/main/ets/pages/Changed.ets",
+                "import { ChangedModel } from \"../model/ChangedModel\";\nstruct ChangedPage {}\n",
+            ),
+            (
+                "entry/src/main/ets/model/ChangedModel.ets",
+                "export class ChangedModel {}\n",
+            ),
+        ],
+    );
+    let root_path = root.to_string_lossy().to_string();
+    let stable_page = normalize(
+        &root
+            .join("entry/src/main/ets/pages/Stable.ets")
+            .to_string_lossy(),
+    );
+    let stable_model = normalize(
+        &root
+            .join("entry/src/main/ets/model/StableModel.ets")
+            .to_string_lossy(),
+    );
+    let changed_model = root.join("entry/src/main/ets/model/ChangedModel.ets");
+    let connection = sqlite_connection(&root);
+    install_edge_delete_probe(&connection, &stable_page);
+
+    fs::write(
+        &changed_model,
+        "export class ChangedModel { next: string }\n",
+    )
+    .unwrap();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index_for_changed_paths(
+            &root_path,
+            &[changed_model.to_string_lossy().to_string()],
+        )
+        .unwrap();
+
+    assert_eq!(edge_delete_probe_count(&connection), 0);
+    assert_eq!(edge_count(&connection, &stable_page, &stable_model), 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn config_change_marks_dependency_graph_stale() {
     let root = fixture_workspace(
         "dependency-config-stale",
@@ -326,6 +382,43 @@ fn unresolved_count(connection: &Connection) -> i64 {
             |row| row.get(0),
         )
         .unwrap()
+}
+
+fn install_edge_delete_probe(connection: &Connection, from_path: &str) {
+    connection
+        .execute(
+            "create table dependency_edge_delete_probe (from_path text not null)",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            &format!(
+                "create trigger dependency_edge_delete_probe_trigger
+                 before delete on workspace_dependency_edges
+                 when old.from_path = '{}'
+                 begin
+                    insert into dependency_edge_delete_probe (from_path) values (old.from_path);
+                 end",
+                sql_literal(from_path),
+            ),
+            [],
+        )
+        .unwrap();
+}
+
+fn edge_delete_probe_count(connection: &Connection) -> i64 {
+    connection
+        .query_row(
+            "select count(*) from dependency_edge_delete_probe",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 fn normalize(path: &str) -> String {

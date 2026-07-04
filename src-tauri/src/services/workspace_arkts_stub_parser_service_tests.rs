@@ -141,6 +141,33 @@ struct Index {
 }
 
 #[test]
+fn ignores_call_expressions_inside_member_bodies() {
+    let stub = parse_arkts_file_stub(
+        "entry/src/main/ets/pages/Index.ets",
+        r#"
+struct Index {
+  build() {
+    Text("hello")
+    this.renderFooter()
+  }
+  renderFooter() {}
+}
+"#,
+    );
+
+    let names = stub
+        .declarations
+        .iter()
+        .map(|declaration| declaration.qualified_name.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(names.contains(&"Index"));
+    assert!(names.contains(&"Index.build"));
+    assert!(names.contains(&"Index.renderFooter"));
+    assert!(!names.contains(&"Index.Text"));
+}
+
+#[test]
 fn records_parse_errors_for_malformed_source_without_panicking() {
     let stub = parse_arkts_file_stub(
         "entry/src/main/ets/pages/Broken.ets",

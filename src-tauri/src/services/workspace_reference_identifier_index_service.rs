@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Statement};
 
 pub type ReferenceAliasTargets = HashMap<(String, String), String>;
 
@@ -27,6 +27,36 @@ pub fn load_reference_alias_targets(
         .map_err(|error| error.to_string())
 }
 
+pub fn load_reference_alias_targets_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    paths: &HashSet<String>,
+) -> Result<ReferenceAliasTargets, String> {
+    let mut aliases = ReferenceAliasTargets::new();
+    let mut statement = connection
+        .prepare(
+            "select path, name, target_symbol_id
+             from workspace_resolved_symbols
+             where root_path = ?1 and path = ?2 and target_symbol_id is not null",
+        )
+        .map_err(|error| error.to_string())?;
+    for path in paths {
+        let rows = statement
+            .query_map(params![root_key, path], |row| {
+                Ok((
+                    (row.get::<_, String>(0)?, row.get::<_, String>(1)?),
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|error| error.to_string())?;
+        aliases.extend(
+            rows.collect::<Result<ReferenceAliasTargets, _>>()
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    Ok(aliases)
+}
+
 pub fn index_workspace_identifier_references(
     connection: &Connection,
     root_key: &str,
@@ -34,7 +64,27 @@ pub fn index_workspace_identifier_references(
     content: &str,
     aliases: &ReferenceAliasTargets,
     indexed_generation: u64,
+    include_local_scope: bool,
 ) -> Result<(), String> {
+    if aliases.is_empty() && !include_local_scope {
+        return Ok(());
+    }
+    let mut symbol_statement = connection
+        .prepare(
+            "insert or replace into workspace_symbol_references (
+                root_path, path, reference_id, symbol_id, name, kind, container,
+                line, column, end_line, end_column, confidence, indexed_generation
+             ) values (?1, ?2, ?3, ?4, ?5, 'identifier', null, ?6, ?7, ?6, ?8, ?9, ?10)",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut local_statement = connection
+        .prepare(
+            "insert or replace into workspace_local_symbol_references (
+                root_path, path, reference_id, name, kind,
+                line, column, end_line, end_column, confidence, indexed_generation
+             ) values (?1, ?2, ?3, ?4, 'identifier', ?5, ?6, ?5, ?7, 'localScope', ?8)",
+        )
+        .map_err(|error| error.to_string())?;
     for (line_index, line) in content.lines().enumerate() {
         if is_declaration_like_line(line) {
             continue;
@@ -48,7 +98,7 @@ pub fn index_workspace_identifier_references(
                 .cloned();
             if symbol_id.is_some() {
                 insert_identifier_reference(
-                    connection,
+                    &mut symbol_statement,
                     root_key,
                     path,
                     &token,
@@ -56,9 +106,9 @@ pub fn index_workspace_identifier_references(
                     symbol_id,
                     indexed_generation,
                 )?;
-            } else {
+            } else if include_local_scope {
                 insert_local_identifier_reference(
-                    connection,
+                    &mut local_statement,
                     root_key,
                     path,
                     &token,
@@ -72,7 +122,7 @@ pub fn index_workspace_identifier_references(
 }
 
 fn insert_identifier_reference(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     root_key: &str,
     path: &str,
     token: &IdentifierToken<'_>,
@@ -82,31 +132,25 @@ fn insert_identifier_reference(
 ) -> Result<(), String> {
     let column = token.column as i64;
     let end_column = token.end_column as i64;
-    connection
-        .execute(
-            "insert or replace into workspace_symbol_references (
-                root_path, path, reference_id, symbol_id, name, kind, container,
-                line, column, end_line, end_column, confidence, indexed_generation
-             ) values (?1, ?2, ?3, ?4, ?5, 'identifier', null, ?6, ?7, ?6, ?8, ?9, ?10)",
-            params![
-                root_key,
-                path,
-                format!("{path}:{}:{}:{}", token.name, line, column),
-                symbol_id,
-                token.name,
-                line,
-                column,
-                end_column,
-                "resolvedAlias",
-                indexed_generation as i64,
-            ],
-        )
+    statement
+        .execute(params![
+            root_key,
+            path,
+            format!("{path}:{}:{}:{}", token.name, line, column),
+            symbol_id,
+            token.name,
+            line,
+            column,
+            end_column,
+            "resolvedAlias",
+            indexed_generation as i64,
+        ])
         .map_err(|error| error.to_string())?;
     Ok(())
 }
 
 fn insert_local_identifier_reference(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     root_key: &str,
     path: &str,
     token: &IdentifierToken<'_>,
@@ -115,23 +159,17 @@ fn insert_local_identifier_reference(
 ) -> Result<(), String> {
     let column = token.column as i64;
     let end_column = token.end_column as i64;
-    connection
-        .execute(
-            "insert or replace into workspace_local_symbol_references (
-                root_path, path, reference_id, name, kind,
-                line, column, end_line, end_column, confidence, indexed_generation
-             ) values (?1, ?2, ?3, ?4, 'identifier', ?5, ?6, ?5, ?7, 'localScope', ?8)",
-            params![
-                root_key,
-                path,
-                format!("{path}:local:{}:{}:{}", token.name, line, column),
-                token.name,
-                line,
-                column,
-                end_column,
-                indexed_generation as i64,
-            ],
-        )
+    statement
+        .execute(params![
+            root_key,
+            path,
+            format!("{path}:local:{}:{}:{}", token.name, line, column),
+            token.name,
+            line,
+            column,
+            end_column,
+            indexed_generation as i64,
+        ])
         .map_err(|error| error.to_string())?;
     Ok(())
 }

@@ -47,6 +47,13 @@ impl<T: Clone> WorkspaceIndexRefreshContinuation<T> {
     pub fn next_chunk_paths(&self) -> Option<Vec<T>> {
         self.chunks.first().cloned()
     }
+
+    pub fn remaining_paths(&self) -> Vec<T> {
+        self.chunks
+            .iter()
+            .flat_map(|chunk| chunk.iter().cloned())
+            .collect()
+    }
 }
 
 pub fn chunk_paths<T>(paths: Vec<T>, limit: usize) -> Vec<Vec<T>> {

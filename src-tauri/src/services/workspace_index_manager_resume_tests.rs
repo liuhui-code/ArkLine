@@ -28,7 +28,8 @@ fn worker_runner_requeues_full_refresh_continuation_after_first_chunk() {
     let index_runtime = WorkspaceIndexRuntime::default();
     let manager = WorkspaceIndexManagerRuntime::default();
     index_runtime.refresh_workspace_index(&root_path).unwrap();
-    for index in 0..WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE {
+    let added_file_count = WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE * 2 + 1;
+    for index in 0..added_file_count {
         fs::write(
             source_dir.join(format!("RefreshContinuation{index}.ets")),
             format!("struct RefreshContinuation{index} {{}}\n"),
@@ -46,32 +47,66 @@ fn worker_runner_requeues_full_refresh_continuation_after_first_chunk() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].kind, "refresh-workspace");
     assert_eq!(results[0].status, "partial");
+    assert_eq!(results[0].progress_current, 1);
+    assert_eq!(results[0].progress_total, 3);
     assert!(results[0].refresh_continuation.is_some());
-    assert_eq!(resume_tasks.len(), 1);
-    assert_eq!(resume_tasks[0].kind, WorkspaceIndexTaskKind::ChangedPaths);
+    assert_eq!(resume_tasks.len(), 2);
+    let file_task = resume_tasks
+        .iter()
+        .find(|task| task.reason == "full-refresh-files:refresh-workspace")
+        .expect("file-layer continuation should be resumable");
+    let deep_task = resume_tasks
+        .iter()
+        .find(|task| task.reason == "full-refresh-deep:refresh-workspace")
+        .expect("deep-layer continuation should be resumable");
+    assert_eq!(file_task.kind, WorkspaceIndexTaskKind::ChangedPaths);
     assert_eq!(
-        resume_tasks[0].reason,
-        "full-refresh-continuation:refresh-workspace"
+        file_task.changed_paths.len(),
+        added_file_count + 1 - WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE
+    );
+    assert_eq!(
+        deep_task.changed_paths.len(),
+        WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE
     );
     assert!(statuses.iter().any(|status| {
         status.kind == "changed-paths"
             && status.status == "queued"
-            && status.reason == "full-refresh-continuation:refresh-workspace"
+            && status.reason == "full-refresh-files:refresh-workspace"
     }));
 
-    let continuation_results = manager
+    let second_results = manager
+        .run_index_worker_once(&index_runtime, |_| {})
+        .unwrap();
+    let second_resume_tasks = load_resume_tasks(&root_path).unwrap();
+
+    assert_eq!(second_results.len(), 1);
+    assert_eq!(second_results[0].kind, "changed-paths");
+    assert_eq!(second_results[0].status, "partial");
+    assert_eq!(second_results[0].progress_current, 1);
+    assert_eq!(second_results[0].progress_total, 2);
+    assert!(second_resume_tasks
+        .iter()
+        .any(|task| task.reason == "full-refresh-files:refresh-workspace"));
+    assert!(second_resume_tasks
+        .iter()
+        .any(|task| task.reason == "full-refresh-deep:refresh-workspace"));
+
+    let final_results = manager
         .run_index_worker_once(&index_runtime, |_| {})
         .unwrap();
     let state = index_runtime.get_index_state(&root_path).unwrap();
 
-    assert_eq!(continuation_results.len(), 1);
-    assert_eq!(continuation_results[0].kind, "changed-paths");
-    assert_eq!(continuation_results[0].status, "ready");
-    assert!(load_resume_tasks(&root_path).unwrap().is_empty());
-    assert_eq!(
-        state.file_paths.len(),
-        WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE + 1
-    );
+    assert_eq!(final_results.len(), 1);
+    assert_eq!(final_results[0].kind, "changed-paths");
+    assert!(matches!(
+        final_results[0].status.as_str(),
+        "ready" | "skipped"
+    ));
+    assert!(load_resume_tasks(&root_path)
+        .unwrap()
+        .iter()
+        .all(|task| task.reason == "full-refresh-deep:refresh-workspace"));
+    assert_eq!(state.file_paths.len(), added_file_count + 1);
 
     fs::remove_dir_all(root).unwrap();
 }

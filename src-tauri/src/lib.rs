@@ -42,9 +42,11 @@ mod services {
     pub mod terminal_service;
     pub mod terminal_session_service;
     pub mod validation_service;
+    pub mod workspace_arkts_import_export_parser_service;
     pub mod workspace_arkts_stub_parser_service;
     #[cfg(test)]
     mod workspace_arkts_stub_parser_service_tests;
+    pub mod workspace_completion_expected_type_service;
     pub mod workspace_completion_item_service;
     pub mod workspace_completion_parser_service;
     pub mod workspace_completion_semantic_service;
@@ -59,6 +61,8 @@ mod services {
     #[cfg(test)]
     mod workspace_definition_query_service_tests;
     pub mod workspace_definition_reference_service;
+    pub mod workspace_dependency_graph_cleanup_service;
+    pub mod workspace_dependency_graph_model_service;
     pub mod workspace_dependency_graph_service;
     #[cfg(test)]
     mod workspace_dependency_graph_service_tests;
@@ -75,6 +79,7 @@ mod services {
     pub mod workspace_index_continuation_task_service;
     #[cfg(test)]
     mod workspace_index_continuation_task_service_tests;
+    pub mod workspace_index_deep_layer_service;
     #[cfg(test)]
     mod workspace_index_dependency_expansion_service_tests;
     pub mod workspace_index_diagnostics_service;
@@ -92,9 +97,22 @@ mod services {
     pub mod workspace_index_explain_service;
     #[cfg(test)]
     mod workspace_index_explain_service_tests;
+    pub mod workspace_index_facade_completion_service;
+    #[cfg(test)]
+    mod workspace_index_facade_completion_tests;
+    pub mod workspace_index_facade_envelope_service;
+    pub mod workspace_index_facade_event_service;
+    pub mod workspace_index_facade_explain_service;
+    pub mod workspace_index_facade_navigation_service;
+    pub mod workspace_index_facade_search_service;
+    #[cfg(test)]
+    mod workspace_index_facade_search_tests;
     pub mod workspace_index_facade_service;
     #[cfg(test)]
     mod workspace_index_facade_service_tests;
+    pub mod workspace_index_file_layer_service;
+    #[cfg(test)]
+    mod workspace_index_file_layer_service_tests;
     pub mod workspace_index_file_readiness_service;
     #[cfg(test)]
     mod workspace_index_file_readiness_service_tests;
@@ -104,6 +122,7 @@ mod services {
     pub mod workspace_index_health_service;
     #[cfg(test)]
     mod workspace_index_health_service_tests;
+    pub mod workspace_index_incremental_persistence_service;
     #[cfg(test)]
     mod workspace_index_lifecycle_service_tests;
     pub mod workspace_index_maintenance_service;
@@ -116,6 +135,8 @@ mod services {
     pub mod workspace_index_manager_service;
     #[cfg(test)]
     mod workspace_index_manager_service_tests;
+    #[cfg(test)]
+    mod workspace_index_open_service_tests;
     pub mod workspace_index_persistence_service;
     #[cfg(test)]
     mod workspace_index_query_scope_service_tests;
@@ -164,6 +185,9 @@ mod services {
     #[cfg(test)]
     mod workspace_large_project_index_tests;
     #[cfg(test)]
+    mod workspace_large_update_profile_tests;
+    pub mod workspace_number_format_service;
+    #[cfg(test)]
     mod workspace_reference_branch_flow_tests;
     #[cfg(test)]
     mod workspace_reference_chain_receiver_tests;
@@ -199,6 +223,9 @@ mod services {
     pub mod workspace_symbol_identity_service;
     pub mod workspace_symbol_index_service;
     pub mod workspace_symbol_resolution_alias_service;
+    pub mod workspace_symbol_resolution_declaration_service;
+    pub mod workspace_symbol_resolution_insert_service;
+    pub mod workspace_symbol_resolution_model_service;
     pub mod workspace_symbol_resolution_query_service;
     #[cfg(test)]
     mod workspace_symbol_resolution_query_service_tests;

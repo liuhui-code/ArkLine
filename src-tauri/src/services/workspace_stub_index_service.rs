@@ -1,13 +1,20 @@
 use std::fs;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{ArkTsDeclarationStub, ArkTsFileStub};
 use crate::services::workspace_arkts_stub_parser_service::parse_arkts_file_stub;
-use crate::services::workspace_dependency_graph_service::rebuild_dependency_graph;
-use crate::services::workspace_reference_index_service::replace_workspace_references;
-use crate::services::workspace_symbol_resolution_service::resolve_workspace_symbols;
+use crate::services::workspace_dependency_graph_service::{
+    rebuild_dependency_graph, update_dependency_graph_for_paths,
+};
+use crate::services::workspace_reference_index_service::{
+    replace_workspace_references, replace_workspace_references_for_paths,
+};
+use crate::services::workspace_symbol_resolution_service::{
+    resolve_workspace_symbols, resolve_workspace_symbols_for_paths,
+};
 
 pub const ARKTS_STUB_PARSER_VERSION: i64 = 1;
 
@@ -23,6 +30,142 @@ pub fn replace_all_stub_rows(
     resolve_workspace_symbols(connection, root_key, indexed_generation)?;
     replace_workspace_references(connection, root_key, file_paths, indexed_generation)?;
     Ok(())
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceStubIndexProfile {
+    pub delete_duration: Duration,
+    pub insert_duration: Duration,
+    pub insert_parse_duration: Duration,
+    pub insert_write_duration: Duration,
+    pub graph_duration: Duration,
+    pub resolve_duration: Duration,
+    pub reference_duration: Duration,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct WorkspaceStubInsertProfile {
+    parse_duration: Duration,
+    write_duration: Duration,
+}
+
+#[cfg(test)]
+pub fn profile_replace_all_stub_rows(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_generation: u64,
+) -> Result<WorkspaceStubIndexProfile, String> {
+    let delete_start = Instant::now();
+    delete_all_stub_rows(connection, root_key)?;
+    let delete_duration = delete_start.elapsed();
+
+    let insert_start = Instant::now();
+    let mut insert_profile = WorkspaceStubInsertProfile::default();
+    insert_stub_rows_for_files_profiled(
+        connection,
+        root_key,
+        file_paths,
+        indexed_generation,
+        Some(&mut insert_profile),
+    )?;
+    let insert_duration = insert_start.elapsed();
+
+    let graph_start = Instant::now();
+    rebuild_dependency_graph(connection, root_key, file_paths)?;
+    let graph_duration = graph_start.elapsed();
+
+    let resolve_start = Instant::now();
+    resolve_workspace_symbols(connection, root_key, indexed_generation)?;
+    let resolve_duration = resolve_start.elapsed();
+
+    let reference_start = Instant::now();
+    replace_workspace_references(connection, root_key, file_paths, indexed_generation)?;
+    let reference_duration = reference_start.elapsed();
+
+    Ok(WorkspaceStubIndexProfile {
+        delete_duration,
+        insert_duration,
+        insert_parse_duration: insert_profile.parse_duration,
+        insert_write_duration: insert_profile.write_duration,
+        graph_duration,
+        resolve_duration,
+        reference_duration,
+    })
+}
+
+#[cfg(test)]
+pub fn profile_replace_changed_stub_rows(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    changed_paths: &[String],
+    removed_paths: &[String],
+    indexed_generation: u64,
+) -> Result<WorkspaceStubIndexProfile, String> {
+    let mut affected_paths = changed_paths
+        .iter()
+        .chain(removed_paths.iter())
+        .map(|path| normalize_index_path(path))
+        .collect::<Vec<_>>();
+    affected_paths.sort();
+    affected_paths.dedup();
+
+    let delete_start = Instant::now();
+    delete_stub_rows_for_paths(connection, root_key, &affected_paths)?;
+    let delete_duration = delete_start.elapsed();
+
+    let insert_start = Instant::now();
+    let mut insert_profile = WorkspaceStubInsertProfile::default();
+    insert_stub_rows_for_files_profiled(
+        connection,
+        root_key,
+        changed_paths,
+        indexed_generation,
+        Some(&mut insert_profile),
+    )?;
+    let insert_duration = insert_start.elapsed();
+
+    let graph_start = Instant::now();
+    update_dependency_graph_for_paths(
+        connection,
+        root_key,
+        file_paths,
+        changed_paths,
+        removed_paths,
+    )?;
+    let graph_duration = graph_start.elapsed();
+
+    let resolve_start = Instant::now();
+    resolve_workspace_symbols_for_paths(
+        connection,
+        root_key,
+        changed_paths,
+        removed_paths,
+        indexed_generation,
+    )?;
+    let resolve_duration = resolve_start.elapsed();
+
+    let reference_start = Instant::now();
+    replace_workspace_references_for_paths(
+        connection,
+        root_key,
+        changed_paths,
+        removed_paths,
+        indexed_generation,
+    )?;
+    let reference_duration = reference_start.elapsed();
+
+    Ok(WorkspaceStubIndexProfile {
+        delete_duration,
+        insert_duration,
+        insert_parse_duration: insert_profile.parse_duration,
+        insert_write_duration: insert_profile.write_duration,
+        graph_duration,
+        resolve_duration,
+        reference_duration,
+    })
 }
 
 pub fn replace_changed_stub_rows(
@@ -41,13 +184,29 @@ pub fn replace_changed_stub_rows(
     affected_paths.sort();
     affected_paths.dedup();
 
-    for path in &affected_paths {
-        delete_stub_rows_for_path(connection, root_key, path)?;
-    }
+    delete_stub_rows_for_paths(connection, root_key, &affected_paths)?;
     insert_stub_rows_for_files(connection, root_key, changed_paths, indexed_generation)?;
-    rebuild_dependency_graph(connection, root_key, file_paths)?;
-    resolve_workspace_symbols(connection, root_key, indexed_generation)?;
-    replace_workspace_references(connection, root_key, file_paths, indexed_generation)?;
+    update_dependency_graph_for_paths(
+        connection,
+        root_key,
+        file_paths,
+        changed_paths,
+        removed_paths,
+    )?;
+    resolve_workspace_symbols_for_paths(
+        connection,
+        root_key,
+        changed_paths,
+        removed_paths,
+        indexed_generation,
+    )?;
+    replace_workspace_references_for_paths(
+        connection,
+        root_key,
+        changed_paths,
+        removed_paths,
+        indexed_generation,
+    )?;
     Ok(())
 }
 
@@ -57,72 +216,83 @@ fn insert_stub_rows_for_files(
     file_paths: &[String],
     indexed_generation: u64,
 ) -> Result<(), String> {
+    insert_stub_rows_for_files_profiled(connection, root_key, file_paths, indexed_generation, None)
+}
+
+fn insert_stub_rows_for_files_profiled(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    indexed_generation: u64,
+    mut profile: Option<&mut WorkspaceStubInsertProfile>,
+) -> Result<(), String> {
+    let mut file_statement = stub_file_insert_statement(connection)?;
+    let mut declaration_statement = stub_declaration_insert_statement(connection)?;
+    let mut import_statement = stub_import_insert_statement(connection)?;
+    let mut export_statement = stub_export_insert_statement(connection)?;
+    let mut error_statement = stub_parse_error_insert_statement(connection)?;
     for path in file_paths.iter().map(|path| normalize_index_path(path)) {
         if !is_source_file(&path) {
             continue;
         }
+        let parse_start = Instant::now();
         let Some(stub) = parse_stub_from_file(&path) else {
             continue;
         };
-        insert_stub_file(connection, root_key, &stub, indexed_generation)?;
+        if let Some(profile) = profile.as_mut() {
+            profile.parse_duration += parse_start.elapsed();
+        }
+        let write_start = Instant::now();
+        insert_stub_file(&mut file_statement, root_key, &stub, indexed_generation)?;
         for declaration in &stub.declarations {
-            insert_stub_declaration(connection, root_key, &stub.path, declaration)?;
+            insert_stub_declaration(
+                &mut declaration_statement,
+                root_key,
+                &stub.path,
+                declaration,
+            )?;
         }
         for import in &stub.imports {
-            connection
-                .execute(
-                    "insert into workspace_stub_imports (
-                        root_path, path, source_module, imported_name, local_name,
-                        is_type_only, line, column
-                     ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![
-                        root_key,
-                        stub.path,
-                        import.source_module,
-                        import.imported_name,
-                        import.local_name,
-                        bool_to_i64(import.is_type_only),
-                        import.line as i64,
-                        import.column as i64,
-                    ],
-                )
+            import_statement
+                .execute(params![
+                    root_key,
+                    stub.path,
+                    import.source_module,
+                    import.imported_name,
+                    import.local_name,
+                    bool_to_i64(import.is_type_only),
+                    import.line as i64,
+                    import.column as i64,
+                ])
                 .map_err(|error| error.to_string())?;
         }
         for export in &stub.exports {
-            connection
-                .execute(
-                    "insert into workspace_stub_exports (
-                        root_path, path, exported_name, local_name, source_module,
-                        is_default, line, column
-                     ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    params![
-                        root_key,
-                        stub.path,
-                        export.exported_name,
-                        export.local_name,
-                        export.source_module,
-                        bool_to_i64(export.is_default),
-                        export.line as i64,
-                        export.column as i64,
-                    ],
-                )
+            export_statement
+                .execute(params![
+                    root_key,
+                    stub.path,
+                    export.exported_name,
+                    export.local_name,
+                    export.source_module,
+                    bool_to_i64(export.is_default),
+                    export.line as i64,
+                    export.column as i64,
+                ])
                 .map_err(|error| error.to_string())?;
         }
         for error in &stub.parse_errors {
-            connection
-                .execute(
-                    "insert into workspace_stub_parse_errors (
-                        root_path, path, message, line, column
-                     ) values (?1, ?2, ?3, ?4, ?5)",
-                    params![
-                        root_key,
-                        stub.path,
-                        error.message,
-                        error.line as i64,
-                        error.column as i64,
-                    ],
-                )
+            error_statement
+                .execute(params![
+                    root_key,
+                    stub.path,
+                    error.message,
+                    error.line as i64,
+                    error.column as i64,
+                ])
                 .map_err(|error| error.to_string())?;
+        }
+        if let Some(profile) = profile.as_mut() {
+            profile.write_duration += write_start.elapsed();
         }
     }
     Ok(())
@@ -135,65 +305,116 @@ fn parse_stub_from_file(path: &str) -> Option<ArkTsFileStub> {
 }
 
 fn insert_stub_file(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     root_key: &str,
     stub: &ArkTsFileStub,
     indexed_generation: u64,
 ) -> Result<(), String> {
-    connection
-        .execute(
-            "insert into workspace_stub_files (
-                root_path, path, parser_version, indexed_generation, parse_status, error_count
-             ) values (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![
-                root_key,
-                stub.path,
-                ARKTS_STUB_PARSER_VERSION,
-                indexed_generation as i64,
-                if stub.parse_errors.is_empty() {
-                    "ok"
-                } else {
-                    "error"
-                },
-                stub.parse_errors.len() as i64,
-            ],
-        )
+    statement
+        .execute(params![
+            root_key,
+            stub.path,
+            ARKTS_STUB_PARSER_VERSION,
+            indexed_generation as i64,
+            if stub.parse_errors.is_empty() {
+                "ok"
+            } else {
+                "error"
+            },
+            stub.parse_errors.len() as i64,
+        ])
         .map_err(|error| error.to_string())?;
     Ok(())
 }
 
 fn insert_stub_declaration(
-    connection: &Connection,
+    statement: &mut Statement<'_>,
     root_key: &str,
     path: &str,
     declaration: &ArkTsDeclarationStub,
 ) -> Result<(), String> {
+    let modifiers_json = json_string_array(&declaration.modifiers)?;
+    let decorators_json = json_string_array(&declaration.decorators)?;
+    statement
+        .execute(params![
+            root_key,
+            path,
+            stub_entity_id(path, declaration),
+            declaration.kind,
+            declaration.name,
+            declaration.qualified_name,
+            declaration.container,
+            declaration.visibility,
+            declaration.signature,
+            declaration.line as i64,
+            declaration.column as i64,
+            declaration.end_line as i64,
+            declaration.end_column as i64,
+            modifiers_json,
+            decorators_json,
+        ])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn json_string_array(values: &[String]) -> Result<String, String> {
+    if values.is_empty() {
+        return Ok("[]".to_string());
+    }
+    serde_json::to_string(values).map_err(|error| error.to_string())
+}
+
+fn stub_file_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
     connection
-        .execute(
+        .prepare(
+            "insert into workspace_stub_files (
+                root_path, path, parser_version, indexed_generation, parse_status, error_count
+             ) values (?1, ?2, ?3, ?4, ?5, ?6)",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn stub_declaration_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
+    connection
+        .prepare(
             "insert into workspace_stub_declarations (
                 root_path, path, entity_id, kind, name, qualified_name, container, visibility,
                 signature, line, column, end_line, end_column, modifiers_json, decorators_json
              ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-            params![
-                root_key,
-                path,
-                stub_entity_id(path, declaration),
-                declaration.kind,
-                declaration.name,
-                declaration.qualified_name,
-                declaration.container,
-                declaration.visibility,
-                declaration.signature,
-                declaration.line as i64,
-                declaration.column as i64,
-                declaration.end_line as i64,
-                declaration.end_column as i64,
-                serde_json::to_string(&declaration.modifiers).map_err(|error| error.to_string())?,
-                serde_json::to_string(&declaration.decorators).map_err(|error| error.to_string())?,
-            ],
         )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+        .map_err(|error| error.to_string())
+}
+
+fn stub_import_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
+    connection
+        .prepare(
+            "insert into workspace_stub_imports (
+                root_path, path, source_module, imported_name, local_name,
+                is_type_only, line, column
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn stub_export_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
+    connection
+        .prepare(
+            "insert into workspace_stub_exports (
+                root_path, path, exported_name, local_name, source_module,
+                is_default, line, column
+             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn stub_parse_error_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
+    connection
+        .prepare(
+            "insert into workspace_stub_parse_errors (
+                root_path, path, message, line, column
+             ) values (?1, ?2, ?3, ?4, ?5)",
+        )
+        .map_err(|error| error.to_string())
 }
 
 fn delete_all_stub_rows(connection: &Connection, root_key: &str) -> Result<(), String> {
@@ -208,18 +429,21 @@ fn delete_all_stub_rows(connection: &Connection, root_key: &str) -> Result<(), S
     Ok(())
 }
 
-fn delete_stub_rows_for_path(
+fn delete_stub_rows_for_paths(
     connection: &Connection,
     root_key: &str,
-    path: &str,
+    paths: &[String],
 ) -> Result<(), String> {
     for table in STUB_TABLES {
-        connection
-            .execute(
-                &format!("delete from {table} where root_path = ?1 and path = ?2"),
-                params![root_key, path],
-            )
+        let sql = format!("delete from {table} where root_path = ?1 and path = ?2");
+        let mut statement = connection
+            .prepare(&sql)
             .map_err(|error| error.to_string())?;
+        for path in paths {
+            statement
+                .execute(params![root_key, path])
+                .map_err(|error| error.to_string())?;
+        }
     }
     Ok(())
 }

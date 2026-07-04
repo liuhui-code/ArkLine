@@ -32,6 +32,18 @@ pub fn member_accesses(line: &str) -> Vec<MemberAccess<'_>> {
     members
 }
 
+pub fn contains_member_access_line(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    let mut index = 0;
+    while index + 1 < bytes.len() {
+        if bytes[index] == b'.' && is_identifier_start(bytes[index + 1]) {
+            return owner_before_dot(line, index).is_some();
+        }
+        index += 1;
+    }
+    false
+}
+
 fn owner_before_dot(line: &str, dot_index: usize) -> Option<&str> {
     let bytes = line.as_bytes();
     if dot_index == 0 {

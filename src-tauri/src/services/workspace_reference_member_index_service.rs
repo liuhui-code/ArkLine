@@ -2,16 +2,31 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Statement};
 
 use crate::services::workspace_reference_generic_receiver_service::{
     generic_class_fields, GenericClass,
 };
 use crate::services::workspace_reference_member_access_parser_service::{
-    is_identifier, member_accesses, MemberAccess,
+    contains_member_access_line, is_identifier, member_accesses, MemberAccess,
 };
 use crate::services::workspace_reference_receiver_type_service::receiver_type_maps_by_line;
 
+pub struct WorkspaceMemberReferenceContext {
+    sdk_targets: Vec<MemberTarget>,
+    project_targets: Vec<MemberTarget>,
+}
+
+impl WorkspaceMemberReferenceContext {
+    pub fn load(connection: &Connection, root_key: &str) -> Result<Self, String> {
+        Ok(Self {
+            sdk_targets: load_sdk_member_targets(connection, root_key)?,
+            project_targets: load_project_member_targets(connection, root_key)?,
+        })
+    }
+}
+
+#[allow(dead_code)]
 pub fn index_workspace_member_references(
     connection: &Connection,
     root_key: &str,
@@ -19,12 +34,33 @@ pub fn index_workspace_member_references(
     content: &str,
     indexed_generation: u64,
 ) -> Result<(), String> {
-    let sdk_targets = load_sdk_member_targets(connection, root_key)?;
-    let project_targets = load_project_member_targets(connection, root_key)?;
+    let context = WorkspaceMemberReferenceContext::load(connection, root_key)?;
+    index_workspace_member_references_with_context(
+        connection,
+        root_key,
+        path,
+        content,
+        indexed_generation,
+        &context,
+    )
+}
+
+pub fn index_workspace_member_references_with_context(
+    connection: &Connection,
+    root_key: &str,
+    path: &str,
+    content: &str,
+    indexed_generation: u64,
+    context: &WorkspaceMemberReferenceContext,
+) -> Result<(), String> {
+    if !contains_member_access(content) {
+        return Ok(());
+    }
     let import_type_targets = load_import_type_targets(connection, root_key, path)?;
     let unresolved_import_types = load_unresolved_import_type_names(connection, root_key, path)?;
     let imported_generic_classes = load_imported_generic_classes(&import_type_targets);
     let receiver_types_by_line = receiver_type_maps_by_line(content, &imported_generic_classes);
+    let mut inserter = MemberReferenceInserter::new(connection)?;
     for (line_index, line) in content.lines().enumerate() {
         if is_declaration_like_line(line) {
             continue;
@@ -36,18 +72,18 @@ pub fn index_workspace_member_references(
         for member in member_accesses(line) {
             let project_target = receiver_types.get(member.owner).and_then(|receiver_type| {
                 resolve_project_member_target(
-                    &project_targets,
+                    &context.project_targets,
                     &import_type_targets,
                     &unresolved_import_types,
                     receiver_type,
                     member.name,
                 )
             });
-            let sdk_target = sdk_targets
+            let sdk_target = context
+                .sdk_targets
                 .iter()
                 .find(|target| target.matches(member.owner, member.name));
-            insert_member_reference(
-                connection,
+            inserter.insert(
                 root_key,
                 path,
                 &member,
@@ -57,10 +93,9 @@ pub fn index_workspace_member_references(
             )?;
             if let Some(return_type) = project_target.and_then(|target| target.return_type.as_ref())
             {
-                receiver_types.insert(
-                    format!("{}.{}", member.owner, member.name),
-                    return_type.to_string(),
-                );
+                receiver_types
+                    .entry(format!("{}.{}", member.owner, member.name))
+                    .or_insert_with(|| return_type.to_string());
             }
         }
     }
@@ -87,6 +122,13 @@ fn load_imported_generic_classes(
     classes
 }
 
+pub(crate) fn contains_member_access(content: &str) -> bool {
+    content
+        .lines()
+        .filter(|line| !is_declaration_like_line(line))
+        .any(contains_member_access_line)
+}
+
 fn filesystem_path(path: &str) -> String {
     if Path::new(path).exists() {
         return path.to_string();
@@ -94,30 +136,43 @@ fn filesystem_path(path: &str) -> String {
     path.replace('\\', "/")
 }
 
-fn insert_member_reference(
-    connection: &Connection,
-    root_key: &str,
-    path: &str,
-    member: &MemberAccess<'_>,
-    target: Option<&MemberTarget>,
-    line: i64,
-    indexed_generation: u64,
-) -> Result<(), String> {
-    let column = member.column as i64;
-    let end_column = member.end_column as i64;
-    let symbol_id = target.map(MemberTarget::symbol_id);
-    let confidence = if symbol_id.is_some() {
-        "memberResolved"
-    } else {
-        "unresolvedLikely"
-    };
-    connection
-        .execute(
-            "insert or replace into workspace_symbol_references (
-                root_path, path, reference_id, symbol_id, name, kind, container,
-                line, column, end_line, end_column, confidence, indexed_generation
-             ) values (?1, ?2, ?3, ?4, ?5, 'memberAccess', ?6, ?7, ?8, ?7, ?9, ?10, ?11)",
-            params![
+struct MemberReferenceInserter<'a> {
+    statement: Statement<'a>,
+}
+
+impl<'a> MemberReferenceInserter<'a> {
+    fn new(connection: &'a Connection) -> Result<Self, String> {
+        Ok(Self {
+            statement: connection
+                .prepare(
+                    "insert or replace into workspace_symbol_references (
+                        root_path, path, reference_id, symbol_id, name, kind, container,
+                        line, column, end_line, end_column, confidence, indexed_generation
+                     ) values (?1, ?2, ?3, ?4, ?5, 'memberAccess', ?6, ?7, ?8, ?7, ?9, ?10, ?11)",
+                )
+                .map_err(|error| error.to_string())?,
+        })
+    }
+
+    fn insert(
+        &mut self,
+        root_key: &str,
+        path: &str,
+        member: &MemberAccess<'_>,
+        target: Option<&MemberTarget>,
+        line: i64,
+        indexed_generation: u64,
+    ) -> Result<(), String> {
+        let column = member.column as i64;
+        let end_column = member.end_column as i64;
+        let symbol_id = target.map(MemberTarget::symbol_id);
+        let confidence = if symbol_id.is_some() {
+            "memberResolved"
+        } else {
+            "unresolvedLikely"
+        };
+        self.statement
+            .execute(params![
                 root_key,
                 path,
                 format!(
@@ -132,10 +187,10 @@ fn insert_member_reference(
                 end_column,
                 confidence,
                 indexed_generation as i64,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+            ])
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
 }
 
 fn load_sdk_member_targets(

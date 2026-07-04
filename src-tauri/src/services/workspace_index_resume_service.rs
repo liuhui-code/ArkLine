@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{params, Connection};
 
+use crate::services::workspace_index_continuation_task_service::is_full_refresh_continuation_reason;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
@@ -130,9 +131,9 @@ pub fn schedule_resume_tasks_from_store(
 
 pub fn clear_completed_resume_tasks(results: &[WorkspaceIndexTaskResult]) -> Result<(), String> {
     for result in results {
-        if result.status == "ready"
+        if matches!(result.status.as_str(), "ready" | "skipped")
             && result.kind == "changed-paths"
-            && result.reason.starts_with("full-refresh-continuation:")
+            && is_full_refresh_continuation_reason(&result.reason)
         {
             clear_resume_task(&result.root_path, "changed-paths", &result.reason)?;
         }

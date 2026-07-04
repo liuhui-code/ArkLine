@@ -1,8 +1,18 @@
+use std::collections::{HashMap, HashSet};
+
 use rusqlite::{params, Connection};
 
 use crate::services::workspace_symbol_identity_service::project_symbol_id;
 use crate::services::workspace_symbol_resolution_alias_service::{
     insert_export_alias_symbol, insert_import_alias_symbol, AliasTarget, ExportAliasTarget,
+};
+use crate::services::workspace_symbol_resolution_declaration_service::{
+    has_import_or_export_bindings_for_paths, load_stub_declarations,
+    load_stub_declarations_for_paths,
+};
+use crate::services::workspace_symbol_resolution_insert_service::ResolvedSymbolInserter;
+use crate::services::workspace_symbol_resolution_model_service::{
+    ExportBindingRow, ImportBindingRow, StubDeclarationRow, UnresolvedImportRow,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,10 +40,62 @@ pub fn resolve_workspace_symbols(
         .map_err(|error| error.to_string())?;
 
     let declarations = load_stub_declarations(connection, root_key)?;
-    let mut resolved_count = 0;
-    for declaration in &declarations {
-        insert_resolved_symbol(
+    resolve_workspace_symbols_from_declarations(
+        connection,
+        root_key,
+        indexed_generation,
+        &declarations,
+        None,
+        true,
+    )
+}
+
+pub fn resolve_workspace_symbols_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    indexed_paths: &[String],
+    removed_paths: &[String],
+    indexed_generation: u64,
+) -> Result<WorkspaceSymbolResolutionSummary, String> {
+    let affected_paths = affected_path_set(indexed_paths, removed_paths);
+    delete_symbol_resolution_for_paths(connection, root_key, &affected_paths)?;
+    if !has_import_or_export_bindings_for_paths(connection, root_key, &affected_paths)? {
+        let declarations = load_stub_declarations_for_paths(connection, root_key, &affected_paths)?;
+        return resolve_workspace_symbols_from_declarations(
             connection,
+            root_key,
+            indexed_generation,
+            &declarations,
+            None,
+            false,
+        );
+    }
+    let declarations = load_stub_declarations(connection, root_key)?;
+    resolve_workspace_symbols_from_declarations(
+        connection,
+        root_key,
+        indexed_generation,
+        &declarations,
+        Some(&affected_paths),
+        true,
+    )
+}
+
+fn resolve_workspace_symbols_from_declarations(
+    connection: &Connection,
+    root_key: &str,
+    indexed_generation: u64,
+    declarations: &[StubDeclarationRow],
+    affected_paths: Option<&HashSet<String>>,
+    include_bindings: bool,
+) -> Result<WorkspaceSymbolResolutionSummary, String> {
+    let mut resolved_count = 0;
+    let mut resolved_inserter = ResolvedSymbolInserter::new(connection)?;
+    for declaration in declarations
+        .iter()
+        .filter(|declaration| should_resolve_path(affected_paths, &declaration.path))
+    {
+        resolved_inserter.insert(
             root_key,
             &symbol_id(declaration),
             declaration,
@@ -45,11 +107,34 @@ pub fn resolve_workspace_symbols(
         )?;
         resolved_count += 1;
     }
-    let mut export_aliases = Vec::new();
-    for export in load_resolved_re_exports(connection, root_key)? {
-        let Some(target) = declarations.iter().find(|declaration| {
-            declaration.path == export.to_path && declaration.name == export.local_name
-        }) else {
+    if !include_bindings {
+        return Ok(WorkspaceSymbolResolutionSummary {
+            resolved_count,
+            unresolved_count: 0,
+        });
+    }
+    let re_exports = load_resolved_re_exports(connection, root_key)?
+        .into_iter()
+        .filter(|export| should_resolve_path(affected_paths, &export.from_path))
+        .collect::<Vec<_>>();
+    let imports = load_resolved_imports(connection, root_key)?
+        .into_iter()
+        .filter(|import| should_resolve_path(affected_paths, &import.from_path))
+        .collect::<Vec<_>>();
+    let declaration_lookup =
+        (!re_exports.is_empty() || !imports.is_empty()).then(|| declaration_lookup(declarations));
+    let needs_export_aliases = !imports.is_empty();
+    let mut export_aliases = if needs_export_aliases {
+        export_alias_lookup(load_existing_export_aliases(connection, root_key)?)
+    } else {
+        HashMap::new()
+    };
+    for export in re_exports {
+        let Some(target) = declaration_lookup
+            .as_ref()
+            .and_then(|lookup| lookup.get(&(export.to_path.clone(), export.local_name.clone())))
+            .copied()
+        else {
             insert_unresolved_symbol(
                 connection,
                 root_key,
@@ -64,7 +149,7 @@ pub fn resolve_workspace_symbols(
         };
         let target_symbol_id = symbol_id(target);
         insert_export_alias_symbol(
-            connection,
+            &mut resolved_inserter,
             root_key,
             &format!(
                 "export:{}:{}:{}:{}",
@@ -74,24 +159,29 @@ pub fn resolve_workspace_symbols(
             target,
             indexed_generation,
         )?;
-        export_aliases.push(ExportAliasTarget {
-            path: export.from_path,
-            exported_name: export.exported_name,
-            target_symbol_id,
-            kind: target.kind.clone(),
-            container: target.container.clone(),
-            signature: Some(target.signature.clone()),
-            visibility: target.visibility.clone(),
-        });
+        if needs_export_aliases {
+            export_aliases.insert(
+                (export.from_path.clone(), export.exported_name.clone()),
+                ExportAliasTarget {
+                    path: export.from_path,
+                    exported_name: export.exported_name,
+                    target_symbol_id,
+                    kind: target.kind.clone(),
+                    container: target.container.clone(),
+                    signature: Some(target.signature.clone()),
+                    visibility: target.visibility.clone(),
+                },
+            );
+        }
         resolved_count += 1;
     }
-    for import in load_resolved_imports(connection, root_key)? {
-        let declaration_target = declarations.iter().find(|declaration| {
-            declaration.path == import.to_path && declaration.name == import.imported_name
-        });
-        let export_target = export_aliases.iter().find(|alias| {
-            alias.path == import.to_path && alias.exported_name == import.imported_name
-        });
+    for import in imports {
+        let declaration_target = declaration_lookup
+            .as_ref()
+            .and_then(|lookup| lookup.get(&(import.to_path.clone(), import.imported_name.clone())))
+            .copied();
+        let export_target =
+            export_aliases.get(&(import.to_path.clone(), import.imported_name.clone()));
         let Some(target) = import_alias_target(declaration_target, export_target) else {
             insert_unresolved_symbol(
                 connection,
@@ -106,7 +196,7 @@ pub fn resolve_workspace_symbols(
             continue;
         };
         insert_import_alias_symbol(
-            connection,
+            &mut resolved_inserter,
             root_key,
             &format!(
                 "import:{}:{}:{}:{}",
@@ -118,7 +208,10 @@ pub fn resolve_workspace_symbols(
         )?;
         resolved_count += 1;
     }
-    let unresolved_imports = load_unresolved_imports(connection, root_key)?;
+    let unresolved_imports = load_unresolved_imports(connection, root_key)?
+        .into_iter()
+        .filter(|import| should_resolve_path(affected_paths, &import.from_path))
+        .collect::<Vec<_>>();
     for import in &unresolved_imports {
         insert_unresolved_symbol(
             connection,
@@ -138,42 +231,27 @@ pub fn resolve_workspace_symbols(
     })
 }
 
-fn insert_resolved_symbol(
-    connection: &Connection,
-    root_key: &str,
-    id: &str,
-    declaration: &StubDeclarationRow,
-    name: &str,
-    qualified_name: &str,
-    source: &str,
-    target_symbol_id: Option<&str>,
-    indexed_generation: u64,
-) -> Result<(), String> {
-    connection
-        .execute(
-            "insert into workspace_resolved_symbols (
-                root_path, symbol_id, path, name, qualified_name, kind, container,
-                signature, visibility, target_symbol_id, source, line, column, indexed_generation
-             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![
-                root_key,
-                id,
-                declaration.path,
-                name,
-                qualified_name,
-                declaration.kind,
-                declaration.container,
-                declaration.signature,
-                declaration.visibility,
-                target_symbol_id,
-                source,
-                declaration.line,
-                declaration.column,
-                indexed_generation as i64,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+fn declaration_lookup(
+    declarations: &[StubDeclarationRow],
+) -> HashMap<(String, String), &StubDeclarationRow> {
+    declarations
+        .iter()
+        .map(|declaration| {
+            (
+                (declaration.path.clone(), declaration.name.clone()),
+                declaration,
+            )
+        })
+        .collect()
+}
+
+fn export_alias_lookup(
+    aliases: Vec<ExportAliasTarget>,
+) -> HashMap<(String, String), ExportAliasTarget> {
+    aliases
+        .into_iter()
+        .map(|alias| ((alias.path.clone(), alias.exported_name.clone()), alias))
+        .collect()
 }
 
 fn import_alias_target(
@@ -196,6 +274,40 @@ fn import_alias_target(
         signature: alias.signature.clone(),
         visibility: alias.visibility.clone(),
     })
+}
+
+fn affected_path_set(indexed_paths: &[String], removed_paths: &[String]) -> HashSet<String> {
+    indexed_paths
+        .iter()
+        .chain(removed_paths.iter())
+        .map(|path| path.replace('/', "\\"))
+        .collect()
+}
+
+fn should_resolve_path(affected_paths: Option<&HashSet<String>>, path: &str) -> bool {
+    affected_paths.is_none_or(|paths| paths.contains(path))
+}
+
+fn delete_symbol_resolution_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    paths: &HashSet<String>,
+) -> Result<(), String> {
+    let mut resolved_statement = connection
+        .prepare("delete from workspace_resolved_symbols where root_path = ?1 and path = ?2")
+        .map_err(|error| error.to_string())?;
+    let mut unresolved_statement = connection
+        .prepare("delete from workspace_unresolved_symbols where root_path = ?1 and path = ?2")
+        .map_err(|error| error.to_string())?;
+    for path in paths {
+        resolved_statement
+            .execute(params![root_key, path])
+            .map_err(|error| error.to_string())?;
+        unresolved_statement
+            .execute(params![root_key, path])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn insert_unresolved_symbol(
@@ -227,34 +339,30 @@ fn insert_unresolved_symbol(
     Ok(())
 }
 
-fn load_stub_declarations(
+fn load_existing_export_aliases(
     connection: &Connection,
     root_key: &str,
-) -> Result<Vec<StubDeclarationRow>, String> {
+) -> Result<Vec<ExportAliasTarget>, String> {
     let mut statement = connection
         .prepare(
-            "select path, kind, name, qualified_name, container, signature, visibility, line, column
-             from workspace_stub_declarations
-             where root_path = ?1
-             order by path, line, column, kind, qualified_name",
+            "select path, name, target_symbol_id, kind, container, signature, visibility
+             from workspace_resolved_symbols
+             where root_path = ?1 and source = 'export' and target_symbol_id is not null",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(params![root_key], |row| {
-            Ok(StubDeclarationRow {
+            Ok(ExportAliasTarget {
                 path: row.get(0)?,
-                kind: row.get(1)?,
-                name: row.get(2)?,
-                qualified_name: row.get(3)?,
+                exported_name: row.get(1)?,
+                target_symbol_id: row.get(2)?,
+                kind: row.get(3)?,
                 container: row.get(4)?,
                 signature: row.get(5)?,
                 visibility: row.get(6)?,
-                line: row.get(7)?,
-                column: row.get(8)?,
             })
         })
         .map_err(|error| error.to_string())?;
-
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
 }
@@ -373,44 +481,4 @@ pub(crate) fn symbol_id(declaration: &StubDeclarationRow) -> String {
         declaration.line,
         declaration.column,
     )
-}
-
-pub(crate) struct StubDeclarationRow {
-    pub(crate) path: String,
-    pub(crate) kind: String,
-    pub(crate) name: String,
-    pub(crate) qualified_name: String,
-    pub(crate) container: Option<String>,
-    pub(crate) signature: String,
-    pub(crate) visibility: Option<String>,
-    pub(crate) line: i64,
-    pub(crate) column: i64,
-}
-
-pub(crate) struct ImportBindingRow {
-    pub(crate) from_path: String,
-    pub(crate) source_module: String,
-    pub(crate) imported_name: String,
-    pub(crate) local_name: String,
-    pub(crate) line: i64,
-    pub(crate) column: i64,
-    pub(crate) to_path: String,
-}
-
-struct UnresolvedImportRow {
-    from_path: String,
-    source_module: String,
-    local_name: String,
-    line: i64,
-    column: i64,
-}
-
-pub(crate) struct ExportBindingRow {
-    pub(crate) from_path: String,
-    pub(crate) source_module: String,
-    pub(crate) local_name: String,
-    pub(crate) exported_name: String,
-    pub(crate) line: i64,
-    pub(crate) column: i64,
-    pub(crate) to_path: String,
 }

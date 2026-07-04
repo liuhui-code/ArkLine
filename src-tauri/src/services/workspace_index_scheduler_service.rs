@@ -57,6 +57,7 @@ impl WorkspaceIndexScheduler {
             if let Some(existing) = self.tasks.iter_mut().find(|existing| {
                 existing.kind == WorkspaceIndexTaskKind::ChangedPaths
                     && existing.root_path == task.root_path
+                    && existing.reason == task.reason
             }) {
                 let superseded = existing.clone();
                 existing.changed_paths.extend(task.changed_paths);
@@ -87,10 +88,20 @@ impl WorkspaceIndexScheduler {
                 .cmp(&left.priority)
                 .then_with(|| left.generation.cmp(&right.generation))
         });
-        if max_tasks >= tasks.len() {
+        let limit = if max_tasks != usize::MAX
+            && tasks
+                .first()
+                .map(|task| is_exclusive_batch_priority(task.priority))
+                .unwrap_or(false)
+        {
+            1
+        } else {
+            max_tasks
+        };
+        if limit >= tasks.len() {
             return tasks;
         }
-        let remaining = tasks.split_off(max_tasks);
+        let remaining = tasks.split_off(limit);
         self.tasks = remaining.into_iter().collect();
         tasks
     }
@@ -111,6 +122,11 @@ impl WorkspaceIndexScheduler {
     pub fn has_pending_tasks(&self) -> bool {
         !self.tasks.is_empty()
     }
+}
+
+fn is_exclusive_batch_priority(priority: WorkspaceIndexTaskPriority) -> bool {
+    priority == WorkspaceIndexTaskPriority::FullRefresh
+        || priority >= WorkspaceIndexTaskPriority::ForegroundCompletion
 }
 
 #[allow(dead_code)]
@@ -317,17 +333,127 @@ mod tests {
         let first_batch = scheduler.drain_ready_batch(2);
         let second_batch = scheduler.drain_ready_batch(2);
 
-        assert_eq!(first_batch.len(), 2);
+        assert_eq!(first_batch.len(), 1);
         assert_eq!(
             first_batch
                 .iter()
                 .map(|task| task.root_path.as_str())
                 .collect::<Vec<_>>(),
-            vec!["/workspace-a", "/workspace-b"]
+            vec!["/workspace-a"]
         );
         assert_eq!(second_batch.len(), 1);
-        assert_eq!(second_batch[0].root_path, "/workspace-c");
-        assert!(!scheduler.has_pending_tasks());
+        assert_eq!(second_batch[0].root_path, "/workspace-b");
+        assert!(scheduler.has_pending_tasks());
+    }
+
+    #[test]
+    fn bounded_batches_run_foreground_work_without_background_tail() {
+        let mut scheduler = WorkspaceIndexScheduler::default();
+        scheduler.schedule(WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::OpenWorkspace,
+            priority: WorkspaceIndexTaskPriority::ForegroundNavigation,
+            changed_paths: Vec::new(),
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: "open".to_string(),
+        });
+        scheduler.schedule(WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::RefreshWorkspace,
+            priority: WorkspaceIndexTaskPriority::FullRefresh,
+            changed_paths: Vec::new(),
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: "background-refresh-after-open".to_string(),
+        });
+
+        let foreground_batch = scheduler.drain_ready_batch(8);
+        let background_batch = scheduler.drain_ready_batch(8);
+
+        assert_eq!(foreground_batch.len(), 1);
+        assert_eq!(
+            foreground_batch[0].kind,
+            WorkspaceIndexTaskKind::OpenWorkspace
+        );
+        assert_eq!(background_batch.len(), 1);
+        assert_eq!(
+            background_batch[0].kind,
+            WorkspaceIndexTaskKind::RefreshWorkspace
+        );
+    }
+
+    #[test]
+    fn bounded_batches_run_full_refresh_without_background_tail() {
+        let mut scheduler = WorkspaceIndexScheduler::default();
+        scheduler.schedule(WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::FullRefresh,
+            changed_paths: vec!["A.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: "full-refresh-files:refresh-workspace".to_string(),
+        });
+        scheduler.schedule(WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::Background,
+            changed_paths: vec!["A.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: "full-refresh-deep:refresh-workspace".to_string(),
+        });
+
+        let full_refresh_batch = scheduler.drain_ready_batch(8);
+        let background_batch = scheduler.drain_ready_batch(8);
+
+        assert_eq!(full_refresh_batch.len(), 1);
+        assert_eq!(background_batch.len(), 1);
+        assert_eq!(
+            full_refresh_batch[0].reason,
+            "full-refresh-files:refresh-workspace"
+        );
+        assert_eq!(
+            background_batch[0].reason,
+            "full-refresh-deep:refresh-workspace"
+        );
+    }
+
+    #[test]
+    fn keeps_changed_path_tasks_with_different_reasons_separate() {
+        let mut scheduler = WorkspaceIndexScheduler::default();
+
+        scheduler.schedule(WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::FullRefresh,
+            changed_paths: vec!["A.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: "full-refresh-files:refresh-workspace".to_string(),
+        });
+        scheduler.schedule(WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::Background,
+            changed_paths: vec!["A.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: "full-refresh-deep:refresh-workspace".to_string(),
+        });
+
+        let tasks = scheduler.drain_ready();
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].reason, "full-refresh-files:refresh-workspace");
+        assert_eq!(tasks[1].reason, "full-refresh-deep:refresh-workspace");
     }
 
     #[test]

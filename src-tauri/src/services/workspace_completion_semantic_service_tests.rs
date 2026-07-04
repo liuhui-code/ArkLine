@@ -265,6 +265,20 @@ fn semantic_completion_returns_importable_project_symbols_with_metadata() {
         .as_str()
         .unwrap()
         .ends_with("UserService.ets"));
+    assert_eq!(
+        service.data.as_ref().unwrap()["completionEdit"]["kind"].as_str(),
+        Some("importPreview")
+    );
+    assert!(
+        service.data.as_ref().unwrap()["completionEdit"]["targetPath"]
+            .as_str()
+            .unwrap()
+            .ends_with("UserService.ets")
+    );
+    assert_eq!(
+        service.data.as_ref().unwrap()["completionEdit"]["applyMode"].as_str(),
+        Some("explicit")
+    );
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -304,6 +318,82 @@ fn semantic_completion_returns_active_sdk_api_candidates() {
         .expect("SDK API should be suggested");
     assert_eq!(text.kind, "class");
     assert_eq!(text.source.as_deref(), Some("sdk"));
+    assert!(text.data.as_ref().unwrap()["symbolId"]
+        .as_str()
+        .unwrap()
+        .starts_with("sdk:"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn semantic_completion_boosts_candidates_matching_expected_assignment_type() {
+    let root = create_empty_workspace("completion-expected-type");
+    let source_dir = create_workspace_source_dir(&root);
+    let sdk_root = root.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets")).unwrap();
+    let content = "const node: Text = T";
+    fs::write(source_dir.join("Index.ets"), content).unwrap();
+    fs::write(
+        sdk_root.join("ets").join("arkui.d.ts"),
+        "declare class Text {\n  width(): Text;\n}\ndeclare class TextHelper {\n  build(): TextHelper;\n}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    index_workspace_sdk_symbols(&root_path, &sdk_root.to_string_lossy(), "test-sdk").unwrap();
+
+    let items = query_semantic_completions(
+        &root_path,
+        &LanguageQueryRequest {
+            path: source_dir.join("Index.ets").to_string_lossy().to_string(),
+            line: 1,
+            column: u32::try_from(content.len() + 1).unwrap(),
+            content: Some(content.to_string()),
+        },
+        20,
+    )
+    .unwrap();
+
+    assert_eq!(items[0].label, "Text");
+    assert_eq!(items[0].sort_text.as_deref(), Some("00_expected_type"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn semantic_completion_boosts_candidates_matching_expected_parameter_type() {
+    let root = create_empty_workspace("completion-expected-parameter-type");
+    let source_dir = create_workspace_source_dir(&root);
+    let sdk_root = root.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets")).unwrap();
+    let content = "function render(value: TextHelper) {}\nrender(T";
+    fs::write(source_dir.join("Index.ets"), content).unwrap();
+    fs::write(
+        sdk_root.join("ets").join("arkui.d.ts"),
+        "declare class Text {\n  width(): Text;\n}\ndeclare class TextHelper {\n  build(): TextHelper;\n}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    index_workspace_sdk_symbols(&root_path, &sdk_root.to_string_lossy(), "test-sdk").unwrap();
+
+    let items = query_semantic_completions(
+        &root_path,
+        &LanguageQueryRequest {
+            path: source_dir.join("Index.ets").to_string_lossy().to_string(),
+            line: 2,
+            column: u32::try_from("render(T".len() + 1).unwrap(),
+            content: Some(content.to_string()),
+        },
+        20,
+    )
+    .unwrap();
+
+    assert_eq!(items[0].label, "TextHelper");
+    assert_eq!(items[0].sort_text.as_deref(), Some("00_expected_type"));
     fs::remove_dir_all(root).unwrap();
 }
 

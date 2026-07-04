@@ -204,6 +204,8 @@ pub struct WorkspaceIndexReadiness {
 pub struct WorkspaceIndexQueryEnvelope<T> {
     pub items: Vec<T>,
     pub readiness: WorkspaceIndexReadiness,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub explain: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

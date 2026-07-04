@@ -101,7 +101,11 @@ pub fn query_workspace_candidates_with_readiness(
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     let items = query_workspace_candidates(index_runtime, root_path, query, scope, limit)?;
     let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
-    Ok(WorkspaceIndexQueryEnvelope { items, readiness })
+    Ok(WorkspaceIndexQueryEnvelope {
+        items,
+        readiness,
+        explain: Vec::new(),
+    })
 }
 
 pub fn query_workspace_file_symbols_with_readiness(
@@ -113,7 +117,11 @@ pub fn query_workspace_file_symbols_with_readiness(
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     let items = query_workspace_file_symbols(root_path, file_path, query, limit)?;
     let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
-    Ok(WorkspaceIndexQueryEnvelope { items, readiness })
+    Ok(WorkspaceIndexQueryEnvelope {
+        items,
+        readiness,
+        explain: Vec::new(),
+    })
 }
 
 pub fn query_definition_candidates_with_readiness(
@@ -132,7 +140,11 @@ pub fn query_definition_candidates_with_readiness(
     if items.is_empty() {
         items.extend(query_index_definition_candidates(root_path, request)?);
     }
-    Ok(WorkspaceIndexQueryEnvelope { items, readiness })
+    Ok(WorkspaceIndexQueryEnvelope {
+        items,
+        readiness,
+        explain: Vec::new(),
+    })
 }
 
 pub fn search_workspace_text(
@@ -147,7 +159,7 @@ pub fn search_workspace_text(
     Ok(search_filesystem_text(&request, &index_state.file_paths))
 }
 
-fn readiness_for_index_state(state: &WorkspaceIndexState) -> WorkspaceIndexReadiness {
+pub(crate) fn readiness_for_index_state(state: &WorkspaceIndexState) -> WorkspaceIndexReadiness {
     let root_path = state.root_path.as_deref().unwrap_or_default();
     let served_generation = state.indexed_at.and_then(|value| u64::try_from(value).ok());
     let requested_generation = match state.status {

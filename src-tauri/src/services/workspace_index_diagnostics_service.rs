@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection};
@@ -88,7 +89,28 @@ pub fn inspect_workspace_index_with_queue_pressure(
 ) -> Result<WorkspaceIndexDiagnostics, String> {
     let mut diagnostics = inspect_workspace_index(root_path)?;
     diagnostics.queue_pressure = queue_pressure;
+    apply_queue_health_projection(&mut diagnostics);
     Ok(diagnostics)
+}
+
+fn apply_queue_health_projection(diagnostics: &mut WorkspaceIndexDiagnostics) {
+    let health_status =
+        workspace_index_health_status(&diagnostics.status, diagnostics.sdk_symbol_count);
+    if health_status == "healthy" || diagnostics.queue_pressure.workspace_pending_task_count == 0 {
+        return;
+    }
+
+    diagnostics.status = "queued".to_string();
+    diagnostics.repair_actions = workspace_index_repair_actions(&WorkspaceIndexRepairActionInput {
+        status: diagnostics.status.clone(),
+        unresolved_import_count: diagnostics.unresolved_import_count,
+        parser_error_count: diagnostics.parser_error_count,
+        has_active_sdk: diagnostics.active_sdk_path.is_some(),
+        has_resume_tasks: diagnostics
+            .repair_actions
+            .iter()
+            .any(|action| action == "resumeIndexing"),
+    });
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +121,13 @@ struct ActiveSdkMetadata {
 
 fn open_index_store(root_path: &str) -> Result<Connection, String> {
     let cache_path = sqlite_catalog_cache_path(root_path);
+    let Some(parent) = cache_path.parent() else {
+        return Err(format!(
+            "Workspace SQLite index path has no parent: {}",
+            cache_path.display()
+        ));
+    };
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     Connection::open(cache_path).map_err(|error| error.to_string())
 }
 

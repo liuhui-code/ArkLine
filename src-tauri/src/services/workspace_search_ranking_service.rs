@@ -44,6 +44,25 @@ pub fn sort_search_everywhere_candidates(
     candidates.truncate(limit);
 }
 
+pub fn sort_text_candidates_by_lexical_match(
+    candidates: &mut [WorkspaceSearchCandidate],
+    query: &str,
+) {
+    let trimmed = query.trim();
+    for (index, candidate) in candidates.iter_mut().enumerate() {
+        candidate.score =
+            score_text_candidate(candidate, trimmed).unwrap_or(20.0) - index as f64 * 0.01;
+    }
+    candidates.sort_by(|left, right| {
+        right
+            .score
+            .partial_cmp(&left.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.title.cmp(&right.title))
+            .then_with(|| left.subtitle.cmp(&right.subtitle))
+    });
+}
+
 fn source_priority(source: &str) -> usize {
     match source {
         "class" => 0,
@@ -51,6 +70,27 @@ fn source_priority(source: &str) -> usize {
         "file" => 2,
         _ => 3,
     }
+}
+
+fn score_text_candidate(candidate: &WorkspaceSearchCandidate, query: &str) -> Option<f64> {
+    if query.is_empty() {
+        return None;
+    }
+    lexical_match_score(&candidate.title, query)
+        .map(|score| score + 70.0)
+        .or_else(|| {
+            candidate
+                .signature
+                .as_ref()
+                .and_then(|value| lexical_match_score(value, query).map(|score| score + 45.0))
+        })
+        .or_else(|| lexical_match_score(&candidate.subtitle, query).map(|score| score + 20.0))
+        .or_else(|| {
+            candidate
+                .path
+                .as_ref()
+                .and_then(|path| lexical_match_score(path, query))
+        })
 }
 
 fn rank_paths(paths: &[String], query: &str, limit: usize) -> Vec<(String, f64)> {

@@ -30,7 +30,7 @@ use crate::services::workspace_index_status_projection_service::{
 use crate::services::workspace_index_task_journal_service::{
     load_recent_task_statuses, store_task_status,
 };
-use crate::services::workspace_index_task_lifecycle_service::task_kind_supersedes_result;
+use crate::services::workspace_index_task_lifecycle_service::task_supersedes_result;
 use crate::services::workspace_index_task_status_service::{
     current_time_millis, superseded_task_result, task_kind_label,
     task_status_from_publishable_result, task_status_from_state_transition, task_status_from_task,
@@ -58,6 +58,12 @@ impl WorkspaceIndexManagerRuntime {
             WorkspaceIndexTaskKind::OpenWorkspace,
             WorkspaceIndexTaskPriority::ForegroundNavigation,
             "open-workspace",
+        )?;
+        self.schedule_workspace_task(
+            root_path,
+            WorkspaceIndexTaskKind::RefreshWorkspace,
+            WorkspaceIndexTaskPriority::FullRefresh,
+            "background-refresh-after-open",
         )?;
         let summary = schedule_resume_tasks_from_store(&self.scheduler, root_path)?;
         self.store_superseded_statuses(summary.superseded_tasks)?;
@@ -251,7 +257,6 @@ impl WorkspaceIndexManagerRuntime {
             highest_priority_task_kind: highest.map(|task| task_kind_label(&task.kind).to_string()),
         })
     }
-
     fn schedule_workspace_task(
         &self,
         root_path: &str,
@@ -489,7 +494,7 @@ impl WorkspaceIndexManagerRuntime {
             .iter()
             .any(|task| {
                 !should_publish_task_result(result.generation, task.generation)
-                    && task_kind_supersedes_result(&task.kind, &result.kind)
+                    && task_supersedes_result(task, &result.kind, &result.reason)
             }))
     }
 }

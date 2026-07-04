@@ -35,12 +35,17 @@ fn opens_workspace_index_through_the_manager_entry_point() {
     let manager = WorkspaceIndexManagerRuntime::default();
 
     manager.open_workspace_index(&root_path).unwrap();
-    let results = manager.drain_index_tasks(&index_runtime).unwrap();
-    let state = index_runtime.get_index_state(&root_path).unwrap();
+    let open_results = manager.drain_index_tasks(&index_runtime).unwrap();
+    let open_state = index_runtime.get_index_state(&root_path).unwrap();
+    let refresh_results = manager.drain_index_tasks(&index_runtime).unwrap();
+    let refreshed_state = index_runtime.get_index_state(&root_path).unwrap();
 
-    assert_eq!(results.len(), 1);
-    assert!(results[0].changed);
-    assert_eq!(state.file_paths.len(), 1);
+    assert_eq!(open_results.len(), 1);
+    assert_eq!(refresh_results.len(), 1);
+    assert!(open_results[0].changed);
+    assert!(refresh_results[0].changed);
+    assert_eq!(open_state.file_paths.len(), 1);
+    assert_eq!(refreshed_state.file_paths.len(), 1);
 
     fs::remove_dir_all(root).unwrap();
 }

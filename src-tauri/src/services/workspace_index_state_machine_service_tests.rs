@@ -149,6 +149,8 @@ fn state_machine_guards_result_status_publication_transitions() {
         refresh_result: None,
         refresh_continuation: None,
         sdk_symbol_count: Some(42),
+        progress_current: 2,
+        progress_total: 3,
     };
 
     let ready = task_status_from_result_transition(&result, WorkspaceIndexTaskState::Running)
@@ -158,6 +160,8 @@ fn state_machine_guards_result_status_publication_transitions() {
     assert_eq!(ready.status, "ready");
     assert_eq!(ready.generation, 10);
     assert_eq!(ready.symbol_count, Some(42));
+    assert_eq!(ready.progress_current, 2);
+    assert_eq!(ready.progress_total, 3);
     assert!(task_status_from_result_transition(&result, WorkspaceIndexTaskState::Queued).is_err());
 }
 
@@ -176,6 +180,8 @@ fn state_machine_keeps_skipped_as_a_compatibility_result_status() {
         refresh_result: None,
         refresh_continuation: None,
         sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
     };
 
     let error = task_status_from_result_transition(&result, WorkspaceIndexTaskState::Running)

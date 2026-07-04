@@ -154,6 +154,13 @@ fn create_catalog_tables(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "create index if not exists workspace_symbols_path_lookup
+             on workspace_symbols(root_path, path)",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

@@ -9,8 +9,8 @@ use crate::services::language_service::{
     goto_definition_candidates as goto_definition_candidates_service, LanguageRuntime,
 };
 use crate::services::settings_store::load_settings_for_app;
-use crate::services::workspace_completion_semantic_service::query_semantic_completions_with_readiness;
 use crate::services::workspace_index_facade_service::{
+    query_facade_completions_with_readiness as query_semantic_completions_with_readiness_service,
     query_facade_definition_candidates_with_readiness as query_definition_candidates_with_readiness_service,
     query_facade_usages_with_readiness as query_usages_with_readiness_service,
 };
@@ -55,5 +55,5 @@ pub fn semantic_complete_symbol(
     request: LanguageQueryRequest,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<CompletionItem>, String> {
-    query_semantic_completions_with_readiness(&index_runtime, &root_path, &request, 100)
+    query_semantic_completions_with_readiness_service(&index_runtime, &root_path, &request, 100)
 }

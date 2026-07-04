@@ -52,10 +52,8 @@ fn temporary_path(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        load_build_configurations, save_build_configurations, BuildConfiguration,
-    };
     use super::super::workspace_index_test_fixture_service::unique_temp_dir;
+    use super::{load_build_configurations, save_build_configurations, BuildConfiguration};
 
     #[test]
     fn returns_empty_configurations_when_file_is_missing() {
