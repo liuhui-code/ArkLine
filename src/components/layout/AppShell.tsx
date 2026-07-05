@@ -46,6 +46,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [insertTextTarget, setInsertTextTarget] = useState<{ text: string; replaceBefore?: number; nonce: number } | null>(null);
   const [editorSelection, setEditorSelection] = useState({ line: 1, column: 1 });
   const [editorSelectedText, setEditorSelectedText] = useState("");
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
   const { recentQueryExplains, recordRecentQueryExplain } = useWorkspaceQueryExplains();
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
   const settingsRef = useRef(createSettingsStore());
@@ -159,13 +160,16 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     settingsRef,
     refreshSemanticState,
     indexSdkSymbolsForSettings: (settings) => settingsActionsRef.current.indexSdkSymbolsForSettings(settings),
-    onSettingsApplied: (settings) => setRecentProjects((current) => (
-      current.length > 0 && settings.recentProjects.length === 0 ? current : [...settings.recentProjects]
-    )),
+    onSettingsApplied: (settings) => {
+      setRecentProjects((current) => (
+        current.length > 0 && settings.recentProjects.length === 0 ? current : [...settings.recentProjects]
+      ));
+      setSettingsHydrated(true);
+    },
     onBeforeApply: () => completionActionsRef.current.clearTypingCompletionTimer(),
     onStatusChange: setStatusText,
   });
-  const { latestExplainResult, latestExplainContext, indexExplainPanelVisible, setIndexExplainPanelVisible, indexDiagnosticsVisible, setIndexDiagnosticsVisible, indexDiagnosticsLoading, indexDiagnostics, currentFileReadiness, workspaceIndexTaskStatuses, recordWorkspaceIndexTaskStatus, refreshWorkspaceIndexTaskStatuses, refreshIndexDiagnostics, openIndexDiagnostics, resumeIndexingFromDiagnostics, rebuildSdkIndexFromDiagnostics, indexSdkSymbolsForSettings, explainIndexMiss, rebuildIndexFromExplainPanel, openSettingsFromExplainPanel, retryLatestExplainQuery } = useIndexDiagnosticsController({
+  const { latestExplainResult, latestExplainContext, indexExplainPanelVisible, setIndexExplainPanelVisible, indexDiagnosticsVisible, setIndexDiagnosticsVisible, indexDiagnosticsLoading, indexDiagnostics, currentFileReadiness, layerReadiness, workspaceIndexTaskStatuses, recordWorkspaceIndexTaskStatus, refreshWorkspaceIndexTaskStatuses, refreshIndexDiagnostics, openIndexDiagnostics, resumeIndexingFromDiagnostics, rebuildSdkIndexFromDiagnostics, indexSdkSymbolsForSettings, explainIndexMiss, rebuildIndexFromExplainPanel, openSettingsFromExplainPanel, retryLatestExplainQuery } = useIndexDiagnosticsController({
     workspaceApi,
     workspace,
     activePath,
@@ -390,7 +394,11 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const { openWorkspace, openDemoWorkspace, loadProjectDirectoryForActiveWorkspace } = useWorkspaceOpeningController({
     workspace,
     workspaceApi,
+    settingsHydrated,
+    recentProjects,
+    getWorkspaceSessions: () => settingsRef.current.state.settings.workspaceSessions,
     applyWorkspaceSessionSnapshot,
+    openFile,
     resetProjectTree,
     loadProjectDirectory,
     loadProjectDirectoryForWorkspace,
@@ -402,6 +410,19 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     onStatusChange: setStatusText,
   });
   workspaceOpeningActionsRef.current.openWorkspace = openWorkspace;
+
+  useEffect(() => {
+    if (!settingsHydrated || !workspace?.rootPath || !activePath) return;
+    const current = settingsRef.current.state.settings;
+    const currentSession = current.workspaceSessions[workspace.rootPath] ?? {};
+    if (currentSession.activeFilePath === activePath) return;
+    const nextWorkspaceSessions = {
+      ...current.workspaceSessions,
+      [workspace.rootPath]: { ...currentSession, activeFilePath: activePath },
+    };
+    settingsRef.current.update({ workspaceSessions: nextWorkspaceSessions });
+    void workspaceApi.saveSettings(settingsRef.current.state.settings);
+  }, [activePath, settingsHydrated, workspace?.rootPath, workspaceApi]);
 
   useEffect(() => () => {
     clearTypingCompletionTimer();
@@ -416,7 +437,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     onStatusChange: setStatusText,
   });
 
-  const derived = getAppShellDerivedState({ workspace, workspaceIndex: workspaceIndexRef.current, workspaceIndexState, workspaceIndexTaskStatuses, quickOpenQuery, recentFiles: tabsRef.current.state.recentFiles, recentProjects, activeOverlay, searchEverywhereMode, searchEverywhereTruncationNotice, semanticState, settingsApplyState });
+  const derived = getAppShellDerivedState({ workspace, workspaceIndex: workspaceIndexRef.current, workspaceIndexState, workspaceIndexTaskStatuses, layerReadiness, quickOpenQuery, recentFiles: tabsRef.current.state.recentFiles, recentProjects, activeOverlay, searchEverywhereMode, searchEverywhereTruncationNotice, semanticState, settingsApplyState });
 
   const commandPaletteItems = useAppShellCommands({ quickOpenQuery, activeOverlay, workspaceEditPreviewOpen: Boolean(workspaceEditPreview), codeActionsVisible, currentMethodsVisible, settingsVisible, settingsApplying, actions: { closeTransientUi, closeActiveFile, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode, navigateBack: () => void navigateBackFromHistory(), openQuickOpen: () => setOverlay("quickOpen"), openSearchEverywhere: () => openSearchOverlay("searchEverywhere"), openFindInFiles: () => openSearchOverlay("find"), openReplaceInFiles: () => openSearchOverlay("replace"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: () => void openCompletionFromEditor(), showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => showBottomTool("git"), showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), showCurrentClassMethods, showCodeActions: () => void showCodeActionsFromEditor(), renameSymbol: () => void showCodeActionsFromEditor("rename"), generateCode: () => void showCodeActionsFromEditor("generate"), refactorThis: () => void showCodeActionsFromEditor("refactor"), save: () => void saveActiveDocument(), openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), newFile: () => openRootProjectMutationDialog("newFile"), newDirectory: () => openRootProjectMutationDialog("newDirectory"), openGoToLine: () => setOverlay("goToLine"), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), openSettings: () => void openSettings(), toggleGitBlame, refreshGitBlame, showCurrentLineBlame, closeGitBlame } });
   return (
@@ -424,7 +445,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <AppShellMainLayout
         topBar={{ activeBottomTool, bottomToolVisible: bottomContentVisible, activeOverlay, workspaceName: workspace?.rootName ?? null, settingsOpen: settingsVisible, onOpenProject: () => void projectOpening.openProjectPicker(), onOpenRecentProjects: () => setOverlay("recentProjects"), onNewFile: () => openRootProjectMutationDialog("newFile"), onNewDirectory: () => openRootProjectMutationDialog("newDirectory"), onOpenSearchEverywhere: () => openSearchOverlay("searchEverywhere"), onOpenFindInFiles: () => openSearchOverlay("find"), onOpenReplaceInFiles: () => openSearchOverlay("replace"), onOpenCommandPalette: () => setOverlay("commandPalette"), onRunLint: () => void runLint(), onRunBuild: () => void runBuild(), onFormat: () => void formatActiveDocument(), onLoadDiff: () => void loadDiff(), onOpenTerminal: () => showBottomTool("terminal"), onOpenSettings: () => void openSettings(), onToggleEditorOnly: enterEditorOnlyMode }}
         sidebar={{ activePath, selectedProjectPath, activeTool: activeLeftTool, filesVisible, width: leftSidebarWidth, workspace, useLazyProjectTree: derived.useLazyProjectTree, projectTreeChildren, projectTreeLoadingPaths, filesPaneRef, onOpenFile: (path) => void openFile(path), onSelectProjectPath: setSelectedProjectPath, onLoadProjectDirectory: loadProjectDirectoryForActiveWorkspace, onRequestProjectMutation: (request) => openProjectMutationDialog(request.action, request.parentPath), onResizeWidth: resizeLeftSidebar, onSelectTool: showLeftTool }}
-        editor={{ queryPanelVisible, usageSearch, onCloseEditorQueryPanel: closeEditorQueryPanel, onOpenUsage: (item) => void openUsageResult(item), activePath, content: editorContent, openTabs, appearance: editorAppearance, focusToken: editorFocusToken, insertTextTarget, selectionTarget, workspaceName: workspace?.rootName ?? null, surfaceRef: editorSurfaceRef, onChange: handleEditorChange, onSelectionChange: handleEditorSelectionChange, onCaretRectChange: setCompletionAnchor, onDefinitionTrigger: (selection) => void goToDefinitionFromEditor(selection, "modifierClick"), onDefinitionHoverChange: (state) => setDefinitionHoverActive(state.active), onTypingCompletionTrigger: triggerTypingCompletion, blameAttributions: gitTraceState.blameAttributions, gitBlameVisible, selectedBlameLine: selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine, onGitTraceLineClick: selectGitBlameLine, definitionHoverActive, onSelectTab: setActiveDocument, onCloseTab: closeEditorTab, onCloseOtherTabs: closeOtherEditorTabs, onCloseTabsToRight: closeEditorTabsToRight, onCopyTabPath: copyEditorTabPath, onEditorGoToDefinition: (selection) => void goToDefinitionFromEditor(selection, "keyboard"), onEditorFindUsages: () => void findUsagesFromEditor(), onEditorFormatDocument: () => void formatActiveDocument(), onEditorCopyPath: copyActiveEditorPath }}
+        editor={{ queryPanelVisible, usageSearch, onCloseEditorQueryPanel: closeEditorQueryPanel, onOpenUsage: (item) => void openUsageResult(item), activePath, content: editorContent, openTabs, appearance: editorAppearance, focusToken: editorFocusToken, insertTextTarget, selectionTarget, workspaceName: workspace?.rootName ?? null, surfaceRef: editorSurfaceRef, onChange: handleEditorChange, onSelectionChange: handleEditorSelectionChange, onCaretRectChange: setCompletionAnchor, onDefinitionTrigger: (selection) => void goToDefinitionFromEditor(selection, "modifierClick"), onDefinitionHoverChange: (state) => setDefinitionHoverActive(state.active), onTypingCompletionTrigger: triggerTypingCompletion, blameAttributions: gitTraceState.blameAttributions, gitBlameVisible, selectedBlameLine: selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine, onGitTraceLineClick: selectGitBlameLine, definitionHoverActive, onSelectTab: setActiveDocument, onCloseTab: closeEditorTab, onCloseOtherTabs: closeOtherEditorTabs, onCloseTabsToRight: closeEditorTabsToRight, onCopyTabPath: copyEditorTabPath, onEditorGoToDefinition: (selection) => void goToDefinitionFromEditor(selection, "keyboard"), onEditorFindUsages: () => void findUsagesFromEditor(), onEditorFormatDocument: () => void formatActiveDocument(), onEditorCopyPath: copyActiveEditorPath, onToggleGitBlame: toggleGitBlame }}
       />
       <AppShellOverlays
         selectedBlameAttribution={selectedBlameAttribution}
@@ -460,7 +481,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         problems={problems} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null}
         buildState={buildState} buildModules={buildProject?.modules ?? []} onChangeBuildTarget={(lastTarget) => updateBuildState({ lastTarget })} onChangeBuildModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeBuildProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeBuildFastMode={(fastMode) => updateBuildState({ fastMode })} onSelectBuildConfiguration={selectBuildConfiguration} onSaveBuildConfiguration={() => void saveBuildConfiguration()} onCopyBuildConfiguration={() => void copyBuildConfiguration()} onDeleteBuildConfiguration={() => void deleteBuildConfiguration()} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()}
         diffFiles={diffFiles} gitToolView={gitToolView} gitTraceState={gitTraceState} onChangeGitToolView={setGitToolView} onOpenGitFile={(path) => void openFile(path)} onFocusEditorFromGitTrace={focusEditorSoon} onOpenGitTraceCommitDiff={openGitTraceCommitDiff} onStatusChange={setStatusText}
-        indexAndStatus={{ activeBottomTool, activePath, definitionDebugText, latestExplainResult, latestExplainQuery: latestExplainContext?.query ?? "", onOpenIndexExplainPanel: () => setIndexExplainPanelVisible(true), indexExplainPanelVisible, onCloseIndexExplainPanel: () => setIndexExplainPanelVisible(false), onRebuildIndexFromExplainPanel: () => void rebuildIndexFromExplainPanel(), onOpenSettingsFromExplainPanel: () => void openSettingsFromExplainPanel(), onRetryLatestExplainQuery: retryLatestExplainQuery, indexDiagnosticsVisible, indexDiagnosticsLoading, currentFileDirty: activeDocument?.isDirty ?? false, indexDiagnostics, currentFileReadiness, recentQueryExplains, workspaceIndexTaskStatuses, onCloseIndexDiagnostics: () => setIndexDiagnosticsVisible(false), onRefreshIndexDiagnostics: () => void refreshIndexDiagnostics(), onResumeIndexingFromDiagnostics: () => void resumeIndexingFromDiagnostics(), onRebuildSdkIndexFromDiagnostics: () => void rebuildSdkIndexFromDiagnostics(), onConfigureSdkFromDiagnostics: () => void openSettings(), semanticState, semanticCapability: derived.semanticCapability, statusText, workspaceName: workspace?.rootName ?? null, workspaceScanText: derived.workspaceScanText, workspaceIndexText: derived.workspaceIndexText, sdkIndexText: derived.sdkIndexText, buildMessage: buildState.message, currentLineBlame, gitBlameVisible, gitBlameMenuOpen, onToggleGitBlameMenu: toggleGitBlameMenu, onToggleGitBlame: toggleGitBlame, onRefreshGitBlame: refreshGitBlame, onShowCurrentLineBlame: showCurrentLineBlame, onCloseGitBlame: closeGitBlame, onOpenIndexDiagnostics: openIndexDiagnostics }}
+        indexAndStatus={{ activeBottomTool, activePath, definitionDebugText, latestExplainResult, latestExplainQuery: latestExplainContext?.query ?? "", onOpenIndexExplainPanel: () => setIndexExplainPanelVisible(true), indexExplainPanelVisible, onCloseIndexExplainPanel: () => setIndexExplainPanelVisible(false), onRebuildIndexFromExplainPanel: () => void rebuildIndexFromExplainPanel(), onOpenSettingsFromExplainPanel: () => void openSettingsFromExplainPanel(), onRetryLatestExplainQuery: retryLatestExplainQuery, indexDiagnosticsVisible, indexDiagnosticsLoading, currentFileDirty: activeDocument?.isDirty ?? false, indexDiagnostics, currentFileReadiness, layerReadiness, recentQueryExplains, workspaceIndexTaskStatuses, onCloseIndexDiagnostics: () => setIndexDiagnosticsVisible(false), onRefreshIndexDiagnostics: () => void refreshIndexDiagnostics(), onResumeIndexingFromDiagnostics: () => void resumeIndexingFromDiagnostics(), onRebuildSdkIndexFromDiagnostics: () => void rebuildSdkIndexFromDiagnostics(), onConfigureSdkFromDiagnostics: () => void openSettings(), semanticState, semanticCapability: derived.semanticCapability, statusText, workspaceName: workspace?.rootName ?? null, workspaceScanText: derived.workspaceScanText, workspaceIndexText: derived.workspaceIndexText, sdkIndexText: derived.sdkIndexText, buildMessage: buildState.message, currentLineBlame, gitBlameVisible, gitBlameMenuOpen, onToggleGitBlameMenu: toggleGitBlameMenu, onToggleGitBlame: toggleGitBlame, onRefreshGitBlame: refreshGitBlame, onShowCurrentLineBlame: showCurrentLineBlame, onCloseGitBlame: closeGitBlame, onOpenIndexDiagnostics: openIndexDiagnostics }}
       />
     </div>
   );

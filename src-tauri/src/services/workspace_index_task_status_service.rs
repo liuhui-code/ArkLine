@@ -1,6 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
+use crate::services::workspace_discovery_task_service::{
+    discovery_task_kind_label, is_workspace_discovery_task_reason,
+};
 use crate::services::workspace_index_chunk_service::WorkspaceIndexRefreshContinuation;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind,
@@ -148,10 +151,11 @@ pub fn task_status_from_task(
     let running = status == "running";
     let terminal = is_terminal_task_status(status);
     let now = current_time_millis();
+    let kind = task_status_kind_label(task);
     WorkspaceIndexTaskStatus {
-        task_id: task_id(&task.generation, task_kind_label(&task.kind)),
+        task_id: task_id(&task.generation, kind),
         root_path: task.root_path.to_string(),
-        kind: task_kind_label(&task.kind).to_string(),
+        kind: kind.to_string(),
         status: status.to_string(),
         reason: task.reason.to_string(),
         generation: task.generation,
@@ -165,6 +169,15 @@ pub fn task_status_from_task(
         message,
         error: None,
     }
+}
+
+fn task_status_kind_label(task: &WorkspaceIndexTask) -> &'static str {
+    if task.kind == WorkspaceIndexTaskKind::ChangedPaths
+        && is_workspace_discovery_task_reason(&task.reason)
+    {
+        return discovery_task_kind_label();
+    }
+    task_kind_label(&task.kind)
 }
 
 pub fn task_status_from_state_transition(

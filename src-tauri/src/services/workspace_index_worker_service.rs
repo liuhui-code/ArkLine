@@ -4,6 +4,11 @@ use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskSt
 use crate::services::workspace_dependency_graph_service::{
     has_graph_affecting_config_change, mark_dependency_graph_stale,
 };
+use crate::services::workspace_discovery_runner_service::run_workspace_discovery_chunk;
+use crate::services::workspace_discovery_service::WorkspaceDiscoveryChunk;
+use crate::services::workspace_discovery_task_service::{
+    discovery_task_kind_label, is_workspace_discovery_task_reason, workspace_discovery_task_cursor,
+};
 use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, WorkspaceFileFingerprintStatus,
 };
@@ -13,9 +18,10 @@ use crate::services::workspace_index_continuation_task_service::{
     continuation_phase, continuation_phase_label, is_full_refresh_continuation_reason,
     WorkspaceIndexContinuationPhase,
 };
+use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
-    WorkspaceIndexTask, WorkspaceIndexTaskKind,
+    WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_state_machine_service::WorkspaceIndexTaskState;
@@ -29,6 +35,7 @@ use crate::services::workspace_service::scan_workspace;
 
 pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
 pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 1024;
+pub const WORKSPACE_DISCOVERY_CHUNK_SIZE: usize = 1024;
 
 #[allow(dead_code)]
 pub fn run_index_tasks<F>(
@@ -110,6 +117,41 @@ fn run_index_task(
     run_index_task_inner(index_runtime, &task, token, started_at).map_err(|error| (task, error))
 }
 
+fn discovery_task_result(
+    task: &WorkspaceIndexTask,
+    chunk: &WorkspaceDiscoveryChunk,
+    started_at: u128,
+) -> WorkspaceIndexTaskResult {
+    WorkspaceIndexTaskResult {
+        root_path: task.root_path.clone(),
+        kind: discovery_task_kind_label().to_string(),
+        status: if chunk.has_more {
+            "partial".to_string()
+        } else {
+            "ready".to_string()
+        },
+        reason: task.reason.clone(),
+        generation: task.generation,
+        started_at: Some(started_at),
+        finished_at: Some(current_time_millis()),
+        message: Some(format!(
+            "Discovered {} file(s), excluded {} entries",
+            chunk.files.len(),
+            chunk.excluded_count
+        )),
+        error: None,
+        refresh_result: None,
+        refresh_continuation: None,
+        sdk_symbol_count: None,
+        progress_current: chunk.files.len(),
+        progress_total: if chunk.has_more {
+            chunk.files.len().saturating_add(1)
+        } else {
+            chunk.files.len()
+        },
+    }
+}
+
 fn run_index_task_inner(
     index_runtime: &WorkspaceIndexRuntime,
     task: &WorkspaceIndexTask,
@@ -118,6 +160,19 @@ fn run_index_task_inner(
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     match task.kind.clone() {
         WorkspaceIndexTaskKind::ChangedPaths => {
+            if is_workspace_discovery_task_reason(&task.reason) {
+                if token.is_cancelled() {
+                    return Ok(Some(superseded_task_result_from_task(task)));
+                }
+                let cursor = workspace_discovery_task_cursor(task);
+                let chunk = run_workspace_discovery_chunk(
+                    Path::new(&task.root_path),
+                    cursor,
+                    WORKSPACE_DISCOVERY_CHUNK_SIZE,
+                    task.generation as i64,
+                )?;
+                return Ok(Some(discovery_task_result(task, &chunk, started_at)));
+            }
             if is_full_refresh_continuation(task) {
                 if token.is_cancelled() {
                     return Ok(Some(superseded_task_result_from_task(task)));
@@ -134,7 +189,7 @@ fn run_index_task_inner(
                 };
                 return Ok(Some(result));
             }
-            let changed_paths = stale_changed_paths(&task.root_path, &task.changed_paths)?;
+            let changed_paths = changed_paths_for_task(task)?;
             if token.is_cancelled() {
                 return Ok(Some(superseded_task_result_from_task(task)));
             }
@@ -144,6 +199,16 @@ fn run_index_task_inner(
                     "No changed paths require reindexing",
                     started_at,
                 )));
+            }
+            if is_user_visible_readiness_task(task.priority) {
+                let file_symbol_paths = existing_file_paths(&changed_paths);
+                if !file_symbol_paths.is_empty() {
+                    index_runtime.update_workspace_file_symbol_layer(
+                        &task.root_path,
+                        &file_symbol_paths,
+                        &[],
+                    )?;
+                }
             }
             if has_graph_affecting_config_change(&changed_paths) {
                 mark_dependency_graph_stale(&task.root_path, "config-change")?;
@@ -356,4 +421,48 @@ fn stale_changed_paths(root_path: &str, changed_paths: &[String]) -> Result<Vec<
         .filter(|change| change.status != WorkspaceFileFingerprintStatus::Unchanged)
         .map(|change| change.path)
         .collect())
+}
+
+fn changed_paths_for_task(task: &WorkspaceIndexTask) -> Result<Vec<String>, String> {
+    let mut paths = stale_changed_paths(&task.root_path, &task.changed_paths)?;
+    if is_user_visible_readiness_task(task.priority) {
+        paths.extend(paths_missing_current_file_readiness(
+            &task.root_path,
+            &task.changed_paths,
+        )?);
+        paths.sort();
+        paths.dedup();
+    }
+    Ok(paths)
+}
+
+fn is_user_visible_readiness_task(priority: WorkspaceIndexTaskPriority) -> bool {
+    matches!(
+        priority,
+        WorkspaceIndexTaskPriority::ForegroundNavigation
+            | WorkspaceIndexTaskPriority::ForegroundCompletion
+            | WorkspaceIndexTaskPriority::VisibleFiles
+    )
+}
+
+fn paths_missing_current_file_readiness(
+    root_path: &str,
+    paths: &[String],
+) -> Result<Vec<String>, String> {
+    let mut missing = Vec::new();
+    for path in paths {
+        let readiness = get_workspace_index_file_readiness(root_path, path)?;
+        if readiness.file_index != "ready" || readiness.symbol_index != "ready" {
+            missing.push(path.clone());
+        }
+    }
+    Ok(missing)
+}
+
+fn existing_file_paths(paths: &[String]) -> Vec<String> {
+    paths
+        .iter()
+        .filter(|path| Path::new(path.as_str()).is_file())
+        .cloned()
+        .collect()
 }

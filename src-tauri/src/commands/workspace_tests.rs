@@ -7,8 +7,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::commands::workspace::{
     index_workspace_sdk_symbols_through_manager_with_status, open_workspace_through_manager,
+    submit_workspace_sdk_index_through_manager,
+};
+use crate::commands::workspace_index_schedule::{
     schedule_foreground_completion_index_through_manager,
-    schedule_visible_files_index_through_manager, submit_workspace_sdk_index_through_manager,
+    schedule_foreground_navigation_index_through_manager,
+    schedule_visible_files_index_through_manager,
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -187,6 +191,32 @@ fn foreground_completion_schedule_command_queues_completion_priority_task() {
         status.kind == "changed-paths"
             && status.status == "queued"
             && status.reason == "foreground-completion"
+    }));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn foreground_navigation_schedule_command_queues_navigation_priority_task() {
+    let root = unique_temp_dir("navigation-schedule-command");
+    let root_path = root.to_string_lossy().to_string();
+    let changed_path = root.join("entry/src/main/ets/Main.ets");
+    fs::create_dir_all(changed_path.parent().unwrap()).unwrap();
+    fs::write(&changed_path, "struct Main {}\n").unwrap();
+    let index_manager = WorkspaceIndexManagerRuntime::default();
+
+    schedule_foreground_navigation_index_through_manager(
+        &index_manager,
+        &root_path,
+        &[changed_path.to_string_lossy().to_string()],
+    )
+    .unwrap();
+    let statuses = index_manager.get_index_task_statuses(&root_path).unwrap();
+
+    assert!(statuses.iter().any(|status| {
+        status.kind == "changed-paths"
+            && status.status == "queued"
+            && status.reason == "foreground-navigation"
     }));
 
     fs::remove_dir_all(root).unwrap();

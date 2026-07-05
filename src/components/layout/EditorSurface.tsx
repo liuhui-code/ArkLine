@@ -54,6 +54,7 @@ type EditorSurfaceProps = {
   onEditorFindUsages: () => void;
   onEditorFormatDocument: () => void;
   onEditorCopyPath: () => void;
+  onToggleGitBlame: () => void;
 };
 
 export function EditorSurface({
@@ -86,6 +87,7 @@ export function EditorSurface({
   onEditorFindUsages,
   onEditorFormatDocument,
   onEditorCopyPath,
+  onToggleGitBlame,
 }: EditorSurfaceProps) {
   const surfaceStateClass = activePath ? "editor-surface--active" : "editor-surface--empty";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -125,6 +127,7 @@ export function EditorSurface({
         { id: "definition", label: "Go to Definition", shortcut: "Ctrl+B", onSelect: () => onEditorGoToDefinition(request) },
         { id: "usages", label: "Find Usages", shortcut: "Ctrl+F7", onSelect: onEditorFindUsages },
         { id: "format", label: "Format Document", shortcut: "Ctrl+Alt+L", separatorBefore: true, onSelect: onEditorFormatDocument },
+        { id: "toggle-git-blame", label: gitBlameVisible ? "Disable Git Blame" : "Enable Git Blame", separatorBefore: true, onSelect: onToggleGitBlame },
         { id: "copy-path", label: "Copy File Path", separatorBefore: true, onSelect: onEditorCopyPath },
       ],
     });

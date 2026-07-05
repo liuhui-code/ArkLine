@@ -29,7 +29,12 @@ export function AppShellSearchOverlaySurface({
   }
 
   return (
-    <OverlaySurface activeOverlay={activeOverlay} label={label} onClose={onClose}>
+    <OverlaySurface
+      activeOverlay={activeOverlay}
+      label={label}
+      onClose={onClose}
+      searchMode={searchOverlayProps.searchEverywhereMode}
+    >
       <SearchOverlayContent
         activeOverlay={activeOverlay}
         commandPaletteItems={commandPaletteItems}

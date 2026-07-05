@@ -18,6 +18,7 @@ export type AppSettings = {
     timeoutMs: number;
   };
   recentProjects: string[];
+  workspaceSessions: Record<string, { activeFilePath?: string }>;
 };
 
 export type AppSettingsPatch = {
@@ -25,6 +26,7 @@ export type AppSettingsPatch = {
   sdk?: Partial<AppSettings["sdk"]>;
   validation?: Partial<AppSettings["validation"]>;
   recentProjects?: string[];
+  workspaceSessions?: AppSettings["workspaceSessions"];
 };
 
 export function defaultSettings(): AppSettings {
@@ -48,6 +50,7 @@ export function defaultSettings(): AppSettings {
       timeoutMs: 5000,
     },
     recentProjects: [],
+    workspaceSessions: {},
   };
 }
 
@@ -66,6 +69,7 @@ function mergeSettings(current: AppSettings, update: AppSettingsPatch): AppSetti
       ...update.validation,
     },
     recentProjects: update.recentProjects ?? current.recentProjects,
+    workspaceSessions: update.workspaceSessions ?? current.workspaceSessions,
   };
 }
 

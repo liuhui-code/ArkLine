@@ -87,6 +87,33 @@ describe("useDefinitionController", () => {
       query: "A.ets:4:2",
     }));
   });
+
+  it("schedules foreground navigation indexing before querying definition candidates", async () => {
+    const events: string[] = [];
+    const scheduleForegroundNavigationIndex = vi.fn(async () => {
+      events.push("schedule-navigation-index");
+    });
+    const queryDefinitionCandidatesWithReadiness = vi.fn(async () => {
+      events.push("query-definition");
+      return {
+        items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
+        readiness: readiness("ready"),
+      };
+    });
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({
+        scheduleForegroundNavigationIndex,
+        queryDefinitionCandidatesWithReadiness,
+      }),
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(scheduleForegroundNavigationIndex).toHaveBeenCalledWith("/workspace", ["/workspace/A.ets"]);
+    expect(events.slice(0, 2)).toEqual(["schedule-navigation-index", "query-definition"]);
+  });
 });
 
 function options(overrides: Partial<Parameters<typeof useDefinitionController>[0]> = {}) {

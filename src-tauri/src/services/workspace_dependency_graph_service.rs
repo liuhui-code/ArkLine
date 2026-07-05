@@ -12,6 +12,9 @@ use crate::services::workspace_dependency_graph_model_service::ImportRow;
 pub use crate::services::workspace_dependency_graph_model_service::{
     DependencyExpansion, DependencyGraphStatus,
 };
+use crate::services::workspace_dependency_graph_refresh_plan_service::{
+    load_dependency_fact_paths, plan_dependency_refresh_paths,
+};
 
 pub fn create_dependency_graph_tables(connection: &Connection) -> Result<(), String> {
     connection
@@ -94,18 +97,31 @@ pub fn update_dependency_graph_for_paths(
         .iter()
         .chain(removed_paths.iter())
         .map(|path| normalize_index_path(path))
+        .collect::<Vec<_>>();
+    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
+    let removed_path_set = removed_paths
+        .iter()
+        .map(|path| normalize_index_path(path))
         .collect::<HashSet<_>>();
-    for path in &affected_paths {
-        clear_dependency_graph_for_path(connection, root_key, path)?;
-    }
     let import_rows = load_import_rows(connection, root_key)?
         .into_iter()
-        .filter(|row| affected_paths.contains(&row.from_path))
+        .filter(|row| affected_path_set.contains(&row.from_path))
         .collect::<Vec<_>>();
     let export_rows = load_re_export_rows(connection, root_key)?
         .into_iter()
-        .filter(|row| affected_paths.contains(&row.from_path))
+        .filter(|row| affected_path_set.contains(&row.from_path))
         .collect::<Vec<_>>();
+    let existing_paths = load_dependency_fact_paths(connection, root_key, &affected_path_set)?;
+    let refresh_paths = plan_dependency_refresh_paths(
+        &affected_paths,
+        &import_rows,
+        &export_rows,
+        &existing_paths,
+        &removed_path_set,
+    );
+    for path in &refresh_paths {
+        clear_dependency_graph_for_path(connection, root_key, path)?;
+    }
     index_dependency_graph_rows(connection, root_key, file_paths, &import_rows, &export_rows)?;
     record_dependency_graph_status(connection, root_key, "ready", None)?;
     Ok(())

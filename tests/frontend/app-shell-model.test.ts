@@ -7,6 +7,7 @@ import {
   filterSearchCandidatesByScope,
   getCompletionPopupPosition,
   getIndexStatusText,
+  getLayerReadinessStatusText,
   getSdkIndexStatusText,
   getWorkspacePartialNotice,
   getWorkspaceScanText,
@@ -17,7 +18,11 @@ import {
   uniqueNormalizedPaths,
 } from "@/components/layout/app-shell-model";
 import type { CodeAction } from "@/features/code-actions/code-action-model";
-import type { WorkspaceIndexTaskStatus, WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type {
+  WorkspaceIndexLayerReadinessReport,
+  WorkspaceIndexTaskStatus,
+  WorkspaceViewModel,
+} from "@/features/workspace/workspace-api";
 import { createWorkspaceIndexStore, type SearchCandidate, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
 describe("app shell model", () => {
@@ -86,11 +91,35 @@ describe("app shell model", () => {
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "open-workspace", status: "running", progressCurrent: 4, progressTotal: 10 }),
     ])).toBe("Index: running project (4/10)");
+    expect(getIndexStatusText(indexState({ status: "partial" }), [
+      taskStatus({ kind: "discovery", status: "running", progressCurrent: 0, progressTotal: 1 }),
+    ])).toBe("Index: Discovering files");
+    expect(getIndexStatusText(indexState({ status: "partial" }), [
+      taskStatus({ kind: "discovery", status: "partial", progressCurrent: 1024, progressTotal: 1025 }),
+    ])).toBe("Index: Discovering files (1,024+)");
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "refresh-workspace", stalled: true }),
     ])).toBe("Index: Stalled, 1 task > 60s");
     expect(getSdkIndexStatusText([taskStatus({ kind: "sdk", status: "ready", symbolCount: 42 })]))
       .toBe("SDK API: ready (42 symbols)");
+  });
+
+  it("summarizes layer readiness with degraded and current-file states first", () => {
+    expect(getLayerReadinessStatusText(null)).toBeNull();
+    expect(getLayerReadinessStatusText(layerReadiness([
+      layer({ layer: "fileCatalog", workspaceStatus: "ready", currentFileStatus: "ready" }),
+      layer({ layer: "symbols", workspaceStatus: "ready", currentFileStatus: "ready" }),
+    ]))).toBe("Index: Ready, current file ready");
+    expect(getLayerReadinessStatusText(layerReadiness([
+      layer({ layer: "content", workspaceStatus: "partial", currentFileStatus: "ready" }),
+      layer({ layer: "symbols", workspaceStatus: "missing", currentFileStatus: "missing" }),
+    ]))).toBe("Index: Partial, current file ready");
+    expect(getLayerReadinessStatusText(layerReadiness([
+      layer({ layer: "symbols", workspaceStatus: "failed", currentFileStatus: "missing", failedCount: 3 }),
+    ]))).toBe("Index: Degraded, 3 failures");
+    expect(getLayerReadinessStatusText(layerReadiness([
+      layer({ layer: "symbols", workspaceStatus: "missing", currentFileStatus: "missing" }),
+    ]))).toBe("Index: Missing, current file not ready");
   });
 
   it("merges task statuses and filters search candidates", () => {
@@ -141,6 +170,28 @@ describe("app shell model", () => {
     expect(derived.workspaceIndexText).toBe("Index: ready (2 files)");
   });
 
+  it("derives status bar index text from layer readiness when available", () => {
+    const derived = getAppShellDerivedState({
+      workspace: workspace({ truncated: false, visibleFiles: ["/workspace/Entry.ets"] }),
+      workspaceIndex: createWorkspaceIndexStore(),
+      workspaceIndexState: indexState({ status: "partial", filePaths: [] }),
+      workspaceIndexTaskStatuses: [],
+      layerReadiness: layerReadiness([
+        layer({ layer: "symbols", workspaceStatus: "failed", currentFileStatus: "missing", failedCount: 1 }),
+      ]),
+      quickOpenQuery: "",
+      recentFiles: [],
+      recentProjects: [],
+      activeOverlay: "none",
+      searchEverywhereMode: "searchEverywhere",
+      searchEverywhereTruncationNotice: null,
+      semanticState: semanticState(),
+      settingsApplyState: "idle",
+    });
+
+    expect(derived.workspaceIndexText).toBe("Index: Degraded, 1 failure");
+  });
+
   it("prioritizes explicit search truncation before stale index readiness notices", () => {
     const derived = getAppShellDerivedState({
       workspace: workspace({ truncated: true, scannedFiles: 500, skippedEntries: 7 }),
@@ -181,6 +232,28 @@ function codeAction(action: Partial<CodeAction>): CodeAction {
     disabledReason: null,
     ...action,
   } as CodeAction;
+}
+
+function layerReadiness(layers: WorkspaceIndexLayerReadinessReport["layers"]): WorkspaceIndexLayerReadinessReport {
+  return {
+    rootPath: "/workspace",
+    currentFilePath: "/workspace/Entry.ets",
+    layers,
+  };
+}
+
+function layer(overrides: Partial<WorkspaceIndexLayerReadinessReport["layers"][number]> = {}) {
+  return {
+    layer: "content",
+    workspaceStatus: "ready",
+    currentFileStatus: "ready",
+    indexedCount: 1,
+    failedCount: 0,
+    staleCount: 0,
+    reason: null,
+    recommendedAction: null,
+    ...overrides,
+  };
 }
 
 function workspace(input: {

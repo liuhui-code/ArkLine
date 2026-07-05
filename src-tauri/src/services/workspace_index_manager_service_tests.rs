@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRequest};
 use crate::services::workspace_content_index_service::search_indexed_workspace_content;
+use crate::services::workspace_discovery_store_service::load_discovered_files;
 use crate::services::workspace_file_fingerprint_service::classify_file_fingerprints;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -37,15 +38,49 @@ fn opens_workspace_index_through_the_manager_entry_point() {
     manager.open_workspace_index(&root_path).unwrap();
     let open_results = manager.drain_index_tasks(&index_runtime).unwrap();
     let open_state = index_runtime.get_index_state(&root_path).unwrap();
+    let discovery_results = manager.drain_index_task_results(&index_runtime).unwrap();
     let refresh_results = manager.drain_index_tasks(&index_runtime).unwrap();
     let refreshed_state = index_runtime.get_index_state(&root_path).unwrap();
 
     assert_eq!(open_results.len(), 1);
-    assert_eq!(refresh_results.len(), 1);
     assert!(open_results[0].changed);
-    assert!(refresh_results[0].changed);
+    assert!(discovery_results
+        .iter()
+        .any(|result| result.reason == "workspace-discovery"));
+    assert!(refresh_results.iter().any(|result| result.changed));
     assert_eq!(open_state.file_paths.len(), 1);
     assert_eq!(refreshed_state.file_paths.len(), 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn open_workspace_schedules_discovery_follow_up_task() {
+    let root = unique_temp_dir("workspace-index-manager-discovery-follow-up");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("Home.ets"), "struct Home {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager.open_workspace_index(&root_path).unwrap();
+    let open_results = manager.drain_index_task_results(&index_runtime).unwrap();
+    let discovery_results = manager.drain_index_task_results(&index_runtime).unwrap();
+    let refresh_results = manager.drain_index_task_results(&index_runtime).unwrap();
+
+    assert_eq!(open_results.len(), 1);
+    assert!(discovery_results
+        .iter()
+        .any(|result| result.reason == "workspace-discovery"));
+    assert!(!discovery_results
+        .iter()
+        .any(|result| result.reason == "background-refresh-after-open"));
+    assert!(refresh_results
+        .iter()
+        .any(|result| result.reason == "background-refresh-after-open"));
+    let discovered_files = load_discovered_files(&root_path, 10).unwrap();
+    assert_eq!(discovered_files.len(), 1);
 
     fs::remove_dir_all(root).unwrap();
 }

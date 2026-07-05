@@ -1,0 +1,65 @@
+.index-diagnostics__explain-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.index-diagnostics__explain-summary div {
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 68%, transparent);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.index-diagnostics__explain-summary dt {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.index-diagnostics__explain-summary dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.index-diagnostics__row--layers {
+  grid-template-columns: minmax(120px, 1.1fr) 92px 104px minmax(170px, 1.2fr) minmax(190px, 1.4fr);
+}
+
+.index-diagnostics__row--layers small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-diagnostics__status {
+  justify-self: start;
+  padding: 1px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  color: var(--text-muted);
+  line-height: 18px;
+}
+
+.index-diagnostics__status--ready {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border-subtle));
+  color: var(--success);
+}
+
+.index-diagnostics__status--partial,
+.index-diagnostics__status--stale {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--border-subtle));
+  color: var(--warning);
+}
+
+.index-diagnostics__status--failed {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border-subtle));
+  color: var(--danger);
+}

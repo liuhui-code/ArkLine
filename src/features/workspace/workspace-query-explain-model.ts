@@ -1,3 +1,5 @@
+import type { WorkspaceIndexEvent } from "@/features/workspace/workspace-index-api-types";
+
 export type RecentQueryExplain = {
   id: string;
   kind: "search" | "definition" | "usages" | "completion";
@@ -7,11 +9,37 @@ export type RecentQueryExplain = {
   createdAt: number;
 };
 
+export type QueryEnvelopeExplainSummary = {
+  action: string | null;
+  used: string | null;
+  skipped: string | null;
+  readiness: string | null;
+  resultCount: string | null;
+  generation: string | null;
+  retryable: string | null;
+};
+
+export type QueryExplainTimelineItem = {
+  id: string;
+  source: "frontend" | "backend";
+  severity: string;
+  title: string;
+  message: string;
+  summary: QueryEnvelopeExplainSummary | null;
+  raw: string;
+  createdAt: number;
+  displayTime: string;
+};
+
 export function formatQueryEnvelopeExplain(explain?: string[]) {
   if (!explain?.length) return null;
 
   const reason = findExplainValue(explain, "reason");
   if (reason) return reason;
+
+  const action = findExplainValue(explain, "action");
+  const actionMessage = formatExplainAction(action);
+  if (actionMessage) return actionMessage;
 
   const readiness = findExplainValue(explain, "readiness");
   const resultCount = findExplainValue(explain, "resultCount");
@@ -24,7 +52,133 @@ export function formatQueryEnvelopeExplain(explain?: string[]) {
   return null;
 }
 
+export function summarizeQueryEnvelopeExplain(explain?: string[]): QueryEnvelopeExplainSummary | null {
+  if (!explain?.length) return null;
+
+  const summary = {
+    action: formatExplainActionLabel(findExplainValue(explain, "action")),
+    used: formatExplainList(findExplainValue(explain, "used")),
+    skipped: formatSkippedExplain(findExplainValue(explain, "skipped")),
+    readiness: findExplainValue(explain, "readiness") ?? null,
+    resultCount: findExplainValue(explain, "resultCount") ?? null,
+    generation: formatGeneration(
+      findExplainValue(explain, "servedGeneration"),
+      findExplainValue(explain, "requestedGeneration"),
+    ),
+    retryable: formatBoolean(findExplainValue(explain, "retryable")),
+  };
+
+  return Object.values(summary).some(Boolean) ? summary : null;
+}
+
+export function summarizeQueryEventPayload(payloadJson?: string): QueryEnvelopeExplainSummary | null {
+  if (!payloadJson) return null;
+  try {
+    const payload = JSON.parse(payloadJson) as { explain?: unknown };
+    if (!Array.isArray(payload.explain)) return null;
+    const explain = payload.explain.filter((item): item is string => typeof item === "string");
+    return summarizeQueryEnvelopeExplain(explain);
+  } catch {
+    return null;
+  }
+}
+
+export function buildQueryExplainTimeline({
+  frontend,
+  backend,
+  limit = 8,
+}: {
+  frontend: RecentQueryExplain[];
+  backend: WorkspaceIndexEvent[];
+  limit?: number;
+}): QueryExplainTimelineItem[] {
+  const frontendItems = frontend.map((event) => ({
+    id: event.id,
+    source: "frontend" as const,
+    severity: "info",
+    title: `frontend · info · ${event.kind} · ${event.query}`,
+    message: event.message,
+    summary: summarizeQueryEnvelopeExplain(event.explain),
+    raw: event.explain.join("\n"),
+    createdAt: event.createdAt,
+    displayTime: formatTimelineTime(event.createdAt),
+  }));
+  const backendItems = backend.map((event) => ({
+    id: event.eventId,
+    source: "backend" as const,
+    severity: event.severity || "info",
+    title: `backend · ${event.severity || "info"} · ${event.kind} · ${event.phase}`,
+    message: event.message,
+    summary: summarizeQueryEventPayload(event.payloadJson),
+    raw: event.payloadJson,
+    createdAt: event.createdAt,
+    displayTime: formatTimelineTime(event.createdAt),
+  }));
+
+  return [...frontendItems, ...backendItems]
+    .sort(compareTimelineItems)
+    .slice(0, limit);
+}
+
+function compareTimelineItems(left: QueryExplainTimelineItem, right: QueryExplainTimelineItem) {
+  const byTime = right.createdAt - left.createdAt;
+  if (byTime !== 0) return byTime;
+  if (left.source !== right.source) return left.source === "backend" ? -1 : 1;
+  return left.id.localeCompare(right.id);
+}
+
+function formatTimelineTime(createdAt: number) {
+  if (createdAt < 1000) return `${createdAt}ms`;
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return `${createdAt}ms`;
+  return date.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 function findExplainValue(explain: string[], key: string) {
   const prefix = `${key}:`;
   return explain.find((item) => item.startsWith(prefix))?.slice(prefix.length);
+}
+
+function formatExplainAction(action?: string) {
+  if (action === "waitForIndex") {
+    return "Index is still catching up. Retry after indexing finishes.";
+  }
+  if (action === "rebuildIndex") {
+    return "Index data is missing. Rebuild the index.";
+  }
+  if (action === "inspectIndex") {
+    return "Index needs inspection before this query can be trusted.";
+  }
+  return null;
+}
+
+function formatExplainActionLabel(action?: string) {
+  if (action === "waitForIndex") return "Wait for index";
+  if (action === "rebuildIndex") return "Rebuild index";
+  if (action === "inspectIndex") return "Inspect index";
+  if (action === "showEmptyResult") return "Show empty result";
+  if (action === "useResults") return "Use results";
+  return action ?? null;
+}
+
+function formatExplainList(value?: string) {
+  if (!value || value === "none") return value ?? null;
+  return value.split(",").map((item) => item.trim()).filter(Boolean).join(", ");
+}
+
+function formatSkippedExplain(value?: string) {
+  if (!value) return null;
+  if (value === "none") return "none";
+  return formatExplainList(value);
+}
+
+function formatGeneration(served?: string, requested?: string) {
+  if (!served && !requested) return null;
+  return `${served && served !== "none" ? served : "none"} / ${requested ?? "unknown"}`;
+}
+
+function formatBoolean(value?: string) {
+  if (value === "true") return "yes";
+  if (value === "false") return "no";
+  return value ?? null;
 }

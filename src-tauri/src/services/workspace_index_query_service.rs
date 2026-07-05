@@ -37,11 +37,12 @@ pub fn query_workspace_quick_open(
     query: &str,
     limit: usize,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    let candidates =
+    let mut candidates =
         query_workspace_entities(root_path, query, WorkspaceEntityQueryScope::Files, limit)?;
     if candidates.is_empty() {
-        return index_runtime.query_quick_open(root_path, query, limit);
+        candidates = index_runtime.query_quick_open(root_path, query, limit)?;
     }
+    normalize_candidate_paths_for_filesystem(root_path, &mut candidates);
     Ok(candidates)
 }
 
@@ -83,12 +84,15 @@ pub fn query_workspace_candidates(
     };
     let mut candidates = query_workspace_entities(root_path, query, entity_scope, limit)?;
     if candidates.is_empty() && scope == WorkspaceIndexQueryScope::All {
-        return index_runtime.query_search_everywhere(root_path, query, limit);
+        candidates = index_runtime.query_search_everywhere(root_path, query, limit)?;
+        normalize_candidate_paths_for_filesystem(root_path, &mut candidates);
+        return Ok(candidates);
     }
     crate::services::workspace_search_ranking_service::sort_search_everywhere_candidates(
         &mut candidates,
         limit,
     );
+    normalize_candidate_paths_for_filesystem(root_path, &mut candidates);
     Ok(candidates)
 }
 
@@ -115,7 +119,8 @@ pub fn query_workspace_file_symbols_with_readiness(
     query: &str,
     limit: usize,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    let items = query_workspace_file_symbols(root_path, file_path, query, limit)?;
+    let mut items = query_workspace_file_symbols(root_path, file_path, query, limit)?;
+    normalize_candidate_paths_for_filesystem(root_path, &mut items);
     let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
     Ok(WorkspaceIndexQueryEnvelope {
         items,
@@ -472,4 +477,27 @@ fn normalize_index_path(path: &str) -> String {
 
 fn denormalize_index_path(path: &str) -> String {
     path.replace('\\', "/")
+}
+
+fn normalize_candidate_paths_for_filesystem(
+    root_path: &str,
+    candidates: &mut [WorkspaceSearchCandidate],
+) {
+    for candidate in candidates {
+        if let Some(path) = candidate.path.as_mut() {
+            *path = to_filesystem_path(root_path, path);
+        }
+    }
+}
+
+fn to_filesystem_path(root_path: &str, indexed_path: &str) -> String {
+    if Path::new(indexed_path).exists() {
+        return indexed_path.to_string();
+    }
+
+    if root_path.contains('/') {
+        indexed_path.replace('\\', "/")
+    } else {
+        indexed_path.replace('/', "\\")
+    }
 }

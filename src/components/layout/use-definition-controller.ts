@@ -179,6 +179,7 @@ export function useDefinitionController({
     };
 
     if (workspace?.rootPath && workspaceApi.queryDefinitionCandidatesWithReadiness) {
+      await scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       const envelope = await workspaceApi.queryDefinitionCandidatesWithReadiness(workspace.rootPath, request);
       indexedDefinitionExplain = envelope.explain;
       const decision = decideDefinitionEnvelope(envelope);
@@ -254,4 +255,19 @@ export function useDefinitionController({
   }
 
   return { definitionDebugText, goToDefinitionFromEditor };
+}
+
+async function scheduleForegroundNavigationIndex(
+  workspaceApi: WorkspaceApi,
+  rootPath: string,
+  activePath: string,
+) {
+  if (!workspaceApi.scheduleForegroundNavigationIndex) {
+    return;
+  }
+  try {
+    await workspaceApi.scheduleForegroundNavigationIndex(rootPath, [activePath]);
+  } catch {
+    // Navigation lookup should still use existing index/fallback if scheduling is unavailable.
+  }
 }

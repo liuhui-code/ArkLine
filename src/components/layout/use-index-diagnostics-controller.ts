@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   SDK_INDEX_READY_WAIT_ATTEMPTS,
   SDK_INDEX_READY_WAIT_INTERVAL_MS,
@@ -12,6 +12,7 @@ import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexExplainResult,
   WorkspaceIndexFileReadiness,
+  WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexRefreshResult,
   WorkspaceIndexTaskStatus,
   WorkspaceViewModel,
@@ -45,36 +46,72 @@ export function useIndexDiagnosticsController({
   const [indexDiagnosticsLoading, setIndexDiagnosticsLoading] = useState(false);
   const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
+  const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
   const [workspaceIndexTaskStatuses, setWorkspaceIndexTaskStatuses] = useState<WorkspaceIndexTaskStatus[]>([]);
+
+  useEffect(() => {
+    if (!workspace?.rootPath) {
+      setIndexDiagnostics(null);
+      setCurrentFileReadiness(null);
+      setLayerReadiness(null);
+      setWorkspaceIndexTaskStatuses([]);
+      return;
+    }
+    if (!layerReadiness) return;
+    void refreshLayerReadiness();
+  }, [workspace?.rootPath, activePath]);
 
   async function refreshWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
     if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return;
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
-    if (statuses.length > 0) setWorkspaceIndexTaskStatuses(statuses);
+    if (statuses.length > 0) {
+      setWorkspaceIndexTaskStatuses(statuses);
+      if (statuses.some(isTerminalProjectIndexTaskStatus)) {
+        await refreshLayerReadiness(rootPath);
+      }
+    }
   }
 
   function recordWorkspaceIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
     setWorkspaceIndexTaskStatuses((current) => mergeWorkspaceIndexTaskStatus(current, status));
+    if (isTerminalIndexTaskStatus(status)) {
+      void refreshLayerReadiness(status.rootPath);
+    }
+  }
+
+  async function refreshLayerReadiness(rootPath = workspace?.rootPath) {
+    if (!rootPath || !workspaceApi.getWorkspaceIndexLayerReadiness) return;
+    try {
+      const layers = await workspaceApi.getWorkspaceIndexLayerReadiness(rootPath, activePath);
+      setLayerReadiness(layers);
+    } catch {
+      setLayerReadiness(null);
+    }
   }
 
   async function refreshIndexDiagnostics() {
     if (!workspace?.rootPath) {
       setIndexDiagnostics(null);
       setCurrentFileReadiness(null);
+      setLayerReadiness(null);
       return;
     }
     setIndexDiagnosticsLoading(true);
     try {
-      const [diagnostics, statuses, readiness] = await Promise.all([
+      const [diagnostics, statuses, readiness, layers] = await Promise.all([
         workspaceApi.inspectWorkspaceIndex?.(workspace.rootPath) ?? Promise.resolve(null),
         workspaceApi.getWorkspaceIndexTaskStatuses?.(workspace.rootPath) ?? Promise.resolve([]),
         activePath && workspaceApi.getWorkspaceIndexFileReadiness
           ? workspaceApi.getWorkspaceIndexFileReadiness(workspace.rootPath, activePath)
           : Promise.resolve(null),
+        workspaceApi.getWorkspaceIndexLayerReadiness
+          ? workspaceApi.getWorkspaceIndexLayerReadiness(workspace.rootPath, activePath)
+          : Promise.resolve(null),
       ]);
       setIndexDiagnostics(diagnostics);
       setWorkspaceIndexTaskStatuses(statuses);
       setCurrentFileReadiness(readiness);
+      setLayerReadiness(layers);
     } finally {
       setIndexDiagnosticsLoading(false);
     }
@@ -212,6 +249,7 @@ export function useIndexDiagnosticsController({
     indexDiagnosticsLoading,
     indexDiagnostics,
     currentFileReadiness,
+    layerReadiness,
     workspaceIndexTaskStatuses,
     recordWorkspaceIndexTaskStatus,
     refreshWorkspaceIndexTaskStatuses,
@@ -225,4 +263,15 @@ export function useIndexDiagnosticsController({
     openSettingsFromExplainPanel,
     retryLatestExplainQuery,
   };
+}
+
+function isTerminalIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
+  return status.status === "ready"
+    || status.status === "partial"
+    || status.status === "stale"
+    || status.status === "failed";
+}
+
+function isTerminalProjectIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
+  return status.kind !== "sdk" && isTerminalIndexTaskStatus(status);
 }

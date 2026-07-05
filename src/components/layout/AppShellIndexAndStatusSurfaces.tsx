@@ -7,6 +7,7 @@ import type { SemanticState } from "@/features/semantic/semantic-store";
 import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
+  WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexExplainResult } from "@/features/workspace/workspace-index-api-types";
@@ -29,6 +30,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   currentFileDirty: boolean;
   indexDiagnostics: WorkspaceIndexDiagnostics | null;
   currentFileReadiness: WorkspaceIndexFileReadiness | null;
+  layerReadiness: WorkspaceIndexLayerReadinessReport | null;
   recentQueryExplains: RecentQueryExplain[];
   workspaceIndexTaskStatuses: WorkspaceIndexTaskStatus[];
   onCloseIndexDiagnostics: () => void;
@@ -72,6 +74,7 @@ export function AppShellIndexAndStatusSurfaces({
   currentFileDirty,
   indexDiagnostics,
   currentFileReadiness,
+  layerReadiness,
   recentQueryExplains,
   workspaceIndexTaskStatuses,
   onCloseIndexDiagnostics,
@@ -131,6 +134,7 @@ export function AppShellIndexAndStatusSurfaces({
         currentFileDirty={currentFileDirty}
         diagnostics={indexDiagnostics}
         fileReadiness={currentFileReadiness}
+        layerReadiness={layerReadiness}
         recentQueryExplains={recentQueryExplains}
         taskStatuses={workspaceIndexTaskStatuses}
         onClose={onCloseIndexDiagnostics}

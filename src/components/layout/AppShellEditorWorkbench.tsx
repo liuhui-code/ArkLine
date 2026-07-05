@@ -40,6 +40,7 @@ export type AppShellEditorWorkbenchProps = {
   onEditorFindUsages: () => void;
   onEditorFormatDocument: () => void;
   onEditorCopyPath: () => void;
+  onToggleGitBlame: () => void;
 };
 
 export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
@@ -82,6 +83,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onEditorFindUsages={props.onEditorFindUsages}
         onEditorFormatDocument={props.onEditorFormatDocument}
         onEditorCopyPath={props.onEditorCopyPath}
+        onToggleGitBlame={props.onToggleGitBlame}
       />
     </div>
   );

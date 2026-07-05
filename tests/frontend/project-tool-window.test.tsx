@@ -145,6 +145,62 @@ describe("Project tool window", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading...");
   });
 
+  it("expands and collapses all loaded lazy project directories from the toolbar", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ProjectToolWindow
+        lazyRoot={{ name: "ArkDemo", path: "C:/samples/ArkDemo" }}
+        lazyChildren={lazyProjectChildren()}
+        lazyLoadingPaths={new Set()}
+        activePath={null}
+        onLoadDirectory={vi.fn()}
+        onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Index.ets" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand All" }));
+    expect(screen.getByRole("button", { name: "entry" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "pages" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Index.ets" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Collapse All" }));
+    expect(screen.getByRole("button", { name: "entry" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "pages" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Index.ets" })).not.toBeInTheDocument();
+  });
+
+  it("focuses the active file inside a lazy project tree", async () => {
+    const user = userEvent.setup();
+    const loadDirectory = vi.fn();
+    const scrollIntoView = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
+    render(
+      <ProjectToolWindow
+        lazyRoot={{ name: "ArkDemo", path: "C:/samples/ArkDemo" }}
+        lazyChildren={lazyProjectChildren()}
+        lazyLoadingPaths={new Set()}
+        activePath="C:/samples/ArkDemo/entry/src/main/ets/pages/Index.ets"
+        onLoadDirectory={loadDirectory}
+        onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Focus Active File" }));
+
+    expect(screen.getByRole("button", { name: "entry" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "pages" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Index.ets" })).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(loadDirectory).toHaveBeenCalledWith("C:\\samples\\ArkDemo\\entry");
+    expect(loadDirectory).toHaveBeenCalledWith("C:\\samples\\ArkDemo\\entry\\src");
+  });
+
   it("opens an IDE-style context menu for project tree rows", async () => {
     const user = userEvent.setup();
     const requestMutation = vi.fn();
@@ -224,3 +280,62 @@ describe("Project tool window", () => {
     expect(screen.queryByRole("menu", { name: "Index.ets actions" })).not.toBeInTheDocument();
   });
 });
+
+function lazyProjectChildren() {
+  return {
+    "C:\\samples\\ArkDemo": [
+      {
+        name: "entry",
+        path: "C:/samples/ArkDemo/entry",
+        kind: "directory" as const,
+        excluded: false,
+        hasChildren: true,
+      },
+    ],
+    "C:\\samples\\ArkDemo\\entry": [
+      {
+        name: "src",
+        path: "C:/samples/ArkDemo/entry/src",
+        kind: "directory" as const,
+        excluded: false,
+        hasChildren: true,
+      },
+    ],
+    "C:\\samples\\ArkDemo\\entry\\src": [
+      {
+        name: "main",
+        path: "C:/samples/ArkDemo/entry/src/main",
+        kind: "directory" as const,
+        excluded: false,
+        hasChildren: true,
+      },
+    ],
+    "C:\\samples\\ArkDemo\\entry\\src\\main": [
+      {
+        name: "ets",
+        path: "C:/samples/ArkDemo/entry/src/main/ets",
+        kind: "directory" as const,
+        excluded: false,
+        hasChildren: true,
+      },
+    ],
+    "C:\\samples\\ArkDemo\\entry\\src\\main\\ets": [
+      {
+        name: "pages",
+        path: "C:/samples/ArkDemo/entry/src/main/ets/pages",
+        kind: "directory" as const,
+        excluded: false,
+        hasChildren: true,
+      },
+    ],
+    "C:\\samples\\ArkDemo\\entry\\src\\main\\ets\\pages": [
+      {
+        name: "Index.ets",
+        path: "C:/samples/ArkDemo/entry/src/main/ets/pages/Index.ets",
+        kind: "file" as const,
+        excluded: false,
+        hasChildren: false,
+      },
+    ],
+  };
+}

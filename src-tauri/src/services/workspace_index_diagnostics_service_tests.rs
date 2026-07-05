@@ -3,6 +3,10 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexQueuePressure};
+use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursor;
+use crate::services::workspace_discovery_store_service::{
+    update_discovery_state, WorkspaceDiscoveryState,
+};
 use crate::services::workspace_index_diagnostics_service::{
     inspect_workspace_index, inspect_workspace_index_with_queue_pressure,
 };
@@ -92,6 +96,34 @@ fn reports_active_sdk_index_metadata_for_diagnostics() {
     );
     assert_eq!(diagnostics.active_sdk_version.as_deref(), Some("test-sdk"));
     assert_eq!(diagnostics.sdk_symbol_count, 2);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_discovery_state_for_diagnostics() {
+    let root = unique_temp_dir("workspace-index-diagnostics-discovery");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    update_discovery_state(&WorkspaceDiscoveryState {
+        root_path: root_path.clone(),
+        generation: 4,
+        status: "running".to_string(),
+        discovered_count: 2048,
+        excluded_count: 12,
+        cursor: Some(WorkspaceDiscoveryCursor {
+            pending_directories: vec!["entry".to_string()],
+        }),
+        error: None,
+    })
+    .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.discovery_status.as_deref(), Some("running"));
+    assert_eq!(diagnostics.discovered_file_count, 2048);
+    assert_eq!(diagnostics.discovery_excluded_count, 12);
+    assert!(diagnostics.discovery_has_more);
 
     fs::remove_dir_all(root).unwrap();
 }

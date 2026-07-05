@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
+use crate::services::workspace_discovery_schema_service::create_discovery_tables;
 use crate::services::workspace_index_event_service::create_index_event_tables;
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
 use crate::services::workspace_sdk_schema_service::create_sdk_tables;
@@ -24,6 +25,7 @@ const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("task_journal", 1),
     ("event", 1),
     ("resume", 1),
+    ("discovery", 1),
 ];
 
 pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
@@ -54,6 +56,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_task_journal_tables(connection)?;
     create_index_event_tables(connection)?;
     create_resume_tables(connection)?;
+    create_discovery_tables(connection)?;
     create_dependency_graph_tables(connection)?;
     create_symbol_resolution_tables(connection)?;
     create_reference_index_tables(connection)?;

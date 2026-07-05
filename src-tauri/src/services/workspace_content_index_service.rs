@@ -102,10 +102,11 @@ pub fn search_indexed_workspace_content(
         let context_lines = grouped_lines.get(&line.path).cloned().unwrap_or_default();
         let line_index = line.line_number.saturating_sub(1);
 
+        let file_path = to_filesystem_path(&request.root_path, &line.path);
         matches.push(WorkspaceTextSearchMatch {
-            path: line.path.clone(),
-            relative_path: relative_workspace_path(&request.root_path, &line.path),
-            file_name: file_name(&line.path),
+            path: file_path.clone(),
+            relative_path: relative_workspace_path(&request.root_path, &file_path),
+            file_name: file_name(&file_path),
             line: line.line_number,
             column: start + 1,
             summary: build_summary(&line.text, start, end),

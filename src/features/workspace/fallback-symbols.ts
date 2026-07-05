@@ -1,4 +1,4 @@
-import type { DocumentSymbol, LanguageCompletionItem } from "@/features/workspace/workspace-api";
+import type { DocumentSymbol, LanguageCompletionItem } from "@/features/workspace/workspace-api-contract";
 
 const declarationPattern = /\b(struct|class|interface|enum|type|function)\s+([A-Za-z0-9_$]+)/;
 

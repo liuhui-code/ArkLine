@@ -25,6 +25,7 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     assert_eq!(versions.get("entity"), Some(&1));
     assert_eq!(versions.get("symbol_resolution"), Some(&1));
     assert_eq!(versions.get("reference"), Some(&1));
+    assert_eq!(versions.get("discovery"), Some(&1));
 
     let catalog_count: i64 = connection
         .query_row(
@@ -69,5 +70,5 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(symbol_path_index_count, 1);
-    assert_eq!(schema_count, 13);
+    assert_eq!(schema_count, 14);
 }

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use std::collections::HashMap;
 
@@ -31,6 +31,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let root_key = normalize_index_path(root_path);
     let active_sdk = load_active_sdk_metadata(&connection, &root_key)?;
     let index_status = load_status(&connection, &root_key)?;
+    let discovery = load_discovery_diagnostics(&connection, &root_key)?;
 
     let recent_events = load_recent_index_events(root_path, 20)?;
     let timeline = timeline_from_events(&recent_events);
@@ -64,6 +65,10 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         parser_error_count,
         stale_generation_count: count_stale_generations(&connection, &root_key)?,
         sdk_symbol_count,
+        discovery_status: discovery.status,
+        discovered_file_count: discovery.discovered_count,
+        discovery_excluded_count: discovery.excluded_count,
+        discovery_has_more: discovery.has_more,
         db_size_bytes: db_size_bytes(&cache_path)?,
         queue_pressure: empty_queue_pressure(&root_key),
         active_sdk_path: active_sdk
@@ -113,6 +118,14 @@ fn apply_queue_health_projection(diagnostics: &mut WorkspaceIndexDiagnostics) {
     });
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct DiscoveryDiagnostics {
+    status: Option<String>,
+    discovered_count: i64,
+    excluded_count: i64,
+    has_more: bool,
+}
+
 #[derive(Debug, Clone)]
 struct ActiveSdkMetadata {
     sdk_path: String,
@@ -129,6 +142,35 @@ fn open_index_store(root_path: &str) -> Result<Connection, String> {
     };
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     Connection::open(cache_path).map_err(|error| error.to_string())
+}
+
+fn load_discovery_diagnostics(
+    connection: &Connection,
+    root_key: &str,
+) -> Result<DiscoveryDiagnostics, String> {
+    connection
+        .query_row(
+            "select status, discovered_count, excluded_count, cursor_json
+             from workspace_discovery_state
+             where root_path = ?1
+             limit 1",
+            params![root_key],
+            |row| {
+                let cursor_json: Option<String> = row.get(3)?;
+                Ok(DiscoveryDiagnostics {
+                    status: Some(row.get(0)?),
+                    discovered_count: row.get(1)?,
+                    excluded_count: row.get(2)?,
+                    has_more: cursor_json
+                        .as_ref()
+                        .map(|value| !value.trim().is_empty() && value != "[]")
+                        .unwrap_or(false),
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())
+        .map(|discovery| discovery.unwrap_or_default())
 }
 
 fn db_size_bytes(cache_path: &Path) -> Result<u64, String> {

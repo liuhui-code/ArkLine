@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::services::workspace_index_manager_service::{
     WorkspaceIndexManagerRuntime, WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE,
 };
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -36,7 +37,12 @@ fn foreground_completion_index_runs_before_sdk_indexing() {
         .schedule_sdk_index(&root_path, "/missing-sdk", "missing-sdk")
         .unwrap();
     manager
-        .schedule_foreground_completion_index(&root_path, &[changed_path])
+        .schedule_changed_path_task(
+            &root_path,
+            &[changed_path],
+            WorkspaceIndexTaskPriority::ForegroundCompletion,
+            "foreground-completion",
+        )
         .unwrap();
     manager
         .run_index_worker_once(&index_runtime, |status| {
@@ -67,7 +73,12 @@ fn visible_file_index_runs_before_full_refresh() {
 
     manager.refresh_workspace_index(&root_path).unwrap();
     manager
-        .schedule_visible_files_index(&root_path, &[changed_path])
+        .schedule_changed_path_task(
+            &root_path,
+            &[changed_path],
+            WorkspaceIndexTaskPriority::VisibleFiles,
+            "visible-files",
+        )
         .unwrap();
     manager
         .run_index_worker_once(&index_runtime, |status| {
@@ -139,7 +150,12 @@ fn reports_queue_pressure_for_pending_index_tasks() {
 
     manager.refresh_workspace_index(&first_root_path).unwrap();
     manager
-        .schedule_visible_files_index(&first_root_path, &[changed_path])
+        .schedule_changed_path_task(
+            &first_root_path,
+            &[changed_path],
+            WorkspaceIndexTaskPriority::VisibleFiles,
+            "visible-files",
+        )
         .unwrap();
     manager.refresh_workspace_index(&second_root_path).unwrap();
 

@@ -40,9 +40,11 @@ export function useHydratedSettings({
         current.validation.lintCommand === settings.validation.lintCommand &&
         current.validation.formatCommand === settings.validation.formatCommand &&
         current.validation.timeoutMs === settings.validation.timeoutMs &&
-        current.recentProjects.join("|") === settings.recentProjects.join("|");
+        current.recentProjects.join("|") === settings.recentProjects.join("|") &&
+        JSON.stringify(current.workspaceSessions) === JSON.stringify(settings.workspaceSessions);
 
       if (unchanged) {
+        onHydrated(settings);
         return;
       }
 

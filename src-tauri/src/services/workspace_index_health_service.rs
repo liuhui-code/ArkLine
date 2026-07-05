@@ -30,6 +30,8 @@ pub fn get_workspace_index_health(
         symbol_count: diagnostics.symbol_count,
         reference_count: diagnostics.stub_declaration_count,
         sdk_api_count: diagnostics.sdk_symbol_count,
+        discovery_status: diagnostics.discovery_status,
+        discovered_file_count: diagnostics.discovered_file_count,
         unresolved_import_count: diagnostics.unresolved_import_count,
         parser_failure_count: diagnostics.parser_error_count,
         queue_pressure,

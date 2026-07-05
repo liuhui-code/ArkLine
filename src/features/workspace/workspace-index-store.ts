@@ -5,7 +5,7 @@ import type {
 } from "@/features/workspace/workspace-index-api-types";
 import type {
   WorkspaceViewModel,
-} from "@/features/workspace/workspace-api";
+} from "@/features/workspace/workspace-api-contract";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 export type WorkspaceIndexStatus = "empty" | "scanning" | "ready" | "partial" | "stale" | "failed";

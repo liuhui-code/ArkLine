@@ -69,6 +69,9 @@ pub fn index_workspace_identifier_references(
     if aliases.is_empty() && !include_local_scope {
         return Ok(());
     }
+    if !include_local_scope && !content_may_reference_aliases(path, content, aliases) {
+        return Ok(());
+    }
     let mut symbol_statement = connection
         .prepare(
             "insert or replace into workspace_symbol_references (
@@ -119,6 +122,16 @@ pub fn index_workspace_identifier_references(
         }
     }
     Ok(())
+}
+
+pub(crate) fn content_may_reference_aliases(
+    path: &str,
+    content: &str,
+    aliases: &ReferenceAliasTargets,
+) -> bool {
+    aliases
+        .keys()
+        .any(|(alias_path, alias_name)| alias_path == path && content.contains(alias_name))
 }
 
 fn insert_identifier_reference(

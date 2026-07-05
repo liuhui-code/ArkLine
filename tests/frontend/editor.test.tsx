@@ -2,11 +2,23 @@ import { useState } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArkTsEditor } from "@/editor/ArkTsEditor";
+import { arkLineHighlightStyle } from "@/editor/theme";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { EditorView } from "@codemirror/view";
+import { tags, type Tag } from "@lezer/highlight";
 import { vi } from "vitest";
 
 describe("ArkTsEditor", () => {
+  it("maps code reading colors across common ArkTS token groups", () => {
+    expect(highlightColorFor(tags.keyword)).toBe("#c792ea");
+    expect(highlightColorFor(tags.function(tags.variableName))).toBe("#dcdcaa");
+    expect(highlightColorFor(tags.propertyName)).toBe("#9cdcfe");
+    expect(highlightColorFor(tags.comment)).toBe("#768390");
+    expect(highlightColorFor(tags.self)).toBe("#82aaff");
+    expect(highlightColorFor(tags.escape)).toBe("#f78c6c");
+    expect(highlightColorFor(tags.invalid)).toBe("#ff7b72");
+  });
+
   it("renders the initial document and reports edits", async () => {
     const user = userEvent.setup();
     const changes: string[] = [];
@@ -428,3 +440,11 @@ describe("ArkTsEditor", () => {
     expect(container.querySelector(".cm-git-trace-gutter")).toBeNull();
   });
 });
+
+function highlightColorFor(tag: Tag) {
+  const spec = arkLineHighlightStyle.specs.find((item) => {
+    const target = item.tag;
+    return Array.isArray(target) ? target.includes(tag) : target === tag;
+  });
+  return spec && "color" in spec ? spec.color : undefined;
+}

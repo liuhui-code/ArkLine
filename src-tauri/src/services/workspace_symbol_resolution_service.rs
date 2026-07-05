@@ -14,6 +14,9 @@ use crate::services::workspace_symbol_resolution_insert_service::ResolvedSymbolI
 use crate::services::workspace_symbol_resolution_model_service::{
     ExportBindingRow, ImportBindingRow, StubDeclarationRow, UnresolvedImportRow,
 };
+use crate::services::workspace_symbol_resolution_refresh_plan_service::{
+    plan_symbol_resolution_refresh, SymbolResolutionRefreshPlan,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceSymbolResolutionSummary {
@@ -59,7 +62,12 @@ pub fn resolve_workspace_symbols_for_paths(
 ) -> Result<WorkspaceSymbolResolutionSummary, String> {
     let affected_paths = affected_path_set(indexed_paths, removed_paths);
     delete_symbol_resolution_for_paths(connection, root_key, &affected_paths)?;
-    if !has_import_or_export_bindings_for_paths(connection, root_key, &affected_paths)? {
+    let plan = plan_symbol_resolution_refresh(has_import_or_export_bindings_for_paths(
+        connection,
+        root_key,
+        &affected_paths,
+    )?);
+    if plan == SymbolResolutionRefreshPlan::DeclarationsOnly {
         let declarations = load_stub_declarations_for_paths(connection, root_key, &affected_paths)?;
         return resolve_workspace_symbols_from_declarations(
             connection,

@@ -12,6 +12,7 @@ use crate::services::workspace_dependency_graph_service::{
 use crate::services::workspace_reference_index_service::{
     replace_workspace_references, replace_workspace_references_for_paths,
 };
+use crate::services::workspace_stub_refresh_plan_service::plan_workspace_stub_refresh;
 use crate::services::workspace_symbol_resolution_service::{
     resolve_workspace_symbols, resolve_workspace_symbols_for_paths,
 };
@@ -104,16 +105,10 @@ pub fn profile_replace_changed_stub_rows(
     removed_paths: &[String],
     indexed_generation: u64,
 ) -> Result<WorkspaceStubIndexProfile, String> {
-    let mut affected_paths = changed_paths
-        .iter()
-        .chain(removed_paths.iter())
-        .map(|path| normalize_index_path(path))
-        .collect::<Vec<_>>();
-    affected_paths.sort();
-    affected_paths.dedup();
+    let plan = plan_workspace_stub_refresh(changed_paths, removed_paths);
 
     let delete_start = Instant::now();
-    delete_stub_rows_for_paths(connection, root_key, &affected_paths)?;
+    delete_stub_rows_for_paths(connection, root_key, &plan.affected_paths)?;
     let delete_duration = delete_start.elapsed();
 
     let insert_start = Instant::now();
@@ -121,7 +116,7 @@ pub fn profile_replace_changed_stub_rows(
     insert_stub_rows_for_files_profiled(
         connection,
         root_key,
-        changed_paths,
+        &plan.indexed_paths,
         indexed_generation,
         Some(&mut insert_profile),
     )?;
@@ -132,8 +127,8 @@ pub fn profile_replace_changed_stub_rows(
         connection,
         root_key,
         file_paths,
-        changed_paths,
-        removed_paths,
+        &plan.indexed_paths,
+        &plan.removed_paths,
     )?;
     let graph_duration = graph_start.elapsed();
 
@@ -141,8 +136,8 @@ pub fn profile_replace_changed_stub_rows(
     resolve_workspace_symbols_for_paths(
         connection,
         root_key,
-        changed_paths,
-        removed_paths,
+        &plan.indexed_paths,
+        &plan.removed_paths,
         indexed_generation,
     )?;
     let resolve_duration = resolve_start.elapsed();
@@ -151,8 +146,8 @@ pub fn profile_replace_changed_stub_rows(
     replace_workspace_references_for_paths(
         connection,
         root_key,
-        changed_paths,
-        removed_paths,
+        &plan.indexed_paths,
+        &plan.removed_paths,
         indexed_generation,
     )?;
     let reference_duration = reference_start.elapsed();
@@ -176,35 +171,34 @@ pub fn replace_changed_stub_rows(
     removed_paths: &[String],
     indexed_generation: u64,
 ) -> Result<(), String> {
-    let mut affected_paths = changed_paths
-        .iter()
-        .chain(removed_paths.iter())
-        .map(|path| normalize_index_path(path))
-        .collect::<Vec<_>>();
-    affected_paths.sort();
-    affected_paths.dedup();
+    let plan = plan_workspace_stub_refresh(changed_paths, removed_paths);
 
-    delete_stub_rows_for_paths(connection, root_key, &affected_paths)?;
-    insert_stub_rows_for_files(connection, root_key, changed_paths, indexed_generation)?;
+    delete_stub_rows_for_paths(connection, root_key, &plan.affected_paths)?;
+    insert_stub_rows_for_files(
+        connection,
+        root_key,
+        &plan.indexed_paths,
+        indexed_generation,
+    )?;
     update_dependency_graph_for_paths(
         connection,
         root_key,
         file_paths,
-        changed_paths,
-        removed_paths,
+        &plan.indexed_paths,
+        &plan.removed_paths,
     )?;
     resolve_workspace_symbols_for_paths(
         connection,
         root_key,
-        changed_paths,
-        removed_paths,
+        &plan.indexed_paths,
+        &plan.removed_paths,
         indexed_generation,
     )?;
     replace_workspace_references_for_paths(
         connection,
         root_key,
-        changed_paths,
-        removed_paths,
+        &plan.indexed_paths,
+        &plan.removed_paths,
         indexed_generation,
     )?;
     Ok(())
@@ -466,7 +460,7 @@ fn is_source_file(path: &str) -> bool {
     path.ends_with(".ets") || path.ends_with(".ts") || path.ends_with(".d.ts")
 }
 
-fn normalize_index_path(path: &str) -> String {
+pub(crate) fn normalize_index_path(path: &str) -> String {
     path.replace('/', "\\")
 }
 

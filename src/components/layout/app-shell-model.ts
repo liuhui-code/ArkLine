@@ -6,7 +6,12 @@ import {
   COMPLETION_POPUP_WIDTH,
 } from "@/components/layout/app-shell-constants";
 import type { CodeAction } from "@/features/code-actions/code-action-model";
-import type { WorkspaceIndexTaskStatus, WorkspaceViewModel, WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
+import type {
+  WorkspaceIndexLayerReadinessReport,
+  WorkspaceIndexTaskStatus,
+  WorkspaceViewModel,
+  WorkspaceIndexQueryScope,
+} from "@/features/workspace/workspace-api";
 import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
@@ -107,6 +112,9 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
 
   const activeTask = getActiveProjectIndexTaskStatus(taskStatuses);
   if (activeTask) {
+    if (activeTask.kind === "discovery") {
+      return formatDiscoveryIndexStatus(activeTask);
+    }
     const progressText = activeTask.progressTotal > 0
       ? ` (${activeTask.progressCurrent}/${activeTask.progressTotal})`
       : "";
@@ -127,7 +135,21 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
 export function getActiveProjectIndexTaskStatus(statuses: WorkspaceIndexTaskStatus[]) {
   return [...statuses]
     .reverse()
-    .find((status) => status.kind !== "sdk" && (status.status === "queued" || status.status === "running"));
+    .find((status) => status.kind !== "sdk" && isActiveProjectIndexTask(status));
+}
+
+function isActiveProjectIndexTask(status: WorkspaceIndexTaskStatus) {
+  if (status.status === "queued" || status.status === "running") {
+    return true;
+  }
+  return status.kind === "discovery" && status.status === "partial";
+}
+
+function formatDiscoveryIndexStatus(status: WorkspaceIndexTaskStatus) {
+  if (status.status === "partial" && status.progressCurrent > 0) {
+    return `Index: Discovering files (${status.progressCurrent.toLocaleString()}+)`;
+  }
+  return "Index: Discovering files";
 }
 
 export function projectIndexTaskLabel(kind: string) {
@@ -153,6 +175,31 @@ export function getSdkIndexStatusText(statuses: WorkspaceIndexTaskStatus[]) {
     ? ""
     : ` (${sdkStatus.symbolCount.toLocaleString()} symbols)`;
   return `SDK API: ${sdkStatus.status}${symbolText}`;
+}
+
+export function getLayerReadinessStatusText(report: WorkspaceIndexLayerReadinessReport | null) {
+  const layers = report?.layers ?? [];
+  if (layers.length === 0) {
+    return null;
+  }
+
+  const failedCount = layers.reduce((count, layer) => count + layer.failedCount, 0);
+  if (failedCount > 0 || layers.some((layer) => layer.workspaceStatus === "failed")) {
+    return `Index: Degraded, ${failedCount.toLocaleString()} ${failedCount === 1 ? "failure" : "failures"}`;
+  }
+
+  const currentFileReady = layers.some((layer) => layer.currentFileStatus === "ready");
+  const currentFileBlocked = layers.some((layer) => layer.currentFileStatus === "missing" || layer.currentFileStatus === "failed");
+  const workspaceStatuses = new Set(layers.map((layer) => layer.workspaceStatus));
+  const suffix = currentFileReady ? ", current file ready" : currentFileBlocked ? ", current file not ready" : "";
+
+  if (workspaceStatuses.has("partial") || workspaceStatuses.has("stale")) {
+    return `Index: Partial${suffix}`;
+  }
+  if (workspaceStatuses.has("missing")) {
+    return `Index: Missing${suffix}`;
+  }
+  return `Index: Ready${suffix}`;
 }
 
 export function mergeWorkspaceIndexTaskStatus(

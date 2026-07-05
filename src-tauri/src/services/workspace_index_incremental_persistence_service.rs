@@ -4,8 +4,11 @@ use std::path::{Path, PathBuf};
 use rusqlite::Connection;
 
 use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexedSymbol};
+use crate::services::workspace_incremental_path_plan_service::{
+    plan_incremental_index_paths, WorkspaceIncrementalPathPlan,
+};
 use crate::services::workspace_index_entity_persistence_service::{
-    persist_metadata_row, replace_changed_files, replace_changed_symbols,
+    persist_metadata_row, replace_changed_files, replace_changed_symbols_for_paths,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_stub_index_service::replace_changed_stub_rows;
@@ -25,20 +28,14 @@ pub fn persist_incremental_sqlite_index_state(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    persist_file_symbol_rows(
-        &transaction,
-        &root_key,
-        state,
-        changed_symbols,
-        changed_paths,
-        removed_paths,
-    )?;
+    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
+    persist_file_symbol_rows(&transaction, &root_key, state, changed_symbols, &path_plan)?;
     replace_changed_stub_rows(
         &transaction,
         &root_key,
         &state.file_paths,
-        changed_paths,
-        removed_paths,
+        &path_plan.changed_paths,
+        &path_plan.removed_paths,
         indexed_generation(state),
     )?;
     transaction.commit().map_err(|error| error.to_string())
@@ -59,14 +56,8 @@ pub fn persist_incremental_sqlite_file_symbol_state(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    persist_file_symbol_rows(
-        &transaction,
-        &root_key,
-        state,
-        changed_symbols,
-        changed_paths,
-        removed_paths,
-    )?;
+    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
+    persist_file_symbol_rows(&transaction, &root_key, state, changed_symbols, &path_plan)?;
     transaction.commit().map_err(|error| error.to_string())
 }
 
@@ -84,12 +75,13 @@ pub fn persist_incremental_sqlite_deep_state(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
     replace_changed_stub_rows(
         &transaction,
         &root_key,
         &state.file_paths,
-        changed_paths,
-        removed_paths,
+        &path_plan.changed_paths,
+        &path_plan.removed_paths,
         indexed_generation(state),
     )?;
     transaction.commit().map_err(|error| error.to_string())
@@ -100,17 +92,20 @@ fn persist_file_symbol_rows(
     root_key: &str,
     state: &WorkspaceIndexState,
     changed_symbols: &[WorkspaceIndexedSymbol],
-    changed_paths: &[String],
-    removed_paths: &[String],
+    path_plan: &WorkspaceIncrementalPathPlan,
 ) -> Result<(), String> {
     persist_metadata_row(connection, root_key, state)?;
-    replace_changed_files(connection, root_key, changed_paths, removed_paths)?;
-    replace_changed_symbols(
+    replace_changed_files(
+        connection,
+        root_key,
+        &path_plan.changed_paths,
+        &path_plan.removed_paths,
+    )?;
+    replace_changed_symbols_for_paths(
         connection,
         root_key,
         changed_symbols,
-        changed_paths,
-        removed_paths,
+        &path_plan.affected_paths,
     )
 }
 

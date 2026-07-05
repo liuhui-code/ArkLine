@@ -334,10 +334,22 @@ export function ProjectToolWindow({
   }
 
   function expandAll() {
+    if (lazyRoot) {
+      const directories = collectDirectoryPaths(root).map(normalizePath).filter((path) => path !== normalizePath(root.path));
+      setLazyExpandedDirectories(new Set(directories));
+      directories.forEach((path) => onLoadDirectory?.(path));
+      return;
+    }
+
     setCollapsedDirectories(new Set());
   }
 
   function collapseAll() {
+    if (lazyRoot) {
+      setLazyExpandedDirectories(new Set());
+      return;
+    }
+
     const collapsed = collectDirectoryPaths(root).filter((path) => path !== root.path);
     setCollapsedDirectories(new Set(collapsed));
   }
@@ -349,6 +361,14 @@ export function ProjectToolWindow({
 
     const normalizedActivePath = normalizePath(activePath);
     const ancestors = collectAncestorDirectories(root, normalizedActivePath);
+    if (lazyRoot) {
+      const lazyAncestors = ancestors.map(normalizePath).filter((path) => path !== normalizePath(root.path));
+      setLazyExpandedDirectories((current) => new Set([...current, ...lazyAncestors]));
+      lazyAncestors.forEach((path) => onLoadDirectory?.(path));
+      setPendingFocusPath(normalizedActivePath);
+      return;
+    }
+
     setCollapsedDirectories((current) => {
       const next = new Set(current);
       ancestors.forEach((path) => next.delete(path));
@@ -375,23 +395,9 @@ export function ProjectToolWindow({
       x: event.clientX,
       y: event.clientY,
       items: [
-        {
-          id: "open",
-          label: "Open",
-          disabled: target.kind !== "file",
-          onSelect: () => onOpen(target.path),
-        },
-        {
-          id: "new-file",
-          label: "New File",
-          separatorBefore: true,
-          onSelect: () => onRequestMutation({ action: "newFile", parentPath }),
-        },
-        {
-          id: "new-directory",
-          label: "New Directory",
-          onSelect: () => onRequestMutation({ action: "newDirectory", parentPath }),
-        },
+        { id: "open", label: "Open", disabled: target.kind !== "file", onSelect: () => onOpen(target.path) },
+        { id: "new-file", label: "New File", separatorBefore: true, onSelect: () => onRequestMutation({ action: "newFile", parentPath }) },
+        { id: "new-directory", label: "New Directory", onSelect: () => onRequestMutation({ action: "newDirectory", parentPath }) },
         {
           id: "toggle-directory",
           label: canToggleDirectory && expandedDirectories.has(target.path) ? "Collapse" : "Expand",
@@ -399,12 +405,7 @@ export function ProjectToolWindow({
           separatorBefore: true,
           onSelect: () => toggleDirectory(target.path),
         },
-        {
-          id: "copy-path",
-          label: "Copy Path",
-          separatorBefore: true,
-          onSelect: () => copyPath(target.path),
-        },
+        { id: "copy-path", label: "Copy Path", separatorBefore: true, onSelect: () => copyPath(target.path) },
       ],
     });
   }

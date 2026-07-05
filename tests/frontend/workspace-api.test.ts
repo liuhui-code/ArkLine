@@ -85,6 +85,10 @@ describe("workspace api", () => {
       unresolvedImportCount: 0,
       parserErrorCount: 0,
       staleGenerationCount: 0,
+      discoveryStatus: null,
+      discoveredFileCount: 0,
+      discoveryExcludedCount: 0,
+      discoveryHasMore: false,
       dbSizeBytes: 0,
       queuePressure: {
         rootPath: "C:/samples/DemoWorkspace",
@@ -117,6 +121,10 @@ describe("workspace api", () => {
       parserErrorCount: 0,
       staleGenerationCount: 0,
       sdkSymbolCount: 0,
+      discoveryStatus: null,
+      discoveredFileCount: 0,
+      discoveryExcludedCount: 0,
+      discoveryHasMore: false,
       dbSizeBytes: 4096,
       queuePressure: {
         rootPath: "C:/samples/DemoWorkspace",
@@ -203,6 +211,49 @@ describe("workspace api", () => {
     });
   });
 
+  it("invokes workspace index layer readiness in the desktop runtime", async () => {
+    const layerReport = {
+      rootPath: "C:/samples/DemoWorkspace",
+      currentFilePath: "C:/samples/DemoWorkspace/src/main.ets",
+      layers: [{
+        layer: "fileCatalog",
+        workspaceStatus: "ready",
+        currentFileStatus: "ready",
+        indexedCount: 12,
+        failedCount: 0,
+        staleCount: 0,
+        reason: null,
+        recommendedAction: null,
+      }],
+    };
+    invoke.mockResolvedValueOnce(layerReport);
+
+    await expect(defaultWorkspaceApi.getWorkspaceIndexLayerReadiness?.(
+      "C:/samples/DemoWorkspace",
+      "C:/samples/DemoWorkspace/src/main.ets",
+    )).resolves.toEqual(layerReport);
+    expect(invoke).toHaveBeenCalledWith("get_workspace_index_layer_readiness", {
+      rootPath: "C:/samples/DemoWorkspace",
+      currentFilePath: "C:/samples/DemoWorkspace/src/main.ets",
+    });
+  });
+
+  it("returns fallback layer readiness outside the desktop runtime", async () => {
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+    const report = await defaultWorkspaceApi.getWorkspaceIndexLayerReadiness?.("C:/samples/DemoWorkspace", null);
+
+    expect(report).toMatchObject({
+      rootPath: "C:/samples/DemoWorkspace",
+      currentFilePath: null,
+    });
+    expect(report?.layers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ layer: "discovery", workspaceStatus: "missing" }),
+      expect.objectContaining({ layer: "fileCatalog", workspaceStatus: "missing" }),
+      expect.objectContaining({ layer: "sdk", workspaceStatus: "missing" }),
+    ]));
+  });
+
   it("returns fallback index health outside the desktop runtime", async () => {
     delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 
@@ -227,6 +278,8 @@ describe("workspace api", () => {
       symbolCount: 1,
       referenceCount: 1,
       sdkApiCount: 1,
+      discoveryStatus: "ready",
+      discoveredFileCount: 1,
       unresolvedImportCount: 0,
       parserFailureCount: 0,
       queuePressure: {
@@ -354,6 +407,17 @@ describe("workspace api", () => {
     ]);
 
     expect(invoke).toHaveBeenCalledWith("schedule_foreground_completion_index", {
+      rootPath: "C:/samples/DemoWorkspace",
+      changedPaths: ["C:/samples/DemoWorkspace/src/main.ets"],
+    });
+  });
+
+  it("schedules foreground navigation indexing in the desktop runtime", async () => {
+    await defaultWorkspaceApi.scheduleForegroundNavigationIndex?.("C:/samples/DemoWorkspace", [
+      "C:/samples/DemoWorkspace/src/main.ets",
+    ]);
+
+    expect(invoke).toHaveBeenCalledWith("schedule_foreground_navigation_index", {
       rootPath: "C:/samples/DemoWorkspace",
       changedPaths: ["C:/samples/DemoWorkspace/src/main.ets"],
     });

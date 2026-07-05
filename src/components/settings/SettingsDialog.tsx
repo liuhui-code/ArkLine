@@ -24,6 +24,7 @@ function mergeDraftSettings(current: AppSettings, update: AppSettingsPatch): App
     sdk: { ...current.sdk, ...update.sdk },
     validation: { ...current.validation, ...update.validation },
     recentProjects: update.recentProjects ?? current.recentProjects,
+    workspaceSessions: update.workspaceSessions ?? current.workspaceSessions,
   };
 }
 

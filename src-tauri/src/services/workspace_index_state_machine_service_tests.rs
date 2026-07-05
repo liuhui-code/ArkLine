@@ -135,6 +135,32 @@ fn state_machine_guards_task_status_publication_transitions() {
 }
 
 #[test]
+fn discovery_task_running_status_uses_discovery_kind() {
+    let task = WorkspaceIndexTask {
+        root_path: "/workspace".to_string(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::VisibleFiles,
+        changed_paths: Vec::new(),
+        sdk_path: None,
+        sdk_version: None,
+        generation: 10,
+        reason: "workspace-discovery".to_string(),
+    };
+
+    let running = task_status_from_state_transition(
+        &task,
+        WorkspaceIndexTaskState::Queued,
+        WorkspaceIndexTaskState::Running,
+        None,
+        None,
+    )
+    .expect("discovery task should publish running status");
+
+    assert_eq!(running.kind, "discovery");
+    assert_eq!(running.status, "running");
+}
+
+#[test]
 fn state_machine_guards_result_status_publication_transitions() {
     let result = WorkspaceIndexTaskResult {
         root_path: "/workspace".to_string(),

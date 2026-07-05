@@ -49,8 +49,30 @@ fn searches_persisted_line_content_after_source_file_is_unavailable() {
 
     assert_eq!(result.matches.len(), 1);
     assert_eq!(result.matches[0].relative_path, "entry/src/Index.ets");
+    assert_eq!(result.matches[0].path, file_path.to_string_lossy());
+    assert!(fs::read_to_string(&result.matches[0].path).is_err());
     assert_eq!(result.matches[0].line, 3);
     assert_eq!(result.matches[0].preview, "  Text(\"Welcome\")");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn indexed_text_search_returns_filesystem_paths_that_can_be_opened() {
+    let root = unique_temp_dir("workspace-content-openable-paths");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    let file_path = root.join("entry").join("src").join("Index.ets");
+    fs::write(&file_path, "struct Index {\n  Text(\"Welcome\")\n}").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    index_workspace_content(&root_path, &[file_path.to_string_lossy().to_string()]).unwrap();
+
+    let result = search_indexed_workspace_content(&request(&root_path, "welcome")).unwrap();
+
+    assert_eq!(result.matches.len(), 1);
+    assert_eq!(result.matches[0].path, file_path.to_string_lossy());
+    assert!(fs::read_to_string(&result.matches[0].path)
+        .unwrap()
+        .contains("Welcome"));
 
     fs::remove_dir_all(root).unwrap();
 }

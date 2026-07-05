@@ -15,6 +15,10 @@ export type WorkspaceIndexDiagnostics = {
   parserErrorCount: number;
   staleGenerationCount: number;
   sdkSymbolCount: number;
+  discoveryStatus: string | null;
+  discoveredFileCount: number;
+  discoveryExcludedCount: number;
+  discoveryHasMore: boolean;
   dbSizeBytes: number;
   queuePressure: WorkspaceIndexQueuePressure;
   activeSdkPath: string | null;
@@ -70,6 +74,8 @@ export type WorkspaceIndexHealth = {
   symbolCount: number;
   referenceCount: number;
   sdkApiCount: number;
+  discoveryStatus: string | null;
+  discoveredFileCount: number;
   unresolvedImportCount: number;
   parserFailureCount: number;
   queuePressure: WorkspaceIndexQueuePressure;
@@ -91,6 +97,25 @@ export type WorkspaceIndexFileReadiness = {
   usagesAvailable: boolean;
   searchAvailable: boolean;
   reason: string;
+};
+
+export type WorkspaceIndexLayerStatus = "ready" | "partial" | "stale" | "failed" | "missing" | string;
+
+export type WorkspaceIndexLayerReadiness = {
+  layer: string;
+  workspaceStatus: WorkspaceIndexLayerStatus;
+  currentFileStatus: WorkspaceIndexLayerStatus | null;
+  indexedCount: number;
+  failedCount: number;
+  staleCount: number;
+  reason: string | null;
+  recommendedAction: string | null;
+};
+
+export type WorkspaceIndexLayerReadinessReport = {
+  rootPath: string;
+  currentFilePath: string | null;
+  layers: WorkspaceIndexLayerReadiness[];
 };
 
 export type WorkspaceIndexParserFailure = {

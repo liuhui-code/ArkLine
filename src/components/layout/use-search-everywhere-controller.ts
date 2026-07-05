@@ -95,6 +95,7 @@ export function useSearchEverywhereController({
     setSearchEverywhereMode(mode);
     if (mode === "searchEverywhere") {
       setSearchEverywhereScope("all");
+      setQuickOpenQuery(normalizeSelectedSearchText(editorSelectedText));
     }
     setActiveOverlay("searchEverywhere");
     if (mode === "find" || mode === "replace") {

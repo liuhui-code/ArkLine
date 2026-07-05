@@ -12,6 +12,7 @@ mod commands {
     pub mod workspace;
     pub mod workspace_definition;
     pub mod workspace_index;
+    pub mod workspace_index_schedule;
     #[cfg(test)]
     mod workspace_tests;
 }
@@ -23,6 +24,7 @@ mod models {
     pub mod terminal;
     pub mod workspace;
     pub mod workspace_edit;
+    pub mod workspace_index_layer;
 }
 
 mod platform;
@@ -63,13 +65,38 @@ mod services {
     pub mod workspace_definition_reference_service;
     pub mod workspace_dependency_graph_cleanup_service;
     pub mod workspace_dependency_graph_model_service;
+    pub(crate) mod workspace_dependency_graph_refresh_plan_service;
+    #[cfg(test)]
+    mod workspace_dependency_graph_refresh_plan_service_tests;
     pub mod workspace_dependency_graph_service;
     #[cfg(test)]
     mod workspace_dependency_graph_service_tests;
+    #[cfg(test)]
+    mod workspace_discovery_continuation_service_tests;
+    #[allow(dead_code)]
+    pub(crate) mod workspace_discovery_runner_service;
+    #[cfg(test)]
+    mod workspace_discovery_runner_service_tests;
+    pub(crate) mod workspace_discovery_schema_service;
+    #[allow(dead_code)]
+    pub(crate) mod workspace_discovery_service;
+    #[cfg(test)]
+    mod workspace_discovery_service_tests;
+    #[allow(dead_code)]
+    pub(crate) mod workspace_discovery_store_service;
+    #[cfg(test)]
+    mod workspace_discovery_store_service_tests;
+    #[allow(dead_code)]
+    pub(crate) mod workspace_discovery_task_service;
+    #[cfg(test)]
+    mod workspace_discovery_task_service_tests;
     pub mod workspace_edit_service;
     pub mod workspace_file_fingerprint_service;
     #[cfg(test)]
     mod workspace_file_fingerprint_service_tests;
+    pub(crate) mod workspace_incremental_path_plan_service;
+    #[cfg(test)]
+    mod workspace_incremental_path_plan_service_tests;
     pub mod workspace_index_cancellation_service;
     #[cfg(test)]
     mod workspace_index_cancellation_service_tests;
@@ -116,6 +143,9 @@ mod services {
     pub mod workspace_index_file_readiness_service;
     #[cfg(test)]
     mod workspace_index_file_readiness_service_tests;
+    pub(crate) mod workspace_index_follow_up_task_service;
+    #[cfg(test)]
+    mod workspace_index_follow_up_task_service_tests;
     pub mod workspace_index_full_refresh_service;
     #[cfg(test)]
     mod workspace_index_full_refresh_service_tests;
@@ -123,6 +153,9 @@ mod services {
     #[cfg(test)]
     mod workspace_index_health_service_tests;
     pub mod workspace_index_incremental_persistence_service;
+    pub mod workspace_index_layer_readiness_service;
+    #[cfg(test)]
+    mod workspace_index_layer_readiness_service_tests;
     #[cfg(test)]
     mod workspace_index_lifecycle_service_tests;
     pub mod workspace_index_maintenance_service;
@@ -196,6 +229,8 @@ mod services {
     mod workspace_reference_deep_generic_tests;
     pub mod workspace_reference_generic_receiver_service;
     pub mod workspace_reference_identifier_index_service;
+    #[cfg(test)]
+    mod workspace_reference_identifier_index_service_tests;
     pub mod workspace_reference_index_service;
     #[cfg(test)]
     mod workspace_reference_index_service_tests;
@@ -220,6 +255,9 @@ mod services {
     pub mod workspace_stub_index_service;
     #[cfg(test)]
     mod workspace_stub_index_service_tests;
+    pub(crate) mod workspace_stub_refresh_plan_service;
+    #[cfg(test)]
+    mod workspace_stub_refresh_plan_service_tests;
     pub mod workspace_symbol_identity_service;
     pub mod workspace_symbol_index_service;
     pub mod workspace_symbol_resolution_alias_service;
@@ -229,6 +267,9 @@ mod services {
     pub mod workspace_symbol_resolution_query_service;
     #[cfg(test)]
     mod workspace_symbol_resolution_query_service_tests;
+    pub(crate) mod workspace_symbol_resolution_refresh_plan_service;
+    #[cfg(test)]
+    mod workspace_symbol_resolution_refresh_plan_service_tests;
     pub mod workspace_symbol_resolution_schema_service;
     pub mod workspace_symbol_resolution_service;
     #[cfg(test)]
@@ -281,13 +322,15 @@ pub fn run() {
             commands::workspace_definition::query_usages_with_readiness,
             commands::workspace_definition::semantic_complete_symbol,
             commands::workspace::update_workspace_index_files,
-            commands::workspace::schedule_foreground_completion_index,
-            commands::workspace::schedule_visible_files_index,
+            commands::workspace_index_schedule::schedule_foreground_completion_index,
+            commands::workspace_index_schedule::schedule_foreground_navigation_index,
+            commands::workspace_index_schedule::schedule_visible_files_index,
             commands::workspace::refresh_workspace_index,
             commands::workspace::refresh_workspace_index_with_changes,
             commands::workspace::search_workspace_text,
             commands::workspace_index::explain_workspace_index_query,
             commands::workspace_index::get_workspace_index_file_readiness,
+            commands::workspace_index::get_workspace_index_layer_readiness,
             commands::workspace::watch_workspace_index,
             commands::workspace::unwatch_workspace_index,
             commands::workspace::load_workspace_diff,

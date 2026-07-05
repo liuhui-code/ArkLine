@@ -10,7 +10,7 @@ import type {
   DefinitionCandidate,
   LanguageCompletionItem,
   LanguageQueryRequest,
-} from "@/features/workspace/workspace-api";
+} from "@/features/workspace/workspace-api-contract";
 
 type InvokeCommand = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 

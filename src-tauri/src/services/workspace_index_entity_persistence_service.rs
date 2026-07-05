@@ -55,6 +55,7 @@ pub fn replace_changed_files(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn replace_changed_symbols(
     connection: &Connection,
     root_key: &str,
@@ -69,9 +70,18 @@ pub fn replace_changed_symbols(
         .collect::<Vec<_>>();
     affected_paths.sort();
     affected_paths.dedup();
+    replace_changed_symbols_for_paths(connection, root_key, symbols, &affected_paths)
+}
+
+pub(crate) fn replace_changed_symbols_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    symbols: &[WorkspaceIndexedSymbol],
+    affected_paths: &[String],
+) -> Result<(), String> {
     let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
 
-    for path in &affected_paths {
+    for path in affected_paths {
         delete_symbols_for_path(connection, root_key, path)?;
     }
     let mut legacy_statement = legacy_symbol_insert_statement(connection)?;

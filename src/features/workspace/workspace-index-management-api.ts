@@ -4,6 +4,8 @@ import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
   WorkspaceIndexHealth,
+  WorkspaceIndexLayerReadiness,
+  WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexParserFailure,
   WorkspaceIndexTaskStatus,
   WorkspaceIndexTaskStatusWatcher,
@@ -13,7 +15,7 @@ import type {
 import type {
   WorkspaceIndexRefreshResult,
   WorkspaceIndexWatcher,
-} from "@/features/workspace/workspace-api";
+} from "@/features/workspace/workspace-api-contract";
 
 type InvokeCommand = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 type ListenCommand = <T>(
@@ -34,6 +36,7 @@ export type WorkspaceIndexManagementApi = {
   inspectWorkspaceIndex(rootPath: string): Promise<WorkspaceIndexDiagnostics>;
   getWorkspaceIndexHealth(rootPath: string): Promise<WorkspaceIndexHealth>;
   getWorkspaceIndexFileReadiness(rootPath: string, filePath: string): Promise<WorkspaceIndexFileReadiness>;
+  getWorkspaceIndexLayerReadiness(rootPath: string, currentFilePath?: string | null): Promise<WorkspaceIndexLayerReadinessReport>;
   getWorkspaceIndexTaskStatuses(rootPath: string): Promise<WorkspaceIndexTaskStatus[]>;
   watchWorkspaceIndexTaskStatuses(rootPath: string, onChange: WorkspaceIndexTaskStatusWatcher): Promise<() => void>;
   clearWorkspaceIndex(rootPath: string): Promise<void>;
@@ -46,6 +49,7 @@ export type WorkspaceIndexManagementApi = {
   submitWorkspaceSdkIndex(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   updateWorkspaceIndexFiles(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
   scheduleForegroundCompletionIndex(rootPath: string, changedPaths: string[]): Promise<void>;
+  scheduleForegroundNavigationIndex(rootPath: string, changedPaths: string[]): Promise<void>;
   scheduleVisibleFilesIndex(rootPath: string, changedPaths: string[]): Promise<void>;
   refreshWorkspaceIndex(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
@@ -58,6 +62,7 @@ export function createWorkspaceIndexManagementApi(deps: WorkspaceIndexManagement
     inspectWorkspaceIndex: (rootPath) => inspectWorkspaceIndex(deps, rootPath),
     getWorkspaceIndexHealth: (rootPath) => getWorkspaceIndexHealth(deps, rootPath),
     getWorkspaceIndexFileReadiness: (rootPath, filePath) => getWorkspaceIndexFileReadiness(deps, rootPath, filePath),
+    getWorkspaceIndexLayerReadiness: (rootPath, currentFilePath = null) => getWorkspaceIndexLayerReadiness(deps, rootPath, currentFilePath),
     getWorkspaceIndexTaskStatuses: (rootPath) => getWorkspaceIndexTaskStatuses(deps, rootPath),
     watchWorkspaceIndexTaskStatuses: (rootPath, onChange) => watchWorkspaceIndexTaskStatuses(deps, rootPath, onChange),
     clearWorkspaceIndex: (rootPath) => invokeVoid(deps, "clear_workspace_index", { rootPath }),
@@ -70,6 +75,7 @@ export function createWorkspaceIndexManagementApi(deps: WorkspaceIndexManagement
     submitWorkspaceSdkIndex: (rootPath, sdkPath, sdkVersion) => submitWorkspaceSdkIndex(deps, rootPath, sdkPath, sdkVersion),
     updateWorkspaceIndexFiles: (rootPath, addedPaths, removedPaths) => updateWorkspaceIndexFiles(deps, rootPath, addedPaths, removedPaths),
     scheduleForegroundCompletionIndex: (rootPath, changedPaths) => invokeVoid(deps, "schedule_foreground_completion_index", { rootPath, changedPaths }),
+    scheduleForegroundNavigationIndex: (rootPath, changedPaths) => invokeVoid(deps, "schedule_foreground_navigation_index", { rootPath, changedPaths }),
     scheduleVisibleFilesIndex: (rootPath, changedPaths) => invokeVoid(deps, "schedule_visible_files_index", { rootPath, changedPaths }),
     refreshWorkspaceIndex: (rootPath) => refreshWorkspaceIndex(deps, rootPath),
     refreshWorkspaceIndexWithChanges: (rootPath) => refreshWorkspaceIndexWithChanges(deps, rootPath),
@@ -104,6 +110,10 @@ async function inspectWorkspaceIndex(deps: WorkspaceIndexManagementApiDependenci
     parserErrorCount: 0,
     staleGenerationCount: 0,
     sdkSymbolCount: 0,
+    discoveryStatus: null,
+    discoveredFileCount: 0,
+    discoveryExcludedCount: 0,
+    discoveryHasMore: false,
     dbSizeBytes: 0,
     queuePressure: emptyQueuePressure(rootPath),
     activeSdkPath: null,
@@ -129,6 +139,8 @@ async function getWorkspaceIndexHealth(deps: WorkspaceIndexManagementApiDependen
     symbolCount: 0,
     referenceCount: 0,
     sdkApiCount: 0,
+    discoveryStatus: null,
+    discoveredFileCount: 0,
     unresolvedImportCount: 0,
     parserFailureCount: 0,
     queuePressure: emptyQueuePressure(rootPath),
@@ -161,6 +173,20 @@ async function getWorkspaceIndexFileReadiness(
     searchAvailable: true,
     reason: `${fileName} is not indexed outside the desktop runtime.`,
   };
+}
+
+async function getWorkspaceIndexLayerReadiness(
+  deps: WorkspaceIndexManagementApiDependencies,
+  rootPath: string,
+  currentFilePath: string | null,
+) {
+  if (deps.hasTauriRuntime()) {
+    return deps.invoke<WorkspaceIndexLayerReadinessReport>("get_workspace_index_layer_readiness", {
+      rootPath,
+      currentFilePath,
+    });
+  }
+  return emptyLayerReadiness(rootPath, currentFilePath);
 }
 
 async function getWorkspaceIndexTaskStatuses(deps: WorkspaceIndexManagementApiDependencies, rootPath: string) {
@@ -350,6 +376,37 @@ function emptyIndexState(): WorkspaceIndexState {
     symbols: [],
     indexedAt: null,
     partialReason: null,
+  };
+}
+
+function emptyLayerReadiness(rootPath: string, currentFilePath: string | null): WorkspaceIndexLayerReadinessReport {
+  return {
+    rootPath,
+    currentFilePath,
+    layers: [
+      emptyLayer("discovery"),
+      emptyLayer("fileCatalog"),
+      emptyLayer("fingerprint"),
+      emptyLayer("content"),
+      emptyLayer("stub"),
+      emptyLayer("symbols"),
+      emptyLayer("references"),
+      emptyLayer("dependencyGraph"),
+      emptyLayer("sdk"),
+    ],
+  };
+}
+
+function emptyLayer(layer: string): WorkspaceIndexLayerReadiness {
+  return {
+    layer,
+    workspaceStatus: "missing",
+    currentFileStatus: null,
+    indexedCount: 0,
+    failedCount: 0,
+    staleCount: 0,
+    reason: `${layer} index is unavailable outside the desktop runtime.`,
+    recommendedAction: layer === "sdk" ? "configureSdk" : "openWorkspace",
   };
 }
 

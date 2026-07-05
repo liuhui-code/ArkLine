@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection};
 
+use crate::services::workspace_discovery_store_service::{
+    update_discovery_state, WorkspaceDiscoveryState,
+};
 use crate::services::workspace_index_health_service::get_workspace_index_health;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_resume_service::save_resume_task;
@@ -67,6 +70,31 @@ fn reports_missing_sdk_when_api_features_need_sdk_symbols() {
         .repair_actions
         .iter()
         .any(|action| action == "configureSdk"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_discovery_progress_in_health() {
+    let root = unique_temp_dir("workspace-index-health-discovery");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    update_discovery_state(&WorkspaceDiscoveryState {
+        root_path: root_path.clone(),
+        generation: 3,
+        status: "ready".to_string(),
+        discovered_count: 4096,
+        excluded_count: 9,
+        cursor: None,
+        error: None,
+    })
+    .unwrap();
+
+    let health = get_workspace_index_health(&root_path, &manager).unwrap();
+
+    assert_eq!(health.discovery_status.as_deref(), Some("ready"));
+    assert_eq!(health.discovered_file_count, 4096);
 
     fs::remove_dir_all(root).unwrap();
 }

@@ -1,13 +1,18 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::models::workspace::WorkspaceIndexRefreshResult;
+use crate::models::workspace::{
+    WorkspaceIndexRefreshResult, WorkspaceScanSummary, WorkspaceSnapshot,
+};
+use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_chunk_service::{
     plan_refresh_continuation, WorkspaceIndexChunkProgress, WorkspaceIndexRefreshContinuation,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::scan_workspace;
+
+const DISCOVERED_REFRESH_FILE_LIMIT: usize = 200_000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct WorkspaceIndexFullRefreshOutcome {
@@ -28,7 +33,7 @@ pub fn refresh_workspace_index_in_chunks(
         .iter()
         .cloned()
         .collect::<HashSet<_>>();
-    let snapshot = scan_workspace(Path::new(root_path))?;
+    let snapshot = refresh_snapshot(root_path)?;
     let mut state = previous_state;
     if previous_paths.is_empty() {
         if token.is_cancelled() {
@@ -80,6 +85,31 @@ pub fn refresh_workspace_index_in_chunks(
         continuation: (!continuation.is_complete()).then_some(continuation),
         progress,
     }))
+}
+
+fn refresh_snapshot(root_path: &str) -> Result<WorkspaceSnapshot, String> {
+    if let Some(files) = load_ready_discovered_files(root_path, DISCOVERED_REFRESH_FILE_LIMIT)? {
+        return Ok(snapshot_from_discovered_files(root_path, files));
+    }
+    scan_workspace(Path::new(root_path))
+}
+
+fn snapshot_from_discovered_files(root_path: &str, mut files: Vec<String>) -> WorkspaceSnapshot {
+    files.sort();
+    WorkspaceSnapshot {
+        root_name: Path::new(root_path)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "workspace".to_string()),
+        root_path: root_path.to_string(),
+        scan_summary: WorkspaceScanSummary {
+            scanned_files: files.len(),
+            skipped_entries: 0,
+            truncated: files.len() >= DISCOVERED_REFRESH_FILE_LIMIT,
+            exclude_rules: Vec::new(),
+        },
+        files,
+    }
 }
 
 fn normalize_index_path(path: &str) -> String {

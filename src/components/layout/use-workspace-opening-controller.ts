@@ -1,12 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { LAZY_PROJECT_TREE_FILE_THRESHOLD } from "@/components/layout/app-shell-constants";
+import type { AppSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { toWorkspaceViewModel } from "@/features/workspace/workspace-api";
 
 export type UseWorkspaceOpeningControllerOptions = {
   workspace: WorkspaceViewModel | null;
   workspaceApi: WorkspaceApi;
+  settingsHydrated: boolean;
+  recentProjects: string[];
+  getWorkspaceSessions: () => AppSettings["workspaceSessions"];
   applyWorkspaceSessionSnapshot: (snapshot: WorkspaceViewModel) => void;
+  openFile: (path: string) => Promise<void>;
   resetProjectTree: () => void;
   loadProjectDirectory: (rootPath: string, directoryPath: string) => Promise<void>;
   loadProjectDirectoryForWorkspace: (workspace: WorkspaceViewModel | null, path: string) => void;
@@ -21,7 +26,11 @@ export type UseWorkspaceOpeningControllerOptions = {
 export function useWorkspaceOpeningController({
   workspace,
   workspaceApi,
+  settingsHydrated,
+  recentProjects,
+  getWorkspaceSessions,
   applyWorkspaceSessionSnapshot,
+  openFile,
   resetProjectTree,
   loadProjectDirectory,
   loadProjectDirectoryForWorkspace,
@@ -32,6 +41,8 @@ export function useWorkspaceOpeningController({
   setProjectOpenError,
   onStatusChange,
 }: UseWorkspaceOpeningControllerOptions) {
+  const autoRestoreAttemptedRef = useRef(false);
+
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     applyWorkspaceSessionSnapshot(snapshot);
     resetProjectTree();
@@ -51,6 +62,7 @@ export function useWorkspaceOpeningController({
       resetWorkspaceUi(snapshot.rootName);
       await loadBuildConfigurationsForRoot(snapshot.rootPath);
       await refreshSemanticState();
+      await restoreLastActiveFile(snapshot.rootPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setProjectPathInput(rootPath);
@@ -63,24 +75,39 @@ export function useWorkspaceOpeningController({
     const snapshot = await workspaceApi.openDemoWorkspace();
     applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot));
     resetWorkspaceUi(snapshot.rootName);
+    await restoreLastActiveFile(snapshot.rootPath);
+  }
+
+  async function restoreLastActiveFile(rootPath: string) {
+    const workspaceSessions = getWorkspaceSessions();
+    const activeFilePath = workspaceSessions[rootPath]?.activeFilePath;
+    if (!activeFilePath) return;
+    try {
+      await openFile(activeFilePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      onStatusChange(`Last file unavailable: ${message}`);
+    }
   }
 
   useEffect(() => {
     let disposed = false;
-    if (workspace) {
+    if (workspace || autoRestoreAttemptedRef.current || !settingsHydrated) {
       return;
     }
     void (async () => {
       const launchRootPath = await workspaceApi.getLaunchWorkspacePath?.();
-      if (!launchRootPath || disposed) {
+      const restoreRootPath = launchRootPath || recentProjects[0];
+      if (!restoreRootPath || disposed) {
         return;
       }
-      await openWorkspace(launchRootPath);
+      autoRestoreAttemptedRef.current = true;
+      await openWorkspace(restoreRootPath);
     })();
     return () => {
       disposed = true;
     };
-  }, [workspace, workspaceApi]);
+  }, [recentProjects, settingsHydrated, workspace, workspaceApi, getWorkspaceSessions]);
 
   return {
     openWorkspace,

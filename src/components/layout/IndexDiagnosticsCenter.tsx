@@ -1,9 +1,19 @@
 import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
+  WorkspaceIndexLayerReadiness,
+  WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
-import type { RecentQueryExplain } from "@/features/workspace/workspace-query-explain-model";
+import {
+  getLayerReadinessStatusText,
+} from "@/components/layout/app-shell-model";
+import {
+  buildQueryExplainTimeline,
+  type QueryEnvelopeExplainSummary,
+  type RecentQueryExplain,
+} from "@/features/workspace/workspace-query-explain-model";
+import "./index-diagnostics-center.css";
 
 type IndexDiagnosticsCenterProps = {
   open: boolean;
@@ -12,6 +22,7 @@ type IndexDiagnosticsCenterProps = {
   currentFileDirty: boolean;
   diagnostics: WorkspaceIndexDiagnostics | null;
   fileReadiness: WorkspaceIndexFileReadiness | null;
+  layerReadiness: WorkspaceIndexLayerReadinessReport | null;
   recentQueryExplains: RecentQueryExplain[];
   taskStatuses: WorkspaceIndexTaskStatus[];
   onClose: () => void;
@@ -29,6 +40,7 @@ export function IndexDiagnosticsCenter({
   currentFileDirty,
   diagnostics,
   fileReadiness,
+  layerReadiness,
   recentQueryExplains,
   taskStatuses,
   onClose,
@@ -43,9 +55,13 @@ export function IndexDiagnosticsCenter({
   }
 
   const queryEvents = diagnostics?.recentEvents.filter((event) => event.scope === "query") ?? [];
+  const queryTimeline = buildQueryExplainTimeline({ frontend: recentQueryExplains, backend: queryEvents });
   const dbSize = formatBytes(diagnostics?.dbSizeBytes ?? 0);
   const queuePressure = diagnostics?.queuePressure;
   const repairActions = diagnostics?.repairActions ?? [];
+  const layerStatusText = getLayerReadinessStatusText(layerReadiness);
+  const headerStatusText = layerStatusText
+    ?? (diagnostics ? `${diagnostics.status} · ${diagnostics.fileCount.toLocaleString()} files` : "Workspace index evidence");
 
   return (
     <div className="index-diagnostics-modal" role="presentation" onMouseDown={onClose}>
@@ -59,7 +75,7 @@ export function IndexDiagnosticsCenter({
         <header className="index-diagnostics__header">
           <div>
             <h2>Index Diagnostics Center</h2>
-            <p>{diagnostics ? `${diagnostics.status} · ${diagnostics.fileCount.toLocaleString()} files` : "Workspace index evidence"}</p>
+            <p>{headerStatusText}</p>
           </div>
           <div className="index-diagnostics__actions">
             <button type="button" className="toolbar__button" onClick={onRefresh}>Refresh</button>
@@ -71,6 +87,7 @@ export function IndexDiagnosticsCenter({
           <aside className="index-diagnostics__nav" aria-label="Index Diagnostics Sections">
             <span>Processes</span>
             <span>Current File</span>
+            <span>Layers</span>
             <span>Query Explain</span>
             <span>Health</span>
             <span>Timeline</span>
@@ -137,26 +154,42 @@ export function IndexDiagnosticsCenter({
               </div>
             </section>
 
+            <section className="index-diagnostics__section" aria-label="Index Layers">
+              <div className="index-diagnostics__section-title">
+                <h3>Index Layers</h3>
+                <span>{layerReadiness?.layers.length ?? 0} layers</span>
+              </div>
+              <div className="index-diagnostics__table">
+                <div className="index-diagnostics__row index-diagnostics__row--header index-diagnostics__row--layers">
+                  <span>Layer</span>
+                  <span>Workspace</span>
+                  <span>Current file</span>
+                  <span>Counts</span>
+                  <span>Action</span>
+                </div>
+                {(layerReadiness?.layers ?? []).length > 0 ? layerReadiness?.layers.map((layer) => (
+                  <LayerReadinessRow layer={layer} key={layer.layer} />
+                )) : (
+                  <div className="index-diagnostics__empty">No layer readiness evidence is available.</div>
+                )}
+              </div>
+            </section>
+
             <section className="index-diagnostics__section" aria-label="Query Explain">
               <div className="index-diagnostics__section-title">
                 <h3>Query Explain</h3>
                 <span>{queryEvents.length + recentQueryExplains.length} recent</span>
               </div>
-              {recentQueryExplains.length > 0 ? recentQueryExplains.map((event) => (
+              {queryTimeline.length > 0 ? queryTimeline.map((event) => (
                 <div className="index-diagnostics__event" key={event.id}>
-                  <span>frontend · {event.kind} · {event.query}</span>
+                  <span>{event.title}</span>
+                  <span>{event.displayTime}</span>
                   <strong>{event.message}</strong>
-                  <code>{event.explain.join("\n")}</code>
+                  <QueryExplainSummary summary={event.summary} />
+                  <code>{event.raw}</code>
                 </div>
               )) : null}
-              {queryEvents.length > 0 ? queryEvents.slice(-5).map((event) => (
-                <div className="index-diagnostics__event" key={event.eventId}>
-                  <span>{event.kind} · {event.phase}</span>
-                  <strong>{event.message}</strong>
-                  <code>{event.payloadJson}</code>
-                </div>
-              )) : null}
-              {queryEvents.length === 0 && recentQueryExplains.length === 0 ? (
+              {queryTimeline.length === 0 ? (
                 <div className="index-diagnostics__empty">No query explain events yet.</div>
               ) : null}
             </section>
@@ -171,6 +204,10 @@ export function IndexDiagnosticsCenter({
                 <Metric label="Symbols" value={String(diagnostics?.symbolCount ?? 0)} />
                 <Metric label="Text rows" value={String(diagnostics?.contentLineCount ?? 0)} />
                 <Metric label="SDK symbols" value={String(diagnostics?.sdkSymbolCount ?? 0)} />
+                <Metric label="Discovery" value={diagnostics?.discoveryStatus ?? "none"} />
+                <Metric label="Discovered files" value={(diagnostics?.discoveredFileCount ?? 0).toLocaleString()} />
+                <Metric label="Excluded entries" value={(diagnostics?.discoveryExcludedCount ?? 0).toLocaleString()} />
+                <Metric label="Discovery cursor" value={diagnostics?.discoveryHasMore ? "has more" : "complete"} />
                 <Metric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
                 <Metric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
                 <Metric label="DB size" value={dbSize} />
@@ -259,6 +296,59 @@ export function IndexDiagnosticsCenter({
       </section>
     </div>
   );
+}
+
+function LayerReadinessRow({ layer }: { layer: WorkspaceIndexLayerReadiness }) {
+  return (
+    <div className="index-diagnostics__row index-diagnostics__row--layers">
+      <span>{layer.layer}</span>
+      <StatusBadge value={layer.workspaceStatus} />
+      <StatusBadge value={layer.currentFileStatus ?? "none"} />
+      <span>{formatLayerCounts(layer)}</span>
+      <span>
+        {layer.recommendedAction ?? "none"}
+        {layer.reason ? <small>{layer.reason}</small> : null}
+      </span>
+    </div>
+  );
+}
+
+function StatusBadge({ value }: { value: string }) {
+  return <span className={`index-diagnostics__status index-diagnostics__status--${value}`}>{value}</span>;
+}
+
+function QueryExplainSummary({ summary }: { summary: QueryEnvelopeExplainSummary | null }) {
+  if (!summary) {
+    return null;
+  }
+  const rows = [
+    ["Action", summary.action],
+    ["Used", summary.used],
+    ["Skipped", summary.skipped],
+    ["Readiness", summary.readiness],
+    ["Result count", summary.resultCount],
+    ["Generation", summary.generation],
+    ["Retryable", summary.retryable],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  return (
+    <dl className="index-diagnostics__explain-summary" aria-label="Query explain evidence">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function formatLayerCounts(layer: WorkspaceIndexLayerReadiness) {
+  return `${layer.indexedCount.toLocaleString()} indexed · ${layer.failedCount.toLocaleString()} failed · ${layer.staleCount.toLocaleString()} stale`;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

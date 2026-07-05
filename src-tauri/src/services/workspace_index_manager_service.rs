@@ -12,7 +12,7 @@ use crate::services::workspace_index_cancellation_service::{
     cancel_active_tasks_superseded_by_latest, finish_cancellable_tasks, start_cancellable_tasks,
     WorkspaceIndexCancellationRegistry,
 };
-use crate::services::workspace_index_continuation_task_service::schedule_refresh_continuations;
+use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
 use crate::services::workspace_index_resume_service::{
     clear_completed_resume_tasks, schedule_resume_tasks_from_store,
 };
@@ -59,12 +59,6 @@ impl WorkspaceIndexManagerRuntime {
             WorkspaceIndexTaskPriority::ForegroundNavigation,
             "open-workspace",
         )?;
-        self.schedule_workspace_task(
-            root_path,
-            WorkspaceIndexTaskKind::RefreshWorkspace,
-            WorkspaceIndexTaskPriority::FullRefresh,
-            "background-refresh-after-open",
-        )?;
         let summary = schedule_resume_tasks_from_store(&self.scheduler, root_path)?;
         self.store_superseded_statuses(summary.superseded_tasks)?;
         for root_path in summary.root_paths {
@@ -95,35 +89,7 @@ impl WorkspaceIndexManagerRuntime {
         )
     }
 
-    #[allow(dead_code)]
-    pub fn schedule_foreground_completion_index(
-        &self,
-        root_path: &str,
-        changed_paths: &[String],
-    ) -> Result<(), String> {
-        self.schedule_changed_path_task(
-            root_path,
-            changed_paths,
-            WorkspaceIndexTaskPriority::ForegroundCompletion,
-            "foreground-completion",
-        )
-    }
-
-    #[allow(dead_code)]
-    pub fn schedule_visible_files_index(
-        &self,
-        root_path: &str,
-        changed_paths: &[String],
-    ) -> Result<(), String> {
-        self.schedule_changed_path_task(
-            root_path,
-            changed_paths,
-            WorkspaceIndexTaskPriority::VisibleFiles,
-            "visible-files",
-        )
-    }
-
-    fn schedule_changed_path_task(
+    pub(crate) fn schedule_changed_path_task(
         &self,
         root_path: &str,
         changed_paths: &[String],
@@ -333,7 +299,7 @@ impl WorkspaceIndexManagerRuntime {
         let results = results?;
         let results = self.mark_superseded_results(results)?;
         clear_completed_resume_tasks(&results)?;
-        let continuation_summary = schedule_refresh_continuations(&self.scheduler, &results)?;
+        let continuation_summary = schedule_index_follow_up_tasks(&self.scheduler, &results)?;
         self.store_superseded_statuses(continuation_summary.superseded_tasks)?;
         for root_path in continuation_summary.root_paths {
             self.store_pending_statuses_for_root(&root_path)?;

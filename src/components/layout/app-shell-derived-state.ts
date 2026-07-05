@@ -1,5 +1,6 @@
 import {
   getIndexStatusText,
+  getLayerReadinessStatusText,
   getSdkIndexStatusText,
   getWorkspacePartialNotice,
   getWorkspaceScanText,
@@ -11,7 +12,11 @@ import type { OverlayKey } from "@/components/layout/shell-state";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { describeSemanticCapabilities } from "@/features/semantic/semantic-capability-state";
 import type { SemanticState } from "@/features/semantic/semantic-store";
-import type { WorkspaceIndexTaskStatus, WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type {
+  WorkspaceIndexLayerReadinessReport,
+  WorkspaceIndexTaskStatus,
+  WorkspaceViewModel,
+} from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { createWorkspaceIndexStore } from "@/features/workspace/workspace-index-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
@@ -24,6 +29,7 @@ export type AppShellDerivedStateOptions = {
   workspaceIndex: WorkspaceIndexStore;
   workspaceIndexState: WorkspaceIndexState;
   workspaceIndexTaskStatuses: WorkspaceIndexTaskStatus[];
+  layerReadiness?: WorkspaceIndexLayerReadinessReport | null;
   quickOpenQuery: string;
   recentFiles: string[];
   recentProjects: string[];
@@ -39,6 +45,7 @@ export function getAppShellDerivedState({
   workspaceIndex,
   workspaceIndexState,
   workspaceIndexTaskStatuses,
+  layerReadiness = null,
   quickOpenQuery,
   recentFiles,
   recentProjects,
@@ -70,7 +77,7 @@ export function getAppShellDerivedState({
         && (workspace.scanSummary.truncated || workspace.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD),
     ),
     workspaceScanText: getWorkspaceScanText(workspace),
-    workspaceIndexText: getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
+    workspaceIndexText: getLayerReadinessStatusText(layerReadiness) ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
     sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),
     workspacePartialNotice: searchEverywhereTruncationNotice
       ?? queryReadinessNotice

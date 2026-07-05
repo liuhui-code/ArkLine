@@ -6,6 +6,7 @@ import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/work
 import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
+  WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-index-api-types";
 
@@ -14,11 +15,13 @@ describe("useIndexDiagnosticsController", () => {
     const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
     const getWorkspaceIndexTaskStatuses = vi.fn(async () => [taskStatus({ taskId: "task-1" })]);
     const getWorkspaceIndexFileReadiness = vi.fn(async () => readiness());
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
     const { result } = renderHook(() => useIndexDiagnosticsController(options({
       workspaceApi: workspaceApi({
         inspectWorkspaceIndex,
         getWorkspaceIndexTaskStatuses,
         getWorkspaceIndexFileReadiness,
+        getWorkspaceIndexLayerReadiness,
       }),
     })));
 
@@ -32,7 +35,9 @@ describe("useIndexDiagnosticsController", () => {
     expect(result.current.indexDiagnostics?.fileCount).toBe(12);
     expect(result.current.workspaceIndexTaskStatuses).toHaveLength(1);
     expect(result.current.currentFileReadiness?.definitionAvailable).toBe(true);
+    expect(result.current.layerReadiness?.layers).toHaveLength(2);
     expect(inspectWorkspaceIndex).toHaveBeenCalledWith("/workspace");
+    expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Entry.ets");
   });
 
   it("records explain miss details for the explain panel", async () => {
@@ -78,6 +83,107 @@ describe("useIndexDiagnosticsController", () => {
     expect(submitWorkspaceSdkIndex).toHaveBeenCalledWith("/workspace", "/sdk", "settings");
     expect(result.current.workspaceIndexTaskStatuses).toEqual([ready]);
     expect(onStatusChange).toHaveBeenCalledWith("SDK API index queued...");
+  });
+
+  it("refreshes layer readiness after terminal index task updates", async () => {
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness }),
+    })));
+
+    await act(async () => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        kind: "refresh-workspace",
+        status: "ready",
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Entry.ets");
+    expect(result.current.layerReadiness?.layers).toHaveLength(2);
+  });
+
+  it("refreshes layer readiness after terminal task status snapshots", async () => {
+    const getWorkspaceIndexTaskStatuses = vi.fn(async () => [
+      taskStatus({ kind: "refresh-workspace", status: "ready" }),
+    ]);
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        getWorkspaceIndexTaskStatuses,
+        getWorkspaceIndexLayerReadiness,
+      }),
+    })));
+
+    await act(async () => {
+      await result.current.refreshWorkspaceIndexTaskStatuses();
+      await Promise.resolve();
+    });
+
+    expect(getWorkspaceIndexTaskStatuses).toHaveBeenCalledWith("/workspace");
+    expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Entry.ets");
+    expect(result.current.layerReadiness?.layers).toHaveLength(2);
+  });
+
+  it("refreshes existing layer readiness when the active file changes", async () => {
+    const getWorkspaceIndexLayerReadiness = vi.fn(async (_rootPath: string, currentFilePath?: string | null) => (
+      layerReadiness(currentFilePath)
+    ));
+    const { result, rerender } = renderHook(
+      ({ activePath }) => useIndexDiagnosticsController(options({
+        activePath,
+        workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness }),
+      })),
+      { initialProps: { activePath: "/workspace/Entry.ets" } },
+    );
+
+    await act(async () => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        kind: "refresh-workspace",
+        status: "ready",
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    getWorkspaceIndexLayerReadiness.mockClear();
+    await act(async () => {
+      rerender({ activePath: "/workspace/Other.ets" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Other.ets");
+    expect(result.current.layerReadiness?.currentFilePath).toBe("/workspace/Other.ets");
+  });
+
+  it("clears layer readiness when the workspace is cleared", async () => {
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const { result, rerender } = renderHook(
+      ({ workspace }) => useIndexDiagnosticsController(options({
+        workspace,
+        workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness }),
+      })),
+      { initialProps: { workspace: workspace() as WorkspaceViewModel | null } },
+    );
+
+    await act(async () => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        kind: "refresh-workspace",
+        status: "ready",
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.layerReadiness?.rootPath).toBe("/workspace");
+
+    await act(async () => {
+      rerender({ workspace: null });
+      await Promise.resolve();
+    });
+
+    expect(result.current.layerReadiness).toBeNull();
   });
 });
 
@@ -141,6 +247,10 @@ function diagnostics(): WorkspaceIndexDiagnostics {
     parserErrorCount: 0,
     staleGenerationCount: 0,
     sdkSymbolCount: 0,
+    discoveryStatus: null,
+    discoveredFileCount: 0,
+    discoveryExcludedCount: 0,
+    discoveryHasMore: false,
     dbSizeBytes: 2048,
     queuePressure: {
       rootPath: "/workspace",
@@ -180,6 +290,35 @@ function readiness(): WorkspaceIndexFileReadiness {
   };
 }
 
+function layerReadiness(currentFilePath: string | null | undefined = "/workspace/Entry.ets"): WorkspaceIndexLayerReadinessReport {
+  return {
+    rootPath: "/workspace",
+    currentFilePath: currentFilePath ?? null,
+    layers: [
+      {
+        layer: "fileCatalog",
+        workspaceStatus: "ready",
+        currentFileStatus: "ready",
+        indexedCount: 12,
+        failedCount: 0,
+        staleCount: 0,
+        reason: null,
+        recommendedAction: null,
+      },
+      {
+        layer: "symbols",
+        workspaceStatus: "partial",
+        currentFileStatus: "missing",
+        indexedCount: 8,
+        failedCount: 1,
+        staleCount: 3,
+        reason: "Current file symbols are not ready.",
+        recommendedAction: "indexCurrentFile",
+      },
+    ],
+  };
+}
+
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {
   return {
     taskId: "task",
@@ -215,5 +354,6 @@ function settings(harmonySdkPath: string): AppSettings {
       letterSpacing: 0,
     },
     recentProjects: [],
+    workspaceSessions: {},
   };
 }

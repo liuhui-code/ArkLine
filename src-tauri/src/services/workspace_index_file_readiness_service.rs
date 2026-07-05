@@ -30,13 +30,28 @@ pub fn get_workspace_index_file_readiness(
         &root_key,
         &path_key,
     )?;
-    let symbol_ready = has_row(
+    let declaration_ready = has_row(
         &connection,
         "workspace_symbol_entities",
         "root_path = ?1 and path = ?2",
         &root_key,
         &path_key,
     )?;
+    let reference_ready = has_row(
+        &connection,
+        "workspace_symbol_references",
+        "root_path = ?1 and path = ?2",
+        &root_key,
+        &path_key,
+    )?;
+    let stub_ready = has_row(
+        &connection,
+        "workspace_stub_files",
+        "root_path = ?1 and path = ?2",
+        &root_key,
+        &path_key,
+    )?;
+    let symbol_ready = declaration_ready || reference_ready || stub_ready;
     let parser_error = parser_error_for_path(&connection, &root_key, &path_key)?;
     let indexed_generation = indexed_generation_for_path(&connection, &root_key, &path_key)?;
     let parser_status = if parser_error.is_some() {

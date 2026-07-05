@@ -1,4 +1,5 @@
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
+import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -6,7 +7,7 @@ import type {
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
-import { useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent } from "react";
 
 type SearchEverywherePanelProps = {
   mode: SearchEverywhereMode;
@@ -73,6 +74,20 @@ export function SearchEverywherePanel({
   const candidateGroups = groupSearchCandidates(candidates);
   const resultsLabel = `${presentation.title} Results`;
   const resultCount = mode === "searchEverywhere" ? candidates.length : result.matches.length;
+  const pointerOpenRef = useRef(0);
+  const resultRefs = useRef(new Map<number, HTMLButtonElement>());
+
+  useEffect(() => {
+    const selectedResult = resultRefs.current.get(selectedIndex);
+    if (selectedResult && typeof selectedResult.scrollIntoView === "function") {
+      selectedResult.scrollIntoView({ block: "center" });
+    }
+  }, [mode, resultCount, selectedIndex]);
+
+  function registerResultRef(index: number, node: HTMLButtonElement | null) {
+    if (node) resultRefs.current.set(index, node);
+    else resultRefs.current.delete(index);
+  }
 
   function handlePanelKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowDown" && resultCount > 0) {
@@ -152,6 +167,14 @@ export function SearchEverywherePanel({
         },
       ],
     });
+  }
+
+  function openByMouseDown(event: ReactMouseEvent<HTMLButtonElement>, index: number, open: () => void) {
+    if (event.button !== 0) return;
+    event.preventDefault(); event.stopPropagation(); pointerOpenRef.current = Date.now(); onSelectResult(index); open();
+  }
+  function openByClick(event: ReactMouseEvent<HTMLButtonElement>, index: number, open: () => void) {
+    event.stopPropagation(); if (Date.now() - pointerOpenRef.current < 500) return; onSelectResult(index); open();
   }
 
   return (
@@ -257,20 +280,18 @@ export function SearchEverywherePanel({
                 </div>
                 <div className="search-result-group__matches">
                   {group.items.map(({ item, index }) => (
-                    <button
+                    <SearchCandidateResultItem
                       key={item.id}
-                      type="button"
-                      className={`search-result search-result--match${index === selectedIndex ? " search-result--selected" : ""}`}
-                      aria-label={`${item.source} ${item.title} ${item.subtitle}`}
-                      aria-selected={index === selectedIndex}
-                      onMouseEnter={() => onSelectResult(index)}
+                      item={item}
+                      index={index}
+                      selected={index === selectedIndex}
+                      query={query}
+                      resultRef={(node) => registerResultRef(index, node)}
+                      onSelect={onSelectResult}
+                      onMouseDown={(event) => openByMouseDown(event, index, () => onOpenCandidate(item))}
+                      onClick={(event) => openByClick(event, index, () => onOpenCandidate(item))}
                       onContextMenu={(event) => openCandidateContextMenu(event, item, index)}
-                      onClick={() => onOpenCandidate(item)}
-                    >
-                      <span className="search-result__location">{candidateLocation(item)}</span>
-                      <span className="search-result__preview">{item.title}</span>
-                      <span className="search-result__meta">{item.subtitle}</span>
-                    </button>
+                    />
                   ))}
                 </div>
               </section>
@@ -290,29 +311,24 @@ export function SearchEverywherePanel({
                   <span className="search-result-group__file">{group.fileName}</span>
                   <span className="search-result-group__path">{group.relativePath}</span>
                 </div>
-                <span className="search-result-group__count">{group.matches.length}</span>
+                <span className="search-result-group__count">
+                  {group.matches.length} {group.matches.length === 1 ? "match" : "matches"}
+                </span>
               </div>
               <div className="search-result-group__matches">
                 {group.matches.map(({ item, index }) => (
-                  <button
+                  <TextSearchResultItem
                     key={`${item.path}:${item.line}:${item.column}`}
-                    type="button"
-                    className={`search-result search-result--match${index === selectedIndex ? " search-result--selected" : ""}`}
-                    aria-label={`${item.relativePath}:${item.line}:${item.column} ${item.summary}`}
-                    aria-selected={index === selectedIndex}
-                    onMouseEnter={() => onSelectResult(index)}
+                    item={item}
+                    index={index}
+                    selected={index === selectedIndex}
+                    query={query}
+                    resultRef={(node) => registerResultRef(index, node)}
+                    onSelect={onSelectResult}
+                    onMouseDown={(event) => openByMouseDown(event, index, () => onOpenResult(item))}
+                    onClick={(event) => openByClick(event, index, () => onOpenResult(item))}
                     onContextMenu={(event) => openTextResultContextMenu(event, item, index)}
-                    onClick={() => onOpenResult(item)}
-                  >
-                    <span className="search-result__hit">
-                      <span className="search-result__location">{item.line}:{item.column}</span>
-                      <span className="search-result__preview">{item.summary}</span>
-                    </span>
-                    <span className="search-result__file-context">
-                      <span className="search-result__file-name">{item.fileName}</span>
-                      <span className="search-result__absolute-path">{item.path}</span>
-                    </span>
-                  </button>
+                  />
                 ))}
               </div>
             </section>
@@ -418,14 +434,6 @@ function candidateGroupDescription(source: SearchCandidate["source"]) {
   if (source === "api") return "SDK and system APIs";
   if (source === "sdk") return "SDK declarations";
   return "content matches";
-}
-
-function candidateLocation(candidate: SearchCandidate) {
-  if (candidate.line && candidate.column) {
-    return `${candidate.line}:${candidate.column}`;
-  }
-
-  return candidate.kind;
 }
 
 function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; content: string | null }) {

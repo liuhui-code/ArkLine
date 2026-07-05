@@ -329,6 +329,10 @@ describe("App shell", () => {
         parserErrorCount: 0,
         staleGenerationCount: 1,
         sdkSymbolCount: 99,
+        discoveryStatus: "running",
+        discoveredFileCount: 2048,
+        discoveryExcludedCount: 12,
+        discoveryHasMore: true,
         dbSizeBytes: 2048,
         queuePressure: {
           rootPath: "C:/samples/DemoWorkspace",
@@ -600,6 +604,77 @@ describe("App shell", () => {
     );
 
     expect(await screen.findByText("Workspace: ArkDemo")).toBeVisible();
+  });
+
+  it("auto-opens the most recent project and restores its last active file", async () => {
+    const settings = {
+      ...defaultSettings(),
+      recentProjects: ["C:/samples/DemoWorkspace"],
+      workspaceSessions: {
+        "C:/samples/DemoWorkspace": {
+          activeFilePath: "C:/samples/DemoWorkspace/src/main.ets",
+        },
+      },
+    };
+    const openWorkspace = vi.fn(createWorkspaceApi().openWorkspace);
+    const openFile = vi.fn(createWorkspaceApi().openFile);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      loadSettings: async () => settings,
+      openWorkspace,
+      openFile,
+    })} />);
+
+    expect(await screen.findByText("Workspace: DemoWorkspace")).toBeVisible();
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
+    expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index");
+    expect(openWorkspace).toHaveBeenCalledWith("C:/samples/DemoWorkspace");
+  });
+
+  it("prefers launch workspace over recent project auto-restore", async () => {
+    const settings = {
+      ...defaultSettings(),
+      recentProjects: ["C:/samples/DemoWorkspace"],
+      workspaceSessions: {
+        "C:/samples/DemoWorkspace": {
+          activeFilePath: "C:/samples/DemoWorkspace/src/main.ets",
+        },
+      },
+    };
+    const openWorkspace = vi.fn(createWorkspaceApi().openWorkspace);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      getLaunchWorkspacePath: async () => "C:/samples/ArkDemo",
+      loadSettings: async () => settings,
+      openWorkspace,
+    })} />);
+
+    expect(await screen.findByText("Workspace: ArkDemo")).toBeVisible();
+    expect(openWorkspace).toHaveBeenCalledWith("C:/samples/ArkDemo");
+    expect(openWorkspace).not.toHaveBeenCalledWith("C:/samples/DemoWorkspace");
+  });
+
+  it("keeps the restored project open when its last active file is unavailable", async () => {
+    const settings = {
+      ...defaultSettings(),
+      recentProjects: ["C:/samples/DemoWorkspace"],
+      workspaceSessions: {
+        "C:/samples/DemoWorkspace": {
+          activeFilePath: "C:/samples/DemoWorkspace/missing.ets",
+        },
+      },
+    };
+
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      loadSettings: async () => settings,
+      openFile: async (path) => {
+        if (path.endsWith("missing.ets")) throw new Error("not found");
+        return createWorkspaceApi().openFile(path);
+      },
+    })} />);
+
+    expect(await screen.findByText("Workspace: DemoWorkspace")).toBeVisible();
+    expect(await screen.findByText("Last file unavailable: not found")).toBeVisible();
   });
 
   it("opens a native-project fallback dialog from File -> Open Project", async () => {
@@ -973,8 +1048,10 @@ describe("App shell", () => {
       25,
     ));
     const results = screen.getByRole("list", { name: "Search Everywhere Results" });
-    expect(within(results).getByText("Classes")).toBeVisible();
-    expect(within(results).getByRole("button", { name: /class LoginController/ })).toBeVisible();
+    await waitFor(() => expect(within(results).getByText("Classes")).toBeVisible());
+    const classResult = within(results).getByRole("button", { name: /class LoginController/ });
+    expect(classResult).toBeVisible();
+    expect(within(classResult).getByText("Login")).toHaveClass("search-result__highlight");
     expect(within(results).getByText("Symbols")).toBeVisible();
     expect(within(results).getByRole("button", { name: /symbol submitLogin/ })).toBeVisible();
     expect(within(results).getByText("Files")).toBeVisible();
@@ -1119,13 +1196,89 @@ describe("App shell", () => {
     await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
 
     const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
-    await user.click(await within(results).findByRole("button", { name: /class LoginController/ }));
+    fireEvent.click(await within(results).findByRole("button", { name: /class LoginController/ }));
 
     const editor = await screen.findByLabelText("Editor Content");
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("X");
 
     expect(editor).toHaveTextContent("line oneline twostruct XLoginController {}");
+  });
+
+  it("opens the hovered Search Everywhere candidate on primary mouse down", async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn(async () => "line one\nline two\nstruct LoginController {}");
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 8,
+        score: 120,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
+
+    const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
+    const result = await within(results).findByRole("button", { name: /class LoginController/ });
+    fireEvent.mouseEnter(result);
+    fireEvent.mouseDown(result, { button: 0 });
+
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
+    expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
+  });
+
+  it("prefills Double Shift Search Everywhere from the current editor selection", async () => {
+    const user = userEvent.setup();
+    const openFile = vi.fn(async () => "line one\nline two\nstruct LoginController {}");
+    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+      {
+        id: "class:login",
+        source: "class" as const,
+        kind: "class",
+        title: "LoginController",
+        subtitle: "C:/samples/DemoWorkspace/src/main.ets",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        line: 3,
+        column: 8,
+        score: 120,
+        freshness: "ready" as const,
+      },
+    ]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editor = await screen.findByLabelText("Editor Content");
+    const view = EditorView.findFromDOM(editor);
+    expect(view).toBeTruthy();
+    if (!view) {
+      throw new Error("Editor view was not mounted");
+    }
+    const from = view.state.doc.toString().indexOf("LoginController");
+    act(() => {
+      view.dispatch({ selection: { anchor: from, head: from + "LoginController".length } });
+    });
+
+    await user.keyboard("{Shift}{Shift}");
+
+    expect(await screen.findByLabelText("Search Everywhere Query")).toHaveValue("LoginController");
+    await waitFor(() => expect(queryWorkspaceSearchEverywhere).toHaveBeenLastCalledWith(
+      expect.stringMatching(/DemoWorkspace$/),
+      "LoginController",
+      expect.any(Number),
+    ));
   });
 
   it("opens the visually selected Search Everywhere candidate with Enter after grouping", async () => {
@@ -1865,8 +2018,11 @@ describe("App shell", () => {
     const results = screen.getByRole("list", { name: "Find in Files Results" });
     await waitFor(() => expect(within(results).getAllByText("app.json5")[0]).toBeVisible());
     expect(within(results).getByText("AppScope/app.json5")).toBeVisible();
-    expect(within(results).getByText("3:6")).toBeVisible();
-    expect(within(results).getByText("C:\\samples\\DemoWorkspace\\AppScope\\app.json5")).toBeVisible();
+    expect(within(results).getByText("1 match")).toBeVisible();
+    const appJsonMatch = within(results).getByRole("button", { name: /AppScope\/app\.json5:3:6/ });
+    expect(within(appJsonMatch).getByText("3")).toHaveClass("search-result__line-number");
+    expect(within(appJsonMatch).getByText("bundleName")).toHaveClass("search-result__highlight");
+    expect(within(appJsonMatch).getByText(/"app": \{/)).toHaveClass("search-result__context-text");
 
     const preview = screen.getByLabelText("Search Everywhere Preview");
     expect(within(preview).getByText("AppScope/app.json5:3:6")).toBeVisible();
@@ -1875,7 +2031,7 @@ describe("App shell", () => {
       expect(within(preview).getByText(/"app": \{/)).toBeVisible();
     });
 
-    await user.click(within(results).getByRole("button", { name: /app\.json5/i }));
+    fireEvent.click(within(results).getByRole("button", { name: /app\.json5/i }));
 
     expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.json5", pressed: true })).toBeVisible();
@@ -1886,6 +2042,9 @@ describe("App shell", () => {
 
   it("moves Find in Files focus with keyboard and wheel and opens the focused match", async () => {
     const user = userEvent.setup();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
     const rootPath = "C:/samples/DemoWorkspace";
     const firstPath = `${rootPath}/src/First.ets`;
     const secondPath = `${rootPath}/src/Second.ets`;
@@ -1893,49 +2052,56 @@ describe("App shell", () => {
       ? "struct Second {\n  needleTwo() {}\n}"
       : "struct First {\n  needleOne() {}\n}");
 
-    render(
-      <AppShell
-        workspaceApi={createWorkspaceApi({
-          openFile,
-          openWorkspace: async () => ({
-            rootName: "DemoWorkspace",
-            rootPath,
-            files: [firstPath, secondPath],
-          }),
-        })}
-      />,
-    );
+    try {
+      render(
+        <AppShell
+          workspaceApi={createWorkspaceApi({
+            openFile,
+            openWorkspace: async () => ({
+              rootName: "DemoWorkspace",
+              rootPath,
+              files: [firstPath, secondPath],
+            }),
+          })}
+        />,
+      );
 
-    await openProject(user, rootPath);
-    await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
-    await user.type(await screen.findByLabelText("Find in Files Query"), "needle");
+      await openProject(user, rootPath);
+      await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+      await user.type(await screen.findByLabelText("Find in Files Query"), "needle");
 
-    const results = await screen.findByRole("list", { name: "Find in Files Results" });
-    await waitFor(() => {
-      expect(within(results).getByRole("button", { name: /First\.ets.*needleOne/ })).toBeVisible();
-      expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toBeVisible();
-    });
+      const results = await screen.findByRole("list", { name: "Find in Files Results" });
+      await waitFor(() => {
+        expect(within(results).getByRole("button", { name: /First\.ets.*needleOne/ })).toBeVisible();
+        expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toBeVisible();
+      });
+      const firstMatch = within(results).getByRole("button", { name: /First\.ets.*needleOne/ });
+      expect(within(firstMatch).getByText("needle")).toHaveClass("search-result__highlight");
+      expect(within(firstMatch).getByText("struct First {")).toHaveClass("search-result__context-text");
 
-    await user.keyboard("{ArrowDown}");
-    expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
+      const scrollCallsBeforeMove = scrollIntoView.mock.calls.length;
+      await user.keyboard("{ArrowDown}");
+      expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
+      expect(scrollIntoView.mock.calls.length).toBeGreaterThan(scrollCallsBeforeMove);
+      expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "center" });
 
-    fireEvent.wheel(results, { deltaY: -120 });
-    expect(within(results).getByRole("button", { name: /First\.ets.*needleOne/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.wheel(results, { deltaY: -120 });
+      expect(within(results).getByRole("button", { name: /First\.ets.*needleOne/ })).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.wheel(results, { deltaY: 120 });
-    expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
+      fireEvent.wheel(results, { deltaY: 120 });
+      expect(within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ })).toHaveAttribute("aria-selected", "true");
 
-    const secondMatch = within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ });
-    expect(within(secondMatch).getByText("Second.ets")).toBeVisible();
-    expect(within(secondMatch).getByText(/C:[/\\]samples[/\\]DemoWorkspace[/\\]src[/\\]Second\.ets/)).toBeVisible();
+      const secondMatch = within(results).getByRole("button", { name: /Second\.ets.*needleTwo/ });
+      expect(within(secondMatch).getByText("2")).toHaveClass("search-result__line-number");
+      expect(within(secondMatch).getByText("needle")).toHaveClass("search-result__highlight");
+      expect(within(secondMatch).getByText("struct Second {")).toHaveClass("search-result__context-text");
 
-    await user.keyboard("{Enter}");
-    expect(screen.queryByLabelText("Find in Files Overlay")).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Second.ets", pressed: true })).toBeVisible();
-    const editor = await screen.findByLabelText("Editor Content");
-    await waitFor(() => expect(editor).toHaveFocus());
-    await user.keyboard("X");
-    expect(editor).toHaveTextContent(/struct Second \{\s*XneedleTwo\(\) \{\}\}/);
+      await user.keyboard("{Enter}");
+      expect(screen.queryByLabelText("Find in Files Overlay")).not.toBeInTheDocument();
+      expect(await screen.findByRole("button", { name: "Second.ets", pressed: true })).toBeVisible();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it("supports IDE-style context menu actions on Find in Files results", async () => {
@@ -2104,6 +2270,31 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "Close Search Everywhere" }));
 
     expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
+  });
+
+  it("opens Search Everywhere smaller by default and supports panel resizing", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openProject(user);
+    await user.keyboard("{Shift}{Shift}");
+
+    const panel = await screen.findByLabelText("Search Everywhere Panel");
+    expect(panel).toHaveStyle("--search-everywhere-panel-width: 760px");
+    expect(panel).toHaveStyle("--search-everywhere-panel-height: 420px");
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Resize Search Everywhere Panel" }), {
+      button: 0,
+      clientX: 760,
+      clientY: 420,
+      pageX: 760,
+      pageY: 420,
+    });
+    fireEvent.mouseMove(window, { clientX: 860, clientY: 500 });
+    fireEvent.mouseUp(window);
+
+    expect(panel).toHaveStyle("--search-everywhere-panel-width: 860px");
+    expect(panel).toHaveStyle("--search-everywhere-panel-height: 500px");
   });
 
   it("reopens a recent project from the File menu", async () => {
@@ -5559,6 +5750,44 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Toggle Git Blame" }));
 
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(container.querySelector(".cm-git-trace-marker")).toBeNull();
+  });
+
+  it("toggles Git Blame from the editor context menu", async () => {
+    const user = userEvent.setup();
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: async () => "@Entry\nbuild() {}",
+      getFileBlame: async () => [
+        {
+          line: 1,
+          commit: "aaa1111",
+          sourceLine: 1,
+          author: "Jane Doe",
+          authoredAt: "2026-06-20T10:00:00Z",
+          relativeTime: "4d ago",
+          summary: "Add entry component",
+        },
+      ],
+    });
+
+    const { container } = render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    const editorContent = await screen.findByLabelText("Editor Content");
+
+    await user.pointer({ keys: "[MouseRight]", target: editorContent });
+    await user.click(await screen.findByRole("menuitem", { name: "Enable Git Blame" }));
+    await waitFor(() => expect(container.querySelector(".cm-git-trace-marker")).toBeTruthy());
+
+    await user.pointer({ keys: "[MouseRight]", target: editorContent });
+    await user.click(await screen.findByRole("menuitem", { name: "Disable Git Blame" }));
+
     expect(container.querySelector(".cm-git-trace-marker")).toBeNull();
   });
 

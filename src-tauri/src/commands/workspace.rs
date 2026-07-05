@@ -318,42 +318,6 @@ pub fn update_workspace_index_files(
 }
 
 #[tauri::command]
-pub fn schedule_foreground_completion_index(
-    root_path: String,
-    changed_paths: Vec<String>,
-    app_handle: AppHandle,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
-) -> Result<(), String> {
-    schedule_foreground_completion_index_through_manager(
-        &index_manager,
-        &root_path,
-        &changed_paths,
-    )?;
-    let app_handle = app_handle.clone();
-    index_manager.start_background_worker(index_runtime.inner().clone(), move |status| {
-        let _ = app_handle.emit("workspace-index-task-updated", status);
-    })?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn schedule_visible_files_index(
-    root_path: String,
-    changed_paths: Vec<String>,
-    app_handle: AppHandle,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
-) -> Result<(), String> {
-    schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)?;
-    let app_handle = app_handle.clone();
-    index_manager.start_background_worker(index_runtime.inner().clone(), move |status| {
-        let _ = app_handle.emit("workspace-index-task-updated", status);
-    })?;
-    Ok(())
-}
-
-#[tauri::command]
 pub fn refresh_workspace_index(
     root_path: String,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
@@ -470,22 +434,6 @@ where
         .ok_or_else(|| "SDK index task was not queued".to_string())?;
     index_manager.start_background_worker(index_runtime, on_status)?;
     Ok(queued)
-}
-
-pub(super) fn schedule_foreground_completion_index_through_manager(
-    index_manager: &WorkspaceIndexManagerRuntime,
-    root_path: &str,
-    changed_paths: &[String],
-) -> Result<(), String> {
-    index_manager.schedule_foreground_completion_index(root_path, changed_paths)
-}
-
-pub(super) fn schedule_visible_files_index_through_manager(
-    index_manager: &WorkspaceIndexManagerRuntime,
-    root_path: &str,
-    changed_paths: &[String],
-) -> Result<(), String> {
-    index_manager.schedule_visible_files_index(root_path, changed_paths)
 }
 
 fn emit_workspace_index_task_statuses(

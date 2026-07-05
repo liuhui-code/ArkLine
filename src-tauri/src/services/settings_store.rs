@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -36,6 +37,13 @@ pub struct ValidationSettings {
     pub timeout_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSessionSettings {
+    #[serde(default)]
+    pub active_file_path: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -45,6 +53,8 @@ pub struct AppSettings {
     pub validation: ValidationSettings,
     #[serde(default)]
     pub recent_projects: Vec<String>,
+    #[serde(default)]
+    pub workspace_sessions: HashMap<String, WorkspaceSessionSettings>,
 }
 
 fn default_auto_detect() -> bool {
@@ -76,6 +86,7 @@ pub fn default_settings() -> AppSettings {
             timeout_ms: 5_000,
         },
         recent_projects: Vec::new(),
+        workspace_sessions: HashMap::new(),
     }
 }
 
