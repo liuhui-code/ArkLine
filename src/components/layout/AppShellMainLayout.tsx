@@ -32,7 +32,6 @@ type AppShellMainLayoutProps = {
     onOpenCommandPalette: () => void;
     onRunLint: () => void;
     onRunBuild: () => void;
-    onFormat: () => void;
     onLoadDiff: () => void;
     onOpenTerminal: () => void;
     onOpenSettings: () => void;

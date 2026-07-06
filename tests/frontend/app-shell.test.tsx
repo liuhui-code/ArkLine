@@ -157,7 +157,7 @@ describe("App shell", () => {
     expect(within(header).getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "View" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Run Lint" })).toBeInTheDocument();
-    expect(within(header).getByRole("button", { name: "Format" })).toBeInTheDocument();
+    expect(within(header).queryByRole("button", { name: "Format" })).not.toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Terminal" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Problems" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Git" })).toBeInTheDocument();
@@ -6081,7 +6081,7 @@ describe("App shell", () => {
     expect(getFileBlame).toHaveBeenCalledTimes(1);
   });
 
-  it("formats the active document from the top bar", async () => {
+  it("formats the active document from the keyboard shortcut", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -6124,7 +6124,7 @@ describe("App shell", () => {
     await user.click(within(header).getByRole("button", { name: "Run Lint" }));
     expect(await screen.findByText("Replace tabs with spaces")).toBeVisible();
 
-    await user.click(within(header).getByRole("button", { name: "Format" }));
+    await user.keyboard("{Control>}{Alt>}l{/Alt}{/Control}");
 
     expect(screen.queryByText("Replace tabs with spaces")).not.toBeInTheDocument();
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("@Component");

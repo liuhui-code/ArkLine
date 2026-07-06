@@ -369,6 +369,7 @@ pub struct WorkspaceIndexFileReadiness {
     pub root_path: String,
     pub path: String,
     pub file_name: String,
+    pub discovery_index: String,
     pub file_index: String,
     pub content_index: String,
     pub symbol_index: String,

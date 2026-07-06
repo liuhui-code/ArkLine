@@ -1,6 +1,7 @@
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::services::process_command_service::hidden_command;
 
 use super::config::SemanticHostConfig;
 
@@ -72,7 +73,7 @@ fn resolve_node_path(configured: Option<&str>, platform: &str) -> Result<PathBuf
     } else {
         "which"
     };
-    let output = Command::new(lookup_command)
+    let output = hidden_command(lookup_command)
         .arg("node")
         .output()
         .map_err(|error| {

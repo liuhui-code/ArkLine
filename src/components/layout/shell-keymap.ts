@@ -29,6 +29,7 @@ export type ShellCommand =
   | "generateCode"
   | "refactorThis"
   | "openCompletion"
+  | "formatDocument"
   | "save";
 
 export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
@@ -46,6 +47,7 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "save", title: "Save", category: "File", defaultKeybindings: [{ mod: true, key: "s" }] },
   { id: "goToDefinition", title: "Go to Definition", category: "Navigation", defaultKeybindings: [{ mod: true, key: "b" }] },
   { id: "openCompletion", title: "Code Completion", category: "Editor", defaultKeybindings: [{ mod: true, key: "Space" }] },
+  { id: "formatDocument", title: "Format Document", category: "Editor", defaultKeybindings: [{ mod: true, alt: true, key: "l" }], when: editorCommandAvailable },
   { id: "openQuickOpen", title: "Quick Open", category: "Navigation", defaultKeybindings: [{ mod: true, key: "p" }] },
   { id: "openFindInFiles", title: "Find in Files", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "f" }] },
   { id: "openReplaceInFiles", title: "Replace in Files", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "r" }] },

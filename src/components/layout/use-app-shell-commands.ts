@@ -104,6 +104,7 @@ export function useAppShellCommands({
         renameSymbol: actions.renameSymbol,
         generateCode: actions.generateCode,
         refactorThis: actions.refactorThis,
+        formatDocument: actions.formatActiveDocument,
         save: actions.save,
       };
       void handlers[command]?.();

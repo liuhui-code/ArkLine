@@ -175,6 +175,10 @@ mod tests {
     use crate::services::workspace_content_index_service::index_workspace_content;
     use crate::services::workspace_file_fingerprint_service::update_file_fingerprints;
     use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
+    use crate::services::workspace_index_performance_gate_service::{
+        evaluate_deep_layer_performance, samples_from_stub_profile,
+        WorkspaceIndexPerfGateThresholds,
+    };
     use crate::services::workspace_index_persistence_service::persist_catalog_cache;
     use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
     use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -287,6 +291,10 @@ mod tests {
         let stub_profile =
             profile_replace_all_stub_rows(&transaction, &root_path, &state.file_paths, 2).unwrap();
         transaction.commit().unwrap();
+        let gate_report = evaluate_deep_layer_performance(
+            samples_from_stub_profile("generated", 0, state.file_paths.len(), &stub_profile),
+            WorkspaceIndexPerfGateThresholds::default(),
+        );
 
         let fingerprint_start = Instant::now();
         update_file_fingerprints(&snapshot.root_path, &state.file_paths, 1).unwrap();
@@ -300,6 +308,9 @@ mod tests {
             stub_profile.resolve_duration,
             stub_profile.reference_duration
         );
+        eprintln!("Large fixture deep-layer gate report: {gate_report:#?}");
+        assert_eq!(gate_report.sample_count, 6);
+        assert!(gate_report.slowest_stage.is_some());
 
         fs::remove_dir_all(root).unwrap();
     }

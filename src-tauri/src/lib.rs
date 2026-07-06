@@ -19,6 +19,7 @@ mod commands {
 
 mod models {
     pub mod device_log;
+    pub mod device_log_query;
     pub mod diagnostics;
     pub mod language;
     pub mod terminal;
@@ -31,12 +32,49 @@ mod platform;
 
 mod services {
     pub mod build_configuration_store;
+    pub mod device_fault_log_service;
+    pub mod device_log_buffer_service;
+    pub mod device_log_export_service;
+    pub mod device_log_hdc_service;
+    pub mod device_log_level_summary_service;
+    pub mod device_log_metadata_service;
+    #[cfg(test)]
+    mod device_log_query_cancellation_service_tests;
+    pub mod device_log_query_deadline_service;
+    pub mod device_log_query_generation_service;
+    #[cfg(test)]
+    mod device_log_query_generation_service_tests;
+    pub mod device_log_query_limit_service;
+    pub mod device_log_query_matcher_service;
+    #[cfg(test)]
+    mod device_log_query_orphan_tests;
+    pub mod device_log_query_parser_service;
+    pub mod device_log_query_pruning_service;
+    pub mod device_log_query_response_service;
+    #[cfg(test)]
+    mod device_log_query_response_service_tests;
+    pub mod device_log_query_service;
+    #[cfg(test)]
+    mod device_log_query_service_tests;
+    pub mod device_log_query_time_service;
+    pub mod device_log_query_worker_service;
+    #[cfg(test)]
+    mod device_log_query_worker_service_tests;
+    pub mod device_log_retention_service;
+    pub mod device_log_runtime_service;
+    pub mod device_log_segment_service;
     pub mod device_log_service;
+    pub mod device_log_storage_health_service;
+    pub mod device_log_stream_error_service;
+    pub mod device_log_stream_lifecycle_service;
+    pub mod device_log_stream_service;
+    pub mod device_log_writer_worker_service;
     pub mod diff_service;
     pub mod document_service;
     pub mod environment_doctor;
     pub mod git_trace_service;
     pub mod language_service;
+    pub mod process_command_service;
     pub mod semantic;
     pub mod semantic_host;
     pub mod settings_store;
@@ -131,6 +169,7 @@ mod services {
     pub mod workspace_index_facade_event_service;
     pub mod workspace_index_facade_explain_service;
     pub mod workspace_index_facade_navigation_service;
+    pub mod workspace_index_facade_readiness_gate_service;
     pub mod workspace_index_facade_search_service;
     #[cfg(test)]
     mod workspace_index_facade_search_tests;
@@ -170,6 +209,9 @@ mod services {
     mod workspace_index_manager_service_tests;
     #[cfg(test)]
     mod workspace_index_open_service_tests;
+    pub mod workspace_index_performance_gate_service;
+    #[cfg(test)]
+    mod workspace_index_performance_gate_service_tests;
     pub mod workspace_index_persistence_service;
     #[cfg(test)]
     mod workspace_index_query_scope_service_tests;
@@ -367,6 +409,16 @@ pub fn run() {
             commands::device_log::list_device_fault_logs,
             commands::device_log::start_device_log_stream,
             commands::device_log::stop_device_log_stream,
+            commands::device_log::query_device_logs,
+            commands::device_log::export_device_logs,
+            commands::device_log::export_device_logs_to_file,
+            commands::device_log::get_device_log_stats,
+            commands::device_log::get_device_log_query_worker_stats,
+            commands::device_log::get_device_log_query_worker_events,
+            commands::device_log::get_device_log_storage_health,
+            commands::device_log::clear_device_log_storage,
+            commands::device_log::plan_device_log_retention,
+            commands::device_log::apply_device_log_retention,
             commands::windowing::open_workspace_in_new_window,
             commands::windowing::get_launch_workspace_path
         ])

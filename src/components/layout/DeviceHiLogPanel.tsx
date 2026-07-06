@@ -1,11 +1,26 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { applyDeviceLogFilter, compileDeviceLogFilter } from "@/features/device-log/device-log-filter";
-import type { DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { DeviceLogEntriesView } from "@/components/layout/DeviceLogEntriesView";
+import { DeviceLogFilterBar } from "@/components/layout/DeviceLogFilterBar";
+import { DeviceLogInspector } from "@/components/layout/DeviceLogEntryDetails";
+import { DeviceLogQueryDiagnostics } from "@/components/layout/DeviceLogQueryDiagnostics";
+import { DeviceLogStreamToolbar } from "@/components/layout/DeviceLogStreamToolbar";
+import { applyDeviceLogFilter, compileDeviceLogFilter, hasActiveDeviceLogFilter } from "@/features/device-log/device-log-filter";
+import type { DeviceLogEntry, DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
 import { createDeviceLogStore } from "@/features/device-log/device-log-store";
-import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import { useDeviceLogAutoRetry } from "@/features/device-log/use-device-log-auto-retry";
+import { useDeviceLogExport } from "@/features/device-log/use-device-log-export";
+import { useDeviceLogStorageHealth } from "@/features/device-log/use-device-log-storage-health";
+import { useDeviceLogLiveBuffer } from "@/features/device-log/use-device-log-live-buffer";
+import { useDeviceLogQueryController } from "@/features/device-log/use-device-log-query-controller";
+import { useDeviceLogQueryWorkerEvents } from "@/features/device-log/use-device-log-query-worker-events";
+import { useDeviceLogQueryWorkerStats } from "@/features/device-log/use-device-log-query-worker-stats";
+import type { DeviceLogRuntimeStats, WorkspaceApi } from "@/features/workspace/workspace-api";
 
-const VISIBLE_LOG_WINDOW_SIZE = 120;
+const QUERY_RECENT_WINDOW_MS = 60_000;
+const LIVE_VIEW_CAPACITY = 10_000;
+const LOG_ROW_HEIGHT = 26;
+const LOG_ROW_OVERSCAN = 8;
 
 const initialFilter: DeviceLogFilterState = {
   query: "",
@@ -18,9 +33,32 @@ const initialFilter: DeviceLogFilterState = {
   tag: "",
 };
 
+function createStatsPollingErrorStats(
+  streamId: string,
+  deviceId: string,
+  error: unknown,
+): DeviceLogRuntimeStats {
+  const message = error instanceof Error ? error.message : "Device log stats unavailable";
+  return {
+    streamId,
+    deviceId,
+    streamStatus: "error",
+    ingestedLines: 0,
+    persistedLines: 0,
+    droppedLines: 0,
+    pendingBatches: 0,
+    bufferBytes: 0,
+    lastWriteMs: 0,
+    slowWriteBatches: 0,
+    backpressureState: "idle",
+    lastError: message,
+  };
+}
+
 type DeviceHiLogPanelProps = {
   active: boolean;
   deviceId: string;
+  retryDelaysMs?: readonly number[];
   workspaceApi: WorkspaceApi;
   onStatusChange: (status: string) => void;
 };
@@ -28,23 +66,76 @@ type DeviceHiLogPanelProps = {
 export function DeviceHiLogPanel({
   active,
   deviceId,
+  retryDelaysMs,
   workspaceApi,
   onStatusChange,
 }: DeviceHiLogPanelProps) {
   const [streamId, setStreamId] = useState<string | null>(null);
   const [streamStatus, setStreamStatus] = useState<DeviceLogStreamStatus>("idle");
   const [filter, setFilter] = useState(initialFilter);
-  const [storeVersion, setStoreVersion] = useState(0);
-  const store = useMemo(() => createDeviceLogStore(), []);
+  const store = useMemo(() => createDeviceLogStore({ capacity: LIVE_VIEW_CAPACITY }), []);
   const currentDeviceIdRef = useRef(deviceId);
   const previousDeviceIdRef = useRef(deviceId);
   const streamIdRef = useRef<string | null>(null);
   const startRequestVersionRef = useRef(0);
-  const pendingLineBatchesRef = useRef<{ deviceId: string; lines: string[] }[]>([]);
-  const flushFrameRef = useRef<number | null>(null);
+  const entriesRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(260);
+  const [followingTail, setFollowingTail] = useState(true);
+  const [runtimeStats, setRuntimeStats] = useState<DeviceLogRuntimeStats | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<DeviceLogEntry | null>(null);
+  const {
+    appendLines,
+    entries: stateEntries,
+    livePaused,
+    pendingLiveEntries,
+    pauseLiveView: pauseBufferedLiveView,
+    refreshLiveView,
+    resetLiveView,
+    resumeLiveView: resumeBufferedLiveView,
+    storeState,
+  } = useDeviceLogLiveBuffer({ deviceId, store });
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
-  const visibleEntries = store.getState().entries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
-  const renderedEntries = visibleEntries.slice(-VISIBLE_LOG_WINDOW_SIZE);
+  const queryActive = hasActiveDeviceLogFilter(filter);
+  const backendQueryActive = queryActive && streamId != null && compiledFilter.valid && workspaceApi.queryDeviceLogs != null;
+  const query = useDeviceLogQueryController({
+    active: backendQueryActive,
+    deviceId,
+    filter,
+    onLoadedOlder: () => setFollowingTail(false),
+    streamId,
+    workspaceApi,
+  });
+  const queryEntries = query.entries;
+  const sourceEntries = queryEntries ?? (queryActive ? store.getRecentEntries(QUERY_RECENT_WINDOW_MS) : stateEntries);
+  const visibleEntries = queryEntries ?? sourceEntries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
+  const visibleCount = Math.ceil(viewportHeight / LOG_ROW_HEIGHT) + LOG_ROW_OVERSCAN * 2;
+  const scrollStartIndex = Math.max(0, Math.floor(scrollTop / LOG_ROW_HEIGHT) - LOG_ROW_OVERSCAN);
+  const tailStartIndex = Math.max(0, visibleEntries.length - visibleCount);
+  const visibleStartIndex = followingTail ? tailStartIndex : scrollStartIndex;
+  const renderedEntries = visibleEntries.slice(visibleStartIndex, visibleStartIndex + visibleCount);
+  const virtualTop = visibleStartIndex * LOG_ROW_HEIGHT;
+  const virtualHeight = visibleEntries.length * LOG_ROW_HEIGHT;
+  const {
+    canExport,
+    exportCurrentLogs,
+    exporting,
+  } = useDeviceLogExport({
+    deviceId,
+    filter,
+    filterValid: compiledFilter.valid,
+    onStatusChange,
+    streamId,
+    workspaceApi,
+  });
+  const storage = useDeviceLogStorageHealth({
+    active,
+    canClear: streamStatus !== "running" && streamStatus !== "starting" && streamStatus !== "stopping",
+    onStatusChange,
+    workspaceApi,
+  });
+  const queryWorkerStats = useDeviceLogQueryWorkerStats({ active, workspaceApi });
+  const queryWorkerEvents = useDeviceLogQueryWorkerEvents({ active, workspaceApi });
 
   useEffect(() => {
     currentDeviceIdRef.current = deviceId;
@@ -63,39 +154,24 @@ export function DeviceHiLogPanel({
       onStatusChange(error instanceof Error ? error.message : "Device log stream failed to stop");
     }
   }
+  const {
+    autoRetryExhausted,
+    autoRetryMs,
+    autoRetryPaused,
+    clearAutoRetry,
+    markHealthy,
+    pauseAutoRetry,
+    resetRetryBudget,
+    resumeAutoRetry,
+    scheduleAutoRetry,
+  } = useDeviceLogAutoRetry({
+    deviceId,
+    retryDelaysMs,
+    onExhausted: () => onStatusChange("Device log stream retry budget exhausted"),
+    onRetry: () => void startStream({ force: true, preserveRetryBudget: true }),
+  });
 
   useEffect(() => {
-    function flushPendingLines() {
-      flushFrameRef.current = null;
-      const batches = pendingLineBatchesRef.current;
-      pendingLineBatchesRef.current = [];
-      const activeDeviceBatches = batches.filter((batch) => (
-        currentDeviceIdRef.current && batch.deviceId === currentDeviceIdRef.current
-      ));
-
-      if (activeDeviceBatches.length > 0) {
-        store.appendRawLineBatches(activeDeviceBatches);
-        setStoreVersion((value) => value + 1);
-      }
-    }
-
-    function scheduleFlush() {
-      if (flushFrameRef.current != null) {
-        return;
-      }
-
-      flushFrameRef.current = window.requestAnimationFrame(flushPendingLines);
-    }
-
-    function appendLines(nextDeviceId: string, lines: string[]) {
-      if (!currentDeviceIdRef.current || nextDeviceId !== currentDeviceIdRef.current) {
-        return;
-      }
-
-      pendingLineBatchesRef.current.push({ deviceId: nextDeviceId, lines });
-      scheduleFlush();
-    }
-
     function handleTestEvent(event: Event) {
       const detail = (event as CustomEvent<{ deviceId: string; lines: string[] }>).detail;
       appendLines(detail.deviceId, detail.lines);
@@ -122,18 +198,14 @@ export function DeviceHiLogPanel({
       startRequestVersionRef.current += 1;
       const activeStreamId = streamIdRef.current;
       streamIdRef.current = null;
-      pendingLineBatchesRef.current = [];
-      if (flushFrameRef.current != null) {
-        window.cancelAnimationFrame(flushFrameRef.current);
-        flushFrameRef.current = null;
-      }
       if (activeStreamId) {
         void stopBackendStream(activeStreamId, "Device log stream stopped");
       }
+      clearAutoRetry();
       teardown();
       document.removeEventListener("arkline-device-log-lines", handleTestEvent);
     };
-  }, [onStatusChange, store, workspaceApi]);
+  }, [appendLines, clearAutoRetry, onStatusChange, workspaceApi]);
 
   useEffect(() => {
     const previousDeviceId = previousDeviceIdRef.current;
@@ -144,9 +216,11 @@ export function DeviceHiLogPanel({
     previousDeviceIdRef.current = deviceId;
     startRequestVersionRef.current += 1;
     store.clear();
-    setStoreVersion((value) => value + 1);
+    resetLiveView();
     setFilter(initialFilter);
     store.setFilter(initialFilter);
+    setRuntimeStats(null);
+    resetRetryBudget();
 
     const activeStreamId = streamIdRef.current;
     streamIdRef.current = null;
@@ -155,7 +229,7 @@ export function DeviceHiLogPanel({
     if (activeStreamId) {
       void stopBackendStream(activeStreamId, "Device log stream stopped");
     }
-  }, [deviceId, onStatusChange, store, workspaceApi]);
+  }, [deviceId, onStatusChange, resetLiveView, resetRetryBudget, store, workspaceApi]);
 
   useEffect(() => {
     if (!active && streamStatus === "running") {
@@ -163,13 +237,78 @@ export function DeviceHiLogPanel({
     }
   }, [active, onStatusChange, streamStatus]);
 
-  async function startStream() {
-    if (!deviceId || streamStatus === "running" || streamStatus === "starting") {
+  useEffect(() => {
+    if (streamStatus !== "running" || !streamId || !workspaceApi.getDeviceLogStats) {
+      return;
+    }
+    let disposed = false;
+    const refreshStats = () => {
+      void workspaceApi.getDeviceLogStats?.(streamId)
+        .then((stats) => {
+          if (!disposed) {
+            setRuntimeStats(stats);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!disposed) {
+            setRuntimeStats(createStatsPollingErrorStats(streamId, deviceId, error));
+            void workspaceApi.stopDeviceLogStream(streamId).catch(() => undefined);
+          }
+        });
+    };
+    refreshStats();
+    const timer = window.setInterval(refreshStats, 1_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [deviceId, streamId, streamStatus, workspaceApi]);
+
+  useEffect(() => {
+    if (!runtimeStats || streamStatus !== "running") {
+      return;
+    }
+    if (runtimeStats.streamStatus === "running") {
+      markHealthy();
+      return;
+    }
+    if (runtimeStats.streamStatus === "error") {
+      setStreamId(null);
+      streamIdRef.current = null;
+      setStreamStatus("error");
+      onStatusChange(runtimeStats.lastError ?? "Device log stream error");
+      scheduleAutoRetry();
+      return;
+    }
+    if (runtimeStats.streamStatus === "stopped") {
+      setStreamId(null);
+      streamIdRef.current = null;
+      setStreamStatus("idle");
+      onStatusChange("Device log stream stopped");
+    }
+  }, [markHealthy, onStatusChange, runtimeStats, scheduleAutoRetry, streamStatus]);
+
+  useEffect(() => {
+    const element = entriesRef.current;
+    if (!element || !followingTail) {
+      return;
+    }
+    element.scrollTop = element.scrollHeight;
+    setScrollTop(element.scrollTop);
+  }, [followingTail, visibleEntries.length]);
+
+  async function startStream(options?: { force?: boolean; preserveRetryBudget?: boolean }) {
+    if (
+      !deviceId
+      || (!options?.force && (streamStatus === "running" || streamStatus === "starting"))
+    ) {
       return;
     }
 
     const requestVersion = startRequestVersionRef.current;
     const requestedDeviceId = deviceId;
+    clearAutoRetry();
+    setRuntimeStats(null);
     setStreamStatus("starting");
     try {
       const stream = await workspaceApi.startDeviceLogStream({ deviceId: requestedDeviceId });
@@ -180,6 +319,9 @@ export function DeviceHiLogPanel({
       }
       setStreamId(stream.streamId);
       setStreamStatus("running");
+      if (!options?.preserveRetryBudget) {
+        markHealthy();
+      }
       onStatusChange("Device log stream running");
     } catch (error) {
       if (requestVersion !== startRequestVersionRef.current || requestedDeviceId !== currentDeviceIdRef.current) {
@@ -196,9 +338,11 @@ export function DeviceHiLogPanel({
     }
 
     setStreamStatus("stopping");
+    resetRetryBudget();
     try {
       await workspaceApi.stopDeviceLogStream(streamId);
       setStreamId(null);
+      setRuntimeStats(null);
       setStreamStatus("idle");
       onStatusChange("Device log stream stopped");
     } catch (error) {
@@ -211,79 +355,108 @@ export function DeviceHiLogPanel({
     const nextFilter = { ...filter, ...patch };
     setFilter(nextFilter);
     store.setFilter(nextFilter);
-    setStoreVersion((value) => value + 1);
+    query.reset();
+    refreshLiveView();
   }
 
-  void storeVersion;
+  function handleEntriesScroll(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    setScrollTop(element.scrollTop);
+    setViewportHeight(element.clientHeight || viewportHeight);
+    setFollowingTail(element.scrollHeight - element.scrollTop - element.clientHeight < LOG_ROW_HEIGHT * 2);
+  }
+
+  function followTail() {
+    const element = entriesRef.current;
+    if (!element) {
+      return;
+    }
+    setFollowingTail(true);
+    element.scrollTop = element.scrollHeight;
+    setScrollTop(element.scrollTop);
+  }
+
+  function pauseLiveView() {
+    pauseBufferedLiveView();
+    onStatusChange("HiLog live view paused");
+  }
+
+  function resumeLiveView() {
+    resumeBufferedLiveView();
+    setFollowingTail(true);
+    onStatusChange("HiLog live view resumed");
+  }
+
+  const liveWindowText = storeState.trimmedEntries > 0 && queryEntries == null
+    ? `${stateEntries.length.toLocaleString()} live · ${storeState.trimmedEntries.toLocaleString()} older persisted`
+    : `${sourceEntries.length.toLocaleString()} total · ${visibleEntries.length.toLocaleString()} matched`;
 
   return (
     <div className="device-log-tool-window__body">
-      <header className="device-log-tool-window__toolbar">
-        <span className="device-log-tool-window__status">{streamStatus === "running" ? "Running" : streamStatus}</span>
-        {streamStatus === "running" ? (
-          <button type="button" onClick={() => void stopStream()} aria-label="Stop Device Log Stream">
-            Stop
-          </button>
-        ) : (
-          <button type="button" onClick={() => void startStream()} aria-label="Start Device Log Stream">
-            Start
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            store.clear();
-            setStoreVersion((value) => value + 1);
-            onStatusChange("HiLog view cleared");
-          }}
-        >
-          Clear
-        </button>
-      </header>
-      <div className="device-log-tool-window__filters">
-        <input
-          aria-label="Filter device logs"
-          value={filter.query}
-          onChange={(event) => updateFilter({ query: event.target.value })}
-          placeholder="Filter logs"
-        />
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.regex}
-            onChange={(event) => updateFilter({ regex: event.target.checked })}
-          />
-          Regex
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={filter.matchCase}
-            onChange={(event) => updateFilter({ matchCase: event.target.checked })}
-          />
-          Match Case
-        </label>
-        {compiledFilter.error ? <span className="device-log-tool-window__filter-error">{compiledFilter.error}</span> : null}
-      </div>
-      <div className="device-log-tool-window__entries" role="log" aria-label="Device Log Entries">
-        {visibleEntries.length === 0 ? (
-          <p className="device-log-tool-window__empty">No log entries</p>
-        ) : (
-          <>
-            <div className="device-log-tool-window__render-stats">
-              {visibleEntries.length.toLocaleString()} total · {renderedEntries.length.toLocaleString()} rendered
-            </div>
-            {renderedEntries.map((entry) => (
-              <div key={entry.id} data-testid="device-log-entry" className={`device-log-tool-window__entry device-log-tool-window__entry--${entry.level}`}>
-                <span>{entry.timestamp ?? "--"}</span>
-                <span>{entry.level}</span>
-                <span>{entry.tag || "-"}</span>
-                <span>{entry.message}</span>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
+      <DeviceLogStreamToolbar
+        autoRetryExhausted={autoRetryExhausted}
+        autoRetryMs={autoRetryMs}
+        autoRetryPaused={autoRetryPaused}
+        livePaused={livePaused}
+        pendingLiveEntries={pendingLiveEntries}
+        queryWorkerStats={queryWorkerStats}
+        runtimeStats={runtimeStats}
+        storageHealth={storage.health}
+        streamStatus={streamStatus}
+        canExport={canExport}
+        canClearStorage={streamStatus !== "running" && streamStatus !== "starting" && streamStatus !== "stopping"}
+        applyingRetention={storage.applyingRetention}
+        clearingStorage={storage.clearing}
+        exporting={exporting}
+        onClear={() => {
+          store.clear();
+          refreshLiveView();
+          onStatusChange("HiLog view cleared");
+        }}
+        onApplyRetention={() => void storage.applyRetention()}
+        onClearStorage={() => void storage.clearStorage()}
+        onExport={() => void exportCurrentLogs()}
+        onPauseLive={pauseLiveView}
+        onPauseAutoRetry={pauseAutoRetry}
+        onResumeLive={resumeLiveView}
+        onResumeAutoRetry={resumeAutoRetry}
+        onStart={() => void startStream()}
+        onStop={() => void stopStream()}
+      />
+      <DeviceLogFilterBar
+        error={compiledFilter.error}
+        filter={filter}
+        onChange={updateFilter}
+        onClear={() => updateFilter(initialFilter)}
+      />
+      <DeviceLogQueryDiagnostics events={queryWorkerEvents} />
+      <DeviceLogEntriesView
+        entriesRef={entriesRef}
+        filter={filter}
+        followingTail={followingTail}
+        liveWindowText={liveWindowText}
+        querySummary={query.summary}
+        renderedEntries={renderedEntries}
+        selectedEntry={selectedEntry}
+        virtualHeight={virtualHeight}
+        virtualTop={virtualTop}
+        visibleEntries={visibleEntries}
+        canLoadOlder={query.canLoadOlder}
+        loadingOlder={query.loadingOlder}
+        querying={query.querying}
+        onEntrySelect={setSelectedEntry}
+        onFollowTail={followTail}
+        onLoadOlder={() => void query.loadOlder()}
+        onScroll={handleEntriesScroll}
+      />
+      <DeviceLogInspector
+        entry={selectedEntry}
+        onClose={() => setSelectedEntry(null)}
+        onFilterDomain={(domain) => updateFilter({ domain })}
+        onFilterPid={(pid) => updateFilter({ pid })}
+        onFilterTag={(tag) => updateFilter({ tag })}
+        onFilterProcess={(process) => updateFilter({ process })}
+      />
     </div>
   );
 }

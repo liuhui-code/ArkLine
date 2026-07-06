@@ -16,6 +16,13 @@ pub fn get_workspace_index_file_readiness(
     let path_key = normalize_index_path(file_path);
     let file_name = file_name(file_path);
 
+    let discovery_ready = has_row(
+        &connection,
+        "workspace_discovered_files",
+        "root_path = ?1 and path = ?2 and excluded = 0",
+        &root_key,
+        &path_key,
+    )?;
     let file_ready = has_row(
         &connection,
         "workspace_files",
@@ -70,6 +77,7 @@ pub fn get_workspace_index_file_readiness(
         root_path: root_key,
         path: path_key,
         file_name: file_name.to_string(),
+        discovery_index: layer_status(discovery_ready),
         file_index: layer_status(file_ready),
         content_index: layer_status(content_ready),
         symbol_index: layer_status(symbol_ready),
@@ -82,6 +90,7 @@ pub fn get_workspace_index_file_readiness(
         search_available,
         reason: readiness_reason(
             &file_name,
+            discovery_ready,
             file_ready,
             content_ready,
             symbol_ready,
@@ -147,6 +156,7 @@ fn layer_status(ready: bool) -> String {
 
 fn readiness_reason(
     file_name: &str,
+    discovery_ready: bool,
     file_ready: bool,
     content_ready: bool,
     symbol_ready: bool,
@@ -158,6 +168,11 @@ fn readiness_reason(
         );
     }
     if !file_ready {
+        if discovery_ready {
+            return format!(
+                "{file_name} was discovered but has not completed foreground file catalog indexing."
+            );
+        }
         return format!(
             "{file_name} is not indexed because it has not completed foreground indexing."
         );

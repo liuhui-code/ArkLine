@@ -18,7 +18,6 @@ type TopBarProps = {
   onOpenCommandPalette: () => void;
   onRunLint: () => void;
   onRunBuild: () => void;
-  onFormat: () => void;
   onLoadDiff: () => void;
   onOpenTerminal: () => void;
   onOpenSettings: () => void;
@@ -49,7 +48,6 @@ export function TopBar({
   onOpenCommandPalette,
   onRunLint,
   onRunBuild,
-  onFormat,
   onLoadDiff,
   onOpenTerminal,
   onOpenSettings,
@@ -134,7 +132,6 @@ export function TopBar({
       [
         { label: "Build", action: onRunBuild },
         { label: "Run Lint", action: onRunLint },
-        { label: "Format", action: onFormat },
       ],
     ],
   };
@@ -166,7 +163,6 @@ export function TopBar({
         <div className="toolbar" role="toolbar" aria-label="Primary">
           <button type="button" aria-label="Run Lint" className="toolbar__button" onClick={onRunLint}><span className="toolbar__icon toolbar__icon--lint" aria-hidden="true" />Run Lint</button>
           <button type="button" aria-label="Run Build" className="toolbar__button toolbar__button--primary" onClick={onRunBuild}><span className="toolbar__icon toolbar__icon--build" aria-hidden="true" />Build</button>
-          <button type="button" aria-label="Format" className="toolbar__button" onClick={onFormat}><span className="toolbar__icon toolbar__icon--format" aria-hidden="true" />Format</button>
         </div>
       </div>
       <div className="topbar__group topbar__group--right">

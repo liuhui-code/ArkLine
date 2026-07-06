@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::models::language::{
     GitBlameLine, GitBlameResponse, GitCommitTrace, GitCommitTraceResponse, GitTraceUnavailable,
 };
+use crate::services::process_command_service::hidden_command;
 
 pub fn load_file_blame(path: &Path) -> Result<GitBlameResponse, String> {
     let repo_root = match resolve_repo_root(path)? {
@@ -97,7 +97,7 @@ fn is_tracked_file(repo_root: &Path, path: &Path) -> Result<bool, String> {
 }
 
 fn run_git<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = hidden_command("git")
         .args(args)
         .current_dir(cwd)
         .output()

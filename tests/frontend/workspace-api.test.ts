@@ -1,9 +1,27 @@
-import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
 
 const eventListeners = vi.hoisted(() => [] as Array<(event: { payload: unknown }) => void>);
 const unlisten = vi.hoisted(() => vi.fn());
 const invoke = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
+
+function deviceLogQueryRequest(streamId: string, query = "") {
+  return {
+    streamId,
+    query,
+    regex: false,
+    matchCase: false,
+    levels: [],
+    pid: "",
+    process: "",
+    domain: "",
+    tag: "",
+    timeRangeMs: 60_000,
+    limit: 500,
+    cursorSeq: null,
+    scanBudgetLines: 100_000,
+  };
+}
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke,
@@ -105,6 +123,51 @@ describe("workspace api", () => {
     });
   });
 
+  it("queries device logs through the workspace API contract outside Tauri", async () => {
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+    const response = await defaultWorkspaceApi.queryDeviceLogs?.(deviceLogQueryRequest("demo-device-log-stream", "width"));
+
+    expect(response?.rows).toEqual([]);
+    expect(response?.truncated).toBe(false);
+  });
+
+  it("invokes desktop device log query and stats commands inside Tauri", async () => {
+    invoke
+      .mockResolvedValueOnce({ rows: [], totalCandidates: 0, scannedLines: 0, truncated: false, nextCursorSeq: null, budgetExceeded: false, queryMs: 1 })
+      .mockResolvedValueOnce("raw log\n")
+      .mockResolvedValueOnce({
+        streamId: "stream-1",
+        deviceId: "device-1",
+        streamStatus: "running",
+        ingestedLines: 10,
+        persistedLines: 10,
+        droppedLines: 0,
+        pendingBatches: 0,
+        bufferBytes: 128,
+        lastWriteMs: 0,
+        slowWriteBatches: 0,
+        backpressureState: "idle",
+        lastError: null,
+      })
+      .mockResolvedValueOnce({ rootPath: "/tmp/arkline-device-logs", totalBytes: 4096, segmentFileCount: 1, segmentBytes: 2048, metadataBytes: 2048, metadataBatchCount: 2, metadataLineCount: 120, oldestReceivedAtMs: 10_000, newestReceivedAtMs: 20_000, pressureState: "healthy", recommendedAction: "none" });
+
+    await defaultWorkspaceApi.queryDeviceLogs?.(deviceLogQueryRequest("stream-1"));
+    await defaultWorkspaceApi.exportDeviceLogs?.(deviceLogQueryRequest("stream-1"));
+    await defaultWorkspaceApi.getDeviceLogStats?.("stream-1");
+    const health = await defaultWorkspaceApi.getDeviceLogStorageHealth?.();
+
+    expect(invoke).toHaveBeenCalledWith("query_device_logs", {
+      request: expect.objectContaining({ streamId: "stream-1", timeRangeMs: 60_000 }),
+    });
+    expect(invoke).toHaveBeenCalledWith("export_device_logs", {
+      request: expect.objectContaining({ streamId: "stream-1", timeRangeMs: 60_000 }),
+    });
+    expect(invoke).toHaveBeenCalledWith("get_device_log_stats", { streamId: "stream-1" });
+    expect(invoke).toHaveBeenCalledWith("get_device_log_storage_health");
+    expect(health?.segmentFileCount).toBe(1);
+  });
+
   it("invokes workspace index diagnostics with recent events in the desktop runtime", async () => {
     const diagnostics = {
       rootPath: "C:/samples/DemoWorkspace",
@@ -187,6 +250,7 @@ describe("workspace api", () => {
       rootPath: "C:/samples/DemoWorkspace",
       path: "C:/samples/DemoWorkspace/src/main.ets",
       fileName: "main.ets",
+      discoveryIndex: "ready",
       fileIndex: "ready",
       contentIndex: "ready",
       symbolIndex: "missing",

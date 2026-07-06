@@ -1,8 +1,9 @@
 use std::path::Path;
-use std::process::Command;
+
+use crate::services::process_command_service::hidden_command;
 
 pub fn load_workspace_diff_text(root_path: &Path) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = hidden_command("git")
         .arg("-C")
         .arg(root_path)
         .arg("diff")

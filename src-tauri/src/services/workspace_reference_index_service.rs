@@ -152,6 +152,89 @@ pub fn replace_workspace_references_for_paths(
     )
 }
 
+#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceReferenceRefreshProfile {
+    pub delete_duration: std::time::Duration,
+    pub alias_duration: std::time::Duration,
+    pub declaration_duration: std::time::Duration,
+    pub content_duration: std::time::Duration,
+    pub member_context_duration: std::time::Duration,
+    pub index_duration: std::time::Duration,
+    pub affected_path_count: usize,
+    pub content_count: usize,
+    pub member_context_loaded: bool,
+}
+
+#[cfg(test)]
+pub fn profile_replace_workspace_references_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    indexed_paths: &[String],
+    removed_paths: &[String],
+    indexed_generation: u64,
+) -> Result<WorkspaceReferenceRefreshProfile, String> {
+    let mut affected_paths = indexed_paths
+        .iter()
+        .chain(removed_paths.iter())
+        .map(|path| normalize_index_path(path))
+        .collect::<Vec<_>>();
+    affected_paths.sort();
+    affected_paths.dedup();
+    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
+
+    let delete_start = std::time::Instant::now();
+    delete_workspace_references_for_paths(connection, root_key, &affected_paths)?;
+    let delete_duration = delete_start.elapsed();
+
+    let alias_start = std::time::Instant::now();
+    let aliases = load_reference_alias_targets_for_paths(connection, root_key, &affected_path_set)?;
+    let alias_duration = alias_start.elapsed();
+
+    let declaration_start = std::time::Instant::now();
+    let declarations =
+        load_workspace_declarations_for_paths(connection, root_key, &affected_path_set)?;
+    let declaration_duration = declaration_start.elapsed();
+
+    let content_start = std::time::Instant::now();
+    let contents = load_source_contents(indexed_paths);
+    let content_duration = content_start.elapsed();
+
+    let member_start = std::time::Instant::now();
+    let member_context = if contents_contain_member_access(&contents) {
+        Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
+    } else {
+        None
+    };
+    let member_context_duration = member_start.elapsed();
+
+    let index_start = std::time::Instant::now();
+    index_workspace_references_for_paths(
+        connection,
+        root_key,
+        indexed_paths,
+        indexed_generation,
+        false,
+        &aliases,
+        &declarations,
+        &contents,
+        member_context.as_ref(),
+    )?;
+    let index_duration = index_start.elapsed();
+
+    Ok(WorkspaceReferenceRefreshProfile {
+        delete_duration,
+        alias_duration,
+        declaration_duration,
+        content_duration,
+        member_context_duration,
+        index_duration,
+        affected_path_count: affected_paths.len(),
+        content_count: contents.len(),
+        member_context_loaded: member_context.is_some(),
+    })
+}
+
 pub fn replace_workspace_references_with_local_scope(
     connection: &Connection,
     root_key: &str,

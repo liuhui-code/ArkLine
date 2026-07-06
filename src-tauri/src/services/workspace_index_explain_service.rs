@@ -44,10 +44,19 @@ pub fn explain_workspace_index_query(
     if let Some(path) = request.path.as_deref() {
         let path_key = normalize_index_path(path);
         if !has_fingerprint(&connection, &root_key, &path_key)? {
+            let discovery_status = if has_discovered_file(&connection, &root_key, &path_key)? {
+                "ready"
+            } else {
+                "missing"
+            };
             return Ok(result(
                 "notIndexed",
                 "File has no index fingerprint",
-                vec![fact("path", path_key)],
+                vec![
+                    fact("path", path_key),
+                    fact("layer", format!("discovery={discovery_status}")),
+                    fact("layer", "fileCatalog=missing".to_string()),
+                ],
                 Some("rebuildIndex"),
             ));
         }
@@ -59,13 +68,63 @@ pub fn explain_workspace_index_query(
                 Some("reportBug"),
             ));
         }
+        if needs_symbol_layer(&request.kind)
+            && !has_symbol_layer(&connection, &root_key, &path_key)?
+        {
+            return Ok(result(
+                "partial",
+                "File catalog is ready but symbol index is not ready for this query",
+                vec![
+                    fact("path", path_key),
+                    fact("layer", "fileCatalog=ready".to_string()),
+                    fact("layer", "symbols=missing".to_string()),
+                ],
+                Some("rebuildIndex"),
+            ));
+        }
+        if needs_content_layer(&request.kind)
+            && !has_row(&connection, "workspace_content_lines", &root_key, &path_key)?
+        {
+            return Ok(result(
+                "partial",
+                "File catalog is ready but content index is not ready for this query",
+                vec![
+                    fact("path", path_key),
+                    fact("layer", "fileCatalog=ready".to_string()),
+                    fact("layer", "content=missing".to_string()),
+                ],
+                Some("rebuildIndex"),
+            ));
+        }
+        if needs_reference_layer(&request.kind)
+            && !has_row(
+                &connection,
+                "workspace_symbol_references",
+                &root_key,
+                &path_key,
+            )?
+        {
+            return Ok(result(
+                "partial",
+                "File catalog is ready but reference index is not ready for this query",
+                vec![
+                    fact("path", path_key),
+                    fact("layer", "fileCatalog=ready".to_string()),
+                    fact("layer", "references=missing".to_string()),
+                ],
+                Some("rebuildIndex"),
+            ));
+        }
     }
 
     if request.kind == "api" && !has_active_sdk(&connection, &root_key)? {
         return Ok(result(
             "sdkNotReady",
             "SDK API index is not ready for this workspace",
-            vec![fact("query", request.query.clone())],
+            vec![
+                fact("query", request.query.clone()),
+                fact("layer", "sdk=missing".to_string()),
+            ],
             Some("configureSdk"),
         ));
     }
@@ -169,6 +228,66 @@ fn fact(category: &str, evidence: String) -> WorkspaceIndexExplainFact {
         category: category.to_string(),
         evidence,
     }
+}
+
+fn needs_symbol_layer(kind: &str) -> bool {
+    matches!(kind, "definition" | "symbol" | "usage" | "completion")
+}
+
+fn needs_content_layer(kind: &str) -> bool {
+    matches!(kind, "text" | "textSearch" | "search")
+}
+
+fn needs_reference_layer(kind: &str) -> bool {
+    matches!(kind, "usage" | "usages")
+}
+
+fn has_symbol_layer(
+    connection: &Connection,
+    root_key: &str,
+    path_key: &str,
+) -> Result<bool, String> {
+    let declarations = has_row(connection, "workspace_symbol_entities", root_key, path_key)?;
+    let references = has_row(
+        connection,
+        "workspace_symbol_references",
+        root_key,
+        path_key,
+    )?;
+    let stubs = has_row(connection, "workspace_stub_files", root_key, path_key)?;
+    Ok(declarations || references || stubs)
+}
+
+fn has_row(
+    connection: &Connection,
+    table_name: &str,
+    root_key: &str,
+    path_key: &str,
+) -> Result<bool, String> {
+    let sql =
+        format!("select exists(select 1 from {table_name} where root_path = ?1 and path = ?2)");
+    connection
+        .query_row(&sql, params![root_key, path_key], |row| {
+            row.get::<_, bool>(0)
+        })
+        .map_err(|error| error.to_string())
+}
+
+fn has_discovered_file(
+    connection: &Connection,
+    root_key: &str,
+    path_key: &str,
+) -> Result<bool, String> {
+    connection
+        .query_row(
+            "select exists(
+                select 1 from workspace_discovered_files
+                where root_path = ?1 and path = ?2 and excluded = 0
+             )",
+            params![root_key, path_key],
+            |row| row.get::<_, bool>(0),
+        )
+        .map_err(|error| error.to_string())
 }
 
 fn has_fingerprint(

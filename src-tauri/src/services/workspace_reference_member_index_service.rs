@@ -19,9 +19,11 @@ pub struct WorkspaceMemberReferenceContext {
 
 impl WorkspaceMemberReferenceContext {
     pub fn load(connection: &Connection, root_key: &str) -> Result<Self, String> {
+        let sdk_targets = load_sdk_member_targets(connection, root_key)?;
+        let project_targets = load_project_member_targets(connection, root_key)?;
         Ok(Self {
-            sdk_targets: load_sdk_member_targets(connection, root_key)?,
-            project_targets: load_project_member_targets(connection, root_key)?,
+            sdk_targets,
+            project_targets,
         })
     }
 }

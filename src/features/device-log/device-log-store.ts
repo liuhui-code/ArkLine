@@ -12,16 +12,38 @@ const defaultFilter: DeviceLogFilterState = {
   tag: "",
 };
 
-export function createDeviceLogStore({ capacity = 20_000 }: { capacity?: number } = {}) {
+type DeviceLogStoreOptions = {
+  capacity?: number | null;
+  now?: () => number;
+};
+
+export function createDeviceLogStore({ capacity = null, now = () => Date.now() }: DeviceLogStoreOptions = {}) {
   let state: DeviceLogState = {
     entries: [],
     pendingEntries: [],
+    trimmedEntries: 0,
     filter: defaultFilter,
     paused: false,
   };
 
   function trim<T>(items: T[]) {
-    return items.length <= capacity ? items : items.slice(items.length - capacity);
+    if (capacity == null) {
+      return { items, trimmed: 0 };
+    }
+    if (items.length <= capacity) {
+      return { items, trimmed: 0 };
+    }
+    return {
+      items: items.slice(items.length - capacity),
+      trimmed: items.length - capacity,
+    };
+  }
+
+  function parseLines(deviceId: string, lines: string[]) {
+    const receivedAt = now();
+    return lines
+      .filter((line) => line.length > 0)
+      .map((line) => ({ ...parseDeviceLogLine(line, deviceId), receivedAt }));
   }
 
   return {
@@ -29,25 +51,29 @@ export function createDeviceLogStore({ capacity = 20_000 }: { capacity?: number 
       return state;
     },
     appendRawLines(deviceId: string, lines: string[]) {
-      const entries = lines.filter((line) => line.length > 0).map((line) => parseDeviceLogLine(line, deviceId));
+      const entries = parseLines(deviceId, lines);
       if (state.paused) {
-        state = { ...state, pendingEntries: trim([...state.pendingEntries, ...entries]) };
+        const next = trim([...state.pendingEntries, ...entries]);
+        state = { ...state, pendingEntries: next.items, trimmedEntries: state.trimmedEntries + next.trimmed };
         return;
       }
-      state = { ...state, entries: trim([...state.entries, ...entries]) };
+      const next = trim([...state.entries, ...entries]);
+      state = { ...state, entries: next.items, trimmedEntries: state.trimmedEntries + next.trimmed };
     },
     appendRawLineBatches(batches: { deviceId: string; lines: string[] }[]) {
       const entries = batches.flatMap((batch) => (
-        batch.lines.filter((line) => line.length > 0).map((line) => parseDeviceLogLine(line, batch.deviceId))
+        parseLines(batch.deviceId, batch.lines)
       ));
       if (entries.length === 0) {
         return;
       }
       if (state.paused) {
-        state = { ...state, pendingEntries: trim([...state.pendingEntries, ...entries]) };
+        const next = trim([...state.pendingEntries, ...entries]);
+        state = { ...state, pendingEntries: next.items, trimmedEntries: state.trimmedEntries + next.trimmed };
         return;
       }
-      state = { ...state, entries: trim([...state.entries, ...entries]) };
+      const next = trim([...state.entries, ...entries]);
+      state = { ...state, entries: next.items, trimmedEntries: state.trimmedEntries + next.trimmed };
     },
     setPaused(paused: boolean) {
       if (state.paused === paused) {
@@ -55,11 +81,13 @@ export function createDeviceLogStore({ capacity = 20_000 }: { capacity?: number 
       }
 
       if (!paused) {
+        const next = trim([...state.entries, ...state.pendingEntries]);
         state = {
           ...state,
           paused,
-          entries: trim([...state.entries, ...state.pendingEntries]),
+          entries: next.items,
           pendingEntries: [],
+          trimmedEntries: state.trimmedEntries + next.trimmed,
         };
         return;
       }
@@ -67,10 +95,14 @@ export function createDeviceLogStore({ capacity = 20_000 }: { capacity?: number 
       state = { ...state, paused };
     },
     clear() {
-      state = { ...state, entries: [], pendingEntries: [] };
+      state = { ...state, entries: [], pendingEntries: [], trimmedEntries: 0 };
     },
     setFilter(filter: DeviceLogFilterState) {
       state = { ...state, filter };
+    },
+    getRecentEntries(windowMs: number) {
+      const cutoff = now() - windowMs;
+      return state.entries.filter((entry) => entry.receivedAt >= cutoff);
     },
   };
 }

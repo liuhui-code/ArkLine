@@ -276,6 +276,7 @@ function readiness(): WorkspaceIndexFileReadiness {
     rootPath: "/workspace",
     path: "/workspace/Entry.ets",
     fileName: "Entry.ets",
+    discoveryIndex: "ready",
     fileIndex: "ready",
     contentIndex: "ready",
     symbolIndex: "ready",

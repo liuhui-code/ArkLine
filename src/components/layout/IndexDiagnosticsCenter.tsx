@@ -141,6 +141,7 @@ export function IndexDiagnosticsCenter({
                 {fileReadiness?.reason ?? "No current file readiness evidence is available."}
               </p>
               <div className="index-diagnostics__grid">
+                <Metric label="Discovery" value={fileReadiness?.discoveryIndex ?? "unknown"} />
                 <Metric label="FileIndex" value={fileReadiness?.fileIndex ?? "unknown"} />
                 <Metric label="ContentIndex" value={fileReadiness?.contentIndex ?? "unknown"} />
                 <Metric label="SymbolIndex" value={fileReadiness?.symbolIndex ?? "unknown"} />

@@ -1,5 +1,7 @@
 use std::fs;
 
+use rusqlite::Connection;
+
 use crate::models::language::LanguageQueryRequest;
 use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceIndexState, WorkspaceIndexStatus,
@@ -204,6 +206,72 @@ fn facade_preserves_stale_readiness_for_definition_queries() {
 }
 
 #[test]
+fn facade_reports_partial_definition_when_symbol_layer_is_missing() {
+    let (root_path, app_path, _service_path) =
+        create_member_workspace("facade-definition-symbol-missing");
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    clear_tables(
+        &root_path,
+        &["workspace_symbol_entities", "workspace_symbols"],
+    );
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::Definition {
+            root_path: root_path.clone(),
+            request: LanguageQueryRequest {
+                path: app_path.clone(),
+                line: 3,
+                column: 9,
+                content: Some(fs::read_to_string(&app_path).unwrap()),
+            },
+            semantic_target: None,
+            semantic_candidates: Vec::new(),
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert_explain_contains(&envelope.explain, "skipped:SymbolIndex:missing");
+    fs::remove_dir_all(root_path).unwrap();
+}
+
+#[test]
+fn facade_reports_partial_usages_when_reference_layer_is_missing() {
+    let (root_path, app_path, _service_path) =
+        create_member_workspace("facade-usages-reference-missing");
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    clear_tables(&root_path, &["workspace_symbol_references"]);
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::Usages {
+            root_path: root_path.clone(),
+            request: LanguageQueryRequest {
+                path: app_path.clone(),
+                line: 3,
+                column: 9,
+                content: Some(fs::read_to_string(&app_path).unwrap()),
+            },
+            limit: 8,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert_explain_contains(&envelope.explain, "skipped:ReferenceIndex:missing");
+    fs::remove_dir_all(root_path).unwrap();
+}
+
+#[test]
 fn facade_rejects_unsupported_query_kinds() {
     let root = create_empty_workspace("facade-unsupported");
     let runtime = WorkspaceIndexRuntime::default();
@@ -221,6 +289,19 @@ fn facade_rejects_unsupported_query_kinds() {
         "Unsupported workspace index facade query: completion"
     );
     fs::remove_dir_all(root).unwrap();
+}
+
+fn clear_tables(root_path: &str, tables: &[&str]) {
+    let sqlite_path = std::path::Path::new(root_path)
+        .join(".arkline")
+        .join("index")
+        .join("workspace-catalog.sqlite");
+    let connection = Connection::open(sqlite_path).unwrap();
+    for table in tables {
+        connection
+            .execute(&format!("delete from {table}"), [])
+            .unwrap();
+    }
 }
 
 fn create_member_workspace(name: &str) -> (String, String, String) {

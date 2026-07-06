@@ -12,6 +12,10 @@ use crate::services::workspace_index_diagnostics_service::{
 };
 use crate::services::workspace_index_event_service::store_index_event;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
+use crate::services::workspace_index_performance_gate_service::{
+    evaluate_deep_layer_performance, record_deep_layer_performance_report,
+    WorkspaceIndexPerfGateThresholds, WorkspaceIndexStageSample,
+};
 use crate::services::workspace_index_resume_service::save_resume_task;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
@@ -192,6 +196,38 @@ fn reports_task_timeline_from_unified_index_events() {
         .iter()
         .any(|event| event.phase == "queued" && event.title == "changed-paths queued"));
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_deep_layer_performance_gate_events_in_timeline() {
+    let root = unique_temp_dir("workspace-index-diagnostics-performance");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let report = evaluate_deep_layer_performance(
+        vec![WorkspaceIndexStageSample {
+            source: "project".to_string(),
+            stage: "referenceRefresh".to_string(),
+            duration_ms: 420,
+            path_count: 128,
+            chunk_index: Some(2),
+        }],
+        WorkspaceIndexPerfGateThresholds {
+            foreground_ready_ms: 500,
+            deep_tick_ms: 1_000,
+            stage_ms: 250,
+        },
+    );
+    record_deep_layer_performance_report(&root_path, &report).unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert!(diagnostics.timeline.iter().any(|event| {
+        event.scope == "performance"
+            && event.kind == "deep-layer"
+            && event.phase == "threshold"
+            && event.message.contains("referenceRefresh")
+    }));
     fs::remove_dir_all(root).unwrap();
 }
 

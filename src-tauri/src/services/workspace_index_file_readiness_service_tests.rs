@@ -1,5 +1,7 @@
 use std::fs;
 
+use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
+use crate::services::workspace_discovery_store_service::replace_discovered_file_chunk;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::{
@@ -38,6 +40,38 @@ fn reports_current_file_ready_when_all_index_layers_have_rows() {
 }
 
 #[test]
+fn reports_discovered_file_before_file_catalog_indexing() {
+    let root = create_empty_workspace("file-readiness-discovered-only");
+    let source_dir = create_workspace_source_dir(&root);
+    let path = source_dir.join("EntryBackupAbility.ets");
+    fs::write(&path, "export class EntryBackupAbility {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let file_path = path.to_string_lossy().to_string();
+
+    replace_discovered_file_chunk(
+        &root_path,
+        1,
+        &[WorkspaceDiscoveredFile {
+            path: file_path.clone(),
+            size_bytes: 32,
+            modified_ms: Some(1),
+        }],
+    )
+    .unwrap();
+
+    let readiness = get_workspace_index_file_readiness(&root_path, &file_path).unwrap();
+
+    assert_eq!(readiness.discovery_index, "ready");
+    assert_eq!(readiness.file_index, "missing");
+    assert_eq!(
+        readiness.reason,
+        "EntryBackupAbility.ets was discovered but has not completed foreground file catalog indexing."
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn explains_lazy_tree_file_that_has_not_entered_foreground_indexing() {
     let root = create_empty_workspace("file-readiness-lazy-missing");
     let source_dir = create_workspace_source_dir(&root);
@@ -48,6 +82,7 @@ fn explains_lazy_tree_file_that_has_not_entered_foreground_indexing() {
 
     let readiness = get_workspace_index_file_readiness(&root_path, &file_path).unwrap();
 
+    assert_eq!(readiness.discovery_index, "missing");
     assert_eq!(readiness.file_index, "missing");
     assert_eq!(readiness.content_index, "missing");
     assert_eq!(readiness.symbol_index, "missing");

@@ -161,6 +161,7 @@ async function getWorkspaceIndexFileReadiness(
     rootPath,
     path: filePath,
     fileName,
+    discoveryIndex: "missing",
     fileIndex: "missing",
     contentIndex: "missing",
     symbolIndex: "missing",

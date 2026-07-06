@@ -224,6 +224,49 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(layers).getByText("indexCurrentFile")).toBeVisible();
     expect(within(layers).getByText("Current file symbols are not ready.")).toBeVisible();
   });
+
+  it("renders current-file discovery readiness evidence", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={{
+          rootPath: "C:/workspace",
+          path: "C:/workspace/src/Entry.ets",
+          fileName: "Entry.ets",
+          discoveryIndex: "ready",
+          fileIndex: "missing",
+          contentIndex: "missing",
+          symbolIndex: "missing",
+          parserStatus: "unknown",
+          parserError: null,
+          indexedGeneration: null,
+          definitionAvailable: false,
+          completionAvailable: false,
+          usagesAvailable: false,
+          searchAvailable: true,
+          reason: "Entry.ets was discovered but has not completed foreground file catalog indexing.",
+        }}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const currentFile = screen.getByRole("region", { name: "Current File Readiness" });
+    expect(within(currentFile).getByText("Discovery")).toBeVisible();
+    expect(within(currentFile).getByText("ready")).toBeVisible();
+    expect(within(currentFile).getByText("Entry.ets was discovered but has not completed foreground file catalog indexing.")).toBeVisible();
+  });
 });
 
 function diagnosticsWithBackendQueryEvent(createdAt = 1): WorkspaceIndexDiagnostics {

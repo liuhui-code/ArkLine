@@ -1,8 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import { AppShell } from "@/components/layout/AppShell";
 import { defaultWorkspaceApi, type WorkspaceApi } from "@/features/workspace/workspace-api";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -107,8 +111,177 @@ describe("Device Log tool window", () => {
 
     expect(await within(panel).findByText("stream line 300")).toBeVisible();
     expect(within(panel).queryByText("stream line 1")).not.toBeInTheDocument();
-    expect(within(panel).getAllByTestId("device-log-entry")).toHaveLength(120);
-    expect(within(panel).getByText("300 total · 120 rendered")).toBeVisible();
+    const renderedRows = within(panel).getAllByTestId("device-log-entry");
+    expect(renderedRows.length).toBeGreaterThan(0);
+    expect(renderedRows.length).toBeLessThan(300);
+    expect(within(panel).getByText(/300 total · 300 matched · \d+ rendered/u)).toBeVisible();
+  });
+
+  it("caps the live log window and reports older persisted lines", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    const lines = Array.from({ length: 10_050 }, (_, index) => (
+      `06-25 15:21:48.123  1234  5678 I C03F00/AppTag com.example.demo: load line ${index + 1}`
+    ));
+
+    fireEvent(
+      panel,
+      new CustomEvent("arkline-device-log-lines", {
+        bubbles: true,
+        detail: { deviceId: "device-1", lines },
+      }),
+    );
+
+    expect(await within(panel).findByText("load line 10050")).toBeVisible();
+    expect(within(panel).queryByLabelText("load line 1")).not.toBeInTheDocument();
+    expect(within(panel).getByText(/10,000 live · 50 older persisted · \d+ rendered/u)).toBeVisible();
+  });
+
+  it("filters text queries against the most recent one-minute log window", async () => {
+    const nowSpy = vi.spyOn(Date, "now");
+    nowSpy.mockReturnValue(10_000);
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+
+    fireEvent(
+      panel,
+      new CustomEvent("arkline-device-log-lines", {
+        bubbles: true,
+        detail: {
+          deviceId: "device-1",
+          lines: ["06-25 15:20:48.123  1234  5678 I C03F00/AppTag com.example.demo: old width log"],
+        },
+      }),
+    );
+    expect(await within(panel).findByText("old width log")).toBeVisible();
+
+    nowSpy.mockReturnValue(70_001);
+    fireEvent(
+      panel,
+      new CustomEvent("arkline-device-log-lines", {
+        bubbles: true,
+        detail: {
+          deviceId: "device-1",
+          lines: ["06-25 15:21:48.123  1234  5678 I C03F00/AppTag com.example.demo: fresh width log"],
+        },
+      }),
+    );
+
+    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "width" } });
+
+    expect(await within(panel).findByLabelText("fresh width log")).toBeVisible();
+    expect(within(panel).queryByText("old width log")).not.toBeInTheDocument();
+    nowSpy.mockRestore();
+  });
+
+  it("queries the backend recent log window when a running stream is filtered", async () => {
+    const queryDeviceLogs = vi.fn(async () => ({
+      rows: [{
+        seq: 12,
+        receivedAtMs: 70_000,
+        raw: "06-25 15:21:48.123  1234  5678 E C03F00/AppTag com.example.demo: backend width log",
+        timestamp: "06-25 15:21:48.123",
+        level: "error",
+        pid: 1234,
+        tid: 5678,
+        process: "com.example.demo",
+        domain: "C03F00",
+        tag: "AppTag",
+        message: "backend width log",
+      }],
+      totalCandidates: 1200,
+      scannedLines: 34,
+      truncated: false,
+      nextCursorSeq: null,
+      budgetExceeded: false,
+      queryMs: 7,
+    }));
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={{ ...createWorkspaceApi(), queryDeviceLogs }} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "width" } });
+
+    expect(await within(panel).findByLabelText("backend width log")).toBeVisible();
+    expect(queryDeviceLogs).toHaveBeenCalledWith(expect.objectContaining({
+      streamId: "stream-1",
+      query: "width",
+      timeRangeMs: 60_000,
+    }));
+    expect(within(panel).getByText(/1,200 candidates · 34 scanned · 7ms/u)).toBeVisible();
+    expect(within(panel).getAllByText("width").some((node) => node.tagName.toLowerCase() === "mark")).toBe(true);
+  });
+
+  it("opens a log inspector and can filter by the selected row tag", async () => {
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+
+    fireEvent(
+      panel,
+      new CustomEvent("arkline-device-log-lines", {
+        bubbles: true,
+        detail: {
+          deviceId: "device-1",
+          lines: [
+            "06-25 15:21:48.123  1234  5678 E C03F00/AppTag com.example.demo: inspected failure",
+            "06-25 15:21:49.123  1234  5678 I C03F00/OtherTag com.example.demo: other message",
+          ],
+        },
+      }),
+    );
+
+    expect(await within(panel).findByLabelText("other message")).toBeVisible();
+    await user.click(await within(panel).findByLabelText("inspected failure"));
+
+    const inspector = within(panel).getByRole("region", { name: "Log Inspector" });
+    expect(within(inspector).getByText("com.example.demo")).toBeVisible();
+    expect(within(inspector).getByText(/inspected failure/u)).toBeVisible();
+
+    await user.click(within(inspector).getByRole("button", { name: "Filter Tag" }));
+    await waitFor(() => expect(within(panel).queryByLabelText("other message")).not.toBeInTheDocument());
+    expect(within(panel).getByLabelText("inspected failure")).toBeVisible();
+  });
+
+  it("shows running stream persistence stats from the backend", async () => {
+    const getDeviceLogStats = vi.fn(async () => ({
+      streamId: "stream-1",
+      deviceId: "device-1",
+      streamStatus: "running" as const,
+      ingestedLines: 1200,
+      persistedLines: 1200,
+      droppedLines: 0,
+      pendingBatches: 0,
+      bufferBytes: 4096,
+      lastWriteMs: 0,
+      slowWriteBatches: 0,
+      backpressureState: "idle",
+      lastError: null,
+    }));
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={{ ...createWorkspaceApi(), getDeviceLogStats }} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+
+    expect(await within(panel).findByText("running · 1,200 lines · 4 KiB persisted · 0 dropped · idle")).toBeVisible();
+    expect(getDeviceLogStats).toHaveBeenCalledWith("stream-1");
   });
 
   it("keeps the stream across tab switches and stops and clears it on device change", async () => {

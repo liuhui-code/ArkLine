@@ -15,6 +15,7 @@ export type DeviceLogEntry = {
   id: string;
   deviceId: string;
   raw: string;
+  receivedAt: number;
   timestamp: string | null;
   level: DeviceLogLevel;
   pid: number | null;
@@ -46,6 +47,7 @@ export type CompiledDeviceLogFilter = {
 export type DeviceLogState = {
   entries: DeviceLogEntry[];
   pendingEntries: DeviceLogEntry[];
+  trimmedEntries: number;
   filter: DeviceLogFilterState;
   paused: boolean;
 };

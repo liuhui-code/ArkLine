@@ -86,6 +86,7 @@ export type WorkspaceIndexFileReadiness = {
   rootPath: string;
   path: string;
   fileName: string;
+  discoveryIndex?: "ready" | "missing" | string;
   fileIndex: "ready" | "missing" | string;
   contentIndex: "ready" | "missing" | string;
   symbolIndex: "ready" | "missing" | string;

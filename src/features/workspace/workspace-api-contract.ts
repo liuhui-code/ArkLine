@@ -9,6 +9,21 @@ import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/featur
 import type { WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { AppSettings } from "@/features/settings/settings-store";
 import type {
+  DeviceLogDevice,
+  DeviceLogQueryRequest,
+  DeviceLogQueryResponse,
+  DeviceLogQueryWorkerEvent,
+  DeviceLogQueryWorkerStats,
+  DeviceLogRetentionApplyResult,
+  DeviceLogRetentionPlan,
+  DeviceLogRuntimeStats,
+  DeviceLogStorageClearResult,
+  DeviceLogStorageHealth,
+  DeviceLogStreamSummary,
+  ListDeviceFaultLogsRequest,
+  StartDeviceLogStreamRequest,
+} from "@/features/workspace/workspace-device-log-api-types";
+import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexExplainRequest,
   WorkspaceIndexExplainResult,
@@ -28,6 +43,25 @@ import type {
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import type { UsageResult } from "@/features/workspace/usage-search";
+
+export type {
+  DeviceConnectionStatus,
+  DeviceLogDevice,
+  DeviceLogQueryRequest,
+  DeviceLogQueryResponse,
+  DeviceLogQueryRow,
+  DeviceLogQueryWorkerEvent,
+  DeviceLogQueryWorkerStats,
+  DeviceLogRetentionCandidate,
+  DeviceLogRetentionApplyResult,
+  DeviceLogRetentionPlan,
+  DeviceLogRuntimeStats,
+  DeviceLogStorageClearResult,
+  DeviceLogStorageHealth,
+  DeviceLogStreamSummary,
+  ListDeviceFaultLogsRequest,
+  StartDeviceLogStreamRequest,
+} from "@/features/workspace/workspace-device-log-api-types";
 
 export type {
   WorkspaceIndexDiagnostics,
@@ -97,6 +131,12 @@ export type PathPickOptions = {
   title: string;
 };
 
+export type PathSaveOptions = {
+  defaultPath?: string;
+  filters?: Array<{ name: string; extensions: string[] }>;
+  title: string;
+};
+
 export type ValidationProblem = {
   source: "lint" | "format" | "language" | "build";
   severity: "error" | "warning";
@@ -141,29 +181,6 @@ export type TerminalSessionSummary = {
   cwd: string;
   shell: string;
   status: TerminalSessionStatus;
-};
-
-export type DeviceConnectionStatus = "unknown" | "online" | "offline" | "unauthorized";
-
-export type DeviceLogDevice = {
-  id: string;
-  label: string;
-  status: DeviceConnectionStatus;
-  detail: string;
-};
-
-export type StartDeviceLogStreamRequest = {
-  deviceId: string;
-};
-
-export type ListDeviceFaultLogsRequest = {
-  deviceId: string;
-};
-
-export type DeviceLogStreamSummary = {
-  streamId: string;
-  deviceId: string;
-  status: "running";
 };
 
 export type CreateTerminalSessionRequest = {
@@ -297,6 +314,7 @@ export type ApplyWorkspaceEditResult = {
 export type WorkspaceApi = {
   pickWorkspaceRoot(): Promise<string | null>;
   pickPath?(options: PathPickOptions): Promise<string | null>;
+  pickSaveFile?(options: PathSaveOptions): Promise<string | null>;
   openWorkspace(rootPath: string): Promise<WorkspaceSnapshot>;
   listWorkspaceDirectory?(rootPath: string, directoryPath: string): Promise<WorkspaceDirectoryEntry[]>;
   getWorkspaceIndexState?(rootPath: string): Promise<WorkspaceIndexState>;
@@ -369,4 +387,14 @@ export type WorkspaceApi = {
   listDeviceFaultLogs(request: ListDeviceFaultLogsRequest): Promise<DeviceFaultLogFetchResult>;
   startDeviceLogStream(request: StartDeviceLogStreamRequest): Promise<DeviceLogStreamSummary>;
   stopDeviceLogStream(streamId: string): Promise<void>;
+  queryDeviceLogs?(request: DeviceLogQueryRequest): Promise<DeviceLogQueryResponse>;
+  exportDeviceLogs?(request: DeviceLogQueryRequest): Promise<string>;
+  exportDeviceLogsToFile?(request: DeviceLogQueryRequest, path: string): Promise<void>;
+  getDeviceLogStats?(streamId: string): Promise<DeviceLogRuntimeStats>;
+  getDeviceLogQueryWorkerStats?(): Promise<DeviceLogQueryWorkerStats>;
+  getDeviceLogQueryWorkerEvents?(): Promise<DeviceLogQueryWorkerEvent[]>;
+  getDeviceLogStorageHealth?(): Promise<DeviceLogStorageHealth>;
+  clearDeviceLogStorage?(): Promise<DeviceLogStorageClearResult>;
+  planDeviceLogRetention?(targetBytes: number): Promise<DeviceLogRetentionPlan>;
+  applyDeviceLogRetention?(targetBytes: number): Promise<DeviceLogRetentionApplyResult>;
 };

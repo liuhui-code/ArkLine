@@ -1,7 +1,13 @@
 import type { CompiledDeviceLogFilter, DeviceLogEntry, DeviceLogFilterState } from "@/features/device-log/device-log-model";
+import { canRunDeviceLogRenderRegex } from "@/features/device-log/device-log-regex-guard";
 
 export function compileDeviceLogFilter(state: DeviceLogFilterState): CompiledDeviceLogFilter {
   const query = state.query.trim();
+  const pid = state.pid.trim();
+  if (pid && !/^\d+$/u.test(pid)) {
+    return { valid: false, error: "PID filter must be a number", state, queryPattern: null };
+  }
+
   if (!query) {
     return { valid: true, error: null, state, queryPattern: null };
   }
@@ -30,8 +36,13 @@ export function applyDeviceLogFilter(entry: DeviceLogEntry, compiled: CompiledDe
   }
 
   const { state } = compiled;
-  if (compiled.queryPattern && !compiled.queryPattern.test(entry.message) && !compiled.queryPattern.test(entry.raw)) {
-    return false;
+  if (compiled.queryPattern) {
+    if (state.regex && (!canRunDeviceLogRenderRegex(entry.message) || !canRunDeviceLogRenderRegex(entry.raw))) {
+      return false;
+    }
+    if (!compiled.queryPattern.test(entry.message) && !compiled.queryPattern.test(entry.raw)) {
+      return false;
+    }
   }
 
   if (state.levels.length > 0 && !state.levels.includes(entry.level)) {
@@ -45,6 +56,17 @@ export function applyDeviceLogFilter(entry: DeviceLogEntry, compiled: CompiledDe
   return includesField(entry.process, state.process, state.matchCase)
     && includesField(entry.domain, state.domain, state.matchCase)
     && includesField(entry.tag, state.tag, state.matchCase);
+}
+
+export function hasActiveDeviceLogFilter(state: DeviceLogFilterState): boolean {
+  return Boolean(
+    state.query.trim()
+      || state.levels.length > 0
+      || state.pid.trim()
+      || state.process.trim()
+      || state.domain.trim()
+      || state.tag.trim(),
+  );
 }
 
 function includesField(value: string, query: string, matchCase: boolean) {

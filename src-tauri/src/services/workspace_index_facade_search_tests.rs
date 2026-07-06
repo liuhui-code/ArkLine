@@ -1,5 +1,7 @@
 use std::fs;
 
+use rusqlite::Connection;
+
 use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
@@ -278,6 +280,87 @@ fn facade_routes_text_search_requests_with_readiness_and_explain() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn text_search_falls_back_when_text_index_layer_is_missing() {
+    let root = create_empty_workspace("facade-text-search-partial-content");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(
+        source_dir.join("Index.ets"),
+        "Text(\"PartialLayerTarget\")\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    clear_content_index(&root);
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::TextSearch {
+            request: WorkspaceTextSearchRequest {
+                root_path: root_path.clone(),
+                query: "partiallayertarget".to_string(),
+                options: WorkspaceTextSearchOptions {
+                    case_sensitive: false,
+                    whole_word: false,
+                },
+                limit: 8,
+                context_lines: 0,
+            },
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert_explain_contains(&envelope.explain, "skipped:TextIndex:missing");
+    assert!(matches!(
+        envelope.items.as_slice(),
+        [WorkspaceIndexFacadeItem::TextSearch(result)] if result.matches[0].summary.contains("PartialLayerTarget")
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn search_everywhere_text_scope_falls_back_when_text_index_layer_is_missing() {
+    let root = create_empty_workspace("facade-search-text-partial-content");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(
+        source_dir.join("Search.ets"),
+        "Text(\"EverywherePartialTarget\")\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    clear_content_index(&root);
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhere {
+            root_path: root_path.clone(),
+            query: "everywherepartialtarget".to_string(),
+            scope: WorkspaceIndexQueryScope::Text,
+            limit: 8,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert_explain_contains(&envelope.explain, "skipped:TextIndex:missing");
+    assert!(envelope.items.iter().any(|item| matches!(
+        item,
+        WorkspaceIndexFacadeItem::Search(candidate)
+            if candidate.source == "text" && candidate.title.contains("EverywherePartialTarget")
+    )));
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn search_sources(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
     envelope
         .items
@@ -287,6 +370,20 @@ fn search_sources(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
             _ => None,
         })
         .collect()
+}
+
+fn clear_content_index(root: &std::path::Path) {
+    let sqlite_path = root
+        .join(".arkline")
+        .join("index")
+        .join("workspace-catalog.sqlite");
+    let connection = Connection::open(sqlite_path).unwrap();
+    connection
+        .execute("delete from workspace_content_lines", [])
+        .unwrap();
+    connection
+        .execute("delete from workspace_content_fts", [])
+        .unwrap();
 }
 
 fn assert_explain_contains(explain: &[String], expected: &str) {

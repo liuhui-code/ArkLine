@@ -29,7 +29,7 @@ import type {
   WorkspaceDirectoryEntry,
   WorkspaceEditPreview,
 } from "@/features/workspace/workspace-api-contract";
-import { hasTauriRuntime, invoke, open } from "@/features/workspace/workspace-api-runtime";
+import { hasTauriRuntime, invoke, open, save } from "@/features/workspace/workspace-api-runtime";
 import { normalizePath } from "@/features/workspace/workspace-store";
 
 export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
@@ -50,6 +50,16 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       const selected = await open({
         directory: options.directory ?? false,
         multiple: false,
+        title: options.title,
+      });
+      return typeof selected === "string" ? normalizePath(selected) : null;
+    },
+    async pickSaveFile(options) {
+      if (!hasTauriRuntime()) return null;
+
+      const selected = await save({
+        defaultPath: options.defaultPath,
+        filters: options.filters,
         title: options.title,
       });
       return typeof selected === "string" ? normalizePath(selected) : null;

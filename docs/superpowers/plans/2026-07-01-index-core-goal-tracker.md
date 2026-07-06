@@ -387,6 +387,13 @@ Next performance priority: reduce the remaining deep-layer cost inside stub inse
 
 Deep-layer performance v2 progress:
 
+- [x] Deep-layer performance v3 now has a structured gate boundary. Future
+  optimization must start from `WorkspaceIndexPerfGateReport.slowest_stage`
+  and threshold violations, then prove the foreground current-file readiness
+  gate still passes before changing indexing internals.
+- [x] Deep-layer performance reports now flow into unified diagnostics as
+  `performance/deep-layer` events, and an explicit `ARKLINE_PROFILE_ROOT`
+  ignored hook can profile real projects with `source=project` evidence.
 - [x] Identifier reference refresh now has a tested per-file alias prefilter. Incremental reference indexing skips full token scanning for source files whose content does not contain any resolved alias name for that same path, while preserving local-scope deep indexing and member-reference indexing paths.
 - [x] Dependency graph incremental refresh now has a tested path-level planner. Changed files with no new import/export rows, no existing dependency facts, and no removed-path status skip dependency edge cleanup/rebuild, while files with old edges, unresolved imports, new imports/re-exports, or removals still refresh safely.
 - [x] Symbol resolution incremental refresh now has a tested planner boundary. Pure declaration path chunks resolve only affected declarations, while chunks with import/re-export bindings still route through full binding resolution; this keeps the main symbol resolution service small enough for future branch-specific optimizations.

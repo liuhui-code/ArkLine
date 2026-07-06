@@ -7,6 +7,14 @@ import {
 } from "@/features/workspace/workspace-api-browser-support";
 import type {
   DeviceLogDevice,
+  DeviceLogQueryResponse,
+  DeviceLogQueryWorkerEvent,
+  DeviceLogQueryWorkerStats,
+  DeviceLogRetentionApplyResult,
+  DeviceLogRetentionPlan,
+  DeviceLogRuntimeStats,
+  DeviceLogStorageClearResult,
+  DeviceLogStorageHealth,
   DeviceLogStreamSummary,
   TerminalRunResult,
   TerminalSessionSummary,
@@ -127,6 +135,118 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
       if (hasTauriRuntime()) {
         await invoke("stop_device_log_stream", { streamId });
       }
+    },
+    async queryDeviceLogs(request) {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogQueryResponse>("query_device_logs", { request });
+      }
+      return {
+        rows: [],
+        totalCandidates: 0,
+        scannedLines: 0,
+        truncated: false,
+        nextCursorSeq: null,
+        budgetExceeded: false,
+        queryMs: 0,
+      };
+    },
+    async exportDeviceLogs(request) {
+      if (hasTauriRuntime()) {
+        return invoke<string>("export_device_logs", { request });
+      }
+      return "";
+    },
+    async exportDeviceLogsToFile(request, path) {
+      if (hasTauriRuntime()) {
+        await invoke("export_device_logs_to_file", { request, path });
+      }
+    },
+    async getDeviceLogStats(streamId) {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogRuntimeStats>("get_device_log_stats", { streamId });
+      }
+      return {
+        streamId,
+        deviceId: "demo-device",
+        streamStatus: "idle",
+        ingestedLines: 0,
+        persistedLines: 0,
+        droppedLines: 0,
+        pendingBatches: 0,
+        bufferBytes: 0,
+        lastWriteMs: 0,
+        slowWriteBatches: 0,
+        backpressureState: "idle",
+        lastError: null,
+      };
+    },
+    async getDeviceLogQueryWorkerStats() {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogQueryWorkerStats>("get_device_log_query_worker_stats");
+      }
+      return {
+        running: false,
+        queued: 0,
+        completedQueries: 0,
+        cancelledQueries: 0,
+        failedQueries: 0,
+        lastQueryMs: 0,
+        lastError: null,
+      };
+    },
+    async getDeviceLogQueryWorkerEvents() {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogQueryWorkerEvent[]>("get_device_log_query_worker_events");
+      }
+      return [];
+    },
+    async getDeviceLogStorageHealth() {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogStorageHealth>("get_device_log_storage_health");
+      }
+      return {
+        rootPath: "",
+        totalBytes: 0,
+        segmentFileCount: 0,
+        segmentBytes: 0,
+        metadataBytes: 0,
+        metadataBatchCount: 0,
+        metadataLineCount: 0,
+        oldestReceivedAtMs: null,
+        newestReceivedAtMs: null,
+        pressureState: "healthy",
+        recommendedAction: "none",
+      };
+    },
+    async clearDeviceLogStorage() {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogStorageClearResult>("clear_device_log_storage");
+      }
+      return {
+        removedFileCount: 0,
+        removedBytes: 0,
+      };
+    },
+    async planDeviceLogRetention(targetBytes) {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogRetentionPlan>("plan_device_log_retention", { targetBytes });
+      }
+      return {
+        currentBytes: 0,
+        targetBytes,
+        removeFileCount: 0,
+        removeBytes: 0,
+        candidates: [],
+      };
+    },
+    async applyDeviceLogRetention(targetBytes) {
+      if (hasTauriRuntime()) {
+        return invoke<DeviceLogRetentionApplyResult>("apply_device_log_retention", { targetBytes });
+      }
+      return {
+        removedFileCount: 0,
+        removedBytes: 0,
+      };
     },
   };
 }

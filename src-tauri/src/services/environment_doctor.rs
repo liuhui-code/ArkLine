@@ -1,6 +1,6 @@
 use serde::Serialize;
-use std::process::Command;
 
+use crate::services::process_command_service::hidden_command;
 use crate::services::semantic::arkts_lsp_provider::ArkTsLspProvider;
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::manager::SemanticHostReadiness;
@@ -49,7 +49,7 @@ pub fn inspect_environment(settings: &AppSettings) -> EnvironmentReport {
 }
 
 fn detect_command_label(name: &str, command: &str, args: &[&str]) -> ToolStatus {
-    match Command::new(command).args(args).output() {
+    match hidden_command(command).args(args).output() {
         Ok(output) if output.status.success() => ToolStatus {
             name: name.to_string(),
             available: true,
@@ -75,7 +75,7 @@ fn detect_command_label(name: &str, command: &str, args: &[&str]) -> ToolStatus 
 }
 
 fn detect_command(command: &str, args: &[&str]) -> ToolStatus {
-    match Command::new(command).args(args).output() {
+    match hidden_command(command).args(args).output() {
         Ok(output) if output.status.success() => ToolStatus {
             name: command.to_string(),
             available: true,

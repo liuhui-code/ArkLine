@@ -5,6 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::WorkspaceIndexExplainRequest;
+use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
+use crate::services::workspace_discovery_store_service::replace_discovered_file_chunk;
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_explain_service::{
     explain_and_record_workspace_index_query, explain_workspace_index_query,
@@ -84,6 +86,46 @@ fn explains_missing_fingerprint_as_not_indexed() {
 }
 
 #[test]
+fn explains_discovered_file_missing_catalog_with_layer_facts() {
+    let root = unique_temp_dir("explain-discovered-missing-catalog");
+    let source_dir = root.join("src");
+    fs::create_dir_all(&source_dir).unwrap();
+    index_connection(&root);
+    let path = source_dir.join("Discovered.ets");
+    fs::write(&path, "class Discovered {}\n").unwrap();
+    replace_discovered_file_chunk(
+        &root.to_string_lossy(),
+        1,
+        &[WorkspaceDiscoveredFile {
+            path: path.to_string_lossy().to_string(),
+            size_bytes: 20,
+            modified_ms: Some(1),
+        }],
+    )
+    .unwrap();
+
+    let result = explain_workspace_index_query(&request(
+        &root,
+        "definition",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+
+    assert_eq!(result.status, "notIndexed");
+    assert_eq!(result.recommended_action.as_deref(), Some("rebuildIndex"));
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "discovery=ready" }));
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "fileCatalog=missing" }));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn records_query_explain_misses_as_unified_index_events() {
     let root = unique_temp_dir("explain-records-query-miss");
     fs::create_dir_all(root.join("src")).unwrap();
@@ -123,6 +165,10 @@ fn explains_api_queries_without_active_sdk_as_sdk_not_ready() {
 
     assert_eq!(result.status, "sdkNotReady");
     assert_eq!(result.recommended_action.as_deref(), Some("configureSdk"));
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "sdk=missing" }));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -145,6 +191,7 @@ fn records_sdk_not_ready_explain_as_blocked_query_event() {
     assert!(events[0]
         .payload_json
         .contains("\"recommendedAction\":\"configureSdk\""));
+    assert!(events[0].payload_json.contains("sdk=missing"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -189,4 +236,125 @@ fn explains_parser_errors_when_stub_error_rows_exist() {
     assert_eq!(result.recommended_action.as_deref(), Some("reportBug"));
 
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn explains_indexed_file_missing_symbol_layer_for_definition() {
+    let root = unique_temp_dir("explain-symbol-layer-missing");
+    let source_dir = root.join("src");
+    fs::create_dir_all(&source_dir).unwrap();
+    let path = source_dir.join("OnlyFingerprint.ets");
+    fs::write(&path, "class OnlyFingerprint {}\n").unwrap();
+    let connection = index_connection(&root);
+    let root_key = root.to_string_lossy().replace('/', "\\");
+    let path_key = path.to_string_lossy().replace('/', "\\");
+    connection
+        .execute(
+            "insert into workspace_file_fingerprints (
+                root_path, path, mtime_ms, size, hash,
+                content_index_version, symbol_index_version, stub_parser_version,
+                indexed_generation
+             ) values (?1, ?2, 1, 1, 'hash', 1, 1, 1, 1)",
+            params![root_key, path_key],
+        )
+        .unwrap();
+
+    let result = explain_workspace_index_query(&request(
+        &root,
+        "definition",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+
+    assert_eq!(result.status, "partial");
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "fileCatalog=ready" }));
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "symbols=missing" }));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn explains_indexed_file_missing_content_layer_for_text_query() {
+    let root = unique_temp_dir("explain-content-layer-missing");
+    let source_dir = root.join("src");
+    fs::create_dir_all(&source_dir).unwrap();
+    let path = source_dir.join("OnlyFingerprint.ets");
+    fs::write(&path, "Text('OnlyFingerprint')\n").unwrap();
+    let connection = index_connection(&root);
+    let root_key = root.to_string_lossy().replace('/', "\\");
+    let path_key = path.to_string_lossy().replace('/', "\\");
+    insert_fingerprint(&connection, &root_key, &path_key);
+
+    let result = explain_workspace_index_query(&request(
+        &root,
+        "text",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+
+    assert_eq!(result.status, "partial");
+    assert_eq!(result.recommended_action.as_deref(), Some("rebuildIndex"));
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "content=missing" }));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn explains_indexed_file_missing_reference_layer_for_usage_query() {
+    let root = unique_temp_dir("explain-reference-layer-missing");
+    let source_dir = root.join("src");
+    fs::create_dir_all(&source_dir).unwrap();
+    let path = source_dir.join("OnlyStub.ets");
+    fs::write(&path, "class OnlyStub {}\n").unwrap();
+    let connection = index_connection(&root);
+    let root_key = root.to_string_lossy().replace('/', "\\");
+    let path_key = path.to_string_lossy().replace('/', "\\");
+    insert_fingerprint(&connection, &root_key, &path_key);
+    connection
+        .execute(
+            "insert into workspace_stub_files (
+                root_path, path, parser_version, indexed_generation,
+                parse_status, error_count
+             ) values (?1, ?2, 1, 1, 'ok', 0)",
+            params![root_key, path_key],
+        )
+        .unwrap();
+
+    let result = explain_workspace_index_query(&request(
+        &root,
+        "usage",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+
+    assert_eq!(result.status, "partial");
+    assert_eq!(result.recommended_action.as_deref(), Some("rebuildIndex"));
+    assert!(result
+        .facts
+        .iter()
+        .any(|fact| { fact.category == "layer" && fact.evidence == "references=missing" }));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn insert_fingerprint(connection: &Connection, root_key: &str, path_key: &str) {
+    connection
+        .execute(
+            "insert into workspace_file_fingerprints (
+                root_path, path, mtime_ms, size, hash,
+                content_index_version, symbol_index_version, stub_parser_version,
+                indexed_generation
+             ) values (?1, ?2, 1, 1, 'hash', 1, 1, 1, 1)",
+            params![root_key, path_key],
+        )
+        .unwrap();
 }

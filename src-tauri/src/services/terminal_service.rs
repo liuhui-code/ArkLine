@@ -11,6 +11,7 @@ use crate::models::terminal::{
     CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalOutputChunk,
     TerminalResizeRequest, TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
 };
+use crate::services::process_command_service::hidden_command;
 use crate::services::terminal_io_service::{
     resize_session, session_status, stop_session, write_session_input,
 };
@@ -281,12 +282,12 @@ pub fn stop_command(runtime: &TerminalRuntime, run_id: &str) -> Result<(), Strin
 
 fn shell_command(command: &str) -> Command {
     if cfg!(windows) {
-        let mut process = Command::new("cmd");
+        let mut process = hidden_command("cmd");
         process.arg("/C").arg(command);
         return process;
     }
 
-    let mut process = Command::new("sh");
+    let mut process = hidden_command("sh");
     process.arg("-lc").arg(command);
     process
 }

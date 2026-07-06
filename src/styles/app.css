@@ -2288,7 +2288,7 @@ button:disabled {
 }
 
 .device-log-tool-window__toolbar select,
-.device-log-tool-window__filters input[aria-label="Filter device logs"] {
+.device-log-tool-window__filters input {
   min-height: 26px;
   color: var(--text-primary);
   background: #1f2126;
@@ -2322,9 +2322,37 @@ button:disabled {
 
 .device-log-tool-window__filters input[aria-label="Filter device logs"] {
   flex: 1;
-  min-width: 260px;
+  min-width: 180px;
   max-width: 520px;
   padding: 0 8px;
+}
+
+.device-log-tool-window__filters input:not([aria-label="Filter device logs"]) {
+  width: 112px;
+  padding: 0 8px;
+}
+
+.device-log-tool-window__level-filters {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.device-log-tool-window__level-filters button,
+.device-log-tool-window__filters button {
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  background: #2e3138;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+}
+
+.device-log-tool-window__level-filters button:hover,
+.device-log-tool-window__filters button:hover,
+.device-log-tool-window__level-filters .device-log-tool-window__filter-chip--active {
+  color: var(--text-primary);
+  background: #3f4858;
+  border-color: #6d83aa;
 }
 
 .device-log-tool-window__filters label {
@@ -2341,17 +2369,19 @@ button:disabled {
 }
 
 .device-log-tool-window__entries {
+  position: relative;
   min-height: 0;
   overflow: auto;
   padding: 4px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
+  line-height: 1.35;
 }
 
 .device-log-tool-window__render-stats {
   position: sticky;
   top: -4px;
-  z-index: 1;
+  z-index: 3;
   padding: 4px 8px;
   border-bottom: 1px solid var(--border-subtle);
   background: #24262b;
@@ -2361,25 +2391,161 @@ button:disabled {
   text-align: right;
 }
 
+.device-log-tool-window__follow-tail {
+  position: sticky;
+  top: 28px;
+  left: calc(100% - 116px);
+  z-index: 3;
+  min-height: 24px;
+  margin: 4px 8px 0 auto;
+  padding: 0 10px;
+  color: #dbeafe;
+  background: rgba(37, 99, 235, 0.35);
+  border: 1px solid rgba(96, 165, 250, 0.6);
+  border-radius: 4px;
+}
+
+.device-log-tool-window__virtual-space {
+  position: relative;
+  min-width: 0;
+}
+
+.device-log-tool-window__virtual-slice {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
 .device-log-tool-window__entry {
   display: grid;
-  grid-template-columns: 130px 56px 140px minmax(0, 1fr);
+  grid-template-columns: 128px 72px 96px 150px minmax(0, 1fr);
   gap: 8px;
-  padding: 2px 8px;
-  white-space: pre-wrap;
+  align-items: center;
+  width: 100%;
+  min-height: 26px;
+  padding: 0 8px;
+  border-left: 3px solid transparent;
+  color: inherit;
+  background: transparent;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.device-log-tool-window__entry > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .device-log-tool-window__entry:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.device-log-tool-window__entry--selected {
+  background: rgba(96, 165, 250, 0.14);
+}
+
+.device-log-tool-window__entry-time,
+.device-log-tool-window__entry-pid,
+.device-log-tool-window__entry-tag {
+  color: var(--text-muted);
+}
+
+.device-log-tool-window__entry-level {
+  justify-self: start;
+  min-width: 54px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.16);
+  text-align: center;
+}
+
+.device-log-tool-window__entry-message {
+  color: #d7dde8;
+}
+
+.device-log-tool-window__match {
+  color: #111827;
+  background: #fde68a;
+  border-radius: 2px;
+}
+
+.device-log-tool-window__inspector {
+  min-height: 116px;
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+  border-top: 1px solid var(--border-subtle);
+  background: #202228;
+}
+
+.device-log-tool-window__inspector-header,
+.device-log-tool-window__inspector-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.device-log-tool-window__inspector-grid {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 3px 8px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.device-log-tool-window__inspector-grid dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.device-log-tool-window__raw {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  color: #d7dde8;
+  font-size: 12px;
+}
+
+.device-log-tool-window__entry--verbose .device-log-tool-window__entry-level,
+.device-log-tool-window__entry--debug .device-log-tool-window__entry-level {
+  color: #a8b3c7;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.device-log-tool-window__entry--info {
+  border-left-color: rgba(96, 165, 250, 0.45);
+}
+
+.device-log-tool-window__entry--info .device-log-tool-window__entry-level {
+  color: #bfdbfe;
+  background: rgba(59, 130, 246, 0.18);
+}
+
 .device-log-tool-window__entry--error,
 .device-log-tool-window__entry--fatal {
-  color: #ff8f8f;
+  border-left-color: rgba(248, 113, 113, 0.7);
+}
+
+.device-log-tool-window__entry--error .device-log-tool-window__entry-level,
+.device-log-tool-window__entry--fatal .device-log-tool-window__entry-level {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.2);
 }
 
 .device-log-tool-window__entry--warn {
-  color: #ffd37a;
+  border-left-color: rgba(251, 191, 36, 0.7);
+}
+
+.device-log-tool-window__entry--warn .device-log-tool-window__entry-level {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.2);
 }
 
 .device-log-tool-window__empty {

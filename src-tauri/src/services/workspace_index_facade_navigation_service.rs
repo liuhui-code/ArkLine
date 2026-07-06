@@ -1,5 +1,6 @@
 use crate::models::language::{DefinitionCandidate, DefinitionTarget, LanguageQueryRequest};
 use crate::services::workspace_index_facade_explain_service::explain_facade_query;
+use crate::services::workspace_index_facade_readiness_gate_service::gate_workspace_layer;
 use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
@@ -16,19 +17,27 @@ pub fn query_facade_definition(
     semantic_candidates: Vec<DefinitionCandidate>,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
     let confidence = confidence_at_position(root_path, request)?;
-    let envelope = query_definition_candidates_with_readiness(
+    let mut envelope = query_definition_candidates_with_readiness(
         index_runtime,
         root_path,
         request,
         semantic_target,
         semantic_candidates,
     )?;
-    let explain = explain_facade_query(
+    let extra_explain = gate_workspace_layer(
+        root_path,
+        &mut envelope.readiness,
+        "symbols",
+        "SymbolIndex",
+        "Symbol index layer is missing; definition results may be partial",
+    )?;
+    let mut explain = explain_facade_query(
         "definition",
         &envelope.readiness,
         envelope.items.len(),
         confidence.as_deref(),
     );
+    explain.extend(extra_explain);
     Ok(WorkspaceIndexFacadeEnvelope {
         items: envelope
             .items
@@ -48,13 +57,21 @@ pub fn query_facade_usages(
     limit: usize,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
     let confidence = confidence_at_position(root_path, request)?;
-    let envelope = query_usages_with_readiness(index_runtime, root_path, request, limit)?;
-    let explain = explain_facade_query(
+    let mut envelope = query_usages_with_readiness(index_runtime, root_path, request, limit)?;
+    let extra_explain = gate_workspace_layer(
+        root_path,
+        &mut envelope.readiness,
+        "references",
+        "ReferenceIndex",
+        "Reference index layer is missing; usage results may be partial",
+    )?;
+    let mut explain = explain_facade_query(
         "usages",
         &envelope.readiness,
         envelope.items.len(),
         confidence.as_deref(),
     );
+    explain.extend(extra_explain);
     Ok(WorkspaceIndexFacadeEnvelope {
         items: envelope
             .items
