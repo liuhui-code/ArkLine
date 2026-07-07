@@ -14,6 +14,8 @@ import {
   type RecentQueryExplain,
 } from "@/features/workspace/workspace-query-explain-model";
 import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
+import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
+import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 import "./index-diagnostics-center.css";
 
 type IndexDiagnosticsCenterProps = {
@@ -27,6 +29,8 @@ type IndexDiagnosticsCenterProps = {
   recentQueryExplains: RecentQueryExplain[];
   taskStatuses: WorkspaceIndexTaskStatus[];
   uiLatencySamples?: UiLatencySample[];
+  ipcLatencySamples?: IpcLatencySample[];
+  renderPressureSamples?: RenderPressureSample[];
   onClose: () => void;
   onRefresh: () => void;
   onResumeIndexing: () => void;
@@ -46,6 +50,8 @@ export function IndexDiagnosticsCenter({
   recentQueryExplains,
   taskStatuses,
   uiLatencySamples = [],
+  ipcLatencySamples = [],
+  renderPressureSamples = [],
   onClose,
   onRefresh,
   onResumeIndexing,
@@ -278,9 +284,29 @@ export function IndexDiagnosticsCenter({
             <section className="index-diagnostics__section" aria-label="Performance Timeline">
               <div className="index-diagnostics__section-title">
                 <h3>Performance Timeline</h3>
-                <span>{(diagnostics?.timeline.length ?? 0) + uiLatencySamples.length} events</span>
+                <span>{performanceTimelineCount(diagnostics?.timeline.length ?? 0, uiLatencySamples, ipcLatencySamples, renderPressureSamples)} events</span>
               </div>
               <div className="index-diagnostics__timeline">
+                {renderPressureSamples.map((item) => (
+                  <div className="index-diagnostics__timeline-item" key={`render:${item.label}`}>
+                    <span className="index-diagnostics__severity index-diagnostics__severity--info">render</span>
+                    <div>
+                      <strong>{item.label}</strong>
+                      <span>{item.count.toLocaleString()} renders</span>
+                    </div>
+                    <span>{formatClockTime(item.lastRenderedAt)}</span>
+                  </div>
+                ))}
+                {ipcLatencySamples.map((item, index) => (
+                  <div className="index-diagnostics__timeline-item" key={`ipc:${item.command}:${item.startedAt}:${index}`}>
+                    <span className={`index-diagnostics__severity index-diagnostics__severity--${item.status === "error" ? "error" : "info"}`}>ipc</span>
+                    <div>
+                      <strong>{item.command}</strong>
+                      <span>{item.status}</span>
+                    </div>
+                    <span>{item.durationMs}ms</span>
+                  </div>
+                ))}
                 {uiLatencySamples.map((item, index) => (
                   <div className="index-diagnostics__timeline-item" key={`${item.kind}:${item.startedAt}:${index}`}>
                     <span className="index-diagnostics__severity index-diagnostics__severity--warning">ui</span>
@@ -301,7 +327,7 @@ export function IndexDiagnosticsCenter({
                     <span>{item.durationMs == null ? "start" : `${item.durationMs}ms`}</span>
                   </div>
                 )) : null}
-                {(diagnostics?.timeline ?? []).length === 0 && uiLatencySamples.length === 0 ? (
+                {performanceTimelineCount(diagnostics?.timeline.length ?? 0, uiLatencySamples, ipcLatencySamples, renderPressureSamples) === 0 ? (
                   <div className="index-diagnostics__empty">No timeline events yet.</div>
                 ) : null}
               </div>
@@ -429,6 +455,19 @@ function formatDurationMs(durationMs: number) {
     return `${(clampedMs / 1000).toFixed(1)}s`;
   }
   return `${Math.floor(clampedMs / 60_000)}m ${Math.floor((clampedMs % 60_000) / 1000)}s`;
+}
+
+function formatClockTime(timestamp: number) {
+  return new Date(timestamp).toLocaleTimeString();
+}
+
+function performanceTimelineCount(
+  backendCount: number,
+  ui: UiLatencySample[],
+  ipc: IpcLatencySample[],
+  renders: RenderPressureSample[],
+) {
+  return backendCount + ui.length + ipc.length + renders.length;
 }
 
 function formatRepairAction(action: string) {

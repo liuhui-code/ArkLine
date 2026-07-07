@@ -13,6 +13,8 @@ import type {
 import type { WorkspaceIndexExplainResult } from "@/features/workspace/workspace-index-api-types";
 import type { RecentQueryExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
+import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
+import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 
 export type AppShellIndexAndStatusSurfacesProps = {
   activeBottomTool: BottomToolKey;
@@ -34,6 +36,8 @@ export type AppShellIndexAndStatusSurfacesProps = {
   layerReadiness: WorkspaceIndexLayerReadinessReport | null;
   recentQueryExplains: RecentQueryExplain[];
   uiLatencySamples: UiLatencySample[];
+  renderPressureSamples: RenderPressureSample[];
+  ipcLatencySamples: IpcLatencySample[];
   workspaceIndexTaskStatuses: WorkspaceIndexTaskStatus[];
   onCloseIndexDiagnostics: () => void;
   onRefreshIndexDiagnostics: () => void;
@@ -79,6 +83,8 @@ export function AppShellIndexAndStatusSurfaces({
   layerReadiness,
   recentQueryExplains,
   uiLatencySamples,
+  renderPressureSamples,
+  ipcLatencySamples,
   workspaceIndexTaskStatuses,
   onCloseIndexDiagnostics,
   onRefreshIndexDiagnostics,
@@ -140,6 +146,8 @@ export function AppShellIndexAndStatusSurfaces({
         layerReadiness={layerReadiness}
         recentQueryExplains={recentQueryExplains}
         uiLatencySamples={uiLatencySamples}
+        renderPressureSamples={renderPressureSamples}
+        ipcLatencySamples={ipcLatencySamples}
         taskStatuses={workspaceIndexTaskStatuses}
         onClose={onCloseIndexDiagnostics}
         onRefresh={onRefreshIndexDiagnostics}
