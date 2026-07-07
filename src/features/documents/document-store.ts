@@ -39,9 +39,11 @@ export function createDocumentStore() {
         throw new Error(`Document not open: ${normalized}`);
       }
 
+      const wasDirty = existing.isDirty;
       existing.currentContent = content;
       existing.isDirty = existing.currentContent !== existing.originalContent;
       notify(normalized, existing);
+      return { dirtyChanged: wasDirty !== existing.isDirty };
     },
     applyExternalChange(path: string, content: string): ExternalChangeResult {
       const normalized = normalizePath(path);

@@ -50,7 +50,10 @@ describe("useEditorSurfaceController", () => {
         current: {
           getDocument: (path: string) => documents.get(path),
           openDocument,
-          updateDocument: (path: string, content: string) => documents.set(path, { currentContent: content }),
+          updateDocument: (path: string, content: string) => {
+            documents.set(path, { currentContent: content });
+            return { dirtyChanged: true };
+          },
         },
       },
     });
@@ -91,7 +94,10 @@ describe("useEditorSurfaceController", () => {
         current: {
           getDocument: (path: string) => documents.get(path),
           openDocument,
-          updateDocument: (path: string, content: string) => documents.set(path, { currentContent: content }),
+          updateDocument: (path: string, content: string) => {
+            documents.set(path, { currentContent: content });
+            return { dirtyChanged: true };
+          },
         },
       },
       tabsRef: {
@@ -120,6 +126,50 @@ describe("useEditorSurfaceController", () => {
     expect(setActiveDocument).toHaveBeenCalledTimes(1);
     expect(setActiveDocument).toHaveBeenCalledWith("/workspace/File19.ets");
   });
+
+  it("keeps typing updates in the document store without syncing root editor content", () => {
+    const documents = new Map<string, { currentContent: string; originalContent: string; isDirty: boolean }>();
+    documents.set("/workspace/A.ets", {
+      currentContent: "initial",
+      originalContent: "initial",
+      isDirty: false,
+    });
+    const syncTabs = vi.fn();
+    const setActiveDocument = vi.fn();
+    const { result } = renderHarness({
+      activePath: "/workspace/A.ets",
+      documentsRef: {
+        current: {
+          getDocument: (path: string) => documents.get(path),
+          openDocument: (path: string, content: string) => documents.set(path, {
+            currentContent: content,
+            originalContent: content,
+            isDirty: false,
+          }),
+          updateDocument: (path: string, content: string) => {
+            const record = documents.get(path);
+            if (!record) throw new Error("missing document");
+            const wasDirty = record.isDirty;
+            record.currentContent = content;
+            record.isDirty = record.currentContent !== record.originalContent;
+            return { dirtyChanged: wasDirty !== record.isDirty };
+          },
+        },
+      },
+      syncTabs,
+      setActiveDocument,
+    });
+
+    act(() => {
+      result.current.handleEditorChange("initial ");
+      result.current.handleEditorChange("initial text");
+      result.current.handleEditorChange("initial text!");
+    });
+
+    expect(documents.get("/workspace/A.ets")?.currentContent).toBe("initial text!");
+    expect(syncTabs).toHaveBeenCalledTimes(1);
+    expect(setActiveDocument).not.toHaveBeenCalled();
+  });
 });
 
 function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceController>[0]> = {}) {
@@ -133,7 +183,10 @@ function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceCont
       current: {
         getDocument: (path: string) => documents.get(path),
         openDocument: (path: string, content: string) => documents.set(path, { currentContent: content }),
-        updateDocument: (path: string, content: string) => documents.set(path, { currentContent: content }),
+        updateDocument: (path: string, content: string) => {
+          documents.set(path, { currentContent: content });
+          return { dirtyChanged: true };
+        },
       },
     },
     tabsRef: {
@@ -144,7 +197,6 @@ function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceCont
       },
     },
     syncTabs: vi.fn(),
-    syncEditor: vi.fn(),
     setActiveDocument: vi.fn(),
     includeVisibleWorkspaceFile: vi.fn(),
     clearCompletionSession: vi.fn(),

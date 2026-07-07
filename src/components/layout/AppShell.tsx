@@ -5,6 +5,7 @@ import { AppShellMainLayout } from "@/components/layout/AppShellMainLayout";
 import { AppShellToolWindows } from "@/components/layout/AppShellToolWindows";
 import { useAppShellCommands } from "@/components/layout/use-app-shell-commands";
 import { useActiveDocumentActions } from "@/components/layout/use-active-document-actions";
+import { useActiveDocumentProjection } from "@/components/layout/use-active-document-projection";
 import { useBuildControllerState } from "@/components/layout/use-build-controller-state";
 import { useCodeActionsWorkspaceEditController } from "@/components/layout/use-code-actions-workspace-edit-controller";
 import { useProjectOpening } from "@/components/layout/use-project-opening";
@@ -79,6 +80,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProjectOpenError: () => undefined,
   });
   const { documentsRef, tabsRef, openTabs, activePath, editorContent, setEditorContent, syncTabs, syncEditor, setActiveDocument, resetTabs } = useEditorDocuments();
+  const activeDocumentProjection = useActiveDocumentProjection({ documentsRef, activePath, line: editorSelection.line, column: editorSelection.column, selectedText: editorSelectedText });
   const { focusEditor, focusEditorSoon, isEditorFocused, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
     activePath,
     editorSelection,
@@ -277,7 +279,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     documentsRef,
     tabsRef,
     syncTabs,
-    syncEditor,
     setActiveDocument,
     includeVisibleWorkspaceFile,
     clearCompletionSession,
@@ -485,7 +486,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         problems={problems} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null}
         buildState={buildState} buildModules={buildProject?.modules ?? []} onChangeBuildTarget={(lastTarget) => updateBuildState({ lastTarget })} onChangeBuildModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeBuildProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeBuildFastMode={(fastMode) => updateBuildState({ fastMode })} onSelectBuildConfiguration={selectBuildConfiguration} onSaveBuildConfiguration={() => void saveBuildConfiguration()} onCopyBuildConfiguration={() => void copyBuildConfiguration()} onDeleteBuildConfiguration={() => void deleteBuildConfiguration()} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()}
         diffFiles={diffFiles} gitToolView={gitToolView} gitTraceState={gitTraceState} onChangeGitToolView={setGitToolView} onOpenGitFile={(path) => void openFile(path)} onFocusEditorFromGitTrace={focusEditorSoon} onOpenGitTraceCommitDiff={openGitTraceCommitDiff} onStatusChange={setStatusText}
-        indexAndStatus={{ activeBottomTool, activePath, definitionDebugText, latestExplainResult, latestExplainQuery: latestExplainContext?.query ?? "", onOpenIndexExplainPanel: () => setIndexExplainPanelVisible(true), indexExplainPanelVisible, onCloseIndexExplainPanel: () => setIndexExplainPanelVisible(false), onRebuildIndexFromExplainPanel: () => void rebuildIndexFromExplainPanel(), onOpenSettingsFromExplainPanel: () => void openSettingsFromExplainPanel(), onRetryLatestExplainQuery: retryLatestExplainQuery, indexDiagnosticsVisible, indexDiagnosticsLoading, currentFileDirty: activeDocument?.isDirty ?? false, indexDiagnostics, currentFileReadiness, layerReadiness, recentQueryExplains, uiLatencySamples, renderPressureSamples, ipcLatencySamples, workspaceIndexTaskStatuses, onCloseIndexDiagnostics: () => setIndexDiagnosticsVisible(false), onRefreshIndexDiagnostics: () => void refreshIndexDiagnostics(), onResumeIndexingFromDiagnostics: () => void resumeIndexingFromDiagnostics(), onRebuildSdkIndexFromDiagnostics: () => void rebuildSdkIndexFromDiagnostics(), onConfigureSdkFromDiagnostics: () => void openSettings(), semanticState, semanticCapability: derived.semanticCapability, statusText, workspaceName: workspace?.rootName ?? null, workspaceScanText: derived.workspaceScanText, workspaceIndexText: derived.workspaceIndexText, sdkIndexText: derived.sdkIndexText, buildMessage: buildState.message, currentLineBlame, gitBlameVisible, gitBlameMenuOpen, onToggleGitBlameMenu: toggleGitBlameMenu, onToggleGitBlame: toggleGitBlame, onRefreshGitBlame: refreshGitBlame, onShowCurrentLineBlame: showCurrentLineBlame, onCloseGitBlame: closeGitBlame, onOpenIndexDiagnostics: openIndexDiagnostics }}
+        indexAndStatus={{ activeBottomTool, activePath, definitionDebugText, latestExplainResult, latestExplainQuery: latestExplainContext?.query ?? "", onOpenIndexExplainPanel: () => setIndexExplainPanelVisible(true), indexExplainPanelVisible, onCloseIndexExplainPanel: () => setIndexExplainPanelVisible(false), onRebuildIndexFromExplainPanel: () => void rebuildIndexFromExplainPanel(), onOpenSettingsFromExplainPanel: () => void openSettingsFromExplainPanel(), onRetryLatestExplainQuery: retryLatestExplainQuery, indexDiagnosticsVisible, indexDiagnosticsLoading, currentFileDirty: activeDocumentProjection.isDirty, indexDiagnostics, currentFileReadiness, layerReadiness, recentQueryExplains, uiLatencySamples, renderPressureSamples, ipcLatencySamples, workspaceIndexTaskStatuses, onCloseIndexDiagnostics: () => setIndexDiagnosticsVisible(false), onRefreshIndexDiagnostics: () => void refreshIndexDiagnostics(), onResumeIndexingFromDiagnostics: () => void resumeIndexingFromDiagnostics(), onRebuildSdkIndexFromDiagnostics: () => void rebuildSdkIndexFromDiagnostics(), onConfigureSdkFromDiagnostics: () => void openSettings(), semanticState, semanticCapability: derived.semanticCapability, statusText, workspaceName: workspace?.rootName ?? null, workspaceScanText: derived.workspaceScanText, workspaceIndexText: derived.workspaceIndexText, sdkIndexText: derived.sdkIndexText, buildMessage: buildState.message, currentLineBlame, gitBlameVisible, gitBlameMenuOpen, onToggleGitBlameMenu: toggleGitBlameMenu, onToggleGitBlame: toggleGitBlame, onRefreshGitBlame: refreshGitBlame, onShowCurrentLineBlame: showCurrentLineBlame, onCloseGitBlame: closeGitBlame, onOpenIndexDiagnostics: openIndexDiagnostics }}
       />
     </div>
   );

@@ -7,7 +7,7 @@ import { getPathBasename } from "@/features/workspace/workspace-store";
 type DocumentStoreRef = MutableRefObject<{
   getDocument(path: string): { currentContent: string } | undefined;
   openDocument(path: string, content: string): void;
-  updateDocument(path: string, content: string): void;
+  updateDocument(path: string, content: string): { dirtyChanged: boolean };
 }>;
 
 type TabsStoreRef = MutableRefObject<{
@@ -21,7 +21,6 @@ export type UseEditorSurfaceControllerOptions = {
   documentsRef: DocumentStoreRef;
   tabsRef: TabsStoreRef;
   syncTabs: () => void;
-  syncEditor: (path: string | null) => void;
   setActiveDocument: (path: string | null) => void;
   includeVisibleWorkspaceFile: (path: string) => void;
   clearCompletionSession: () => void;
@@ -47,7 +46,6 @@ export function useEditorSurfaceController({
   documentsRef,
   tabsRef,
   syncTabs,
-  syncEditor,
   setActiveDocument,
   includeVisibleWorkspaceFile,
   clearCompletionSession,
@@ -118,10 +116,11 @@ export function useEditorSurfaceController({
     if (!activePath) {
       return;
     }
-    documentsRef.current.updateDocument(activePath, content);
-    syncTabs();
-    syncEditor(activePath);
-    onStatusChange("Modified");
+    const result = documentsRef.current.updateDocument(activePath, content);
+    if (result.dirtyChanged) {
+      syncTabs();
+      onStatusChange("Modified");
+    }
   }
 
   function handleEditorSelectionChange(selection: { line: number; column: number; selectedText?: string }) {
