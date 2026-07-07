@@ -350,6 +350,7 @@ export type WorkspaceApi = {
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
   searchWorkspaceText?(request: WorkspaceTextSearchRequest): Promise<WorkspaceTextSearchResult>;
+  cancelWorkspaceSearch?(rootPath: string, kind: string, generation: number): Promise<void>;
   openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
   getLaunchWorkspacePath?(): Promise<string | null>;
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;

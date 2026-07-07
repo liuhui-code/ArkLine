@@ -463,4 +463,10 @@ pub struct WorkspaceTextSearchMatch {
 pub struct WorkspaceTextSearchResult {
     pub query: WorkspaceTextSearchQuery,
     pub matches: Vec<WorkspaceTextSearchMatch>,
+    #[serde(default)]
+    pub partial: bool,
+    #[serde(default)]
+    pub searched_files: usize,
+    #[serde(default)]
+    pub limit_reached: bool,
 }

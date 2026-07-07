@@ -3,7 +3,9 @@ export type UiInteractionKind =
   | "globalSearch"
   | "goToDefinition"
   | "openFile"
-  | "searchEverywhere";
+  | "searchClose"
+  | "searchEverywhere"
+  | "searchJump";
 
 export type UiLatencySampleKind = UiInteractionKind | "eventLoopLag";
 

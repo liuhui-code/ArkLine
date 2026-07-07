@@ -222,6 +222,7 @@ mod services {
     pub mod workspace_index_query_service;
     #[cfg(test)]
     mod workspace_index_query_service_tests;
+    pub(crate) mod workspace_query_command_service;
     pub mod workspace_index_readiness_service;
     #[cfg(test)]
     mod workspace_index_readiness_service_tests;
@@ -311,6 +312,9 @@ mod services {
     pub mod workspace_search_ranking_service;
     #[cfg(test)]
     mod workspace_search_ranking_service_tests;
+    pub(crate) mod workspace_search_session_service;
+    #[cfg(test)]
+    mod workspace_search_session_service_tests;
     pub mod workspace_service;
     pub mod workspace_stub_index_service;
     #[cfg(test)]
@@ -364,6 +368,7 @@ pub fn run() {
         .manage(services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime::default())
         .manage(services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default())
         .manage(services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime::default())
+        .manage(services::workspace_search_session_service::WorkspaceSearchSessionRuntime::default())
         .invoke_handler(tauri::generate_handler![
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,
@@ -394,6 +399,7 @@ pub fn run() {
             commands::workspace_index_schedule::schedule_visible_files_index,
             commands::workspace::refresh_workspace_index,
             commands::workspace::refresh_workspace_index_with_changes,
+            commands::workspace::cancel_workspace_search,
             commands::workspace::search_workspace_text,
             commands::workspace_index::explain_workspace_index_query,
             commands::workspace_index::get_workspace_index_file_readiness,

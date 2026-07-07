@@ -27,6 +27,9 @@ export type WorkspaceTextSearchOptions = {
 export type WorkspaceTextSearchResult = {
   query: SearchQuery;
   matches: WorkspaceTextSearchMatch[];
+  partial?: boolean;
+  searchedFiles?: number;
+  limitReached?: boolean;
 };
 
 type SearchWorkspaceTextOptions = {
@@ -91,13 +94,16 @@ export async function searchWorkspaceText({
 }: SearchWorkspaceTextOptions): Promise<WorkspaceTextSearchResult> {
   const parsedQuery = parseSearchQuery(query);
   if (parsedQuery.kind === "invalid" || !parsedQuery.query) {
-    return { query: parsedQuery, matches: [] };
+    return { query: parsedQuery, matches: [], partial: false, searchedFiles: 0, limitReached: false };
   }
 
   const matches: WorkspaceTextSearchMatch[] = [];
+  let searchedFiles = 0;
+  let limitReached = false;
 
   for (const path of paths) {
     if (matches.length >= limit) {
+      limitReached = true;
       break;
     }
 
@@ -109,9 +115,11 @@ export async function searchWorkspaceText({
     const lines = content.split(/\r?\n/u);
     const relativePath = getRelativeWorkspacePath(rootPath, path);
     const fileName = getPathBasename(path);
+    searchedFiles += 1;
 
     for (let index = 0; index < lines.length; index += 1) {
       if (matches.length >= limit) {
+        limitReached = true;
         break;
       }
 
@@ -137,7 +145,7 @@ export async function searchWorkspaceText({
     }
   }
 
-  return { query: parsedQuery, matches };
+  return { query: parsedQuery, matches, partial: limitReached, searchedFiles, limitReached };
 }
 
 function findLineMatch(lineText: string, query: SearchQuery, options: WorkspaceTextSearchOptions) {

@@ -89,6 +89,11 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         readFile: loadMockDocumentContent,
       });
     },
+    async cancelWorkspaceSearch(rootPath, kind, generation) {
+      if (hasTauriRuntime()) {
+        await invoke("cancel_workspace_search", { rootPath, kind, generation });
+      }
+    },
     async openWorkspaceInNewWindow(rootPath) {
       if (hasTauriRuntime()) {
         await invoke("open_workspace_in_new_window", { rootPath });

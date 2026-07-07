@@ -87,6 +87,92 @@ describe("useSearchEverywhereController", () => {
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith("/workspace", "EntryA", "all", 25);
   });
 
+  it("does not query the backend for a single-character search", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+      readiness: readiness(),
+      explain: [],
+    }));
+    const { result } = renderHarness({
+      query: "E",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+
+    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
+    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
+  });
+
+  it("invalidates a slow backend search immediately when the query changes", async () => {
+    vi.useFakeTimers();
+    const slowSearch = createDeferred<{
+      items: SearchCandidate[];
+      readiness: WorkspaceIndexReadiness;
+      explain: string[];
+    }>();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(() => slowSearch.promise);
+    const { result } = renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
+    await act(async () => {
+      slowSearch.resolve({
+        items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+        readiness: readiness(),
+        explain: [],
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
+  });
+
+  it("notifies the backend to cancel the previous generation when the query changes", () => {
+    vi.useFakeTimers();
+    const cancelWorkspaceSearch = vi.fn(async () => undefined);
+    const { result } = renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ cancelWorkspaceSearch }),
+    });
+
+    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
+
+    expect(cancelWorkspaceSearch).toHaveBeenCalledWith(
+      "/workspace",
+      "searchEverywhere",
+      expect.any(Number),
+    );
+  });
+
+  it("notifies the backend to cancel text search when the overlay resets", () => {
+    vi.useFakeTimers();
+    const cancelWorkspaceSearch = vi.fn(async () => undefined);
+    const { result } = renderHarness({
+      query: "width",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ cancelWorkspaceSearch }),
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    act(() => result.current.search.resetSearchOverlayState());
+
+    expect(cancelWorkspaceSearch).toHaveBeenLastCalledWith(
+      "/workspace",
+      "text",
+      expect.any(Number),
+    );
+  });
+
   it("coalesces rapid typing and deleting into only the latest debounced query", async () => {
     vi.useFakeTimers();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
@@ -186,6 +272,7 @@ describe("useSearchEverywhereController", () => {
 
     act(() => result.current.search.openSearchOverlay("find"));
     await flushSearchDebounce();
+    await flushPreviewDebounce();
 
     expect(result.current.search.searchEverywhereResult.matches).toHaveLength(1);
     expect(result.current.search.searchEverywherePreviewContent).toBe("struct Entry {\n  width(100)\n}");
@@ -211,6 +298,28 @@ describe("useSearchEverywhereController", () => {
       generation: expect.any(Number),
       query: "width",
     }));
+  });
+
+  it("shows partial text search status from backend results", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+    const searchWorkspaceText = vi.fn(async () => ({
+      query: { kind: "text" as const, query: "width" },
+      matches: [],
+      partial: true,
+      searchedFiles: 12,
+      limitReached: true,
+    }));
+    const { result } = renderHarness({
+      query: "width",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ searchWorkspaceText }),
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    await flushSearchDebounce();
+
+    expect(result.current.search.searchEverywhereTruncationNotice).toContain("scanning 12 file");
   });
 
   it("does not call native text search after the Find query is deleted", async () => {
@@ -288,6 +397,14 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
 async function flushSearchDebounce() {
   await act(async () => {
     vi.advanceTimersByTime(90);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function flushPreviewDebounce() {
+  await act(async () => {
+    vi.advanceTimersByTime(200);
     await Promise.resolve();
     await Promise.resolve();
   });

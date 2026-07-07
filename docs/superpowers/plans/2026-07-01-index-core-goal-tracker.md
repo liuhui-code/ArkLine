@@ -39,6 +39,7 @@ Already implemented in the current branch:
 - Large-project fixture and regression tests for search, definition, usages, completion, and refresh.
 - Real-project interaction smoothness gate for open-path indexing, Double Shift, Ctrl+Shift+F,
   current-file readiness, and foreground single-file indexing.
+- Search interaction responsiveness gate for rapid input/delete, close, jump, and UI latency evidence.
 
 Known remaining gaps:
 

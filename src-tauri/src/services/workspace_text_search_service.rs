@@ -36,15 +36,24 @@ where
         return WorkspaceTextSearchResult {
             query: result_query,
             matches: Vec::new(),
+            partial: false,
+            searched_files: 0,
+            limit_reached: false,
         };
     }
 
     let mut matches = Vec::new();
+    let mut searched_files = 0;
+    let mut partial = false;
+    let mut limit_reached = false;
     for indexed_path in indexed_paths {
         if is_cancelled() {
+            partial = true;
             break;
         }
         if matches.len() >= request.limit {
+            partial = true;
+            limit_reached = true;
             break;
         }
 
@@ -52,6 +61,7 @@ where
         let Ok(content) = fs::read_to_string(&file_path) else {
             continue;
         };
+        searched_files += 1;
 
         let lines = content.lines().map(str::to_string).collect::<Vec<_>>();
         let relative_path = relative_workspace_path(&request.root_path, indexed_path);
@@ -59,6 +69,8 @@ where
 
         for (line_index, line_text) in lines.iter().enumerate() {
             if matches.len() >= request.limit {
+                partial = true;
+                limit_reached = true;
                 break;
             }
 
@@ -94,6 +106,9 @@ where
     WorkspaceTextSearchResult {
         query: result_query,
         matches,
+        partial,
+        searched_files,
+        limit_reached,
     }
 }
 
@@ -343,6 +358,7 @@ mod tests {
         assert_eq!(result.matches[0].line, 2);
         assert_eq!(result.matches[0].column, 2);
         assert_eq!(result.matches[0].context_before[0].text, "@Entry");
+        assert!(!result.partial);
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -470,6 +486,8 @@ mod tests {
 
         assert_eq!(result.matches.len(), 1);
         assert_eq!(result.matches[0].file_name, "First.ets");
+        assert!(result.partial);
+        assert_eq!(result.searched_files, 1);
 
         fs::remove_dir_all(root).unwrap();
     }

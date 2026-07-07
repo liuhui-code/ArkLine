@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -78,6 +78,9 @@ pub fn search_indexed_workspace_content(
         return Ok(WorkspaceTextSearchResult {
             query: result_query,
             matches: Vec::new(),
+            partial: false,
+            searched_files: 0,
+            limit_reached: false,
         });
     }
 
@@ -92,6 +95,11 @@ pub fn search_indexed_workspace_content(
         request.limit,
     )?;
     let grouped_lines = load_context_lines(&connection, &root_key, &lines)?;
+    let searched_files = lines
+        .iter()
+        .map(|line| line.path.as_str())
+        .collect::<HashSet<_>>()
+        .len();
     let mut matches = Vec::new();
 
     for line in lines {
@@ -132,6 +140,9 @@ pub fn search_indexed_workspace_content(
     Ok(WorkspaceTextSearchResult {
         query: result_query,
         matches,
+        partial: false,
+        searched_files,
+        limit_reached: false,
     })
 }
 
