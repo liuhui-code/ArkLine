@@ -1,7 +1,8 @@
-import type { RefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 import { EditorQueryPanel } from "@/components/layout/EditorQueryPanel";
 import { EditorSurface } from "@/components/layout/EditorSurface";
 import type { DefinitionHoverState, EditorCaretRect, EditorLineColumn } from "@/editor/editor-events";
+import type { DocumentRuntimeStore } from "@/features/documents/document-runtime-store";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { UsageResult, UsageSearchState } from "@/features/workspace/usage-search";
 import type { EditorAppearance } from "@/types/editor";
@@ -12,7 +13,7 @@ export type AppShellEditorWorkbenchProps = {
   onCloseEditorQueryPanel: () => void;
   onOpenUsage: (item: UsageResult) => void;
   activePath: string | null;
-  content: string;
+  documentsRef: MutableRefObject<DocumentRuntimeStore>;
   openTabs: { path: string; title: string; isDirty: boolean }[];
   appearance: EditorAppearance;
   focusToken: number;
@@ -55,7 +56,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
       ) : null}
       <EditorSurface
         activePath={props.activePath}
-        content={props.content}
+        documentsRef={props.documentsRef}
         openTabs={props.openTabs}
         appearance={props.appearance}
         focusToken={props.focusToken}

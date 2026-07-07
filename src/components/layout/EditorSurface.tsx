@@ -1,9 +1,11 @@
 import type { DefinitionHoverState, EditorCaretRect, EditorContextMenuRequest, EditorLineColumn } from "@/editor/editor-events";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
-import { useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
+import { useState, type MouseEvent as ReactMouseEvent, type MutableRefObject, type RefObject } from "react";
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import { EditorCrashBoundary } from "@/components/layout/EditorCrashBoundary";
+import { useActiveDocumentContent } from "@/components/layout/use-active-document-content";
 import { LazyArkTsEditor } from "@/editor/LazyArkTsEditor";
+import type { DocumentRuntimeStore } from "@/features/documents/document-runtime-store";
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
 import type { EditorAppearance } from "@/types/editor";
 
@@ -27,7 +29,7 @@ type EditorTab = {
 
 type EditorSurfaceProps = {
   activePath: string | null;
-  content: string;
+  documentsRef: MutableRefObject<DocumentRuntimeStore>;
   openTabs: EditorTab[];
   appearance: EditorAppearance;
   focusToken: number;
@@ -60,7 +62,7 @@ type EditorSurfaceProps = {
 
 export function EditorSurface({
   activePath,
-  content,
+  documentsRef,
   openTabs,
   appearance,
   focusToken,
@@ -92,6 +94,7 @@ export function EditorSurface({
 }: EditorSurfaceProps) {
   const surfaceStateClass = activePath ? "editor-surface--active" : "editor-surface--empty";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const content = useActiveDocumentContent({ documentsRef, activePath });
 
   function openTabContextMenu(event: ReactMouseEvent<HTMLButtonElement>, tab: EditorTab, index: number) {
     event.preventDefault();
