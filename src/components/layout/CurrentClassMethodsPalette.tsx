@@ -1,5 +1,6 @@
 import type { KeyboardEvent } from "react";
 import { PaletteShell } from "@/components/layout/PaletteShell";
+import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import type { CurrentClassMethod } from "@/features/workspace/current-class-methods";
 
 type CurrentClassMethodsPaletteProps = {
@@ -55,6 +56,7 @@ export function CurrentClassMethodsPalette({
           aria-label="File Structure Query"
           autoFocus
           className="search-overlay__input"
+          {...englishQueryInputProps}
           placeholder="Search methods and members"
           value={query}
           onChange={(event) => onChangeQuery(event.target.value)}

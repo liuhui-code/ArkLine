@@ -1,3 +1,4 @@
+import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import type { DeviceLogFilterState, DeviceLogLevel } from "@/features/device-log/device-log-model";
 
 const LEVEL_FILTERS: Array<{ label: string; level: DeviceLogLevel }> = [
@@ -20,6 +21,7 @@ export function DeviceLogFilterBar({ error, filter, onChange, onClear }: DeviceL
     <div className="device-log-tool-window__filters">
       <input
         aria-label="Filter device logs"
+        {...englishQueryInputProps}
         value={filter.query}
         onChange={(event) => onChange({ query: event.target.value })}
         placeholder="Filter logs"
@@ -40,24 +42,28 @@ export function DeviceLogFilterBar({ error, filter, onChange, onClear }: DeviceL
       </div>
       <input
         aria-label="Filter log process"
+        {...englishQueryInputProps}
         value={filter.process}
         onChange={(event) => onChange({ process: event.target.value })}
         placeholder="Process"
       />
       <input
         aria-label="Filter log pid"
+        {...englishQueryInputProps}
         value={filter.pid}
         onChange={(event) => onChange({ pid: event.target.value })}
         placeholder="PID"
       />
       <input
         aria-label="Filter log domain"
+        {...englishQueryInputProps}
         value={filter.domain}
         onChange={(event) => onChange({ domain: event.target.value })}
         placeholder="Domain"
       />
       <input
         aria-label="Filter log tag"
+        {...englishQueryInputProps}
         value={filter.tag}
         onChange={(event) => onChange({ tag: event.target.value })}
         placeholder="Tag"

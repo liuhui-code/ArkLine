@@ -111,7 +111,7 @@ export function useAppShellCommands({
     },
   });
 
-  return buildAppShellCommandPaletteItems(quickOpenQuery, {
+  return activeOverlay === "commandPalette" ? buildAppShellCommandPaletteItems(quickOpenQuery, {
     openProject: actions.openProject,
     openDemoWorkspace: actions.openDemoWorkspace,
     openRecentProjects: actions.openRecentProjects,
@@ -136,5 +136,5 @@ export function useAppShellCommands({
     refreshGitBlame: actions.refreshGitBlame,
     showCurrentLineBlame: actions.showCurrentLineBlame,
     closeGitBlame: actions.closeGitBlame,
-  });
+  }) : [];
 }

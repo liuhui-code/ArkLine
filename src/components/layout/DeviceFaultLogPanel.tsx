@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { applyDeviceFaultLogFilter, compileDeviceFaultLogFilter } from "@/features/device-log/device-fault-log-filter";
 import type {
   DeviceFaultLogEntry,
@@ -209,6 +210,7 @@ export function DeviceFaultLogPanel({
         </select>
         <input
           aria-label="Filter fault logs"
+          {...englishQueryInputProps}
           value={filter.query}
           onChange={(event) => updateFilter({ query: event.target.value })}
           placeholder="Filter fault logs"
@@ -231,12 +233,14 @@ export function DeviceFaultLogPanel({
         </label>
         <input
           aria-label="Fault log process"
+          {...englishQueryInputProps}
           value={filter.process}
           onChange={(event) => updateFilter({ process: event.target.value })}
           placeholder="Process"
         />
         <input
           aria-label="Fault log pid"
+          {...englishQueryInputProps}
           value={filter.pid}
           onChange={(event) => updateFilter({ pid: event.target.value })}
           placeholder="PID"

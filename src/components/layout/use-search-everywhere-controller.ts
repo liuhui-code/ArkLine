@@ -27,6 +27,7 @@ import { getPathBasename, normalizePath } from "@/features/workspace/workspace-s
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
+const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
 const SEARCH_PREVIEW_DEBOUNCE_MS = 200;
 
 export type UseSearchEverywhereControllerOptions = {
@@ -114,7 +115,7 @@ export function useSearchEverywhereController({
   }
 
   function handleOverlayQueryChange(value: string) {
-    invalidateSearchSession();
+    invalidateSearchSession(false);
     setQuickOpenQuery(value);
   }
 
@@ -187,9 +188,9 @@ export function useSearchEverywhereController({
       setDebouncedSearchQuery(quickOpenQuery);
       return;
     }
-    const timeout = window.setTimeout(() => setDebouncedSearchQuery(quickOpenQuery), 80);
+    const timeout = window.setTimeout(() => setDebouncedSearchQuery(quickOpenQuery), SEARCH_DEBOUNCE_MS[searchEverywhereMode]);
     return () => window.clearTimeout(timeout);
-  }, [activeOverlay, quickOpenQuery]);
+  }, [activeOverlay, quickOpenQuery, searchEverywhereMode]);
 
   useEffect(() => {
     if (activeOverlay !== "searchEverywhere") return;
@@ -376,10 +377,11 @@ export function useSearchEverywhereController({
     });
   }
 
-  function invalidateSearchSession() {
+  function invalidateSearchSession(cancelRunning = true) {
+    const previousGeneration = searchEverywhereRequestRef.current;
     searchEverywhereRequestRef.current += 1;
     searchPreviewRequestRef.current += 1;
-    cancelSearchGeneration(searchEverywhereRequestRef.current);
+    if (cancelRunning && previousGeneration > 0) cancelSearchGeneration(previousGeneration);
   }
 
   function cancelSearchGeneration(generation: number) {
@@ -453,7 +455,6 @@ export function searchOverlayLabel(mode: SearchEverywhereMode) {
 function textSearchInteractionKind(mode: SearchEverywhereMode): UiInteractionKind {
   return mode === "searchEverywhere" ? "searchEverywhere" : "globalSearch";
 }
-
 function textSearchPartialNotice(result: WorkspaceTextSearchResult) {
   if (!result.partial && !result.limitReached) return null;
   const scanned = result.searchedFiles ? ` after scanning ${result.searchedFiles} file(s)` : "";

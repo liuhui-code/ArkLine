@@ -61,12 +61,20 @@ export function getAppShellDerivedState({
     ? workspaceIndexState.queryReadiness.reason ?? `Index is ${workspaceIndexState.queryReadiness.state}; results may be incomplete.`
     : null;
 
+  const quickOpenResults = activeOverlay === "quickOpen" && workspace
+    ? workspaceIndex.queryQuickOpen(quickOpenQuery, 8).flatMap((candidate) => candidate.path ? [{ path: candidate.path }] : [])
+    : [];
+  const recentFileResults = activeOverlay === "recentFiles"
+    ? filterRecentFileResults(recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery)
+    : [];
+  const recentProjectResults = activeOverlay === "recentProjects"
+    ? filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery)
+    : [];
+
   return {
-    quickOpenResults: workspace
-      ? workspaceIndex.queryQuickOpen(quickOpenQuery, 8).flatMap((candidate) => candidate.path ? [{ path: candidate.path }] : [])
-      : [],
-    recentFileResults: filterRecentFileResults(recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery),
-    recentProjectResults: filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery),
+    quickOpenResults,
+    recentFileResults,
+    recentProjectResults,
     overlayVisible: activeOverlay !== "none" && activeOverlay !== "completion",
     overlayLabel: activeOverlay === "searchEverywhere"
       ? searchOverlayLabel(searchEverywhereMode)

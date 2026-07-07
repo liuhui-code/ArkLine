@@ -31,6 +31,10 @@ type DefinitionHoverRange = {
   to: number;
 };
 
+type DefinitionHoverStateSnapshot = DefinitionHoverRange & {
+  active: boolean;
+};
+
 const definitionHoverDecoration = Decoration.mark({
   class: "cm-arkline-definition-hover",
 });
@@ -97,6 +101,8 @@ export const jumpRevealDecorationField = StateField.define<DecorationSet>({
   },
   provide: (field) => EditorView.decorations.from(field),
 });
+
+const definitionHoverState = new WeakMap<EditorView, DefinitionHoverStateSnapshot>();
 
 function toLineColumn(view: EditorView, position: number): EditorLineColumn {
   const line = view.state.doc.lineAt(position);
@@ -171,9 +177,28 @@ export function resolveDefinitionTokenRange(view: EditorView, position: number):
 }
 
 function updateDefinitionHoverDecoration(view: EditorView, range: DefinitionHoverRange | null) {
+  const current = definitionHoverState.get(view);
+  if (!range) {
+    if (!current?.active) {
+      return false;
+    }
+
+    definitionHoverState.delete(view);
+    view.dispatch({
+      effects: setDefinitionHoverEffect.of(null),
+    });
+    return true;
+  }
+
+  if (current?.active && current.from === range.from && current.to === range.to) {
+    return false;
+  }
+
+  definitionHoverState.set(view, { ...range, active: true });
   view.dispatch({
     effects: setDefinitionHoverEffect.of(range),
   });
+  return true;
 }
 
 export function createDocumentChangeListener(onChange: (value: string) => void) {
@@ -196,17 +221,14 @@ export function createSelectionChangeListener(
 
     const head = update.state.selection.main.head;
     const range = update.state.selection.main;
-    const text = update.state.doc.toString();
-    const safeHead = Math.max(0, Math.min(head, text.length));
-    const prefix = text.slice(0, safeHead);
-    const segments = prefix.split("\n");
-    const currentLine = segments.at(-1) ?? "";
+    const safeHead = Math.max(0, Math.min(head, update.state.doc.length));
+    const currentLine = update.state.doc.lineAt(safeHead);
     const selectionFrom = Math.min(range.from, range.to);
     const selectionTo = Math.max(range.from, range.to);
 
     onSelectionChange({
-      line: Math.max(segments.length, 1),
-      column: currentLine.length + 1,
+      line: currentLine.number,
+      column: safeHead - currentLine.from + 1,
       selectedText: selectionFrom === selectionTo
         ? undefined
         : update.state.doc.sliceString(selectionFrom, selectionTo),
@@ -282,38 +304,42 @@ export function createDefinitionHoverHandler(
   return EditorView.domEventHandlers({
     mousemove(event, view) {
       if (!(event.ctrlKey || event.metaKey)) {
-        updateDefinitionHoverDecoration(view, null);
-        onDefinitionHoverChange({ active: false });
+        if (updateDefinitionHoverDecoration(view, null)) {
+          onDefinitionHoverChange({ active: false });
+        }
         return false;
       }
 
       const position = view.posAtCoords({ x: event.clientX, y: event.clientY });
       if (position == null) {
-        updateDefinitionHoverDecoration(view, null);
-        onDefinitionHoverChange({ active: false });
+        if (updateDefinitionHoverDecoration(view, null)) {
+          onDefinitionHoverChange({ active: false });
+        }
         return false;
       }
 
       const range = resolveDefinitionTokenRange(view, position);
       if (!range) {
-        updateDefinitionHoverDecoration(view, null);
-        onDefinitionHoverChange({ active: false });
+        if (updateDefinitionHoverDecoration(view, null)) {
+          onDefinitionHoverChange({ active: false });
+        }
         return false;
       }
 
-      updateDefinitionHoverDecoration(view, range);
-
-      onDefinitionHoverChange({
-        active: true,
-        selection: toLineColumn(view, position),
-        from: range.from,
-        to: range.to,
-      });
+      if (updateDefinitionHoverDecoration(view, range)) {
+        onDefinitionHoverChange({
+          active: true,
+          selection: toLineColumn(view, position),
+          from: range.from,
+          to: range.to,
+        });
+      }
       return false;
     },
     mouseleave(_event, view) {
-      updateDefinitionHoverDecoration(view, null);
-      onDefinitionHoverChange({ active: false });
+      if (updateDefinitionHoverDecoration(view, null)) {
+        onDefinitionHoverChange({ active: false });
+      }
       return false;
     },
   });

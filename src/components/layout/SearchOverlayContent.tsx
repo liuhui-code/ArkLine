@@ -1,4 +1,5 @@
 import type { OverlayKey } from "@/components/layout/shell-state";
+import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchEverywherePanel, type SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import type { CommandPaletteItem } from "@/components/layout/search-overlay-model";
 import type {
@@ -79,6 +80,7 @@ export function SearchOverlayContent({
           aria-label="Find Action Query"
           autoFocus
           className="panel-input"
+          {...englishQueryInputProps}
           value={quickOpenQuery}
           placeholder="Type an action"
           onChange={(event) => onChangeQuery(event.target.value)}
@@ -111,6 +113,7 @@ export function SearchOverlayContent({
           aria-label="Recent Files Query"
           autoFocus
           className="panel-input"
+          {...englishQueryInputProps}
           value={quickOpenQuery}
           placeholder="Filter recent files"
           onChange={(event) => onChangeQuery(event.target.value)}
@@ -139,6 +142,7 @@ export function SearchOverlayContent({
           aria-label="Recent Projects Query"
           autoFocus
           className="panel-input"
+          {...englishQueryInputProps}
           value={quickOpenQuery}
           placeholder="Filter recent projects"
           onChange={(event) => onChangeQuery(event.target.value)}
@@ -168,6 +172,7 @@ export function SearchOverlayContent({
           aria-label="Go to Line Query"
           autoFocus
           className="panel-input"
+          {...englishQueryInputProps}
           value={quickOpenQuery}
           placeholder="Line or line:column"
           onChange={(event) => onChangeQuery(event.target.value)}
@@ -229,6 +234,7 @@ export function SearchOverlayContent({
         aria-label={queryLabel}
         autoFocus
         className="panel-input"
+        {...englishQueryInputProps}
         value={quickOpenQuery}
         placeholder={placeholder}
         onChange={(event) => onChangeQuery(event.target.value)}

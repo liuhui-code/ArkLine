@@ -1,4 +1,5 @@
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
+import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
 import type {
   WorkspaceTextSearchMatch,
@@ -199,6 +200,7 @@ export function SearchEverywherePanel({
           aria-label={`${presentation.title} Query`}
           autoFocus
           className="panel-input"
+          {...englishQueryInputProps}
           value={query}
           placeholder={presentation.searchPlaceholder}
           onChange={(event) => onChangeQuery(event.target.value)}
@@ -212,6 +214,7 @@ export function SearchEverywherePanel({
           <input
             aria-label="Replace With"
             className="panel-input search-everywhere__replace-input"
+            {...englishQueryInputProps}
             value={replaceQuery}
             placeholder="Replace with"
             onChange={(event) => onChangeReplaceQuery(event.target.value)}

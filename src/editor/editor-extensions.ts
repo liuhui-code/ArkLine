@@ -34,6 +34,7 @@ import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
 export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
 export const gitTraceCompartment = new Compartment();
+export const editorStructureCompartment = new Compartment();
 
 export function appearanceExtensionForSettings(appearance: EditorAppearance): Extension {
   return createArkLineEditorTheme(appearance);
@@ -57,7 +58,11 @@ export function detectDocumentKind(path: string): EditorDocumentKind {
   return "plain";
 }
 
-export function languageExtensionForPath(path: string): Extension {
+export function languageExtensionForPath(path: string, largeDocumentMode = false): Extension {
+  if (largeDocumentMode) {
+    return [];
+  }
+
   const kind = detectDocumentKind(path);
 
   if (kind === "arkts" || kind === "typescript") {
@@ -69,6 +74,18 @@ export function languageExtensionForPath(path: string): Extension {
   }
 
   return [];
+}
+
+export function structureExtensionForDocument(largeDocumentMode = false): Extension {
+  if (largeDocumentMode) {
+    return [bracketMatching()];
+  }
+
+  return [
+    foldGutter(),
+    indentOnInput(),
+    bracketMatching(),
+  ];
 }
 
 export function createEditorExtensions(
@@ -85,6 +102,7 @@ export function createEditorExtensions(
     selectedLine: number | null;
     onSelectLine?: (line: number) => void;
   },
+  largeDocumentMode = false,
 ): Extension[] {
   return [
     EditorView.contentAttributes.of({
@@ -96,9 +114,6 @@ export function createEditorExtensions(
     dropCursor(),
     rectangularSelection(),
     history(),
-    foldGutter(),
-    indentOnInput(),
-    bracketMatching(),
     highlightActiveLine(),
     definitionHoverDecorationField,
     jumpRevealDecorationField,
@@ -117,7 +132,8 @@ export function createEditorExtensions(
     ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
-    languageCompartment.of(languageExtensionForPath(path)),
+    editorStructureCompartment.of(structureExtensionForDocument(largeDocumentMode)),
+    languageCompartment.of(languageExtensionForPath(path, largeDocumentMode)),
     gitTraceCompartment.of(gitTrace ? createGitTraceGutter(gitTrace) : []),
   ];
 }

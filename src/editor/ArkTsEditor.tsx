@@ -1,14 +1,16 @@
 import type { EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
   appearanceCompartment,
   appearanceExtensionForSettings,
   createEditorExtensions,
+  editorStructureCompartment,
   gitTraceCompartment,
   languageCompartment,
   languageExtensionForPath,
+  structureExtensionForDocument,
 } from "@/editor/editor-extensions";
 import {
   readCaretRect,
@@ -22,6 +24,8 @@ import {
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
+
+const LARGE_DOCUMENT_CHARACTER_THRESHOLD = 300_000;
 
 type ArkTsEditorProps = {
   focusToken?: number;
@@ -72,6 +76,7 @@ export function ArkTsEditor({
   const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
   const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
+  const largeDocumentMode = useMemo(() => value.length >= LARGE_DOCUMENT_CHARACTER_THRESHOLD, [value]);
 
   onChangeRef.current = onChange;
   onSelectionChangeRef.current = onSelectionChange;
@@ -110,6 +115,7 @@ export function ArkTsEditor({
               onSelectLine: onGitTraceLineClick,
             }
           : undefined,
+        largeDocumentMode,
       ),
     });
 
@@ -154,9 +160,12 @@ export function ArkTsEditor({
     }
 
     view.dispatch({
-      effects: languageCompartment.reconfigure(languageExtensionForPath(path)),
+      effects: [
+        editorStructureCompartment.reconfigure(structureExtensionForDocument(largeDocumentMode)),
+        languageCompartment.reconfigure(languageExtensionForPath(path, largeDocumentMode)),
+      ],
     });
-  }, [path]);
+  }, [largeDocumentMode, path]);
 
   useEffect(() => {
     const view = viewRef.current;
