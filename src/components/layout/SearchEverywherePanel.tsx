@@ -1,6 +1,7 @@
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
+import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -77,6 +78,7 @@ export function SearchEverywherePanel({
   const resultCount = mode === "searchEverywhere" ? candidates.length : result.matches.length;
   const pointerOpenRef = useRef(0);
   const resultRefs = useRef(new Map<number, HTMLButtonElement>());
+  const { draftQuery, setDraftQuery } = useSearchSessionInput(query, mode, onChangeQuery);
 
   useEffect(() => {
     const selectedResult = resultRefs.current.get(selectedIndex);
@@ -120,17 +122,12 @@ export function SearchEverywherePanel({
   }
 
   function handleResultsWheel(event: WheelEvent<HTMLDivElement>) {
-    if (resultCount <= 0 || Math.abs(event.deltaY) < 12) {
-      return;
-    }
-
+    if (resultCount <= 0 || Math.abs(event.deltaY) < 12) return;
     onMoveSelection(event.deltaY > 0 ? 1 : -1);
   }
 
   function copyPath(path: string) {
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      return;
-    }
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
     void navigator.clipboard.writeText(path);
   }
 
@@ -201,9 +198,9 @@ export function SearchEverywherePanel({
           autoFocus
           className="panel-input"
           {...englishQueryInputProps}
-          value={query}
+          value={draftQuery}
           placeholder={presentation.searchPlaceholder}
-          onChange={(event) => onChangeQuery(event.target.value)}
+          onChange={(event) => setDraftQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === "Escape") {
               event.preventDefault();
