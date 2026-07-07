@@ -11,24 +11,13 @@ use crate::models::workspace::{
 };
 use crate::services::diff_service::load_workspace_diff_text;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index_with_queue_pressure as inspect_workspace_index_service;
-use crate::services::workspace_index_facade_service::{
-    query_facade_file_symbols_with_readiness as query_workspace_file_symbols_with_readiness_facade,
-};
 use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
 use crate::services::workspace_index_maintenance_service::{
     clear_workspace_index as clear_workspace_index_service,
     rebuild_workspace_index as rebuild_workspace_index_service,
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-use crate::services::workspace_index_query_service::{
-    query_workspace_quick_open as query_workspace_quick_open_service,
-    query_workspace_search_everywhere as query_workspace_search_everywhere_service,
-    WorkspaceIndexQueryScope,
-};
-use crate::services::workspace_query_command_service::{
-    query_workspace_candidates_blocking, search_workspace_text_blocking,
-};
-use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
+use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_repair_service::{
     inspect_parser_failures as inspect_parser_failures_service,
     inspect_unresolved_imports as inspect_unresolved_imports_service,
@@ -40,14 +29,19 @@ use crate::services::workspace_index_ui_activity_service::{
     WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
 };
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
-use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
-use crate::services::workspace_service::{
-    list_workspace_directory as list_workspace_directory_service, scan_workspace_for_open,
+use crate::services::workspace_open_command_service::open_workspace_through_manager_blocking;
+use crate::services::workspace_query_command_service::{
+    query_workspace_candidates_blocking, query_workspace_file_symbols_blocking,
+    query_workspace_quick_open_blocking, query_workspace_search_everywhere_blocking,
+    search_workspace_text_blocking,
 };
+use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
+use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
+use crate::services::workspace_service::list_workspace_directory as list_workspace_directory_service;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
 #[tauri::command]
-pub fn open_workspace(
+pub async fn open_workspace(
     root_path: String,
     app_handle: AppHandle,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
@@ -59,39 +53,16 @@ pub fn open_workspace(
         WorkspaceIndexUiActivityKind::FileOpen,
         current_time_millis() as u64,
     )?;
-    open_workspace_through_manager(
+    open_workspace_through_manager_blocking(
         index_runtime.inner().clone(),
         index_manager.inner().clone(),
         ui_activity.inner().clone(),
-        &root_path,
+        root_path,
         move |status| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
         },
     )
-}
-
-pub(super) fn open_workspace_through_manager<F>(
-    index_runtime: WorkspaceIndexRuntime,
-    index_manager: WorkspaceIndexManagerRuntime,
-    ui_activity: WorkspaceIndexUiActivityRuntime,
-    root_path: &str,
-    on_status: F,
-) -> Result<WorkspaceSnapshot, String>
-where
-    F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
-{
-    let snapshot = scan_workspace_for_open(&PathBuf::from(root_path))?;
-    index_manager.open_workspace_index(root_path)?;
-    index_manager.start_background_worker_with_ui_activity(
-        index_runtime,
-        on_status,
-        move || {
-            ui_activity
-                .is_latency_sensitive(current_time_millis() as u64)
-                .unwrap_or(false)
-        },
-    )?;
-    Ok(snapshot)
+    .await
 }
 
 #[tauri::command]
@@ -240,23 +211,30 @@ pub fn submit_workspace_sdk_index(
 }
 
 #[tauri::command]
-pub fn query_workspace_quick_open(
+pub async fn query_workspace_quick_open(
     root_path: String,
     query: String,
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    query_workspace_quick_open_service(&index_runtime, &root_path, &query, limit)
+    query_workspace_quick_open_blocking(index_runtime.inner().clone(), root_path, query, limit)
+        .await
 }
 
 #[tauri::command]
-pub fn query_workspace_search_everywhere(
+pub async fn query_workspace_search_everywhere(
     root_path: String,
     query: String,
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    query_workspace_search_everywhere_service(&index_runtime, &root_path, &query, limit)
+    query_workspace_search_everywhere_blocking(
+        index_runtime.inner().clone(),
+        root_path,
+        query,
+        limit,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -297,38 +275,40 @@ pub async fn query_workspace_candidates_with_readiness(
 }
 
 #[tauri::command]
-pub fn query_workspace_file_symbols(
+pub async fn query_workspace_file_symbols(
     root_path: String,
     file_path: String,
     query: String,
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    Ok(query_workspace_file_symbols_with_readiness_facade(
-        &index_runtime,
-        &root_path,
-        &file_path,
-        &query,
+    Ok(query_workspace_file_symbols_blocking(
+        index_runtime.inner().clone(),
+        root_path,
+        file_path,
+        query,
         limit,
-    )?
+    )
+    .await?
     .items)
 }
 
 #[tauri::command]
-pub fn query_workspace_file_symbols_with_readiness(
+pub async fn query_workspace_file_symbols_with_readiness(
     root_path: String,
     file_path: String,
     query: String,
     limit: usize,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    query_workspace_file_symbols_with_readiness_facade(
-        &index_runtime,
-        &root_path,
-        &file_path,
-        &query,
+    query_workspace_file_symbols_blocking(
+        index_runtime.inner().clone(),
+        root_path,
+        file_path,
+        query,
         limit,
     )
+    .await
 }
 
 #[tauri::command]

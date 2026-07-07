@@ -280,6 +280,7 @@ mod services {
     #[cfg(test)]
     mod workspace_large_update_profile_tests;
     pub mod workspace_number_format_service;
+    pub mod workspace_open_command_service;
     pub mod workspace_performance_config_service;
     #[cfg(test)]
     mod workspace_performance_config_service_tests;

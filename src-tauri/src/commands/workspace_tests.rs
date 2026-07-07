@@ -6,7 +6,7 @@ use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::commands::workspace::{
-    index_workspace_sdk_symbols_through_manager_with_status, open_workspace_through_manager,
+    index_workspace_sdk_symbols_through_manager_with_status,
     submit_workspace_sdk_index_through_manager,
 };
 use crate::commands::workspace_index_schedule::{
@@ -16,6 +16,7 @@ use crate::commands::workspace_index_schedule::{
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_open_command_service::open_workspace_through_manager;
 use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
 #[test]

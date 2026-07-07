@@ -5,10 +5,12 @@ use crate::models::workspace::{
     WorkspaceTextSearchResult,
 };
 use crate::services::workspace_index_facade_service::{
-    query_facade_search_everywhere_with_readiness,
+    query_facade_file_symbols_with_readiness, query_facade_search_everywhere_with_readiness,
     query_facade_text_search_result_with_cancellation,
 };
-use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
+use crate::services::workspace_index_query_service::{
+    query_workspace_quick_open, query_workspace_search_everywhere, WorkspaceIndexQueryScope,
+};
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_index_ui_activity_service::{
@@ -30,6 +32,50 @@ pub async fn query_workspace_candidates_blocking(
             &root_path,
             &query,
             scope,
+            limit,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub async fn query_workspace_quick_open_blocking(
+    index_runtime: WorkspaceIndexRuntime,
+    root_path: String,
+    query: String,
+    limit: usize,
+) -> Result<Vec<WorkspaceSearchCandidate>, String> {
+    spawn_blocking(move || query_workspace_quick_open(&index_runtime, &root_path, &query, limit))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+pub async fn query_workspace_search_everywhere_blocking(
+    index_runtime: WorkspaceIndexRuntime,
+    root_path: String,
+    query: String,
+    limit: usize,
+) -> Result<Vec<WorkspaceSearchCandidate>, String> {
+    spawn_blocking(move || {
+        query_workspace_search_everywhere(&index_runtime, &root_path, &query, limit)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub async fn query_workspace_file_symbols_blocking(
+    index_runtime: WorkspaceIndexRuntime,
+    root_path: String,
+    file_path: String,
+    query: String,
+    limit: usize,
+) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
+    spawn_blocking(move || {
+        query_facade_file_symbols_with_readiness(
+            &index_runtime,
+            &root_path,
+            &file_path,
+            &query,
             limit,
         )
     })
