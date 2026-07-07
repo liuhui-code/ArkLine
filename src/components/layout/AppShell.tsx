@@ -112,7 +112,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const { problems, resetProblems, refreshProblems, runLint, replaceBuildProblems } = useProblemsController({
     workspaceApi,
     activePath,
-    editorContent,
+    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
     showProblems: () => showBottomTool("problems"),
     onStatusChange: setStatusText,
   });
@@ -220,7 +220,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspaceApi,
     rootPath: workspace?.rootPath,
     activePath,
-    editorContent,
     editorSelection,
     quickOpenQuery,
     activeOverlay,

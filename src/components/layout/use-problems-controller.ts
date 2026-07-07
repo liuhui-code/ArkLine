@@ -5,7 +5,7 @@ import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 export type UseProblemsControllerOptions = {
   workspaceApi: WorkspaceApi;
   activePath: string | null;
-  editorContent: string;
+  getActiveContent: () => string;
   showProblems: () => void;
   onStatusChange: (message: string) => void;
 };
@@ -13,7 +13,7 @@ export type UseProblemsControllerOptions = {
 export function useProblemsController({
   workspaceApi,
   activePath,
-  editorContent,
+  getActiveContent,
   showProblems,
   onStatusChange,
 }: UseProblemsControllerOptions) {
@@ -39,7 +39,7 @@ export function useProblemsController({
 
   async function runLint() {
     if (!activePath) return;
-    await refreshProblems(activePath, editorContent);
+    await refreshProblems(activePath, getActiveContent());
     showProblems();
     onStatusChange("Lint complete");
   }

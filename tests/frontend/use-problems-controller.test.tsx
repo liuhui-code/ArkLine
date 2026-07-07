@@ -29,7 +29,7 @@ describe("useProblemsController", () => {
     const onStatusChange = vi.fn();
     const { result } = renderHarness({
       activePath: "/project/main.ets",
-      editorContent: "let value = 1",
+      activeContent: "let value = 1",
       workspaceApi: workspaceApi({ runValidation }),
       showProblems,
       onStatusChange,
@@ -75,7 +75,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   return renderHook(() => useProblemsController({
     workspaceApi: overrides.workspaceApi ?? workspaceApi({}),
     activePath: "activePath" in overrides ? overrides.activePath ?? null : "/project/main.ets",
-    editorContent: overrides.editorContent ?? "content",
+    getActiveContent: () => overrides.activeContent ?? "content",
     showProblems: overrides.showProblems ?? vi.fn(),
     onStatusChange: overrides.onStatusChange ?? vi.fn(),
   }));
@@ -84,7 +84,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
 type HarnessOptions = {
   workspaceApi: WorkspaceApi;
   activePath: string | null;
-  editorContent: string;
+  activeContent: string;
   showProblems: () => void;
   onStatusChange: (message: string) => void;
 };

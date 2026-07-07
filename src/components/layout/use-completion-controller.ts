@@ -17,7 +17,6 @@ export type UseCompletionControllerOptions = {
   workspaceApi: WorkspaceApi;
   rootPath?: string | null;
   activePath: string | null;
-  editorContent: string;
   editorSelection: { line: number; column: number };
   quickOpenQuery: string;
   activeOverlay: OverlayKey;
@@ -37,7 +36,6 @@ export function useCompletionController({
   workspaceApi,
   rootPath,
   activePath,
-  editorContent,
   editorSelection,
   quickOpenQuery,
   activeOverlay,
@@ -261,13 +259,14 @@ export function useCompletionController({
 
   const completionPresentationContext = useMemo(() => {
     const acceptedLabels = completionHistoryStore.acceptedLabels();
+    const activeContent = getActiveContent();
     return {
       prefix: quickOpenQuery.trim() || completionReplacePrefix,
-      lineTextBeforeCursor: getLineTextBeforeCursor(editorContent, editorSelection.line, editorSelection.column),
+      lineTextBeforeCursor: getLineTextBeforeCursor(activeContent, editorSelection.line, editorSelection.column),
       trigger: completionTrigger,
       acceptedLabels,
     } as const;
-  }, [completionHistoryStore, completionHistoryVersion, completionReplacePrefix, completionTrigger, editorContent, editorSelection.column, editorSelection.line, quickOpenQuery]);
+  }, [completionHistoryStore, completionHistoryVersion, completionReplacePrefix, completionTrigger, editorSelection.column, editorSelection.line, getActiveContent, quickOpenQuery]);
 
   const completionPresentationResults = rankCompletionItems(
     normalizeCompletionItems(completionItems, completionPresentationContext).filter((item) => {

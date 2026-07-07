@@ -94,6 +94,25 @@ describe("useCompletionController", () => {
     expect(result.current.insertTarget).toMatchObject({ text: "width(value)", replaceBefore: 3 });
     expect(onStatusChange).toHaveBeenCalledWith("Inserted completion: width");
   });
+
+  it("uses active document content for completion presentation context", async () => {
+    const { result } = renderHarness({
+      editorContent: "stale",
+      activeContent: "Button().wid",
+      editorSelection: { line: 1, column: 13 },
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(async () => [
+          { label: "width", insertText: "width(${1:value})", detail: "ArkUI property", kind: "property" },
+        ]),
+      }),
+    });
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+
+    expect(result.current.completion.completionPresentationResults[0]?.label).toBe("width");
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -105,12 +124,11 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       workspaceApi: overrides.workspaceApi ?? workspaceApi({ completeSymbol: vi.fn(async () => []) }),
       rootPath: overrides.rootPath,
       activePath: overrides.activePath ?? "/workspace/A.ets",
-      editorContent: overrides.editorContent ?? "build",
       editorSelection: overrides.editorSelection ?? { line: 1, column: 6 },
       quickOpenQuery,
       activeOverlay: overlay,
       settingsApplying: overrides.settingsApplying ?? false,
-      getActiveContent: () => overrides.editorContent ?? "build",
+      getActiveContent: () => overrides.activeContent ?? overrides.editorContent ?? "build",
       setActiveOverlay: setOverlay,
       setQuickOpenQuery,
       setInsertTextTarget: setInsertTarget,
@@ -129,6 +147,7 @@ type HarnessOptions = {
   rootPath: string;
   activePath: string | null;
   editorContent: string;
+  activeContent: string;
   editorSelection: { line: number; column: number };
   settingsApplying: boolean;
   bumpEditorFocusToken: () => void;
