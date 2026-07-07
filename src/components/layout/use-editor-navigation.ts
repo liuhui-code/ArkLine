@@ -22,6 +22,7 @@ export function useEditorNavigation({
   onStatusChange,
 }: UseEditorNavigationOptions) {
   const navigationHistoryRef = useRef<NavigationLocation[]>([]);
+  const navigationRequestRef = useRef(0);
 
   function focusEditor() {
     const editor = editorSurfaceRef.current?.querySelector<HTMLElement>('[aria-label="Editor Content"]');
@@ -69,8 +70,13 @@ export function useEditorNavigation({
     location: NavigationLocation,
     statusPrefix: "Back" | "Definition" | "Usage" | "Line" = "Definition",
   ) {
+    const requestId = navigationRequestRef.current + 1;
+    navigationRequestRef.current = requestId;
     if (normalizePath(location.path) !== normalizePath(activePath ?? "")) {
       await openFile(location.path);
+    }
+    if (navigationRequestRef.current !== requestId) {
+      return;
     }
     setSelectionTarget({
       line: location.line,

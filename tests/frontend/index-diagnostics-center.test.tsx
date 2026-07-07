@@ -4,6 +4,39 @@ import { IndexDiagnosticsCenter } from "@/components/layout/IndexDiagnosticsCent
 import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-api";
 
 describe("IndexDiagnosticsCenter", () => {
+  it("renders UI latency evidence in the performance timeline", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        uiLatencySamples={[{
+          kind: "globalSearch",
+          startedAt: 2_000,
+          durationMs: 345,
+          label: "width",
+        }]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const timeline = screen.getByRole("region", { name: "Performance Timeline" });
+    expect(within(timeline).getByText("UI responsiveness")).toBeVisible();
+    expect(within(timeline).getByText("globalSearch · width")).toBeVisible();
+    expect(within(timeline).getByText("345ms")).toBeVisible();
+  });
+
   it("renders query explain actions and evidence as readable diagnostics", () => {
     render(
       <IndexDiagnosticsCenter

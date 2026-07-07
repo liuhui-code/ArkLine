@@ -420,6 +420,8 @@ pub struct WorkspaceTextSearchOptions {
 pub struct WorkspaceTextSearchRequest {
     pub root_path: String,
     pub query: String,
+    #[serde(default)]
+    pub generation: Option<u64>,
     pub options: WorkspaceTextSearchOptions,
     pub limit: usize,
     pub context_lines: usize,

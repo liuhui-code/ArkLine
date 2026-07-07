@@ -20,7 +20,6 @@ use crate::services::workspace_symbol_resolution_query_service::{
     query_resolved_symbol_by_id, query_resolved_symbols_by_name_and_path,
 };
 use crate::services::workspace_text_search_service::search_workspace_text as search_filesystem_text;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceIndexQueryScope {
     All,
@@ -492,10 +491,8 @@ fn normalize_candidate_paths_for_filesystem(
 
 fn to_filesystem_path(root_path: &str, indexed_path: &str) -> String {
     if Path::new(indexed_path).exists() {
-        return indexed_path.to_string();
-    }
-
-    if root_path.contains('/') {
+        indexed_path.to_string()
+    } else if root_path.contains('/') {
         indexed_path.replace('\\', "/")
     } else {
         indexed_path.replace('/', "\\")

@@ -17,6 +17,43 @@ body,
   overflow: hidden;
 }
 
+.app-crash {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 32px;
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.app-crash__panel {
+  width: min(640px, 100%);
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.app-crash__panel h1 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.app-crash__panel p {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+}
+
+.app-crash__panel pre {
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--bg-editor);
+  color: var(--text-muted);
+}
+
 button {
   border: 1px solid transparent;
   background: transparent;
@@ -1283,6 +1320,29 @@ button:disabled {
   background: var(--bg-editor);
   color: var(--text-muted);
   font-family: var(--font-code);
+}
+
+.editor-crash {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  height: 100%;
+  padding: 24px;
+  background: var(--bg-editor);
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.editor-crash__title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.editor-crash__message {
+  max-width: 560px;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .file-tree {

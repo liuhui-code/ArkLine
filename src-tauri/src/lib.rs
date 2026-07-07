@@ -150,6 +150,7 @@ mod services {
     pub mod workspace_index_diagnostics_service;
     #[cfg(test)]
     mod workspace_index_diagnostics_service_tests;
+    pub(crate) mod workspace_index_discovery_result_service;
     pub mod workspace_index_entity_persistence_service;
     #[cfg(test)]
     mod workspace_index_entity_persistence_service_tests;
@@ -209,6 +210,9 @@ mod services {
     mod workspace_index_manager_service_tests;
     #[cfg(test)]
     mod workspace_index_open_service_tests;
+    pub mod workspace_index_parse_pool_service;
+    #[cfg(test)]
+    mod workspace_index_parse_pool_service_tests;
     pub mod workspace_index_performance_gate_service;
     #[cfg(test)]
     mod workspace_index_performance_gate_service_tests;
@@ -237,6 +241,7 @@ mod services {
     pub mod workspace_index_service;
     #[cfg(test)]
     mod workspace_index_service_tests;
+    pub(crate) mod workspace_index_state_defaults_service;
     pub mod workspace_index_state_machine_service;
     #[cfg(test)]
     mod workspace_index_state_machine_service_tests;
@@ -251,10 +256,20 @@ mod services {
     #[cfg(test)]
     mod workspace_index_test_fixture_service;
     pub mod workspace_index_text_candidate_service;
+    pub(crate) mod workspace_index_ui_activity_service;
+    #[cfg(test)]
+    mod workspace_index_ui_activity_service_tests;
     pub mod workspace_index_watcher_service;
+    #[cfg(test)]
+    mod workspace_index_worker_budget_integration_tests;
+    pub(crate) mod workspace_index_worker_budget_service;
+    #[cfg(test)]
+    mod workspace_index_worker_budget_service_tests;
     pub mod workspace_index_worker_service;
     #[cfg(test)]
     mod workspace_index_worker_service_tests;
+    #[cfg(test)]
+    mod workspace_interaction_perf_fixture_tests;
     #[cfg(test)]
     pub mod workspace_large_fixture_service;
     #[cfg(test)]
@@ -262,6 +277,9 @@ mod services {
     #[cfg(test)]
     mod workspace_large_update_profile_tests;
     pub mod workspace_number_format_service;
+    pub mod workspace_performance_config_service;
+    #[cfg(test)]
+    mod workspace_performance_config_service_tests;
     #[cfg(test)]
     mod workspace_reference_branch_flow_tests;
     #[cfg(test)]
@@ -297,6 +315,7 @@ mod services {
     pub mod workspace_stub_index_service;
     #[cfg(test)]
     mod workspace_stub_index_service_tests;
+    pub(crate) mod workspace_stub_index_writer_service;
     pub(crate) mod workspace_stub_refresh_plan_service;
     #[cfg(test)]
     mod workspace_stub_refresh_plan_service_tests;
@@ -316,6 +335,10 @@ mod services {
     pub mod workspace_symbol_resolution_service;
     #[cfg(test)]
     mod workspace_symbol_resolution_service_tests;
+    #[allow(dead_code)]
+    pub(crate) mod workspace_text_search_cancellation_service;
+    #[cfg(test)]
+    mod workspace_text_search_cancellation_service_tests;
     pub mod workspace_text_search_service;
     #[cfg(test)]
     mod workspace_usage_confidence_tests;
@@ -339,6 +362,8 @@ pub fn run() {
         .manage(services::workspace_index_service::WorkspaceIndexRuntime::default())
         .manage(services::workspace_index_manager_service::WorkspaceIndexManagerRuntime::default())
         .manage(services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime::default())
+        .manage(services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default())
+        .manage(services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime::default())
         .invoke_handler(tauri::generate_handler![
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,

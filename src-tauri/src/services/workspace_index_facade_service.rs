@@ -18,6 +18,7 @@ use crate::services::workspace_index_facade_navigation_service::{
 };
 use crate::services::workspace_index_facade_search_service::{
     query_facade_file_symbols, query_facade_search_everywhere, query_facade_text_search,
+    query_facade_text_search_with_cancellation,
 };
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -172,8 +173,20 @@ pub fn query_facade_text_search_result(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceTextSearchResult, String> {
+    query_facade_text_search_result_with_cancellation(index_runtime, request, || false)
+}
+
+pub fn query_facade_text_search_result_with_cancellation<F>(
+    index_runtime: &WorkspaceIndexRuntime,
+    request: WorkspaceTextSearchRequest,
+    is_cancelled: F,
+) -> Result<WorkspaceTextSearchResult, String>
+where
+    F: FnMut() -> bool,
+{
     let root_path = request.root_path.clone();
-    let envelope = query_facade_text_search(index_runtime, request)?;
+    let envelope =
+        query_facade_text_search_with_cancellation(index_runtime, request, is_cancelled)?;
     record_facade_query_event(&root_path, "textSearch", &envelope)?;
     envelope
         .items

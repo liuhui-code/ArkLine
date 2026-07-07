@@ -14,7 +14,7 @@ use crate::services::workspace_index_diagnostics_service::inspect_workspace_inde
 use crate::services::workspace_index_facade_service::{
     query_facade_file_symbols_with_readiness as query_workspace_file_symbols_with_readiness_facade,
     query_facade_search_everywhere_with_readiness as query_workspace_candidates_with_readiness_facade,
-    query_facade_text_search_result,
+    query_facade_text_search_result_with_cancellation,
 };
 use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
 use crate::services::workspace_index_maintenance_service::{
@@ -33,11 +33,16 @@ use crate::services::workspace_index_repair_service::{
     load_active_sdk_repair_target,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_task_status_service::current_time_millis;
+use crate::services::workspace_index_ui_activity_service::{
+    WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
+};
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
 use crate::services::workspace_service::{
     list_workspace_directory as list_workspace_directory_service, scan_workspace_for_open,
 };
+use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
 #[tauri::command]
 pub fn open_workspace(
@@ -45,11 +50,17 @@ pub fn open_workspace(
     app_handle: AppHandle,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<WorkspaceSnapshot, String> {
     let app_handle = app_handle.clone();
+    ui_activity.record_ui_activity(
+        WorkspaceIndexUiActivityKind::FileOpen,
+        current_time_millis() as u64,
+    )?;
     open_workspace_through_manager(
         index_runtime.inner().clone(),
         index_manager.inner().clone(),
+        ui_activity.inner().clone(),
         &root_path,
         move |status| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
@@ -60,6 +71,7 @@ pub fn open_workspace(
 pub(super) fn open_workspace_through_manager<F>(
     index_runtime: WorkspaceIndexRuntime,
     index_manager: WorkspaceIndexManagerRuntime,
+    ui_activity: WorkspaceIndexUiActivityRuntime,
     root_path: &str,
     on_status: F,
 ) -> Result<WorkspaceSnapshot, String>
@@ -68,7 +80,15 @@ where
 {
     let snapshot = scan_workspace_for_open(&PathBuf::from(root_path))?;
     index_manager.open_workspace_index(root_path)?;
-    index_manager.start_background_worker(index_runtime, on_status)?;
+    index_manager.start_background_worker_with_ui_activity(
+        index_runtime,
+        on_status,
+        move || {
+            ui_activity
+                .is_latency_sensitive(current_time_millis() as u64)
+                .unwrap_or(false)
+        },
+    )?;
     Ok(snapshot)
 }
 
@@ -343,8 +363,27 @@ pub fn refresh_workspace_index_with_changes(
 pub fn search_workspace_text(
     request: WorkspaceTextSearchRequest,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
+    text_search_cancellation: State<'_, WorkspaceTextSearchCancellationRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<WorkspaceTextSearchResult, String> {
-    query_facade_text_search_result(&index_runtime, request)
+    let root_path = request.root_path.clone();
+    let generation = request.generation;
+    ui_activity.record_ui_activity(
+        WorkspaceIndexUiActivityKind::SearchInput,
+        current_time_millis() as u64,
+    )?;
+    if let Some(generation) = generation {
+        text_search_cancellation.register_generation(&root_path, generation)?;
+    }
+    query_facade_text_search_result_with_cancellation(&index_runtime, request, move || {
+        generation
+            .map(|value| {
+                text_search_cancellation
+                    .is_generation_stale(&root_path, value)
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false)
+    })
 }
 
 #[tauri::command]

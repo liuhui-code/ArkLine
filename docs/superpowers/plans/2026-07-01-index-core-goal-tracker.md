@@ -37,9 +37,13 @@ Already implemented in the current branch:
 - Full-refresh chunking primitives, continuation task planner, and manager requeue.
 - Health service and frontend API contract.
 - Large-project fixture and regression tests for search, definition, usages, completion, and refresh.
+- Real-project interaction smoothness gate for open-path indexing, Double Shift, Ctrl+Shift+F,
+  current-file readiness, and foreground single-file indexing.
 
 Known remaining gaps:
 
+- Open lightweight indexing still exceeds the initial 800ms target on the ArkLine baseline:
+  20,000 files measured 1123ms on 2026-07-07.
 - Full-refresh continuation can be persisted, rehydrated on workspace open, and cleared after the final continuation chunk completes.
 - Health has facts, but repair actions are not complete enough for user-driven rebuild and failure inspection.
 - Symbol identity is still shallow for namespaces, broader project members, generics, async returns, and flow-sensitive narrowing.
@@ -179,6 +183,38 @@ git diff --check
 ```
 
 Expected result: feature behavior is easier to reason about because there is one query envelope and one readiness story.
+
+### Stage 4.5: Real-Project Interaction Smoothness Gate
+
+**Goal:** Keep large-project responsiveness measurable with a repeatable local profile before
+changing scheduler, scanner, or query code.
+
+**Files:**
+
+- Create: `src-tauri/src/services/workspace_interaction_perf_fixture_tests.rs`
+- Modify: `src-tauri/src/lib.rs`
+- Modify: `docs/superpowers/plans/2026-07-01-index-core-goal-tracker.md`
+
+- [x] Add an ignored test that reads `ARKLINE_PROFILE_ROOT` and profiles:
+  open lightweight indexing, current-file readiness, Double Shift first result,
+  Ctrl+Shift+F first batch, and foreground single-file readiness.
+- [x] Keep thresholds report-first by default and fail only when
+  `ARKLINE_STRICT_PERF=1`.
+- [x] Record the ArkLine baseline:
+  `files=20000`, `open_lightweight=1123ms`, `first_file_readiness=3ms`,
+  `double_shift_first_result=306ms`, `ctrl_shift_f_first_batch=25ms`,
+  `foreground_readiness=142ms`.
+- [x] Identify the slowest current stage: open lightweight indexing.
+
+Run:
+
+```bash
+cd src-tauri
+ARKLINE_PROFILE_ROOT=/Users/liuhui/Documents/code/ArkLine cargo test verifies_real_project_interaction_smoothness -- --ignored --nocapture
+```
+
+Expected result: local profiling produces a readable report, and strict mode can be used as a
+future regression gate once the open-path target is realistic.
 
 ### Stage 5: Strengthen Symbol Identity And References
 

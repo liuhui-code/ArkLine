@@ -200,6 +200,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
         WorkspaceTextSearchRequest {
             root_path: root_path.clone(),
             query: "globalfacadetarget".to_string(),
+            generation: None,
             options: WorkspaceTextSearchOptions {
                 case_sensitive: false,
                 whole_word: false,
@@ -214,6 +215,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
         WorkspaceTextSearchRequest {
             root_path: root_path.clone(),
             query: "/Text\\(\".+\"\\)/".to_string(),
+            generation: None,
             options: WorkspaceTextSearchOptions {
                 case_sensitive: false,
                 whole_word: false,
@@ -256,6 +258,7 @@ fn facade_routes_text_search_requests_with_readiness_and_explain() {
             request: WorkspaceTextSearchRequest {
                 root_path: root_path.clone(),
                 query: "facaderequesttarget".to_string(),
+                generation: None,
                 options: WorkspaceTextSearchOptions {
                     case_sensitive: false,
                     whole_word: false,
@@ -300,6 +303,7 @@ fn text_search_falls_back_when_text_index_layer_is_missing() {
             request: WorkspaceTextSearchRequest {
                 root_path: root_path.clone(),
                 query: "partiallayertarget".to_string(),
+                generation: None,
                 options: WorkspaceTextSearchOptions {
                     case_sensitive: false,
                     whole_word: false,

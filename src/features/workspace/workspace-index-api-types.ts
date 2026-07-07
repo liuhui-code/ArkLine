@@ -160,6 +160,7 @@ export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" |
 export type WorkspaceTextSearchRequest = {
   rootPath: string;
   query: string;
+  generation?: number;
   options: WorkspaceTextSearchOptions;
   limit: number;
   contextLines: number;

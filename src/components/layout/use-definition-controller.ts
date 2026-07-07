@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   decideDefinitionEnvelope,
   definitionCandidatesToUsageItems,
@@ -77,6 +77,7 @@ export function useDefinitionController({
   onStatusChange,
 }: UseDefinitionControllerOptions) {
   const [definitionDebugText, setDefinitionDebugText] = useState("");
+  const definitionRequestRef = useRef(0);
 
   function setDefinitionDebug(message: string) {
     setDefinitionDebugText(message);
@@ -105,6 +106,9 @@ export function useDefinitionController({
       return;
     }
     const currentContent = getActiveContent();
+    const requestId = definitionRequestRef.current + 1;
+    definitionRequestRef.current = requestId;
+    const isStaleRequest = () => definitionRequestRef.current !== requestId;
     const request = {
       path: activePath,
       line: selectionOverride?.line ?? editorSelection.line,
@@ -121,6 +125,7 @@ export function useDefinitionController({
       candidateSource: DefinitionCandidateSource,
       message?: string,
     ) => {
+      if (isStaleRequest()) return;
       openEditorQueryPanel();
       setUsageSearch({
         status: "ready",
@@ -140,6 +145,7 @@ export function useDefinitionController({
     ) => {
       rememberCurrentLocation();
       if (normalizePath(target.path) !== normalizePath(activePath)) await openFile(target.path);
+      if (isStaleRequest()) return;
       setSelectionTarget({
         line: target.line,
         column: target.column,
@@ -165,6 +171,7 @@ export function useDefinitionController({
       const envelopeExplanation = formatDefinitionEnvelopeExplanation(indexedDefinitionExplain);
       const explanation = envelopeExplanation
         ?? await explainIndexMiss("definition", query, activePath, request.line, request.column);
+      if (isStaleRequest()) return;
       const missMessage = formatDefinitionMissMessage({ source, cause, explanation });
       if (envelopeExplanation) {
         recordRecentQueryExplain({
@@ -180,7 +187,9 @@ export function useDefinitionController({
 
     if (workspace?.rootPath && workspaceApi.queryDefinitionCandidatesWithReadiness) {
       await scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
+      if (isStaleRequest()) return;
       const envelope = await workspaceApi.queryDefinitionCandidatesWithReadiness(workspace.rootPath, request);
+      if (isStaleRequest()) return;
       indexedDefinitionExplain = envelope.explain;
       const decision = decideDefinitionEnvelope(envelope);
       if (decision.kind === "blocked") {
@@ -215,9 +224,11 @@ export function useDefinitionController({
     }
 
     const target = await workspaceApi.gotoDefinition(request);
+    if (isStaleRequest()) return;
     const semanticCandidates = target || !workspaceApi.gotoDefinitionCandidates
       ? []
       : await workspaceApi.gotoDefinitionCandidates(request);
+    if (isStaleRequest()) return;
     if (semanticCandidates.length > 1) {
       showDefinitionCandidates(semanticCandidates, "semantic");
       return;
@@ -241,8 +252,10 @@ export function useDefinitionController({
       },
     };
     const resolvedTarget = target ?? await findWorkspaceDefinition(fallbackRequest);
+    if (isStaleRequest()) return;
     if (!resolvedTarget) {
       const fallbackCandidates = target ? [] : await findWorkspaceDefinitionCandidates(fallbackRequest);
+      if (isStaleRequest()) return;
       if (fallbackCandidates.length > 1) {
         showDefinitionCandidates(fallbackCandidates, "fallback");
         return;

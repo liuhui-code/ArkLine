@@ -36,11 +36,10 @@ use crate::services::workspace_index_task_status_service::{
     task_status_from_publishable_result, task_status_from_state_transition, task_status_from_task,
     WorkspaceIndexTaskResult,
 };
-use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation;
+use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity;
 
 const BACKGROUND_WORKER_IDLE_TIMEOUT_MS: u64 = 250;
 pub const WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE: usize = 8;
-
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndexManagerRuntime {
     scheduler: Arc<Mutex<WorkspaceIndexScheduler>>,
@@ -49,7 +48,6 @@ pub struct WorkspaceIndexManagerRuntime {
     worker_running: Arc<AtomicBool>,
     worker_signal: Arc<(Mutex<u64>, Condvar)>,
 }
-
 impl WorkspaceIndexManagerRuntime {
     #[allow(dead_code)]
     pub fn open_workspace_index(&self, root_path: &str) -> Result<(), String> {
@@ -278,10 +276,23 @@ impl WorkspaceIndexManagerRuntime {
     pub fn run_index_worker_once<F>(
         &self,
         index_runtime: &WorkspaceIndexRuntime,
-        mut on_status: F,
+        on_status: F,
     ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
     where
         F: FnMut(WorkspaceIndexTaskStatus),
+    {
+        self.run_index_worker_once_with_ui_activity(index_runtime, on_status, || false)
+    }
+
+    pub fn run_index_worker_once_with_ui_activity<F, G>(
+        &self,
+        index_runtime: &WorkspaceIndexRuntime,
+        mut on_status: F,
+        is_ui_latency_sensitive: G,
+    ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
+    where
+        F: FnMut(WorkspaceIndexTaskStatus),
+        G: FnMut() -> bool,
     {
         let tasks = self
             .scheduler
@@ -289,12 +300,16 @@ impl WorkspaceIndexManagerRuntime {
             .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
             .drain_ready_batch(WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE);
         let (guarded_tasks, tokens) = start_cancellable_tasks(&self.cancellations, tasks)?;
-        let results =
-            run_index_tasks_with_cancellation(index_runtime, guarded_tasks, |running_status| {
+        let results = run_index_tasks_with_cancellation_and_ui_activity(
+            index_runtime,
+            guarded_tasks,
+            |running_status| {
                 self.store_recent_status(running_status.clone())?;
                 on_status(running_status);
                 Ok::<(), String>(())
-            });
+            },
+            is_ui_latency_sensitive,
+        );
         finish_cancellable_tasks(&self.cancellations, &tokens)?;
         let results = results?;
         let results = self.mark_superseded_results(results)?;
@@ -322,6 +337,19 @@ impl WorkspaceIndexManagerRuntime {
     where
         F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
     {
+        self.start_background_worker_with_ui_activity(index_runtime, on_status, || false)
+    }
+
+    pub fn start_background_worker_with_ui_activity<F, G>(
+        &self,
+        index_runtime: WorkspaceIndexRuntime,
+        on_status: F,
+        mut is_ui_latency_sensitive: G,
+    ) -> Result<bool, String>
+    where
+        F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
+        G: FnMut() -> bool + Send + 'static,
+    {
         if self.worker_running.swap(true, Ordering::SeqCst) {
             return Ok(false);
         }
@@ -329,7 +357,11 @@ impl WorkspaceIndexManagerRuntime {
         let manager = self.clone();
         thread::spawn(move || {
             loop {
-                let _ = manager.run_index_worker_once(&index_runtime, |status| on_status(status));
+                let _ = manager.run_index_worker_once_with_ui_activity(
+                    &index_runtime,
+                    |status| on_status(status),
+                    &mut is_ui_latency_sensitive,
+                );
                 if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
                     break;
                 }

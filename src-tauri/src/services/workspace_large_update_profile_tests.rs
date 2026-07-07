@@ -12,7 +12,8 @@ use crate::services::workspace_index_performance_gate_service::{
     evaluate_deep_layer_performance, record_deep_layer_performance_report,
     samples_from_stub_profile, WorkspaceIndexPerfGateThresholds, WorkspaceIndexStageSample,
 };
-use crate::services::workspace_index_persistence_service::persist_incremental_index_state;
+use crate::services::workspace_index_persistence_service::persist_incremental_index_state_with_priority;
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_large_fixture_service::create_large_workspace_fixture;
@@ -83,12 +84,13 @@ fn profiles_large_workspace_update_chunk_stages() {
         let fingerprint_duration = fingerprint_start.elapsed();
 
         let persist_start = Instant::now();
-        persist_incremental_index_state(
+        persist_incremental_index_state_with_priority(
             &root_path,
             &state,
             &symbol_update.changed_symbols,
             &paths,
             &[],
+            WorkspaceIndexTaskPriority::ChangedFiles,
         )
         .unwrap();
         let persist_duration = persist_start.elapsed();

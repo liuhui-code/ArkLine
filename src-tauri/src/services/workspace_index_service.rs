@@ -17,11 +17,12 @@ use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_fingerprints,
 };
 use crate::services::workspace_index_persistence_service::{
-    persist_catalog_cache, persist_catalog_cache_for_open, persist_incremental_index_state,
-    restore_catalog_cache_state,
+    persist_catalog_cache, persist_catalog_cache_for_open,
+    persist_incremental_index_state_with_priority, restore_catalog_cache_state,
 };
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
-use crate::services::workspace_number_format_service::format_count;
+use crate::services::workspace_index_state_defaults_service::{build_partial_reason, empty_state};
 use crate::services::workspace_search_ranking_service::{
     build_file_candidates, sort_search_everywhere_candidates,
 };
@@ -149,6 +150,19 @@ impl WorkspaceIndexRuntime {
         root_path: &str,
         changed_paths: &[String],
     ) -> Result<WorkspaceIndexRefreshResult, String> {
+        self.refresh_workspace_index_for_changed_paths_with_priority(
+            root_path,
+            changed_paths,
+            WorkspaceIndexTaskPriority::ChangedFiles,
+        )
+    }
+
+    pub fn refresh_workspace_index_for_changed_paths_with_priority(
+        &self,
+        root_path: &str,
+        changed_paths: &[String],
+        priority: WorkspaceIndexTaskPriority,
+    ) -> Result<WorkspaceIndexRefreshResult, String> {
         let previous_state = self.get_index_state(root_path)?;
         let previous_paths = previous_state
             .file_paths
@@ -218,6 +232,7 @@ impl WorkspaceIndexRuntime {
                 &previous_state.symbols,
                 &content_paths,
                 &removed_paths,
+                priority,
             )?
         };
         if !previous_paths.is_empty() {
@@ -351,12 +366,13 @@ impl WorkspaceIndexRuntime {
         update_workspace_content(root_path, added_paths, removed_paths)?;
         update_file_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
         remove_file_fingerprints(root_path, removed_paths)?;
-        persist_incremental_index_state(
+        persist_incremental_index_state_with_priority(
             root_path,
             &workspace.state,
             &symbol_update.changed_symbols,
             added_paths,
             removed_paths,
+            WorkspaceIndexTaskPriority::ChangedFiles,
         )?;
 
         Ok(workspace.state)
@@ -387,6 +403,7 @@ impl WorkspaceIndexRuntime {
         previous_symbols: &[crate::models::workspace::WorkspaceIndexedSymbol],
         changed_paths: &[String],
         removed_paths: &[String],
+        priority: WorkspaceIndexTaskPriority,
     ) -> Result<WorkspaceIndexState, String> {
         let root_path = normalize_index_path(&snapshot.root_path);
         let status = if snapshot.scan_summary.truncated {
@@ -420,12 +437,13 @@ impl WorkspaceIndexRuntime {
             .lock()
             .map_err(|_| "Workspace index lock poisoned".to_string())?
             .insert(root_path, indexed);
-        persist_incremental_index_state(
+        persist_incremental_index_state_with_priority(
             &snapshot.root_path,
             &state,
             &symbol_update.changed_symbols,
             changed_paths,
             removed_paths,
+            priority,
         )?;
 
         Ok(state)
@@ -454,29 +472,6 @@ impl WorkspaceIndexRuntime {
             Err(error) => Err(error),
         }
     }
-}
-
-fn empty_state() -> WorkspaceIndexState {
-    WorkspaceIndexState {
-        status: WorkspaceIndexStatus::Empty,
-        root_path: None,
-        file_paths: Vec::new(),
-        symbols: Vec::new(),
-        indexed_at: None,
-        partial_reason: None,
-    }
-}
-
-fn build_partial_reason(snapshot: &WorkspaceSnapshot) -> Option<String> {
-    if !snapshot.scan_summary.truncated {
-        return None;
-    }
-
-    Some(format!(
-        "Partial workspace results: scan stopped at {} files; excluded {} generated/dependency entries.",
-        format_count(snapshot.scan_summary.scanned_files),
-        format_count(snapshot.scan_summary.skipped_entries),
-    ))
 }
 
 fn now_epoch_ms() -> Result<u128, String> {

@@ -5,9 +5,8 @@ use crate::services::workspace_dependency_graph_service::{
     has_graph_affecting_config_change, mark_dependency_graph_stale,
 };
 use crate::services::workspace_discovery_runner_service::run_workspace_discovery_chunk;
-use crate::services::workspace_discovery_service::WorkspaceDiscoveryChunk;
 use crate::services::workspace_discovery_task_service::{
-    discovery_task_kind_label, is_workspace_discovery_task_reason, workspace_discovery_task_cursor,
+    is_workspace_discovery_task_reason, workspace_discovery_task_cursor,
 };
 use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, WorkspaceFileFingerprintStatus,
@@ -18,6 +17,7 @@ use crate::services::workspace_index_continuation_task_service::{
     continuation_phase, continuation_phase_label, is_full_refresh_continuation_reason,
     WorkspaceIndexContinuationPhase,
 };
+use crate::services::workspace_index_discovery_result_service::discovery_task_result;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
@@ -30,13 +30,15 @@ use crate::services::workspace_index_task_status_service::{
     current_time_millis, failed_task_result, refresh_task_result, skipped_task_result,
     superseded_task_result_from_task, task_status_from_state_transition, WorkspaceIndexTaskResult,
 };
+use crate::services::workspace_index_worker_budget_service::{
+    budget_deep_layer_paths_with_ui_activity, continuation_yield_message,
+};
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
 use crate::services::workspace_service::scan_workspace;
 
 pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
 pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 1024;
 pub const WORKSPACE_DISCOVERY_CHUNK_SIZE: usize = 1024;
-
 #[allow(dead_code)]
 pub fn run_index_tasks<F>(
     index_runtime: &WorkspaceIndexRuntime,
@@ -58,7 +60,6 @@ where
         &mut on_status,
     )
 }
-
 pub fn run_index_tasks_with_cancellation<F>(
     index_runtime: &WorkspaceIndexRuntime,
     tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
@@ -66,6 +67,21 @@ pub fn run_index_tasks_with_cancellation<F>(
 ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
 where
     F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
+{
+    run_index_tasks_with_cancellation_and_ui_activity(index_runtime, tasks, &mut on_status, || {
+        false
+    })
+}
+
+pub fn run_index_tasks_with_cancellation_and_ui_activity<F, G>(
+    index_runtime: &WorkspaceIndexRuntime,
+    tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
+    mut on_status: F,
+    mut is_ui_latency_sensitive: G,
+) -> Result<Vec<WorkspaceIndexTaskResult>, String>
+where
+    F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
+    G: FnMut() -> bool,
 {
     let mut results = Vec::new();
 
@@ -86,7 +102,13 @@ where
             continue;
         }
         let started_at = current_time_millis();
-        match run_index_task(index_runtime, task.clone(), token, started_at) {
+        match run_index_task(
+            index_runtime,
+            task.clone(),
+            token,
+            started_at,
+            is_ui_latency_sensitive(),
+        ) {
             Ok(Some(result)) => results.push(result),
             Ok(None) => {}
             Err((task, error)) => results.push(failed_task_result(task, error, started_at)),
@@ -113,43 +135,16 @@ fn run_index_task(
     task: WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     started_at: u128,
+    ui_latency_sensitive: bool,
 ) -> Result<Option<WorkspaceIndexTaskResult>, (WorkspaceIndexTask, String)> {
-    run_index_task_inner(index_runtime, &task, token, started_at).map_err(|error| (task, error))
-}
-
-fn discovery_task_result(
-    task: &WorkspaceIndexTask,
-    chunk: &WorkspaceDiscoveryChunk,
-    started_at: u128,
-) -> WorkspaceIndexTaskResult {
-    WorkspaceIndexTaskResult {
-        root_path: task.root_path.clone(),
-        kind: discovery_task_kind_label().to_string(),
-        status: if chunk.has_more {
-            "partial".to_string()
-        } else {
-            "ready".to_string()
-        },
-        reason: task.reason.clone(),
-        generation: task.generation,
-        started_at: Some(started_at),
-        finished_at: Some(current_time_millis()),
-        message: Some(format!(
-            "Discovered {} file(s), excluded {} entries",
-            chunk.files.len(),
-            chunk.excluded_count
-        )),
-        error: None,
-        refresh_result: None,
-        refresh_continuation: None,
-        sdk_symbol_count: None,
-        progress_current: chunk.files.len(),
-        progress_total: if chunk.has_more {
-            chunk.files.len().saturating_add(1)
-        } else {
-            chunk.files.len()
-        },
-    }
+    run_index_task_inner(
+        index_runtime,
+        &task,
+        token,
+        started_at,
+        ui_latency_sensitive,
+    )
+    .map_err(|error| (task, error))
 }
 
 fn run_index_task_inner(
@@ -157,6 +152,7 @@ fn run_index_task_inner(
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     started_at: u128,
+    ui_latency_sensitive: bool,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     match task.kind.clone() {
         WorkspaceIndexTaskKind::ChangedPaths => {
@@ -183,6 +179,7 @@ fn run_index_task_inner(
                     token,
                     task.changed_paths.clone(),
                     started_at,
+                    ui_latency_sensitive,
                 )?
                 else {
                     return Ok(Some(superseded_task_result_from_task(task)));
@@ -332,6 +329,7 @@ fn refresh_full_refresh_continuation_chunk(
     token: &WorkspaceIndexCancellationToken,
     changed_paths: Vec<String>,
     started_at: u128,
+    ui_latency_sensitive: bool,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     let mut continuation = plan_refresh_continuation(
         &task.root_path,
@@ -345,30 +343,59 @@ fn refresh_full_refresh_continuation_chunk(
     if token.is_cancelled() {
         return Ok(None);
     }
-    let state = match continuation_phase(&task.reason) {
-        WorkspaceIndexContinuationPhase::FileLayer => {
-            index_runtime.update_workspace_file_symbol_layer(&task.root_path, &chunk.paths, &[])?
+    let phase = continuation_phase(&task.reason);
+    let mut deferred_paths = Vec::new();
+    let selected_paths = match phase {
+        WorkspaceIndexContinuationPhase::DeepLayer => {
+            let budgeted = budget_deep_layer_paths_with_ui_activity(
+                task.priority,
+                chunk.paths,
+                ui_latency_sensitive,
+            );
+            deferred_paths = budgeted.deferred_paths;
+            budgeted.selected_paths
         }
-        WorkspaceIndexContinuationPhase::DeepLayer | WorkspaceIndexContinuationPhase::Legacy => {
-            index_runtime.update_workspace_deep_layer(&task.root_path, &chunk.paths, &[])?
+        WorkspaceIndexContinuationPhase::FileLayer | WorkspaceIndexContinuationPhase::Legacy => {
+            chunk.paths
         }
     };
+    let state = match phase {
+        WorkspaceIndexContinuationPhase::FileLayer => index_runtime
+            .update_workspace_file_symbol_layer(&task.root_path, &selected_paths, &[])?,
+        WorkspaceIndexContinuationPhase::DeepLayer | WorkspaceIndexContinuationPhase::Legacy => {
+            index_runtime.update_workspace_deep_layer_with_priority(
+                &task.root_path,
+                &selected_paths,
+                &[],
+                task.priority,
+            )?
+        }
+    };
+    let processed_count = selected_paths.len();
     let refresh_result = WorkspaceIndexRefreshResult {
         state,
-        changed: !chunk.paths.is_empty(),
-        added_paths: chunk.paths,
+        changed: !selected_paths.is_empty(),
+        added_paths: selected_paths,
         removed_paths: Vec::new(),
     };
     let mut result = refresh_task_result(task, "changed-paths", refresh_result, started_at);
     result.progress_current = chunk.progress.current_chunk;
     result.progress_total = chunk.progress.total_chunks;
-    if !continuation.is_complete() {
+    deferred_paths.extend(continuation.remaining_paths());
+    if !deferred_paths.is_empty() {
+        let deferred_count = deferred_paths.len();
         result.status = "partial".to_string();
-        result.message = Some(format!(
-            "Full refresh {} continuation yielded",
-            continuation_phase_label(&task.reason)
+        result.message = Some(continuation_yield_message(
+            continuation_phase_label(&task.reason),
+            processed_count,
+            deferred_count,
         ));
-        result.refresh_continuation = Some(continuation);
+        result.refresh_continuation = Some(plan_refresh_continuation(
+            &task.root_path,
+            token.generation(),
+            deferred_paths,
+            WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE,
+        ));
     }
     Ok(Some(result))
 }
@@ -386,8 +413,11 @@ fn refresh_changed_path_chunks(
         if token.is_cancelled() {
             return Ok(None);
         }
-        let result =
-            index_runtime.refresh_workspace_index_for_changed_paths(&task.root_path, &chunk)?;
+        let result = index_runtime.refresh_workspace_index_for_changed_paths_with_priority(
+            &task.root_path,
+            &chunk,
+            task.priority,
+        )?;
         combined = Some(match combined {
             Some(previous) => combine_refresh_results(previous, result),
             None => result,

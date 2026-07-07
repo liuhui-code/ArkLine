@@ -10,15 +10,35 @@ use crate::services::workspace_incremental_path_plan_service::{
 use crate::services::workspace_index_entity_persistence_service::{
     persist_metadata_row, replace_changed_files, replace_changed_symbols_for_paths,
 };
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_stub_index_service::replace_changed_stub_rows;
 
+#[allow(dead_code)]
 pub fn persist_incremental_sqlite_index_state(
     root_path: &str,
     state: &WorkspaceIndexState,
     changed_symbols: &[WorkspaceIndexedSymbol],
     changed_paths: &[String],
     removed_paths: &[String],
+) -> Result<(), String> {
+    persist_incremental_sqlite_index_state_with_priority(
+        root_path,
+        state,
+        changed_symbols,
+        changed_paths,
+        removed_paths,
+        WorkspaceIndexTaskPriority::ChangedFiles,
+    )
+}
+
+pub fn persist_incremental_sqlite_index_state_with_priority(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    changed_symbols: &[WorkspaceIndexedSymbol],
+    changed_paths: &[String],
+    removed_paths: &[String],
+    priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
     let mut connection = open_incremental_store(root_path)?;
     let root_key = state
@@ -37,6 +57,7 @@ pub fn persist_incremental_sqlite_index_state(
         &path_plan.changed_paths,
         &path_plan.removed_paths,
         indexed_generation(state),
+        priority,
     )?;
     transaction.commit().map_err(|error| error.to_string())
 }
@@ -61,11 +82,28 @@ pub fn persist_incremental_sqlite_file_symbol_state(
     transaction.commit().map_err(|error| error.to_string())
 }
 
+#[allow(dead_code)]
 pub fn persist_incremental_sqlite_deep_state(
     root_path: &str,
     state: &WorkspaceIndexState,
     changed_paths: &[String],
     removed_paths: &[String],
+) -> Result<(), String> {
+    persist_incremental_sqlite_deep_state_with_priority(
+        root_path,
+        state,
+        changed_paths,
+        removed_paths,
+        WorkspaceIndexTaskPriority::FullRefresh,
+    )
+}
+
+pub fn persist_incremental_sqlite_deep_state_with_priority(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+    changed_paths: &[String],
+    removed_paths: &[String],
+    priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
     let mut connection = open_incremental_store(root_path)?;
     let root_key = state
@@ -83,6 +121,7 @@ pub fn persist_incremental_sqlite_deep_state(
         &path_plan.changed_paths,
         &path_plan.removed_paths,
         indexed_generation(state),
+        priority,
     )?;
     transaction.commit().map_err(|error| error.to_string())
 }

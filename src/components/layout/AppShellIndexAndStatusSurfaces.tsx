@@ -12,6 +12,7 @@ import type {
 } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexExplainResult } from "@/features/workspace/workspace-index-api-types";
 import type { RecentQueryExplain } from "@/features/workspace/workspace-query-explain-model";
+import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
 
 export type AppShellIndexAndStatusSurfacesProps = {
   activeBottomTool: BottomToolKey;
@@ -32,6 +33,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   currentFileReadiness: WorkspaceIndexFileReadiness | null;
   layerReadiness: WorkspaceIndexLayerReadinessReport | null;
   recentQueryExplains: RecentQueryExplain[];
+  uiLatencySamples: UiLatencySample[];
   workspaceIndexTaskStatuses: WorkspaceIndexTaskStatus[];
   onCloseIndexDiagnostics: () => void;
   onRefreshIndexDiagnostics: () => void;
@@ -76,6 +78,7 @@ export function AppShellIndexAndStatusSurfaces({
   currentFileReadiness,
   layerReadiness,
   recentQueryExplains,
+  uiLatencySamples,
   workspaceIndexTaskStatuses,
   onCloseIndexDiagnostics,
   onRefreshIndexDiagnostics,
@@ -136,6 +139,7 @@ export function AppShellIndexAndStatusSurfaces({
         fileReadiness={currentFileReadiness}
         layerReadiness={layerReadiness}
         recentQueryExplains={recentQueryExplains}
+        uiLatencySamples={uiLatencySamples}
         taskStatuses={workspaceIndexTaskStatuses}
         onClose={onCloseIndexDiagnostics}
         onRefresh={onRefreshIndexDiagnostics}

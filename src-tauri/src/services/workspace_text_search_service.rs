@@ -18,6 +18,17 @@ pub fn search_workspace_text(
     request: &WorkspaceTextSearchRequest,
     indexed_paths: &[String],
 ) -> WorkspaceTextSearchResult {
+    search_workspace_text_with_cancellation(request, indexed_paths, || false)
+}
+
+pub fn search_workspace_text_with_cancellation<F>(
+    request: &WorkspaceTextSearchRequest,
+    indexed_paths: &[String],
+    mut is_cancelled: F,
+) -> WorkspaceTextSearchResult
+where
+    F: FnMut() -> bool,
+{
     let parsed_query = parse_search_query(&request.query, &request.options);
     let result_query = to_result_query(&request.query, &parsed_query);
     if matches!(parsed_query, ParsedTextSearchQuery::Invalid(_)) || request.query.trim().is_empty()
@@ -30,6 +41,9 @@ pub fn search_workspace_text(
 
     let mut matches = Vec::new();
     for indexed_path in indexed_paths {
+        if is_cancelled() {
+            break;
+        }
         if matches.len() >= request.limit {
             break;
         }
@@ -274,7 +288,7 @@ fn file_name(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::search_workspace_text;
+    use super::{search_workspace_text, search_workspace_text_with_cancellation};
     use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRequest};
     use std::fs;
     use std::path::PathBuf;
@@ -292,6 +306,7 @@ mod tests {
         WorkspaceTextSearchRequest {
             root_path: root_path.to_string(),
             query: query.to_string(),
+            generation: None,
             options: WorkspaceTextSearchOptions {
                 case_sensitive: false,
                 whole_word: false,
@@ -411,6 +426,50 @@ mod tests {
 
         assert_eq!(result.matches.len(), 1);
         assert!(result.matches[0].summary.contains("target"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stops_between_files_when_cancelled() {
+        let root = unique_temp_dir("workspace-text-search-cancelled");
+        fs::create_dir_all(root.join("entry").join("src")).unwrap();
+        fs::write(
+            root.join("entry").join("src").join("First.ets"),
+            "target one",
+        )
+        .unwrap();
+        fs::write(
+            root.join("entry").join("src").join("Second.ets"),
+            "target two",
+        )
+        .unwrap();
+        let root_path = root.to_string_lossy().to_string();
+        let indexed_paths = vec![
+            root.join("entry")
+                .join("src")
+                .join("First.ets")
+                .to_string_lossy()
+                .to_string(),
+            root.join("entry")
+                .join("src")
+                .join("Second.ets")
+                .to_string_lossy()
+                .to_string(),
+        ];
+        let mut checks = 0;
+
+        let result = search_workspace_text_with_cancellation(
+            &request(&root_path, "target"),
+            &indexed_paths,
+            || {
+                checks += 1;
+                checks > 1
+            },
+        );
+
+        assert_eq!(result.matches.len(), 1);
+        assert_eq!(result.matches[0].file_name, "First.ets");
 
         fs::remove_dir_all(root).unwrap();
     }

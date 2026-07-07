@@ -24,6 +24,7 @@ import type { WorkspaceIndexReadiness } from "@/features/workspace/workspace-ind
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
+import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 
 export type UseSearchEverywhereControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -46,6 +47,7 @@ export type UseSearchEverywhereControllerOptions = {
   navigateToLocation: (location: { path: string; line: number; column: number }, label: "Usage") => Promise<void>;
   explainIndexMiss: (kind: "search", query: string) => Promise<string | null>;
   recordRecentQueryExplain: (entry: QueryExplainRecordInput) => void;
+  recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   onStatusChange: (message: string) => void;
 };
 
@@ -70,6 +72,7 @@ export function useSearchEverywhereController({
   navigateToLocation,
   explainIndexMiss,
   recordRecentQueryExplain,
+  recordUiInteraction,
   onStatusChange,
 }: UseSearchEverywhereControllerOptions) {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -177,7 +180,7 @@ export function useSearchEverywhereController({
     searchEverywhereRequestRef.current = requestId;
 
     if (!workspace) {
-      clearSearchResults(quickOpenQuery.trim());
+      clearSearchResults(debouncedSearchQuery.trim());
       return;
     }
     if (searchEverywhereMode === "searchEverywhere") {
@@ -191,7 +194,6 @@ export function useSearchEverywhereController({
     debouncedSearchQuery,
     editorContent,
     indexVersionKey,
-    quickOpenQuery,
     searchEverywhereMode,
     searchEverywhereOptions,
     searchEverywhereScope,
@@ -234,6 +236,7 @@ export function useSearchEverywhereController({
       clearSearchResults("");
       return;
     }
+    const startedAt = Date.now();
     const indexRequest: Promise<{ candidates: SearchCandidate[]; explain?: string[] }> = workspaceApi.queryWorkspaceCandidatesWithReadiness
       ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
         .then((envelope) => {
@@ -250,6 +253,7 @@ export function useSearchEverywhereController({
 
     void indexRequest.then(({ candidates, explain }) => {
       if (searchEverywhereRequestRef.current !== requestId) return;
+      recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
       const visibleCandidates = searchEverywhereEntityCandidates(candidates);
       const ordered = orderSearchEverywhereCandidates(visibleCandidates, {
         activePath,
@@ -274,6 +278,11 @@ export function useSearchEverywhereController({
     setSearchEverywhereCandidates([]);
     setSearchEverywhereTruncationNotice(null);
     const query = debouncedSearchQuery;
+    if (!query.trim()) {
+      clearSearchResults("");
+      return;
+    }
+    const startedAt = Date.now();
     const dirty = hasDirtyDocuments();
     const parsedTextQuery = parseSearchQuery(query);
     const indexedText = workspaceApi.queryWorkspaceCandidatesWithReadiness;
@@ -287,17 +296,18 @@ export function useSearchEverywhereController({
       ? indexedText(workspace.rootPath, query, "text", 60).then((envelope) => {
         replaceQueryReadiness(envelope.readiness);
         if (envelope.readiness.state === "missing" && envelope.items.length === 0) {
-          return fallbackTextSearch(query, dirty).then((result) => ({ result, suppressMissExplain: false }));
+          return fallbackTextSearch(query, dirty, requestId).then((result) => ({ result, suppressMissExplain: false }));
         }
         return {
           result: textCandidatesToSearchResult(workspace.rootPath, query, envelope.items),
           suppressMissExplain: envelope.readiness.state !== "ready",
         };
       })
-      : fallbackTextSearch(query, dirty).then((result) => ({ result, suppressMissExplain: false }));
+      : fallbackTextSearch(query, dirty, requestId).then((result) => ({ result, suppressMissExplain: false }));
 
     void searchRequest.then(({ result, suppressMissExplain }) => {
       if (searchEverywhereRequestRef.current !== requestId) return;
+      recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
       setSearchEverywhereResult(result);
       setSearchEverywherePreviewContent(null);
       setSearchEverywhereSelectedIndex(0);
@@ -312,11 +322,12 @@ export function useSearchEverywhereController({
     });
   }
 
-  function fallbackTextSearch(query: string, dirty: boolean) {
+  function fallbackTextSearch(query: string, dirty: boolean, generation: number) {
     const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
     if (workspace && canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !dirty) {
       return workspaceApi.searchWorkspaceText({
         query,
+        generation,
         rootPath: workspace.rootPath,
         options: searchEverywhereOptions,
         limit: 60,
@@ -391,6 +402,10 @@ export function searchOverlayLabel(mode: SearchEverywhereMode) {
   if (mode === "find") return "Find in Files";
   if (mode === "replace") return "Replace in Files";
   return "Search Everywhere";
+}
+
+function textSearchInteractionKind(mode: SearchEverywhereMode): UiInteractionKind {
+  return mode === "searchEverywhere" ? "searchEverywhere" : "globalSearch";
 }
 
 function normalizeSelectedSearchText(value: string) {

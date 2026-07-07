@@ -14,7 +14,7 @@ use crate::services::workspace_index_query_service::{
     WorkspaceIndexQueryScope,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
-use crate::services::workspace_text_search_service::search_workspace_text as search_filesystem_text;
+use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
 
 pub fn query_facade_search_everywhere(
     index_runtime: &WorkspaceIndexRuntime,
@@ -82,6 +82,17 @@ pub fn query_facade_text_search(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
+    query_facade_text_search_with_cancellation(index_runtime, request, || false)
+}
+
+pub fn query_facade_text_search_with_cancellation<F>(
+    index_runtime: &WorkspaceIndexRuntime,
+    request: WorkspaceTextSearchRequest,
+    is_cancelled: F,
+) -> Result<WorkspaceIndexFacadeEnvelope, String>
+where
+    F: FnMut() -> bool,
+{
     let mut readiness = crate::services::workspace_index_query_service::readiness_for_index_state(
         &index_runtime.get_index_state(&request.root_path)?,
     );
@@ -89,7 +100,7 @@ pub fn query_facade_text_search(
     if missing_text_index {
         downgrade_missing_text_index(&mut readiness);
     }
-    let result = raw_text_search_result(index_runtime, request)?;
+    let result = raw_text_search_result_with_cancellation(index_runtime, request, is_cancelled)?;
     let confidence = if missing_text_index {
         "filesystemFallback"
     } else {
@@ -113,6 +124,7 @@ fn query_facade_search_text_scope(
     let request = WorkspaceTextSearchRequest {
         root_path: root_path.to_string(),
         query: query.to_string(),
+        generation: None,
         options: crate::models::workspace::WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,
@@ -156,12 +168,27 @@ fn raw_text_search_result(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceTextSearchResult, String> {
+    raw_text_search_result_with_cancellation(index_runtime, request, || false)
+}
+
+fn raw_text_search_result_with_cancellation<F>(
+    index_runtime: &WorkspaceIndexRuntime,
+    request: WorkspaceTextSearchRequest,
+    is_cancelled: F,
+) -> Result<WorkspaceTextSearchResult, String>
+where
+    F: FnMut() -> bool,
+{
     if should_use_indexed_text_search(&request) && !text_index_missing_for_request(&request)? {
         return search_indexed_workspace_content(&request);
     }
 
     let index_state = index_runtime.get_index_state(&request.root_path)?;
-    Ok(search_filesystem_text(&request, &index_state.file_paths))
+    Ok(search_filesystem_text_with_cancellation(
+        &request,
+        &index_state.file_paths,
+        is_cancelled,
+    ))
 }
 
 fn text_explain(

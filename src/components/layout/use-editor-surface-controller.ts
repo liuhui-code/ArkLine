@@ -1,4 +1,4 @@
-import type { MutableRefObject } from "react";
+import { useRef, type MutableRefObject } from "react";
 import { parseGoToLineQuery } from "@/components/layout/app-shell-helpers";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
@@ -65,8 +65,15 @@ export function useEditorSurfaceController({
   syncCompletionForEditorSelection,
   onStatusChange,
 }: UseEditorSurfaceControllerOptions) {
+  const openFileRequestRef = useRef(0);
+
   async function openFile(path: string) {
+    const requestId = openFileRequestRef.current + 1;
+    openFileRequestRef.current = requestId;
     const content = await workspaceApi.openFile(path);
+    if (openFileRequestRef.current !== requestId) {
+      return;
+    }
     if (!documentsRef.current.getDocument(path)) {
       documentsRef.current.openDocument(path, content);
     }

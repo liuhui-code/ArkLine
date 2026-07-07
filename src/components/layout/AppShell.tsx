@@ -35,6 +35,7 @@ import { defaultWorkspaceApi, type WorkspaceApi } from "@/features/workspace/wor
 import { useWorkspaceQueryExplains } from "@/features/workspace/use-workspace-query-explains";
 import { createWorkspaceIndexStore, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
+import { useUiLatencyMonitor } from "@/features/performance/use-ui-latency-monitor";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 
@@ -48,6 +49,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [editorSelectedText, setEditorSelectedText] = useState("");
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const { recentQueryExplains, recordRecentQueryExplain } = useWorkspaceQueryExplains();
+  const { recordUiInteraction, uiLatencySamples } = useUiLatencyMonitor();
   const [definitionHoverActive, setDefinitionHoverActive] = useState(false);
   const settingsRef = useRef(createSettingsStore());
   const workspaceIndexRef = useRef(createWorkspaceIndexStore());
@@ -207,6 +209,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     navigateToLocation,
     explainIndexMiss,
     recordRecentQueryExplain,
+    recordUiInteraction,
     onStatusChange: setStatusText,
   });
   searchActionsRef.current.resetSearchOverlayState = resetSearchOverlayState;
@@ -481,7 +484,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         problems={problems} workspaceApi={workspaceApi} workspaceRootPath={workspace?.rootPath ?? null}
         buildState={buildState} buildModules={buildProject?.modules ?? []} onChangeBuildTarget={(lastTarget) => updateBuildState({ lastTarget })} onChangeBuildModuleName={(moduleName) => updateBuildState({ moduleName })} onChangeBuildProduct={(product) => updateBuildState({ product })} onChangeBuildMode={(buildMode) => updateBuildState({ buildMode })} onChangeBuildFastMode={(fastMode) => updateBuildState({ fastMode })} onSelectBuildConfiguration={selectBuildConfiguration} onSaveBuildConfiguration={() => void saveBuildConfiguration()} onCopyBuildConfiguration={() => void copyBuildConfiguration()} onDeleteBuildConfiguration={() => void deleteBuildConfiguration()} onRunBuild={() => void runBuild()} onRunCleanBuild={() => void runBuild(true)} onStopBuild={() => void stopBuild()}
         diffFiles={diffFiles} gitToolView={gitToolView} gitTraceState={gitTraceState} onChangeGitToolView={setGitToolView} onOpenGitFile={(path) => void openFile(path)} onFocusEditorFromGitTrace={focusEditorSoon} onOpenGitTraceCommitDiff={openGitTraceCommitDiff} onStatusChange={setStatusText}
-        indexAndStatus={{ activeBottomTool, activePath, definitionDebugText, latestExplainResult, latestExplainQuery: latestExplainContext?.query ?? "", onOpenIndexExplainPanel: () => setIndexExplainPanelVisible(true), indexExplainPanelVisible, onCloseIndexExplainPanel: () => setIndexExplainPanelVisible(false), onRebuildIndexFromExplainPanel: () => void rebuildIndexFromExplainPanel(), onOpenSettingsFromExplainPanel: () => void openSettingsFromExplainPanel(), onRetryLatestExplainQuery: retryLatestExplainQuery, indexDiagnosticsVisible, indexDiagnosticsLoading, currentFileDirty: activeDocument?.isDirty ?? false, indexDiagnostics, currentFileReadiness, layerReadiness, recentQueryExplains, workspaceIndexTaskStatuses, onCloseIndexDiagnostics: () => setIndexDiagnosticsVisible(false), onRefreshIndexDiagnostics: () => void refreshIndexDiagnostics(), onResumeIndexingFromDiagnostics: () => void resumeIndexingFromDiagnostics(), onRebuildSdkIndexFromDiagnostics: () => void rebuildSdkIndexFromDiagnostics(), onConfigureSdkFromDiagnostics: () => void openSettings(), semanticState, semanticCapability: derived.semanticCapability, statusText, workspaceName: workspace?.rootName ?? null, workspaceScanText: derived.workspaceScanText, workspaceIndexText: derived.workspaceIndexText, sdkIndexText: derived.sdkIndexText, buildMessage: buildState.message, currentLineBlame, gitBlameVisible, gitBlameMenuOpen, onToggleGitBlameMenu: toggleGitBlameMenu, onToggleGitBlame: toggleGitBlame, onRefreshGitBlame: refreshGitBlame, onShowCurrentLineBlame: showCurrentLineBlame, onCloseGitBlame: closeGitBlame, onOpenIndexDiagnostics: openIndexDiagnostics }}
+        indexAndStatus={{ activeBottomTool, activePath, definitionDebugText, latestExplainResult, latestExplainQuery: latestExplainContext?.query ?? "", onOpenIndexExplainPanel: () => setIndexExplainPanelVisible(true), indexExplainPanelVisible, onCloseIndexExplainPanel: () => setIndexExplainPanelVisible(false), onRebuildIndexFromExplainPanel: () => void rebuildIndexFromExplainPanel(), onOpenSettingsFromExplainPanel: () => void openSettingsFromExplainPanel(), onRetryLatestExplainQuery: retryLatestExplainQuery, indexDiagnosticsVisible, indexDiagnosticsLoading, currentFileDirty: activeDocument?.isDirty ?? false, indexDiagnostics, currentFileReadiness, layerReadiness, recentQueryExplains, uiLatencySamples, workspaceIndexTaskStatuses, onCloseIndexDiagnostics: () => setIndexDiagnosticsVisible(false), onRefreshIndexDiagnostics: () => void refreshIndexDiagnostics(), onResumeIndexingFromDiagnostics: () => void resumeIndexingFromDiagnostics(), onRebuildSdkIndexFromDiagnostics: () => void rebuildSdkIndexFromDiagnostics(), onConfigureSdkFromDiagnostics: () => void openSettings(), semanticState, semanticCapability: derived.semanticCapability, statusText, workspaceName: workspace?.rootName ?? null, workspaceScanText: derived.workspaceScanText, workspaceIndexText: derived.workspaceIndexText, sdkIndexText: derived.sdkIndexText, buildMessage: buildState.message, currentLineBlame, gitBlameVisible, gitBlameMenuOpen, onToggleGitBlameMenu: toggleGitBlameMenu, onToggleGitBlame: toggleGitBlame, onRefreshGitBlame: refreshGitBlame, onShowCurrentLineBlame: showCurrentLineBlame, onCloseGitBlame: closeGitBlame, onOpenIndexDiagnostics: openIndexDiagnostics }}
       />
     </div>
   );

@@ -29,7 +29,13 @@ fn open_workspace_command_returns_snapshot_and_queues_background_index() {
     let index_manager = WorkspaceIndexManagerRuntime::default();
 
     let snapshot =
-        open_workspace_through_manager(index_runtime, index_manager.clone(), &root_path, |_| {})
+        open_workspace_through_manager(
+            index_runtime,
+            index_manager.clone(),
+            crate::services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default(),
+            &root_path,
+            |_| {},
+        )
             .unwrap();
     let statuses = index_manager.get_index_task_statuses(&root_path).unwrap();
 

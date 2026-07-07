@@ -4,7 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_stub_index_service::stub_parse_jobs_for_paths_for_test;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -130,6 +132,23 @@ fn parser_error_persists_without_blocking_other_files() {
     assert_eq!(stub_file_status_count(&sqlite_path, "error"), 1);
 
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn stub_parse_jobs_keep_caller_priority() {
+    let jobs = stub_parse_jobs_for_paths_for_test(
+        "\\workspace",
+        &["/workspace/Entry.ets".to_string()],
+        42,
+        WorkspaceIndexTaskPriority::ForegroundNavigation,
+    );
+
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(
+        jobs[0].priority,
+        WorkspaceIndexTaskPriority::ForegroundNavigation
+    );
+    assert_eq!(jobs[0].generation, 42);
 }
 
 fn sqlite_path(root: &PathBuf) -> PathBuf {

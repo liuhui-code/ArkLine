@@ -21,6 +21,7 @@ fn request(root_path: &str, query: &str) -> WorkspaceTextSearchRequest {
     WorkspaceTextSearchRequest {
         root_path: root_path.to_string(),
         query: query.to_string(),
+        generation: None,
         options: WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,

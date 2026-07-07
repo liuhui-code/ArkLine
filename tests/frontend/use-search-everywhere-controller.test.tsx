@@ -10,6 +10,7 @@ import type { WorkspaceIndexQueryScope, WorkspaceIndexReadiness } from "@/featur
 describe("useSearchEverywhereController", () => {
   afterEach(() => {
     vi.useRealTimers();
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 
   it("prefills Find in Files from selected editor text", async () => {
@@ -61,6 +62,117 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.overlay).toBe("none");
   });
 
+  it("does not rerun stale backend search while typing before debounce settles", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+      readiness: readiness(),
+      explain: [],
+    }));
+    const { result } = renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
+
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(2);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith("/workspace", "EntryA", "all", 25);
+  });
+
+  it("coalesces rapid typing and deleting into only the latest debounced query", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ title: "EntryAbility", path: "/workspace/EntryAbility.ets" })],
+      readiness: readiness(),
+      explain: [],
+    }));
+    const { result } = renderHarness({
+      query: "",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    act(() => {
+      for (const query of rapidSearchQueries("EntryAbility")) {
+        result.current.search.handleOverlayQueryChange(query);
+      }
+    });
+
+    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
+
+    await flushSearchDebounce();
+
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "/workspace",
+      "EntryAbility",
+      "all",
+      25,
+    );
+  });
+
+  it("does not let a slow stale search repopulate results after the query is deleted", async () => {
+    vi.useFakeTimers();
+    const slowSearch = createDeferred<{
+      items: SearchCandidate[];
+      readiness: WorkspaceIndexReadiness;
+      explain: string[];
+    }>();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(() => slowSearch.promise);
+    const { result } = renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.search.handleOverlayQueryChange(""));
+    await flushSearchDebounce();
+    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
+
+    await act(async () => {
+      slowSearch.resolve({
+        items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+        readiness: readiness(),
+        explain: [],
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
+  });
+
+  it("records search interaction latency when backend candidates resolve", async () => {
+    vi.useFakeTimers();
+    const recordUiInteraction = vi.fn();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+      readiness: readiness(),
+      explain: [],
+    }));
+
+    renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      recordUiInteraction,
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+
+    expect(recordUiInteraction).toHaveBeenCalledWith("searchEverywhere", "Entry", expect.any(Number), expect.any(Number));
+  });
+
   it("runs text search and loads selected file preview content", async () => {
     vi.useFakeTimers();
     const { result } = renderHarness({
@@ -78,6 +190,53 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.search.searchEverywhereResult.matches).toHaveLength(1);
     expect(result.current.search.searchEverywherePreviewContent).toBe("struct Entry {\n  width(100)\n}");
   });
+
+  it("passes a text search generation to backend workspace search", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+    const searchWorkspaceText = vi.fn(async () => ({
+      query: { kind: "text" as const, query: "width" },
+      matches: [],
+    }));
+    const { result } = renderHarness({
+      query: "width",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ searchWorkspaceText }),
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    await flushSearchDebounce();
+
+    expect(searchWorkspaceText).toHaveBeenCalledWith(expect.objectContaining({
+      generation: expect.any(Number),
+      query: "width",
+    }));
+  });
+
+  it("does not call native text search after the Find query is deleted", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+    const searchWorkspaceText = vi.fn(async () => ({
+      query: { kind: "text" as const, query: "width" },
+      matches: [],
+    }));
+    const { result } = renderHarness({
+      query: "width",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ searchWorkspaceText }),
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    await flushSearchDebounce();
+    const callsBeforeDelete = searchWorkspaceText.mock.calls.length;
+    expect(callsBeforeDelete).toBeGreaterThan(0);
+
+    act(() => result.current.search.handleOverlayQueryChange(""));
+    await flushSearchDebounce();
+
+    expect(searchWorkspaceText).toHaveBeenCalledTimes(callsBeforeDelete);
+    expect(result.current.search.searchEverywhereResult.matches).toEqual([]);
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -93,6 +252,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   const navigateToLocation = overrides.navigateToLocation ?? vi.fn(async () => undefined);
   const explainIndexMiss = overrides.explainIndexMiss ?? vi.fn(async () => null);
   const recordRecentQueryExplain = overrides.recordRecentQueryExplain ?? vi.fn();
+  const recordUiInteraction = overrides.recordUiInteraction ?? vi.fn();
   const onStatusChange = overrides.onStatusChange ?? vi.fn();
   return renderHook(() => {
     const [overlay, setOverlay] = useState<OverlayKey>(overrides.overlay ?? "none");
@@ -118,6 +278,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       navigateToLocation,
       explainIndexMiss,
       recordRecentQueryExplain,
+      recordUiInteraction,
       onStatusChange,
     });
     return { search, overlay, query };
@@ -150,6 +311,7 @@ type HarnessOptions = {
   navigateToLocation: (location: { path: string; line: number; column: number }, label: "Usage") => Promise<void>;
   explainIndexMiss: (kind: "search", query: string) => Promise<string | null>;
   recordRecentQueryExplain: Parameters<typeof useSearchEverywhereController>[0]["recordRecentQueryExplain"];
+  recordUiInteraction: Parameters<typeof useSearchEverywhereController>[0]["recordUiInteraction"];
   onStatusChange: (message: string) => void;
 };
 
@@ -204,4 +366,18 @@ function candidate(overrides: Partial<SearchCandidate>): SearchCandidate {
     freshness: "ready",
     ...overrides,
   };
+}
+
+function rapidSearchQueries(finalQuery: string) {
+  const growing = Array.from({ length: finalQuery.length }, (_, index) => finalQuery.slice(0, index + 1));
+  const shrinking = Array.from({ length: finalQuery.length }, (_, index) => finalQuery.slice(0, finalQuery.length - index - 1));
+  return [...growing, ...shrinking, ...growing];
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }

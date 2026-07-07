@@ -2,6 +2,7 @@ import type { DefinitionHoverState, EditorCaretRect, EditorContextMenuRequest, E
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import { useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
+import { EditorCrashBoundary } from "@/components/layout/EditorCrashBoundary";
 import { LazyArkTsEditor } from "@/editor/LazyArkTsEditor";
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
 import type { EditorAppearance } from "@/types/editor";
@@ -168,25 +169,27 @@ export function EditorSurface({
       </div>
       <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
       {activePath ? (
-        <LazyArkTsEditor
-          appearance={appearance}
-          focusToken={focusToken}
-          insertTextTarget={insertTextTarget}
-          path={activePath}
-          selectionTarget={selectionTarget}
-          value={content}
-          onChange={onChange}
-          onCaretRectChange={onCaretRectChange}
-          onDefinitionTrigger={onDefinitionTrigger}
-          onDefinitionHoverChange={onDefinitionHoverChange}
-          onSelectionChange={onSelectionChange}
-          onTypingCompletionTrigger={onTypingCompletionTrigger}
-          onContextMenu={openEditorContextMenu}
-          blameAttributions={blameAttributions}
-          gitBlameVisible={gitBlameVisible}
-          selectedBlameLine={selectedBlameLine}
-          onGitTraceLineClick={onGitTraceLineClick}
-        />
+        <EditorCrashBoundary resetKey={activePath}>
+          <LazyArkTsEditor
+            appearance={appearance}
+            focusToken={focusToken}
+            insertTextTarget={insertTextTarget}
+            path={activePath}
+            selectionTarget={selectionTarget}
+            value={content}
+            onChange={onChange}
+            onCaretRectChange={onCaretRectChange}
+            onDefinitionTrigger={onDefinitionTrigger}
+            onDefinitionHoverChange={onDefinitionHoverChange}
+            onSelectionChange={onSelectionChange}
+            onTypingCompletionTrigger={onTypingCompletionTrigger}
+            onContextMenu={openEditorContextMenu}
+            blameAttributions={blameAttributions}
+            gitBlameVisible={gitBlameVisible}
+            selectedBlameLine={selectedBlameLine}
+            onGitTraceLineClick={onGitTraceLineClick}
+          />
+        </EditorCrashBoundary>
       ) : (
         <MainWorkspaceView workspaceName={workspaceName} />
       )}

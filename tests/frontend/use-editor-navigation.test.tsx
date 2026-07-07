@@ -57,6 +57,42 @@ describe("useEditorNavigation", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Usage: A.ets:7:2");
   });
 
+  it("keeps the latest navigation target when older file open finishes later", async () => {
+    const first = createDeferred<void>();
+    const second = createDeferred<void>();
+    const openFile = vi.fn((path: string) => path.endsWith("A.ets") ? first.promise : second.promise);
+    const setSelectionTarget = vi.fn();
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useEditorNavigation({
+      activePath: "/workspace/Current.ets",
+      editorSelection: { line: 1, column: 1 },
+      editorSurfaceRef: createRef<HTMLElement>(),
+      openFile,
+      setSelectionTarget,
+      bumpEditorFocusToken: vi.fn(),
+      onStatusChange,
+    }));
+
+    void act(() => {
+      void result.current.navigateToLocation({ path: "/workspace/A.ets", line: 4, column: 2 }, "Usage");
+      void result.current.navigateToLocation({ path: "/workspace/B.ets", line: 9, column: 3 }, "Usage");
+    });
+    await act(async () => {
+      second.resolve();
+      await Promise.resolve();
+    });
+
+    expect(setSelectionTarget).toHaveBeenLastCalledWith(expect.objectContaining({ line: 9, column: 3 }));
+
+    await act(async () => {
+      first.resolve();
+      await Promise.resolve();
+    });
+
+    expect(setSelectionTarget).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenLastCalledWith("Usage: B.ets:9:3");
+  });
+
   it("reports when back history is empty", async () => {
     const onStatusChange = vi.fn();
     const { result } = renderHook(() => useEditorNavigation({
@@ -76,3 +112,11 @@ describe("useEditorNavigation", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Back: no previous location");
   });
 });
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}

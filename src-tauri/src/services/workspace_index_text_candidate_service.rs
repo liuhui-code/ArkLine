@@ -16,6 +16,7 @@ pub fn text_search_candidates(
         WorkspaceTextSearchRequest {
             root_path: root_path.to_string(),
             query: query.to_string(),
+            generation: None,
             options: WorkspaceTextSearchOptions {
                 case_sensitive: false,
                 whole_word: false,

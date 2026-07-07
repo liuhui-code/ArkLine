@@ -13,6 +13,7 @@ import {
   type QueryEnvelopeExplainSummary,
   type RecentQueryExplain,
 } from "@/features/workspace/workspace-query-explain-model";
+import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
 import "./index-diagnostics-center.css";
 
 type IndexDiagnosticsCenterProps = {
@@ -25,6 +26,7 @@ type IndexDiagnosticsCenterProps = {
   layerReadiness: WorkspaceIndexLayerReadinessReport | null;
   recentQueryExplains: RecentQueryExplain[];
   taskStatuses: WorkspaceIndexTaskStatus[];
+  uiLatencySamples?: UiLatencySample[];
   onClose: () => void;
   onRefresh: () => void;
   onResumeIndexing: () => void;
@@ -43,6 +45,7 @@ export function IndexDiagnosticsCenter({
   layerReadiness,
   recentQueryExplains,
   taskStatuses,
+  uiLatencySamples = [],
   onClose,
   onRefresh,
   onResumeIndexing,
@@ -275,9 +278,19 @@ export function IndexDiagnosticsCenter({
             <section className="index-diagnostics__section" aria-label="Performance Timeline">
               <div className="index-diagnostics__section-title">
                 <h3>Performance Timeline</h3>
-                <span>{diagnostics?.timeline.length ?? 0} events</span>
+                <span>{(diagnostics?.timeline.length ?? 0) + uiLatencySamples.length} events</span>
               </div>
               <div className="index-diagnostics__timeline">
+                {uiLatencySamples.map((item, index) => (
+                  <div className="index-diagnostics__timeline-item" key={`${item.kind}:${item.startedAt}:${index}`}>
+                    <span className="index-diagnostics__severity index-diagnostics__severity--warning">ui</span>
+                    <div>
+                      <strong>UI responsiveness</strong>
+                      <span>{item.kind} · {item.label}</span>
+                    </div>
+                    <span>{item.durationMs}ms</span>
+                  </div>
+                ))}
                 {(diagnostics?.timeline ?? []).length > 0 ? diagnostics?.timeline.map((item, index) => (
                   <div className="index-diagnostics__timeline-item" key={`${item.taskId ?? item.title}:${item.occurredAt}:${index}`}>
                     <span className={`index-diagnostics__severity index-diagnostics__severity--${item.severity}`}>{item.severity}</span>
@@ -287,9 +300,10 @@ export function IndexDiagnosticsCenter({
                     </div>
                     <span>{item.durationMs == null ? "start" : `${item.durationMs}ms`}</span>
                   </div>
-                )) : (
+                )) : null}
+                {(diagnostics?.timeline ?? []).length === 0 && uiLatencySamples.length === 0 ? (
                   <div className="index-diagnostics__empty">No timeline events yet.</div>
-                )}
+                ) : null}
               </div>
             </section>
           </div>

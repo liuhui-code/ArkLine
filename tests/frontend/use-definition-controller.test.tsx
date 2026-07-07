@@ -114,6 +114,42 @@ describe("useDefinitionController", () => {
     expect(scheduleForegroundNavigationIndex).toHaveBeenCalledWith("/workspace", ["/workspace/A.ets"]);
     expect(events.slice(0, 2)).toEqual(["schedule-navigation-index", "query-definition"]);
   });
+
+  it("keeps the latest resolved definition target when an older file open finishes later", async () => {
+    const firstOpen = createDeferred<void>();
+    const secondOpen = createDeferred<void>();
+    const openFile = vi.fn((path: string) => path.endsWith("B.ets") ? firstOpen.promise : secondOpen.promise);
+    const setSelectionTarget = vi.fn();
+    const queryDefinitionCandidatesWithReadiness = vi.fn(async (_rootPath: string, request: { line: number }) => ({
+      items: request.line === 4
+        ? [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }]
+        : [{ path: "/workspace/C.ets", line: 12, column: 4, preview: "class C" }],
+      readiness: readiness("ready"),
+    }));
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({ queryDefinitionCandidatesWithReadiness }),
+      openFile,
+      setSelectionTarget,
+    })));
+
+    void act(() => {
+      void result.current.goToDefinitionFromEditor({ line: 4, column: 2 });
+      void result.current.goToDefinitionFromEditor({ line: 5, column: 2 });
+    });
+    await act(async () => {
+      secondOpen.resolve();
+      await Promise.resolve();
+    });
+
+    expect(setSelectionTarget).toHaveBeenLastCalledWith(expect.objectContaining({ line: 12, column: 4 }));
+
+    await act(async () => {
+      firstOpen.resolve();
+      await Promise.resolve();
+    });
+
+    expect(setSelectionTarget).toHaveBeenCalledTimes(1);
+  });
 });
 
 function options(overrides: Partial<Parameters<typeof useDefinitionController>[0]> = {}) {
@@ -178,4 +214,12 @@ function readiness(state: "ready" | "partial") {
     state,
     retryable: state !== "ready",
   };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }

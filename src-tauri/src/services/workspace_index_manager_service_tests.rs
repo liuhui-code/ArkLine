@@ -118,6 +118,7 @@ fn coalesces_watcher_changes_before_refreshing_the_index() {
     let matches = search_indexed_workspace_content(&WorkspaceTextSearchRequest {
         root_path: root_path.clone(),
         query: "AfterManagerRefresh".to_string(),
+        generation: None,
         options: WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,

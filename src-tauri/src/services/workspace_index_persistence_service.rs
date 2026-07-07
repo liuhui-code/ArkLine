@@ -12,9 +12,11 @@ use crate::services::workspace_index_entity_persistence_service::{
     insert_legacy_symbol, insert_symbol_entity,
 };
 use crate::services::workspace_index_incremental_persistence_service::{
-    persist_incremental_sqlite_deep_state, persist_incremental_sqlite_file_symbol_state,
-    persist_incremental_sqlite_index_state,
+    persist_incremental_sqlite_deep_state_with_priority,
+    persist_incremental_sqlite_file_symbol_state,
+    persist_incremental_sqlite_index_state_with_priority,
 };
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_stub_index_service::replace_all_stub_rows;
 
@@ -58,23 +60,25 @@ pub fn persist_index_state(root_path: &str, state: &WorkspaceIndexState) -> Resu
     persist_sqlite_index_state(root_path, state)
 }
 
-pub fn persist_incremental_index_state(
+pub fn persist_incremental_index_state_with_priority(
     root_path: &str,
     state: &WorkspaceIndexState,
     changed_symbols: &[WorkspaceIndexedSymbol],
     changed_paths: &[String],
     removed_paths: &[String],
+    priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
 
-    persist_incremental_sqlite_index_state(
+    persist_incremental_sqlite_index_state_with_priority(
         root_path,
         state,
         changed_symbols,
         changed_paths,
         removed_paths,
+        priority,
     )
 }
 
@@ -98,17 +102,24 @@ pub fn persist_incremental_file_symbol_state(
     )
 }
 
-pub fn persist_incremental_deep_index_state(
+pub fn persist_incremental_deep_index_state_with_priority(
     root_path: &str,
     state: &WorkspaceIndexState,
     changed_paths: &[String],
     removed_paths: &[String],
+    priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
 
-    persist_incremental_sqlite_deep_state(root_path, state, changed_paths, removed_paths)
+    persist_incremental_sqlite_deep_state_with_priority(
+        root_path,
+        state,
+        changed_paths,
+        removed_paths,
+        priority,
+    )
 }
 
 pub fn restore_catalog_cache_state(root_path: &str) -> Result<WorkspaceIndexState, String> {
