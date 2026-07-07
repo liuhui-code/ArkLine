@@ -8,7 +8,6 @@ export type UseCurrentFileSymbolsControllerOptions = {
   workspaceApi: WorkspaceApi;
   rootPath?: string | null;
   activePath: string | null;
-  editorContent: string;
   editorLine: number;
   getActiveContent: () => string;
   onBeforeShow: () => void;
@@ -23,7 +22,6 @@ export function useCurrentFileSymbolsController({
   workspaceApi,
   rootPath,
   activePath,
-  editorContent,
   editorLine,
   getActiveContent,
   onBeforeShow,
@@ -88,8 +86,8 @@ export function useCurrentFileSymbolsController({
   }
 
   const localCurrentClassMethods = useMemo(() => (
-    collectCurrentClassMethods(getActiveContent() || editorContent, editorLine)
-  ), [editorContent, editorLine, getActiveContent]);
+    collectCurrentClassMethods(getActiveContent(), editorLine)
+  ), [editorLine, getActiveContent]);
 
   const currentClassMethods = useMemo(() => {
     const indexed = indexedCurrentMethods;

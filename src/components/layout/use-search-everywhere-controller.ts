@@ -37,7 +37,6 @@ export type UseSearchEverywhereControllerOptions = {
   workspaceApi: WorkspaceApi;
   workspace: WorkspaceViewModel | null;
   activePath: string | null;
-  editorContent: string;
   editorSelectedText: string;
   quickOpenQuery: string;
   activeOverlay: OverlayKey;
@@ -49,6 +48,7 @@ export type UseSearchEverywhereControllerOptions = {
   getRecentPaths: () => string[];
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
   getOpenDocumentContent: (path: string) => string | null;
+  getActiveContent: () => string;
   hasDirtyDocuments: () => boolean;
   rememberCurrentLocation: () => void;
   navigateToLocation: (location: { path: string; line: number; column: number }, label: "Usage") => Promise<void>;
@@ -62,7 +62,6 @@ export function useSearchEverywhereController({
   workspaceApi,
   workspace,
   activePath,
-  editorContent,
   editorSelectedText,
   quickOpenQuery,
   activeOverlay,
@@ -74,6 +73,7 @@ export function useSearchEverywhereController({
   getRecentPaths,
   replaceQueryReadiness,
   getOpenDocumentContent,
+  getActiveContent,
   hasDirtyDocuments,
   rememberCurrentLocation,
   navigateToLocation,
@@ -233,7 +233,6 @@ export function useSearchEverywhereController({
     activeOverlay,
     activePath,
     debouncedSearchQuery,
-    editorContent,
     indexVersionKey,
     searchEverywhereMode,
     searchEverywhereOptions,
@@ -397,7 +396,7 @@ export function useSearchEverywhereController({
 
   async function readSearchFile(path: string) {
     if (normalizePath(path) === normalizePath(activePath ?? "")) {
-      return getOpenDocumentContent(path) ?? editorContent;
+      return getOpenDocumentContent(path) ?? getActiveContent();
     }
     const openContent = getOpenDocumentContent(path);
     return openContent ?? await workspaceApi.openFile(path);

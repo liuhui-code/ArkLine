@@ -192,7 +192,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspaceApi,
     workspace,
     activePath,
-    editorContent,
     editorSelectedText,
     quickOpenQuery,
     activeOverlay,
@@ -207,6 +206,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
     },
     getOpenDocumentContent: (path) => documentsRef.current.getDocument(path)?.currentContent ?? null,
+    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
     hasDirtyDocuments: () => documentsRef.current.getDocuments().some((document) => document.isDirty),
     rememberCurrentLocation,
     navigateToLocation,
@@ -240,7 +240,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspaceApi,
     rootPath: workspace?.rootPath,
     activePath,
-    editorContent,
     editorLine: editorSelection.line,
     getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
     onBeforeShow: () => setActiveOverlay("none"),

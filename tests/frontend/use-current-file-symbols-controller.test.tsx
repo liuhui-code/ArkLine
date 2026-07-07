@@ -38,6 +38,16 @@ describe("useCurrentFileSymbolsController", () => {
     expect(result.current.visibleCurrentClassMethods.map((method) => method.signature)).toEqual(["about(title: string)"]);
   });
 
+  it("uses active document content instead of stale shell content", () => {
+    const { result } = renderHook(() => useCurrentFileSymbolsController(options({
+      getActiveContent: () => content,
+    })));
+
+    act(() => result.current.showCurrentClassMethods());
+
+    expect(result.current.visibleCurrentClassMethods.map((method) => method.name)).toContain("about");
+  });
+
   it("loads indexed methods and keeps local signatures for matching names", async () => {
     const indexedSymbols: SearchCandidate[] = [
       {
@@ -115,7 +125,6 @@ function options(overrides: Partial<Parameters<typeof useCurrentFileSymbolsContr
     workspaceApi: workspaceApi({}),
     rootPath: null,
     activePath: "/workspace/A.ets",
-    editorContent: content,
     editorLine: 3,
     getActiveContent: () => content,
     onBeforeShow: vi.fn(),
