@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::workspace::WorkspaceSearchCandidate;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
-use crate::services::workspace_sdk_parser_service::{collect_sdk_symbols, WorkspaceSdkSymbol};
+use crate::services::workspace_sdk_parser_service::{
+    collect_sdk_symbols, collect_sdk_symbols_from_files, WorkspaceSdkSymbol,
+};
 use crate::services::workspace_search_ranking_service::lexical_match_score;
 use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
 
@@ -16,6 +18,14 @@ pub struct WorkspaceSdkIndexSummary {
     pub symbol_count: usize,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSdkIndexChunkSummary {
+    pub indexed_files: usize,
+    pub symbol_count: usize,
+}
+
+#[allow(dead_code)]
 pub fn index_workspace_sdk_symbols(
     root_path: &str,
     sdk_path: &str,
@@ -40,41 +50,54 @@ pub fn index_workspace_sdk_symbols(
             params![root_key, sdk_key, sdk_version],
         )
         .map_err(|error| error.to_string())?;
-    for symbol in &symbols {
-        transaction
-            .execute(
-                "insert into workspace_sdk_symbols (
-                    root_path, sdk_path, sdk_version, source, symbol_id, kind, name,
-                    path, line, column, container, signature
-                 ) values (?1, ?2, ?3, 'api', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![
-                    root_key,
-                    sdk_key,
-                    sdk_version,
-                    sdk_symbol_id(
-                        &symbol.path,
-                        &symbol.kind,
-                        symbol.container.as_deref(),
-                        &symbol.name,
-                        symbol.line as i64,
-                        symbol.column as i64,
-                    ),
-                    symbol.kind,
-                    symbol.name,
-                    symbol.path,
-                    symbol.line as i64,
-                    symbol.column as i64,
-                    symbol.container,
-                    symbol.signature,
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-    }
+    insert_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version, &symbols)?;
     record_active_sdk_index(&transaction, &root_key, &sdk_key, sdk_version)?;
     prune_superseded_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version)?;
     transaction.commit().map_err(|error| error.to_string())?;
 
     Ok(WorkspaceSdkIndexSummary {
+        symbol_count: symbols.len(),
+    })
+}
+
+pub fn index_workspace_sdk_symbol_chunk(
+    root_path: &str,
+    sdk_path: &str,
+    sdk_version: &str,
+    files: &[String],
+    replace_existing: bool,
+) -> Result<WorkspaceSdkIndexChunkSummary, String> {
+    if !Path::new(root_path).is_dir() || !Path::new(sdk_path).is_dir() {
+        return Ok(WorkspaceSdkIndexChunkSummary {
+            indexed_files: 0,
+            symbol_count: 0,
+        });
+    }
+
+    let mut connection = open_index_store(root_path)?;
+    ensure_workspace_index_schema(&connection)?;
+    let root_key = normalize_index_path(root_path);
+    let sdk_key = normalize_index_path(sdk_path);
+    let symbols = collect_sdk_symbols_from_files(files)?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    if replace_existing {
+        transaction
+            .execute(
+                "delete from workspace_sdk_symbols
+                 where root_path = ?1 and sdk_path = ?2 and sdk_version = ?3",
+                params![root_key, sdk_key, sdk_version],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    insert_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version, &symbols)?;
+    record_active_sdk_index(&transaction, &root_key, &sdk_key, sdk_version)?;
+    prune_superseded_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version)?;
+    transaction.commit().map_err(|error| error.to_string())?;
+
+    Ok(WorkspaceSdkIndexChunkSummary {
+        indexed_files: files.len(),
         symbol_count: symbols.len(),
     })
 }
@@ -153,6 +176,46 @@ pub fn query_workspace_sdk_symbols(
     });
     candidates.truncate(limit);
     Ok(candidates)
+}
+
+fn insert_sdk_symbols(
+    transaction: &Transaction<'_>,
+    root_key: &str,
+    sdk_key: &str,
+    sdk_version: &str,
+    symbols: &[WorkspaceSdkSymbol],
+) -> Result<(), String> {
+    for symbol in symbols {
+        transaction
+            .execute(
+                "insert into workspace_sdk_symbols (
+                    root_path, sdk_path, sdk_version, source, symbol_id, kind, name,
+                    path, line, column, container, signature
+                 ) values (?1, ?2, ?3, 'api', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    root_key,
+                    sdk_key,
+                    sdk_version,
+                    sdk_symbol_id(
+                        &symbol.path,
+                        &symbol.kind,
+                        symbol.container.as_deref(),
+                        &symbol.name,
+                        symbol.line as i64,
+                        symbol.column as i64,
+                    ),
+                    symbol.kind,
+                    symbol.name,
+                    symbol.path,
+                    symbol.line as i64,
+                    symbol.column as i64,
+                    symbol.container,
+                    symbol.signature,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn record_active_sdk_index(

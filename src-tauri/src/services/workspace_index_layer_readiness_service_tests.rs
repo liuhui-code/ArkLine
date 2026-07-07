@@ -36,6 +36,26 @@ fn reports_missing_layers_for_empty_workspace() {
 }
 
 #[test]
+fn readiness_report_exposes_four_index_layers() {
+    let root = create_empty_workspace("four-layer-readiness");
+    let root_path = root.to_string_lossy().to_string();
+
+    let report = get_workspace_index_layer_readiness(&root_path, None).unwrap();
+    let layer_names = report
+        .layers
+        .iter()
+        .map(|layer| layer.layer.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(layer_names.contains(&"fileHot"));
+    assert!(layer_names.contains(&"projectFile"));
+    assert!(layer_names.contains(&"projectDeep"));
+    assert!(layer_names.contains(&"sdkApi"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_ready_current_file_layers_after_indexing() {
     let root = create_empty_workspace("layer-readiness-current-file");
     let source_dir = create_workspace_source_dir(&root);

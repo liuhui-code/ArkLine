@@ -35,6 +35,8 @@ Already implemented in the current branch:
 - Semantic completion slices for keywords, locals, members, imports, workspace symbols, SDK APIs, snippets, and de-duplication.
 - Scheduler priority classes, generation protection, cancellation tokens, bounded worker batches, queue pressure metrics, and state-machine labels.
 - Full-refresh chunking primitives, continuation task planner, and manager requeue.
+- Four-layer index readiness and dual-channel project/SDK parsing strategy.
+- SDK API-only scan plan with chunked progress and foreground-safe scheduling.
 - Health service and frontend API contract.
 - Large-project fixture and regression tests for search, definition, usages, completion, and refresh.
 - Real-project interaction smoothness gate for open-path indexing, Double Shift, Ctrl+Shift+F,

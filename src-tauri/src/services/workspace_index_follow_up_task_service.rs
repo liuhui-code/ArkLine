@@ -28,6 +28,7 @@ pub fn schedule_index_follow_up_tasks(
         .extend(continuation_summary.superseded_tasks);
     schedule_discovery_tasks(scheduler, results, &mut summary)?;
     schedule_refresh_after_discovery_tasks(scheduler, results, &mut summary)?;
+    schedule_sdk_continuation_tasks(scheduler, results, &mut summary)?;
     summary.root_paths.sort();
     summary.root_paths.dedup();
     Ok(summary)
@@ -67,6 +68,41 @@ fn schedule_refresh_after_discovery_tasks(
         summary.superseded_tasks.extend(scheduler.schedule(task));
     }
     Ok(())
+}
+
+fn schedule_sdk_continuation_tasks(
+    scheduler: &Arc<Mutex<WorkspaceIndexScheduler>>,
+    results: &[WorkspaceIndexTaskResult],
+    summary: &mut WorkspaceIndexFollowUpScheduleSummary,
+) -> Result<(), String> {
+    let tasks = results.iter().filter_map(sdk_continuation_task);
+    let mut scheduler = scheduler
+        .lock()
+        .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
+    for task in tasks {
+        summary.root_paths.push(task.root_path.clone());
+        summary.superseded_tasks.extend(scheduler.schedule(task));
+    }
+    Ok(())
+}
+
+fn sdk_continuation_task(result: &WorkspaceIndexTaskResult) -> Option<WorkspaceIndexTask> {
+    if result.kind != "sdk" || result.status != "partial" || result.error.is_some() {
+        return None;
+    }
+    if result.sdk_remaining_files.is_empty() {
+        return None;
+    }
+    Some(WorkspaceIndexTask {
+        root_path: result.root_path.clone(),
+        kind: WorkspaceIndexTaskKind::IndexSdk,
+        priority: WorkspaceIndexTaskPriority::SdkIndexing,
+        changed_paths: result.sdk_remaining_files.clone(),
+        sdk_path: result.sdk_path.clone(),
+        sdk_version: result.sdk_version.clone(),
+        generation: 0,
+        reason: result.reason.clone(),
+    })
 }
 
 fn discovery_follow_up_tasks(

@@ -171,3 +171,46 @@ fn large_project_foreground_navigation_makes_active_file_ready_before_full_refre
 
     fs::remove_dir_all(fixture.root_path).unwrap();
 }
+
+#[test]
+fn sdk_api_indexing_does_not_block_foreground_file_readiness() {
+    let fixture = create_large_workspace_fixture("sdk-does-not-block-foreground", 128).unwrap();
+    let sdk_path = std::path::Path::new(&fixture.root_path).join("openharmony");
+    fs::create_dir_all(sdk_path.join("ets")).unwrap();
+    fs::write(
+        sdk_path.join("ets").join("arkui.d.ts"),
+        "declare class Text {\n  width(value: Length): Text;\n}\n",
+    )
+    .unwrap();
+    let runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager
+        .schedule_sdk_index(&fixture.root_path, &sdk_path.to_string_lossy(), "test-sdk")
+        .unwrap();
+    manager
+        .schedule_changed_path_task(
+            &fixture.root_path,
+            &[fixture.app_path.clone()],
+            WorkspaceIndexTaskPriority::ForegroundNavigation,
+            "foreground-navigation",
+        )
+        .unwrap();
+
+    let results = manager.run_index_worker_once(&runtime, |_| {}).unwrap();
+    let readiness =
+        get_workspace_index_file_readiness(&fixture.root_path, &fixture.app_path).unwrap();
+
+    assert!(results.iter().any(|result| {
+        result.kind == "changed-paths"
+            && result.reason == "foreground-navigation"
+            && result.status == "ready"
+    }));
+    assert!(!results
+        .iter()
+        .any(|result| result.kind == "sdk" && result.status == "ready"));
+    assert_eq!(readiness.file_index, "ready");
+    assert_eq!(readiness.symbol_index, "ready");
+
+    fs::remove_dir_all(fixture.root_path).unwrap();
+}

@@ -33,7 +33,7 @@ use crate::services::workspace_index_task_status_service::{
 use crate::services::workspace_index_worker_budget_service::{
     budget_deep_layer_paths_with_ui_activity, continuation_yield_message,
 };
-use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
+use crate::services::workspace_sdk_index_task_service::run_sdk_index_task;
 use crate::services::workspace_service::scan_workspace;
 
 pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
@@ -287,34 +287,10 @@ fn run_index_task_inner(
             Ok(Some(result))
         }
         WorkspaceIndexTaskKind::IndexSdk => {
-            let sdk_path = task
-                .sdk_path
-                .clone()
-                .ok_or_else(|| "SDK index task missing sdk path".to_string())?;
-            let sdk_version = task
-                .sdk_version
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string());
             if token.is_cancelled() {
                 return Ok(Some(superseded_task_result_from_task(task)));
             }
-            let summary = index_workspace_sdk_symbols(&task.root_path, &sdk_path, &sdk_version)?;
-            Ok(Some(WorkspaceIndexTaskResult {
-                root_path: task.root_path.to_string(),
-                kind: "sdk".to_string(),
-                status: "ready".to_string(),
-                reason: task.reason.to_string(),
-                generation: task.generation,
-                started_at: Some(started_at),
-                finished_at: Some(current_time_millis()),
-                message: None,
-                error: None,
-                refresh_result: None,
-                refresh_continuation: None,
-                sdk_symbol_count: Some(summary.symbol_count),
-                progress_current: 1,
-                progress_total: 1,
-            }))
+            Ok(Some(run_sdk_index_task(task, token, started_at)?))
         }
     }
 }

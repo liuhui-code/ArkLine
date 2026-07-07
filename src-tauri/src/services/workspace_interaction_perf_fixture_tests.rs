@@ -5,7 +5,9 @@ use std::time::{Duration, Instant};
 use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRequest};
 use crate::services::workspace_index_facade_service::query_facade_text_search_result;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
+use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_query_service::query_workspace_search_everywhere;
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::scan_workspace;
 
@@ -14,6 +16,8 @@ const SEARCH_THRESHOLD_MS: u128 = 500;
 const TEXT_THRESHOLD_MS: u128 = 500;
 const FOREGROUND_THRESHOLD_MS: u128 = 1_000;
 const PROGRESS_THRESHOLD_MS: u128 = 1_500;
+const SDK_PROGRESS_THRESHOLD_MS: u128 = 1_500;
+const FOREGROUND_DURING_SDK_THRESHOLD_MS: u128 = 800;
 
 #[test]
 #[ignore = "Run explicitly with ARKLINE_PROFILE_ROOT to profile interaction smoothness"]
@@ -63,6 +67,8 @@ struct InteractionSmoothnessReport {
     foreground_readiness_ms: u128,
     foreground_definition_available: bool,
     progress_evidence_ms: u128,
+    sdk_api_first_progress_ms: u128,
+    foreground_during_sdk_ms: u128,
 }
 
 impl InteractionSmoothnessReport {
@@ -79,6 +85,8 @@ impl InteractionSmoothnessReport {
              ctrl_shift_f_first_batch: {}ms ({} match(es))\n\
              foreground_readiness: {}ms (definition_available={})\n\
              progress_evidence: {}ms\n\
+             sdk_api_first_progress: {}ms\n\
+             foreground_during_sdk: {}ms\n\
              violations: {:?}",
             self.root_path,
             self.file_count,
@@ -94,6 +102,8 @@ impl InteractionSmoothnessReport {
             self.foreground_readiness_ms,
             self.foreground_definition_available,
             self.progress_evidence_ms,
+            self.sdk_api_first_progress_ms,
+            self.foreground_during_sdk_ms,
             self.violations()
         )
     }
@@ -129,6 +139,18 @@ impl InteractionSmoothnessReport {
             "progress_evidence",
             self.progress_evidence_ms,
             PROGRESS_THRESHOLD_MS,
+        );
+        push_violation(
+            &mut violations,
+            "sdk_api_first_progress",
+            self.sdk_api_first_progress_ms,
+            SDK_PROGRESS_THRESHOLD_MS,
+        );
+        push_violation(
+            &mut violations,
+            "foreground_during_sdk",
+            self.foreground_during_sdk_ms,
+            FOREGROUND_DURING_SDK_THRESHOLD_MS,
         );
         violations
     }
@@ -180,6 +202,7 @@ fn build_interaction_smoothness_report(root: &Path) -> Result<InteractionSmoothn
     let foreground_readiness =
         get_workspace_index_file_readiness(&snapshot.root_path, &sampled_file)?;
     let foreground_duration = foreground_start.elapsed();
+    let sdk_profile = profile_sdk_during_foreground(&snapshot.root_path, &sampled_file, &runtime)?;
 
     Ok(InteractionSmoothnessReport {
         root_path: snapshot.root_path,
@@ -197,7 +220,66 @@ fn build_interaction_smoothness_report(root: &Path) -> Result<InteractionSmoothn
         foreground_definition_available: first_readiness.definition_available
             || foreground_readiness.definition_available,
         progress_evidence_ms: duration_ms(open_lightweight),
+        sdk_api_first_progress_ms: sdk_profile.sdk_api_first_progress_ms,
+        foreground_during_sdk_ms: sdk_profile.foreground_during_sdk_ms,
     })
+}
+
+struct SdkForegroundProfile {
+    sdk_api_first_progress_ms: u128,
+    foreground_during_sdk_ms: u128,
+}
+
+fn profile_sdk_during_foreground(
+    root_path: &str,
+    sampled_file: &str,
+    runtime: &WorkspaceIndexRuntime,
+) -> Result<SdkForegroundProfile, String> {
+    let sdk_root = temporary_profile_sdk_root()?;
+    create_profile_sdk_files(&sdk_root, 129)?;
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager.schedule_sdk_index(root_path, &sdk_root.to_string_lossy(), "profile-sdk")?;
+    let sdk_start = Instant::now();
+    manager.run_index_worker_once(runtime, |_| {})?;
+    let sdk_api_first_progress_ms = duration_ms(sdk_start.elapsed());
+
+    manager.schedule_changed_path_task(
+        root_path,
+        &[sampled_file.to_string()],
+        WorkspaceIndexTaskPriority::ForegroundNavigation,
+        "foreground-navigation-profile",
+    )?;
+    let foreground_start = Instant::now();
+    manager.run_index_worker_once(runtime, |_| {})?;
+    let foreground_during_sdk_ms = duration_ms(foreground_start.elapsed());
+    let _ = fs::remove_dir_all(&sdk_root);
+
+    Ok(SdkForegroundProfile {
+        sdk_api_first_progress_ms,
+        foreground_during_sdk_ms,
+    })
+}
+
+fn temporary_profile_sdk_root() -> Result<PathBuf, String> {
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    Ok(std::env::temp_dir().join(format!("arkline-profile-sdk-{suffix}")))
+}
+
+fn create_profile_sdk_files(root: &Path, file_count: usize) -> Result<(), String> {
+    let api_dir = root.join("ets");
+    fs::create_dir_all(&api_dir).map_err(|error| error.to_string())?;
+    for index in 0..file_count {
+        fs::write(
+            api_dir.join(format!("api{index}.d.ts")),
+            format!("declare class ProfileApi{index} {{\n  method{index}(): void;\n}}\n"),
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn push_violation(violations: &mut Vec<String>, label: &str, actual: u128, limit: u128) {

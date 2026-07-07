@@ -26,6 +26,9 @@ pub fn discovery_task_result(
         error: None,
         refresh_result: None,
         refresh_continuation: None,
+        sdk_path: None,
+        sdk_version: None,
+        sdk_remaining_files: Vec::new(),
         sdk_symbol_count: None,
         progress_current: chunk.files.len(),
         progress_total: if chunk.has_more {

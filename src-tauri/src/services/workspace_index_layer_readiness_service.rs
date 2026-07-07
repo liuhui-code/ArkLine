@@ -21,39 +21,148 @@ pub fn get_workspace_index_layer_readiness(
         .map(|path| get_workspace_index_file_readiness(root_path, path))
         .transpose()?;
 
+    let mut layers = four_layer_projection(
+        &connection,
+        &root_key,
+        current_file_path,
+        file_readiness.as_ref(),
+    )?;
+    layers.extend(vec![
+        discovery_layer(&connection, &root_key, current_file_path)?,
+        counted_layer(
+            &connection,
+            &root_key,
+            "fileCatalog",
+            "workspace_files",
+            current_file_path,
+        )?,
+        counted_layer(
+            &connection,
+            &root_key,
+            "fingerprint",
+            "workspace_file_fingerprints",
+            current_file_path,
+        )?,
+        content_layer(&connection, &root_key, file_readiness.as_ref())?,
+        stub_layer(&connection, &root_key, file_readiness.as_ref())?,
+        symbol_layer(&connection, &root_key, file_readiness.as_ref())?,
+        reference_layer(&connection, &root_key, current_file_path)?,
+        counted_layer(
+            &connection,
+            &root_key,
+            "dependencyGraph",
+            "workspace_dependency_edges",
+            None,
+        )?,
+        sdk_layer(&connection, &root_key)?,
+    ]);
+
     Ok(WorkspaceIndexLayerReadinessReport {
         root_path: root_key.clone(),
         current_file_path: current_file_key,
-        layers: vec![
-            discovery_layer(&connection, &root_key, current_file_path)?,
-            counted_layer(
-                &connection,
-                &root_key,
-                "fileCatalog",
-                "workspace_files",
-                current_file_path,
-            )?,
-            counted_layer(
-                &connection,
-                &root_key,
-                "fingerprint",
-                "workspace_file_fingerprints",
-                current_file_path,
-            )?,
-            content_layer(&connection, &root_key, file_readiness.as_ref())?,
-            stub_layer(&connection, &root_key, file_readiness.as_ref())?,
-            symbol_layer(&connection, &root_key, file_readiness.as_ref())?,
-            reference_layer(&connection, &root_key, current_file_path)?,
-            counted_layer(
-                &connection,
-                &root_key,
-                "dependencyGraph",
-                "workspace_dependency_edges",
-                None,
-            )?,
-            sdk_layer(&connection, &root_key)?,
-        ],
+        layers,
     })
+}
+
+fn four_layer_projection(
+    connection: &Connection,
+    root_key: &str,
+    current_file_path: Option<&str>,
+    file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
+) -> Result<Vec<WorkspaceIndexLayerReadiness>, String> {
+    Ok(vec![
+        file_hot_layer(connection, root_key, current_file_path, file_readiness)?,
+        project_file_layer(connection, root_key, current_file_path)?,
+        project_deep_layer(connection, root_key, current_file_path, file_readiness)?,
+        sdk_api_layer(connection, root_key)?,
+    ])
+}
+
+fn file_hot_layer(
+    connection: &Connection,
+    root_key: &str,
+    current_file_path: Option<&str>,
+    file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
+) -> Result<WorkspaceIndexLayerReadiness, String> {
+    let file_count = count_rows(connection, "workspace_files", root_key)?;
+    let symbol_count = count_rows(connection, "workspace_symbol_entities", root_key)?;
+    let current = file_readiness.map(file_hot_current_status);
+    Ok(layer_with_current(
+        "fileHot",
+        aggregate_count_status(&[file_count, symbol_count]),
+        current,
+        file_count.max(symbol_count),
+        0,
+        0,
+        current_file_path.is_none().then_some("openFile"),
+    ))
+}
+
+fn project_file_layer(
+    connection: &Connection,
+    root_key: &str,
+    current_file_path: Option<&str>,
+) -> Result<WorkspaceIndexLayerReadiness, String> {
+    let file_count = count_rows(connection, "workspace_files", root_key)?;
+    let symbol_count = count_rows(connection, "workspace_symbol_entities", root_key)?;
+    let current = current_file_path
+        .map(|path| {
+            row_exists(
+                connection,
+                "workspace_files",
+                root_key,
+                &normalize_index_path(path),
+            )
+        })
+        .transpose()?
+        .map(status_from_bool);
+    Ok(layer_with_current(
+        "projectFile",
+        aggregate_count_status(&[file_count, symbol_count]),
+        current,
+        file_count.max(symbol_count),
+        0,
+        0,
+        Some("rebuildIndex"),
+    ))
+}
+
+fn project_deep_layer(
+    connection: &Connection,
+    root_key: &str,
+    current_file_path: Option<&str>,
+    file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
+) -> Result<WorkspaceIndexLayerReadiness, String> {
+    let content_count = count_distinct_paths(connection, "workspace_content_lines", root_key)?;
+    let reference_count = count_rows(connection, "workspace_symbol_references", root_key)?;
+    let dependency_count = count_rows(connection, "workspace_dependency_edges", root_key)?;
+    let current = file_readiness
+        .map(|readiness| status_from_text(&readiness.content_index))
+        .or_else(|| current_file_path.map(|_| WorkspaceIndexLayerStatus::Missing));
+    Ok(layer_with_current(
+        "projectDeep",
+        aggregate_count_status(&[content_count, reference_count, dependency_count]),
+        current,
+        content_count + reference_count + dependency_count,
+        0,
+        0,
+        Some("wait"),
+    ))
+}
+
+fn sdk_api_layer(
+    connection: &Connection,
+    root_key: &str,
+) -> Result<WorkspaceIndexLayerReadiness, String> {
+    let count = count_rows(connection, "workspace_sdk_symbols", root_key)?;
+    Ok(layer(
+        "sdkApi",
+        status_from_count(count),
+        count,
+        0,
+        0,
+        Some("configureSdk"),
+    ))
 }
 
 fn discovery_layer(
@@ -275,6 +384,31 @@ fn layer_with_current(
 
 fn status_from_count(count: i64) -> WorkspaceIndexLayerStatus {
     status_from_bool(count > 0)
+}
+
+fn aggregate_count_status(counts: &[i64]) -> WorkspaceIndexLayerStatus {
+    if counts.iter().all(|count| *count > 0) {
+        WorkspaceIndexLayerStatus::Ready
+    } else if counts.iter().any(|count| *count > 0) {
+        WorkspaceIndexLayerStatus::Partial
+    } else {
+        WorkspaceIndexLayerStatus::Missing
+    }
+}
+
+fn file_hot_current_status(
+    readiness: &crate::models::workspace::WorkspaceIndexFileReadiness,
+) -> WorkspaceIndexLayerStatus {
+    if readiness.file_index == "ready"
+        && readiness.symbol_index == "ready"
+        && readiness.parser_status == "ready"
+    {
+        WorkspaceIndexLayerStatus::Ready
+    } else if readiness.file_index == "missing" {
+        WorkspaceIndexLayerStatus::Missing
+    } else {
+        WorkspaceIndexLayerStatus::Partial
+    }
 }
 
 fn status_with_failures(count: i64, failures: i64) -> WorkspaceIndexLayerStatus {

@@ -196,6 +196,9 @@ mod services {
     pub mod workspace_index_layer_readiness_service;
     #[cfg(test)]
     mod workspace_index_layer_readiness_service_tests;
+    pub mod workspace_index_layer_strategy_service;
+    #[cfg(test)]
+    mod workspace_index_layer_strategy_service_tests;
     #[cfg(test)]
     mod workspace_index_lifecycle_service_tests;
     pub mod workspace_index_maintenance_service;
@@ -222,7 +225,6 @@ mod services {
     pub mod workspace_index_query_service;
     #[cfg(test)]
     mod workspace_index_query_service_tests;
-    pub(crate) mod workspace_query_command_service;
     pub mod workspace_index_readiness_service;
     #[cfg(test)]
     mod workspace_index_readiness_service_tests;
@@ -281,6 +283,7 @@ mod services {
     pub mod workspace_performance_config_service;
     #[cfg(test)]
     mod workspace_performance_config_service_tests;
+    pub(crate) mod workspace_query_command_service;
     #[cfg(test)]
     mod workspace_reference_branch_flow_tests;
     #[cfg(test)]
@@ -300,9 +303,18 @@ mod services {
     #[cfg(test)]
     mod workspace_reference_receiver_tests;
     pub mod workspace_reference_receiver_type_service;
+    pub mod workspace_sdk_api_cache_service;
+    #[cfg(test)]
+    mod workspace_sdk_api_cache_service_tests;
+    pub mod workspace_sdk_api_scan_plan_service;
+    #[cfg(test)]
+    mod workspace_sdk_api_scan_plan_service_tests;
     pub mod workspace_sdk_index_service;
     #[cfg(test)]
     mod workspace_sdk_index_service_tests;
+    pub mod workspace_sdk_index_task_service;
+    #[cfg(test)]
+    mod workspace_sdk_index_task_service_tests;
     pub mod workspace_sdk_parser_service;
     #[cfg(test)]
     mod workspace_sdk_persistence_service_tests;

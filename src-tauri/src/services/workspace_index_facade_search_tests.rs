@@ -365,6 +365,43 @@ fn search_everywhere_text_scope_falls_back_when_text_index_layer_is_missing() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn search_everywhere_explain_names_project_and_sdk_layers() {
+    let root = create_empty_workspace("search-layer-explain");
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhere {
+            root_path: root_path.clone(),
+            query: "Button".to_string(),
+            scope: WorkspaceIndexQueryScope::All,
+            limit: 20,
+        },
+    )
+    .unwrap();
+
+    assert!(
+        envelope
+            .explain
+            .iter()
+            .any(|line| line.starts_with("layer:projectFile:")),
+        "expected projectFile layer evidence, got {:?}",
+        envelope.explain
+    );
+    assert!(
+        envelope
+            .explain
+            .iter()
+            .any(|line| line.starts_with("layer:sdkApi:")),
+        "expected sdkApi layer evidence, got {:?}",
+        envelope.explain
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn search_sources(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
     envelope
         .items

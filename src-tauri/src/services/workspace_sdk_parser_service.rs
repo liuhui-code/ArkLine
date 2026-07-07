@@ -12,9 +12,25 @@ pub struct WorkspaceSdkSymbol {
     pub signature: Option<String>,
 }
 
+#[allow(dead_code)]
 pub fn collect_sdk_symbols(sdk_path: &str) -> Result<Vec<WorkspaceSdkSymbol>, String> {
     let mut symbols = Vec::new();
     collect_sdk_symbols_in_dir(Path::new(sdk_path), &mut symbols)?;
+    sort_sdk_symbols(&mut symbols);
+    Ok(symbols)
+}
+
+pub fn collect_sdk_symbols_from_files(files: &[String]) -> Result<Vec<WorkspaceSdkSymbol>, String> {
+    let mut symbols = Vec::new();
+    for file in files {
+        let content = fs::read_to_string(Path::new(file)).map_err(|error| error.to_string())?;
+        symbols.extend(index_sdk_document(file, &content));
+    }
+    sort_sdk_symbols(&mut symbols);
+    Ok(symbols)
+}
+
+fn sort_sdk_symbols(symbols: &mut [WorkspaceSdkSymbol]) {
     symbols.sort_by(|left, right| {
         left.path
             .cmp(&right.path)
@@ -22,9 +38,9 @@ pub fn collect_sdk_symbols(sdk_path: &str) -> Result<Vec<WorkspaceSdkSymbol>, St
             .then_with(|| left.column.cmp(&right.column))
             .then_with(|| left.name.cmp(&right.name))
     });
-    Ok(symbols)
 }
 
+#[allow(dead_code)]
 fn collect_sdk_symbols_in_dir(
     directory: &Path,
     symbols: &mut Vec<WorkspaceSdkSymbol>,
@@ -45,9 +61,14 @@ fn collect_sdk_symbols_in_dir(
 fn index_sdk_document(path: &str, content: &str) -> Vec<WorkspaceSdkSymbol> {
     let mut symbols = Vec::new();
     let mut contexts: Vec<SdkParseContext> = Vec::new();
+    let mut internal_next_symbol = false;
 
     for (line_index, line_text) in content.lines().enumerate() {
         let trimmed = line_text.trim_start();
+        if trimmed.contains("@internal") {
+            internal_next_symbol = true;
+            continue;
+        }
         if trimmed.starts_with('}') {
             contexts.pop();
             continue;
@@ -66,6 +87,13 @@ fn index_sdk_document(path: &str, content: &str) -> Vec<WorkspaceSdkSymbol> {
 
         if let Some((kind, name, column)) = declaration_symbol(line_text) {
             let namespace = namespace_path(&contexts);
+            if internal_next_symbol
+                || !is_exported_or_public_declaration(trimmed, namespace.is_some())
+            {
+                internal_next_symbol = false;
+                continue;
+            }
+            internal_next_symbol = false;
             let container = namespace.clone();
             let qualified_type_name = qualified_name(namespace.as_deref(), &name);
             symbols.push(WorkspaceSdkSymbol {
@@ -95,6 +123,11 @@ fn index_sdk_document(path: &str, content: &str) -> Vec<WorkspaceSdkSymbol> {
         }
 
         if let Some(container_name) = type_path(&contexts) {
+            if internal_next_symbol || is_private_api_member(trimmed) {
+                internal_next_symbol = false;
+                continue;
+            }
+            internal_next_symbol = false;
             if let Some((kind, name, column)) = member_symbol(trimmed, line_text) {
                 symbols.push(WorkspaceSdkSymbol {
                     kind,
@@ -134,7 +167,7 @@ fn inline_container_members(
     body.split(separator)
         .filter_map(|segment| {
             let trimmed = segment.trim();
-            if trimmed.is_empty() {
+            if trimmed.is_empty() || is_private_api_member(trimmed) {
                 return None;
             }
             let (kind, name, relative_column) = member_symbol(trimmed, trimmed)?;
@@ -149,6 +182,25 @@ fn inline_container_members(
             })
         })
         .collect()
+}
+
+fn is_exported_or_public_declaration(trimmed: &str, in_namespace: bool) -> bool {
+    if in_namespace {
+        return true;
+    }
+    trimmed.starts_with("export ")
+        || trimmed.starts_with("declare ")
+        || trimmed.starts_with("public ")
+        || trimmed.starts_with("interface ")
+        || trimmed.starts_with("enum ")
+        || trimmed.starts_with("type ")
+        || trimmed.starts_with("function ")
+}
+
+fn is_private_api_member(trimmed: &str) -> bool {
+    trimmed.starts_with("private ")
+        || trimmed.starts_with("protected ")
+        || trimmed.contains("@internal")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -303,6 +355,7 @@ fn strip_keyword_prefix<'a>(value: &'a str, keyword: &str) -> Option<&'a str> {
     })
 }
 
+#[allow(dead_code)]
 fn is_sdk_source_file(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())

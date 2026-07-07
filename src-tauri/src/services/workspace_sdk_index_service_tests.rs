@@ -6,7 +6,7 @@ use crate::services::workspace_index_diagnostics_service::inspect_workspace_inde
 use crate::services::workspace_index_query_service::query_workspace_search_everywhere;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::{
-    index_workspace_sdk_symbols, query_workspace_sdk_symbols,
+    index_workspace_sdk_symbol_chunk, index_workspace_sdk_symbols, query_workspace_sdk_symbols,
 };
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -188,9 +188,105 @@ fn indexes_sdk_members_after_common_typescript_modifiers() {
     assert_eq!(size.len(), 1);
     assert_eq!(size[0].title, "size");
     assert_eq!(size[0].kind, "property");
-    assert_eq!(on_click.len(), 1);
-    assert_eq!(on_click[0].title, "onClick");
-    assert_eq!(on_click[0].kind, "method");
+    assert!(on_click.is_empty());
+
+    fs::remove_dir_all(workspace).unwrap();
+}
+
+#[test]
+fn sdk_index_skips_private_protected_and_internal_symbols() {
+    let workspace = unique_temp_dir("api-only-visibility");
+    let sdk_root = workspace.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets").join("component")).unwrap();
+    fs::write(
+        sdk_root.join("ets").join("component").join("common.d.ts"),
+        [
+            "export interface Button {",
+            "  width(value: number): Button;",
+            "  private privateInternal(): void;",
+            "  protected protectedInternal(): void;",
+            "  /** @internal */",
+            "  debugOnly(): void;",
+            "}",
+            "class InternalImpl {",
+            "  secret(): void;",
+            "}",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let workspace_path = workspace.to_string_lossy().to_string();
+    let sdk_path = sdk_root.to_string_lossy().to_string();
+
+    index_workspace_sdk_symbols(&workspace_path, &sdk_path, "test-sdk").unwrap();
+
+    assert_eq!(
+        query_workspace_sdk_symbols(&workspace_path, "Button width", 8)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        query_workspace_sdk_symbols(&workspace_path, "privateInternal", 8)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        query_workspace_sdk_symbols(&workspace_path, "protectedInternal", 8)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(query_workspace_sdk_symbols(&workspace_path, "debugOnly", 8)
+        .unwrap()
+        .is_empty());
+    assert!(query_workspace_sdk_symbols(&workspace_path, "secret", 8)
+        .unwrap()
+        .is_empty());
+
+    fs::remove_dir_all(workspace).unwrap();
+}
+
+#[test]
+fn sdk_api_index_can_index_a_single_chunk() {
+    let workspace = unique_temp_dir("sdk-api-chunk");
+    let sdk_root = workspace.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets").join("component")).unwrap();
+    for index in 0..3 {
+        fs::write(
+            sdk_root
+                .join("ets")
+                .join("component")
+                .join(format!("api{index}.d.ts")),
+            format!("export interface Api{index} {{ method{index}(): void; }}"),
+        )
+        .unwrap();
+    }
+    let files = vec![
+        sdk_root
+            .join("ets")
+            .join("component")
+            .join("api0.d.ts")
+            .to_string_lossy()
+            .to_string(),
+        sdk_root
+            .join("ets")
+            .join("component")
+            .join("api1.d.ts")
+            .to_string_lossy()
+            .to_string(),
+    ];
+    let workspace_path = workspace.to_string_lossy().to_string();
+    let sdk_path = sdk_root.to_string_lossy().to_string();
+
+    let summary =
+        index_workspace_sdk_symbol_chunk(&workspace_path, &sdk_path, "test-sdk", &files, true)
+            .unwrap();
+
+    assert_eq!(summary.indexed_files, 2);
+    assert!(summary.symbol_count >= 2);
+    assert!(query_workspace_sdk_symbols(&workspace_path, "method2", 8)
+        .unwrap()
+        .is_empty());
 
     fs::remove_dir_all(workspace).unwrap();
 }
