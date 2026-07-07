@@ -13,6 +13,9 @@ import {
   type WorkspaceTextSearchOptions,
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
+import { scheduleSearchPreview } from "@/features/search/search-preview-loader";
+import { createSearchSessionStore } from "@/features/search/search-session-store";
+import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type {
   WorkspaceApi,
@@ -87,14 +90,7 @@ export function useSearchEverywhereController({
     caseSensitive: false,
     wholeWord: false,
   });
-  const [searchEverywhereResult, setSearchEverywhereResult] = useState<WorkspaceTextSearchResult>({
-    query: { kind: "text", query: "" },
-    matches: [],
-  });
-  const [searchEverywhereCandidates, setSearchEverywhereCandidates] = useState<SearchCandidate[]>([]);
-  const [searchEverywhereTruncationNotice, setSearchEverywhereTruncationNotice] = useState<string | null>(null);
-  const [searchEverywhereSelectedIndex, setSearchEverywhereSelectedIndex] = useState(0);
-  const [searchEverywherePreviewContent, setSearchEverywherePreviewContent] = useState<string | null>(null);
+  const searchSessionStoreRef = useRef(createSearchSessionStore());
   const searchEverywhereRequestRef = useRef(0);
   const searchPreviewRequestRef = useRef(0);
   const navigationCloseHandledRef = useRef(false);
@@ -124,18 +120,44 @@ export function useSearchEverywhereController({
     invalidateSearchSession();
     recordUiInteraction?.("searchClose", searchOverlayLabel(searchEverywhereMode), startedAt, Date.now());
     setDebouncedSearchQuery("");
-    setSearchEverywhereSelectedIndex(0);
-    setSearchEverywherePreviewContent(null);
+    searchSessionStoreRef.current.patch({ selectedIndex: 0, previewContent: null });
   }
 
   function moveSearchEverywhereSelection(direction: 1 | -1) {
+    const session = searchSessionStoreRef.current.getSnapshot();
     const resultCount = searchEverywhereMode === "searchEverywhere"
-      ? searchEverywhereCandidates.length
-      : searchEverywhereResult.matches.length;
+      ? session.candidates.length
+      : session.result.matches.length;
     if (resultCount <= 0) return;
-    setSearchEverywhereSelectedIndex((current) => {
-      const normalized = Math.min(Math.max(current, 0), resultCount - 1);
-      return (normalized + direction + resultCount) % resultCount;
+    const normalized = Math.min(Math.max(session.selectedIndex, 0), resultCount - 1);
+    setSearchEverywhereSelectedIndex((normalized + direction + resultCount) % resultCount);
+  }
+
+  function setSearchEverywhereSelectedIndex(selectedIndex: number) {
+    searchSessionStoreRef.current.patch({ selectedIndex });
+    scheduleSelectedPreview(selectedIndex);
+  }
+
+  function scheduleSelectedPreview(selectedIndex: number) {
+    if (activeOverlay !== "searchEverywhere" || searchEverywhereMode === "searchEverywhere") {
+      searchSessionStoreRef.current.patch({ previewContent: null });
+      return;
+    }
+    const selected = searchSessionStoreRef.current.getSnapshot().result.matches[selectedIndex];
+    if (!selected) {
+      searchSessionStoreRef.current.patch({ previewContent: null });
+      return;
+    }
+    const requestId = searchPreviewRequestRef.current + 1;
+    searchPreviewRequestRef.current = requestId;
+    searchSessionStoreRef.current.patch({ previewContent: null });
+    scheduleSearchPreview({
+      path: selected.path,
+      requestId,
+      delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
+      readFile: readSearchFile,
+      isCurrent: (id) => searchPreviewRequestRef.current === id,
+      onPreview: (content) => searchSessionStoreRef.current.patch({ previewContent: content }),
     });
   }
 
@@ -161,12 +183,13 @@ export function useSearchEverywhereController({
   }
 
   async function openSelectedSearchEverywhereResult() {
+    const session = searchSessionStoreRef.current.getSnapshot();
     if (searchEverywhereMode === "searchEverywhere") {
-      const selectedCandidate = searchEverywhereCandidates[searchEverywhereSelectedIndex];
+      const selectedCandidate = session.candidates[session.selectedIndex];
       if (selectedCandidate) await openSearchEverywhereCandidate(selectedCandidate);
       return;
     }
-    const selected = searchEverywhereResult.matches[searchEverywhereSelectedIndex];
+    const selected = session.result.matches[session.selectedIndex];
     if (selected) await openSearchEverywhereResult(selected.path, selected.line, selected.column);
   }
 
@@ -219,39 +242,8 @@ export function useSearchEverywhereController({
     workspaceApi,
   ]);
 
-  useEffect(() => {
-    if (activeOverlay !== "searchEverywhere" || searchEverywhereMode === "searchEverywhere") {
-      setSearchEverywherePreviewContent(null);
-      return;
-    }
-    const selected = searchEverywhereResult.matches[searchEverywhereSelectedIndex];
-    if (!selected) {
-      setSearchEverywherePreviewContent(null);
-      return;
-    }
-    const requestId = searchPreviewRequestRef.current + 1;
-    searchPreviewRequestRef.current = requestId;
-    setSearchEverywherePreviewContent(null);
-    const timeout = window.setTimeout(() => {
-      void readSearchFile(selected.path)
-        .then((content) => {
-          if (searchPreviewRequestRef.current === requestId) setSearchEverywherePreviewContent(content);
-        })
-        .catch(() => {
-          if (searchPreviewRequestRef.current === requestId) setSearchEverywherePreviewContent(null);
-        });
-    }, SEARCH_PREVIEW_DEBOUNCE_MS);
-    return () => {
-      window.clearTimeout(timeout);
-      searchPreviewRequestRef.current += 1;
-    };
-  }, [activeOverlay, activePath, editorContent, searchEverywhereMode, searchEverywhereResult, searchEverywhereSelectedIndex, workspaceApi]);
-
   function clearSearchResults(query: string) {
-    setSearchEverywhereCandidates([]);
-    setSearchEverywhereTruncationNotice(null);
-    setSearchEverywhereResult({ query: { kind: "text", query }, matches: [] });
-    setSearchEverywhereSelectedIndex(0);
+    searchSessionStoreRef.current.clear(query);
   }
 
   function runEntitySearch(requestId: number) {
@@ -288,20 +280,22 @@ export function useSearchEverywhereController({
         scope: searchEverywhereScope,
         displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
       });
-      setSearchEverywhereCandidates(capped.items);
-      setSearchEverywhereTruncationNotice(capped.metadata.truncated
+      searchSessionStoreRef.current.patch({
+        candidates: capped.items,
+        truncationNotice: capped.metadata.truncated
         ? `Showing ${capped.metadata.returnedCount} of at least ${capped.metadata.fetchedCount} ${searchEverywhereScope} result(s). Refine the query to see more.`
-        : null);
-      setSearchEverywhereResult({ query: { kind: "text", query: query.trim() }, matches: [] });
-      setSearchEverywhereSelectedIndex(0);
+        : null,
+        result: { query: { kind: "text", query: query.trim() }, matches: [] },
+        selectedIndex: 0,
+        previewContent: null,
+      });
       if (visibleCandidates.length === 0 && query.trim()) explainSearchEverywhereMiss(requestId, query, explain);
     });
   }
 
   function runTextSearch(requestId: number) {
     if (!workspace) return;
-    setSearchEverywhereCandidates([]);
-    setSearchEverywhereTruncationNotice(null);
+    searchSessionStoreRef.current.patch({ candidates: [], truncationNotice: null });
     const query = debouncedSearchQuery;
     const normalizedQuery = query.trim();
     if (normalizedQuery.length < MIN_SEARCH_QUERY_LENGTH) {
@@ -334,10 +328,13 @@ export function useSearchEverywhereController({
     void searchRequest.then(({ result, suppressMissExplain }) => {
       if (searchEverywhereRequestRef.current !== requestId) return;
       recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
-      setSearchEverywhereResult(result);
-      setSearchEverywhereTruncationNotice(textSearchPartialNotice(result));
-      setSearchEverywherePreviewContent(null);
-      setSearchEverywhereSelectedIndex(0);
+      searchSessionStoreRef.current.patch({
+        result,
+        truncationNotice: textSearchPartialNotice(result),
+        previewContent: null,
+        selectedIndex: 0,
+      });
+      scheduleSelectedPreview(0);
       if (!suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && query.trim()) {
         const missLabel = searchOverlayLabel(searchEverywhereMode);
         void explainIndexMiss("search", query.trim()).then((explanation) => {
@@ -421,19 +418,15 @@ export function useSearchEverywhereController({
     });
   }
 
-  return {
+  return searchSessionCompat({
     searchEverywhereMode,
     searchEverywhereScope,
     setSearchEverywhereScope,
     searchEverywhereReplaceQuery,
     setSearchEverywhereReplaceQuery,
     searchEverywhereOptions,
-    searchEverywhereResult,
-    searchEverywhereCandidates,
-    searchEverywhereTruncationNotice,
-    searchEverywhereSelectedIndex,
+    searchSessionStore: searchSessionStoreRef.current,
     setSearchEverywhereSelectedIndex,
-    searchEverywherePreviewContent,
     openSearchOverlay,
     handleOverlayQueryChange,
     resetSearchOverlayState,
@@ -443,7 +436,7 @@ export function useSearchEverywhereController({
     openSelectedSearchEverywhereResult,
     toggleSearchEverywhereCaseSensitive,
     toggleSearchEverywhereWholeWord,
-  };
+  }, searchSessionStoreRef.current);
 }
 
 export function searchOverlayLabel(mode: SearchEverywhereMode) {

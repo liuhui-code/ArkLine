@@ -136,7 +136,7 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.search.searchEverywhereCandidates).toEqual([]);
   });
 
-  it("notifies the backend to cancel the previous generation when the query changes", () => {
+  it("keeps query changes local instead of cancelling backend work per keystroke", () => {
     vi.useFakeTimers();
     const cancelWorkspaceSearch = vi.fn(async () => undefined);
     const { result } = renderHarness({
@@ -147,11 +147,7 @@ describe("useSearchEverywhereController", () => {
 
     act(() => result.current.search.handleOverlayQueryChange("EntryA"));
 
-    expect(cancelWorkspaceSearch).toHaveBeenCalledWith(
-      "/workspace",
-      "searchEverywhere",
-      expect.any(Number),
-    );
+    expect(cancelWorkspaceSearch).not.toHaveBeenCalled();
   });
 
   it("notifies the backend to cancel text search when the overlay resets", () => {
@@ -396,7 +392,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
 
 async function flushSearchDebounce() {
   await act(async () => {
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(300);
     await Promise.resolve();
     await Promise.resolve();
   });

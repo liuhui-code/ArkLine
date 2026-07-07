@@ -5,8 +5,8 @@ import type { CommandPaletteItem } from "@/components/layout/search-overlay-mode
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
-  WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
+import { type SearchSessionStore, useSearchSessionSnapshot } from "@/features/search/search-session-store";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
 
@@ -21,10 +21,7 @@ type SearchOverlayContentProps = {
   searchEverywhereMode: SearchEverywhereMode;
   searchEverywhereScope: WorkspaceIndexQueryScope;
   searchEverywhereReplaceQuery: string;
-  searchEverywhereResult: WorkspaceTextSearchResult;
-  searchEverywhereCandidates: SearchCandidate[];
-  searchEverywhereSelectedIndex: number;
-  searchEverywherePreviewContent: string | null;
+  searchSessionStore: SearchSessionStore;
   workspacePartialNotice: string | null;
   onChangeQuery: (value: string) => void;
   onChangeSearchEverywhereScope: (scope: WorkspaceIndexQueryScope) => void;
@@ -53,10 +50,7 @@ export function SearchOverlayContent({
   searchEverywhereMode,
   searchEverywhereScope,
   searchEverywhereReplaceQuery,
-  searchEverywhereResult,
-  searchEverywhereCandidates,
-  searchEverywhereSelectedIndex,
-  searchEverywherePreviewContent,
+  searchSessionStore,
   workspacePartialNotice,
   onChangeQuery,
   onChangeSearchEverywhereScope,
@@ -73,6 +67,8 @@ export function SearchOverlayContent({
   onSubmitGoToLine,
   onCloseOverlay,
 }: SearchOverlayContentProps) {
+  const searchSession = useSearchSessionSnapshot(searchSessionStore);
+
   if (activeOverlay === "commandPalette") {
     return (
       <>
@@ -203,11 +199,11 @@ export function SearchOverlayContent({
         options={searchEverywhereOptions}
         query={quickOpenQuery}
         replaceQuery={searchEverywhereReplaceQuery}
-        result={searchEverywhereResult}
-        candidates={searchEverywhereCandidates}
-        selectedIndex={searchEverywhereSelectedIndex}
-        selectedPreviewContent={searchEverywherePreviewContent}
-        partialNotice={workspacePartialNotice}
+        result={searchSession.result}
+        candidates={searchSession.candidates}
+        selectedIndex={searchSession.selectedIndex}
+        selectedPreviewContent={searchSession.previewContent}
+        partialNotice={searchSession.truncationNotice ?? workspacePartialNotice}
         onChangeQuery={onChangeQuery}
         onChangeScope={onChangeSearchEverywhereScope}
         onChangeReplaceQuery={onChangeSearchEverywhereReplaceQuery}

@@ -158,7 +158,7 @@ type HarnessOptions = {
 
 async function flushSearchDebounce() {
   await act(async () => {
-    vi.advanceTimersByTime(90);
+    vi.advanceTimersByTime(300);
     await Promise.resolve();
     await Promise.resolve();
   });
