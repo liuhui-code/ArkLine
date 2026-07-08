@@ -6,7 +6,7 @@ use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{
     WorkspaceTextSearchContextLine, WorkspaceTextSearchMatch, WorkspaceTextSearchQuery,
-    WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
+    WorkspaceTextSearchCursor, WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::workspace_content_query_service::{load_candidate_lines, IndexedLine};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
@@ -88,22 +88,26 @@ pub fn search_indexed_workspace_content(
     let connection = open_content_index(&request.root_path)?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(&request.root_path);
+    let offset = request.cursor.as_ref().map_or(0, |cursor| cursor.path_index);
     let lines = load_candidate_lines(
         &connection,
         &root_key,
         query,
         request.options.case_sensitive,
-        request.limit,
+        request.limit + 1,
+        offset,
     )?;
-    let grouped_lines = load_context_lines(&connection, &root_key, &lines)?;
+    let limit_reached = lines.len() > request.limit;
     let searched_files = lines
         .iter()
         .map(|line| line.path.as_str())
         .collect::<HashSet<_>>()
         .len();
+    let visible_lines = lines.into_iter().take(request.limit).collect::<Vec<_>>();
+    let grouped_lines = load_context_lines(&connection, &root_key, &visible_lines)?;
     let mut matches = Vec::new();
 
-    for line in lines {
+    for line in visible_lines {
         let Some((start, end)) = find_line_match(&line.text, query, request.options.case_sensitive)
         else {
             continue;
@@ -133,18 +137,18 @@ pub fn search_indexed_workspace_content(
                 line_index + 1 + request.context_lines,
             ),
         });
-        if matches.len() >= request.limit {
-            break;
-        }
     }
 
     Ok(WorkspaceTextSearchResult {
         query: result_query,
         matches,
-        partial: false,
+        partial: limit_reached,
         searched_files,
-        limit_reached: false,
-        next_cursor: None,
+        limit_reached,
+        next_cursor: limit_reached.then_some(WorkspaceTextSearchCursor {
+            path_index: offset + request.limit,
+            line_index: 0,
+        }),
     })
 }
 

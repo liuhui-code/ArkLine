@@ -191,6 +191,35 @@ fn case_sensitive_index_search_does_not_let_lowercase_candidates_take_the_limit(
 }
 
 #[test]
+fn indexed_content_search_returns_cursor_for_next_page() {
+    let root = unique_temp_dir("workspace-content-cursor");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    let file_path = root.join("entry").join("src").join("Index.ets");
+    fs::write(
+        &file_path,
+        ["Text(\"CursorOne\")", "Text(\"CursorTwo\")", "Text(\"CursorThree\")"].join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    index_workspace_content(&root_path, &[file_path.to_string_lossy().to_string()]).unwrap();
+    let mut first_request = request(&root_path, "Cursor");
+    first_request.limit = 2;
+    let first = search_indexed_workspace_content(&first_request).unwrap();
+    let mut second_request = request(&root_path, "Cursor");
+    second_request.limit = 2;
+    second_request.cursor = first.next_cursor.clone();
+    let second = search_indexed_workspace_content(&second_request).unwrap();
+
+    assert_eq!(first.matches.len(), 2);
+    assert!(first.next_cursor.is_some());
+    assert_eq!(second.matches.len(), 1);
+    assert_eq!(second.matches[0].preview, "Text(\"CursorThree\")");
+    assert_eq!(second.next_cursor, None);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn updates_only_changed_paths_in_content_index() {
     let root = unique_temp_dir("workspace-content-incremental");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
