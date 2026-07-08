@@ -23,6 +23,8 @@ type SearchEverywherePanelProps = {
   candidates: SearchCandidate[];
   selectedIndex: number;
   selectedPreviewContent: string | null;
+  canLoadMore: boolean;
+  pageLoading: boolean;
   partialNotice?: string | null;
   onChangeQuery: (value: string) => void;
   onChangeScope: (scope: WorkspaceIndexQueryScope) => void;
@@ -32,6 +34,7 @@ type SearchEverywherePanelProps = {
   onSelectResult: (index: number) => void;
   onOpenResult: (result: WorkspaceTextSearchMatch) => void;
   onOpenCandidate: (candidate: SearchCandidate) => void;
+  onLoadMore: () => void;
   onToggleCaseSensitive: () => void;
   onToggleWholeWord: () => void;
   onCloseOverlay: () => void;
@@ -57,6 +60,8 @@ export function SearchEverywherePanel({
   candidates,
   selectedIndex,
   selectedPreviewContent,
+  canLoadMore,
+  pageLoading,
   partialNotice,
   onChangeQuery,
   onChangeScope,
@@ -66,6 +71,7 @@ export function SearchEverywherePanel({
   onSelectResult,
   onOpenResult,
   onOpenCandidate,
+  onLoadMore,
   onToggleCaseSensitive,
   onToggleWholeWord,
   onCloseOverlay,
@@ -339,6 +345,16 @@ export function SearchEverywherePanel({
           ))}
           {result.query.kind !== "invalid" && result.matches.length === 0 ? (
             <div className="search-everywhere__empty">No matches</div>
+          ) : null}
+          {canLoadMore ? (
+            <button
+              type="button"
+              className="toolbar__button search-everywhere__load-more"
+              disabled={pageLoading}
+              onClick={onLoadMore}
+            >
+              {pageLoading ? "Loading..." : "Load more results"}
+            </button>
           ) : null}
         </div>
         <div className="search-everywhere__preview" aria-label="Search Everywhere Preview">

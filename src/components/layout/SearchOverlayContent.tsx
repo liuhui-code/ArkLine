@@ -29,6 +29,7 @@ type SearchOverlayContentProps = {
   onOpenFile: (path: string) => void;
   onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
   onOpenSearchEverywhereCandidate: (candidate: SearchCandidate) => void;
+  onLoadNextSearchEverywherePage: () => void;
   onOpenProject: (path: string) => void;
   onMoveSearchEverywhereSelection: (direction: 1 | -1) => void;
   onOpenSelectedSearchEverywhereResult: () => void;
@@ -58,6 +59,7 @@ export function SearchOverlayContent({
   onOpenFile,
   onOpenSearchEverywhereResult,
   onOpenSearchEverywhereCandidate,
+  onLoadNextSearchEverywherePage,
   onOpenProject,
   onMoveSearchEverywhereSelection,
   onOpenSelectedSearchEverywhereResult,
@@ -203,6 +205,8 @@ export function SearchOverlayContent({
         candidates={searchSession.candidates}
         selectedIndex={searchSession.selectedIndex}
         selectedPreviewContent={searchSession.previewContent}
+        canLoadMore={Boolean(searchSession.textNextCursor)}
+        pageLoading={searchSession.textPageLoading}
         partialNotice={searchSession.truncationNotice ?? workspacePartialNotice}
         onChangeQuery={onChangeQuery}
         onChangeScope={onChangeSearchEverywhereScope}
@@ -212,6 +216,7 @@ export function SearchOverlayContent({
         onSelectResult={onSelectSearchEverywhereResult}
         onOpenResult={onOpenSearchEverywhereResult}
         onOpenCandidate={onOpenSearchEverywhereCandidate}
+        onLoadMore={onLoadNextSearchEverywherePage}
         onToggleCaseSensitive={onToggleSearchEverywhereCaseSensitive}
         onToggleWholeWord={onToggleSearchEverywhereWholeWord}
         onCloseOverlay={onCloseOverlay}
