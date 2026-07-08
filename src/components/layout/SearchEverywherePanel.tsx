@@ -3,7 +3,7 @@ import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
 import { groupSearchCandidates, groupSearchMatches, searchModePresentation } from "@/components/layout/search-everywhere-panel-model";
 import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
-import { createSearchPreviewWindow } from "@/features/search/search-preview-window";
+import { createSearchPreviewWindowFromContent } from "@/features/search/search-preview-window";
 import { createSearchResultWindow } from "@/features/search/search-result-window";
 import type {
   WorkspaceTextSearchMatch,
@@ -371,8 +371,7 @@ export function SearchEverywherePanel({
 
 function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; content: string | null }) {
   const hitLine = highlightPreview(match.preview, match.previewStart, match.previewEnd);
-  const lines = content?.split(/\r?\n/u) ?? null;
-  const previewWindow = lines ? createSearchPreviewWindow(lines, match.line) : null;
+  const previewWindow = content != null ? createSearchPreviewWindowFromContent(content, match.line) : null;
 
   return (
     <>

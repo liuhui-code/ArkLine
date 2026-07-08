@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createSearchPreviewWindow } from "@/features/search/search-preview-window";
+import {
+  createSearchPreviewWindow,
+  createSearchPreviewWindowFromContent,
+} from "@/features/search/search-preview-window";
 
 describe("createSearchPreviewWindow", () => {
   it("returns every line when the file is smaller than the preview budget", () => {
@@ -33,5 +36,37 @@ describe("createSearchPreviewWindow", () => {
     const window = createSearchPreviewWindow(lines, 20, 2);
 
     expect(window.lines.map((line) => line.lineNumber)).toEqual([18, 19, 20]);
+  });
+
+  it("extracts a bounded window directly from file content", () => {
+    const content = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
+    const window = createSearchPreviewWindowFromContent(content, 50, 2);
+
+    expect(window.totalLines).toBe(100);
+    expect(window.lines).toEqual([
+      { lineNumber: 48, text: "line 48" },
+      { lineNumber: 49, text: "line 49" },
+      { lineNumber: 50, text: "line 50" },
+      { lineNumber: 51, text: "line 51" },
+      { lineNumber: 52, text: "line 52" },
+    ]);
+  });
+
+  it("normalizes CRLF preview lines without allocating the full line list", () => {
+    const window = createSearchPreviewWindowFromContent("a\r\nb\r\nc", 2, 1);
+
+    expect(window.totalLines).toBe(3);
+    expect(window.lines).toEqual([
+      { lineNumber: 1, text: "a" },
+      { lineNumber: 2, text: "b" },
+      { lineNumber: 3, text: "c" },
+    ]);
+  });
+
+  it("treats empty content as one visible empty line", () => {
+    expect(createSearchPreviewWindowFromContent("", 1, 1)).toEqual({
+      totalLines: 1,
+      lines: [{ lineNumber: 1, text: "" }],
+    });
   });
 });
