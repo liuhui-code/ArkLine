@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   SDK_INDEX_READY_WAIT_ATTEMPTS,
   SDK_INDEX_READY_WAIT_INTERVAL_MS,
 } from "@/components/layout/app-shell-constants";
 import type { IndexExplainContext } from "@/components/layout/app-shell-types";
-import { mergeWorkspaceIndexTaskStatus } from "@/components/layout/app-shell-model";
 import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import type { AppSettings } from "@/features/settings/settings-store";
+import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type {
   WorkspaceApi,
   WorkspaceIndexDiagnostics,
@@ -47,14 +47,21 @@ export function useIndexDiagnosticsController({
   const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
-  const [workspaceIndexTaskStatuses, setWorkspaceIndexTaskStatuses] = useState<WorkspaceIndexTaskStatus[]>([]);
+  const indexProjection = useSyncExternalStore(
+    workspaceIndexProjectionStore.subscribe,
+    workspaceIndexProjectionStore.snapshot,
+    workspaceIndexProjectionStore.snapshot,
+  );
+  const workspaceIndexTaskStatuses = indexProjection.rootPath === workspace?.rootPath
+    ? indexProjection.taskStatuses
+    : [];
 
   useEffect(() => {
     if (!workspace?.rootPath) {
       setIndexDiagnostics(null);
       setCurrentFileReadiness(null);
       setLayerReadiness(null);
-      setWorkspaceIndexTaskStatuses([]);
+      workspaceIndexProjectionStore.reset();
       return;
     }
     if (!layerReadiness) return;
@@ -64,16 +71,14 @@ export function useIndexDiagnosticsController({
   async function refreshWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
     if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return;
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
-    if (statuses.length > 0) {
-      setWorkspaceIndexTaskStatuses(statuses);
-      if (statuses.some(isTerminalProjectIndexTaskStatus)) {
-        await refreshLayerReadiness(rootPath);
-      }
+    workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses);
+    if (statuses.some(isTerminalProjectIndexTaskStatus)) {
+      await refreshLayerReadiness(rootPath);
     }
   }
 
   function recordWorkspaceIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
-    setWorkspaceIndexTaskStatuses((current) => mergeWorkspaceIndexTaskStatus(current, status));
+    workspaceIndexProjectionStore.recordTaskStatus(status);
     if (isTerminalIndexTaskStatus(status)) {
       void refreshLayerReadiness(status.rootPath);
     }
@@ -109,7 +114,7 @@ export function useIndexDiagnosticsController({
           : Promise.resolve(null),
       ]);
       setIndexDiagnostics(diagnostics);
-      setWorkspaceIndexTaskStatuses(statuses);
+      workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses);
       setCurrentFileReadiness(readiness);
       setLayerReadiness(layers);
     } finally {
@@ -138,7 +143,7 @@ export function useIndexDiagnosticsController({
       return;
     }
     const status = await workspaceApi.rebuildWorkspaceSdkIndex(workspace.rootPath);
-    setWorkspaceIndexTaskStatuses((previous) => mergeWorkspaceIndexTaskStatus(previous, status));
+    workspaceIndexProjectionStore.recordTaskStatus(status);
     await refreshIndexDiagnostics();
     onStatusChange("Rebuild SDK Index requested");
   }
@@ -149,7 +154,7 @@ export function useIndexDiagnosticsController({
       const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
       const current = statuses.find((status) => status.taskId === taskId);
       if (current?.status === "ready") {
-        setWorkspaceIndexTaskStatuses(statuses);
+        workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses);
         return;
       }
       if (current?.status === "failed") {
@@ -166,7 +171,7 @@ export function useIndexDiagnosticsController({
     if (workspaceApi.submitWorkspaceSdkIndex) {
       onStatusChange("SDK API index queued...");
       const queued = await workspaceApi.submitWorkspaceSdkIndex(workspace.rootPath, sdkPath, "settings");
-      setWorkspaceIndexTaskStatuses((current) => mergeWorkspaceIndexTaskStatus(current, queued));
+      workspaceIndexProjectionStore.recordTaskStatus(queued);
       await waitForWorkspaceIndexTaskReady(workspace.rootPath, queued.taskId);
       return;
     }
