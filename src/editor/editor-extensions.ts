@@ -122,7 +122,7 @@ export function createEditorExtensions(
     jumpRevealDecorationField,
     ...(largeDocumentMode ? [] : [definitionHoverDecorationField]),
     keymap.of(keymaps),
-    createDocumentChangeListener(onChange),
+    createDocumentChangeListener(onChange, largeDocumentMode),
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),
     ...(!largeDocumentMode && onDefinitionHoverChange ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),

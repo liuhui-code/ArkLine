@@ -53,4 +53,36 @@ describe("ArkTsEditor large document mode", () => {
 
     expect(container.querySelector(".cm-git-trace-gutter")).toBeNull();
   });
+
+  it("coalesces large document change payloads to the next frame", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    const onChange = vi.fn();
+
+    render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/large.ets"
+        value={"x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD)}
+        onChange={onChange}
+      />,
+    );
+
+    const editor = screen.getByLabelText("Editor Content");
+    const root = editor.closest(".cm-editor");
+    expect(root).toBeInstanceOf(HTMLElement);
+    const view = EditorView.findFromDOM(root as HTMLElement);
+    expect(view).toBeTruthy();
+    view?.dispatch({ changes: { from: 0, insert: "a" } });
+    view?.dispatch({ changes: { from: 0, insert: "b" } });
+
+    expect(onChange).not.toHaveBeenCalled();
+    [...callbacks].forEach((callback) => callback(0));
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0].startsWith("ba")).toBe(true);
+    raf.mockRestore();
+  });
 });

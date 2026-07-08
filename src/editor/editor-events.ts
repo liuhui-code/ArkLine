@@ -1,5 +1,6 @@
 import { StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet, ViewUpdate } from "@codemirror/view";
+import { createEditorChangeDispatcher } from "@/editor/editor-change-dispatcher";
 import { readSelectedTextWithinBudget } from "@/editor/editor-selection-budget";
 
 export type EditorLineColumn = {
@@ -202,13 +203,15 @@ function updateDefinitionHoverDecoration(view: EditorView, range: DefinitionHove
   return true;
 }
 
-export function createDocumentChangeListener(onChange: (value: string) => void) {
+export function createDocumentChangeListener(onChange: (value: string) => void, coalesce = false) {
+  const dispatcher = createEditorChangeDispatcher(onChange);
   return EditorView.updateListener.of((update: ViewUpdate) => {
     if (!update.docChanged) {
       return;
     }
 
-    onChange(update.state.doc.toString());
+    if (coalesce) dispatcher.queue(update.state.doc);
+    else onChange(update.state.doc.toString());
   });
 }
 
