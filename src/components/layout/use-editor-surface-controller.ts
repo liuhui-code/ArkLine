@@ -1,6 +1,7 @@
 import { useRef, type MutableRefObject } from "react";
 import { parseGoToLineQuery } from "@/components/layout/app-shell-helpers";
 import type { OverlayKey } from "@/components/layout/shell-state";
+import { createNavigationTransactionRuntime } from "@/features/navigation/navigation-transaction-runtime";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 
@@ -63,13 +64,23 @@ export function useEditorSurfaceController({
   syncCompletionForEditorSelection,
   onStatusChange,
 }: UseEditorSurfaceControllerOptions) {
-  const openFileRequestRef = useRef(0);
+  const navigationRuntimeRef = useRef(createNavigationTransactionRuntime());
 
   async function openFile(path: string) {
-    const requestId = openFileRequestRef.current + 1;
-    openFileRequestRef.current = requestId;
-    const content = await workspaceApi.openFile(path);
-    if (openFileRequestRef.current !== requestId) {
+    const transaction = navigationRuntimeRef.current.start(path);
+    const title = getPathBasename(path);
+    onStatusChange(`Opening ${title}...`);
+    let content: string;
+    try {
+      content = await workspaceApi.openFile(path);
+    } catch {
+      if (navigationRuntimeRef.current.isCurrent(transaction.id)) {
+        navigationRuntimeRef.current.finish(transaction.id);
+        onStatusChange(`Open failed ${title}`);
+      }
+      return;
+    }
+    if (!navigationRuntimeRef.current.isCurrent(transaction.id)) {
       return;
     }
     if (!documentsRef.current.getDocument(path)) {
@@ -88,7 +99,8 @@ export function useEditorSurfaceController({
     setActiveOverlay("none");
     setQuickOpenQuery("");
     bumpEditorFocusToken();
-    onStatusChange(`Opened ${getPathBasename(path)}`);
+    navigationRuntimeRef.current.finish(transaction.id);
+    onStatusChange(`Opened ${title}`);
   }
 
   function submitGoToLine() {

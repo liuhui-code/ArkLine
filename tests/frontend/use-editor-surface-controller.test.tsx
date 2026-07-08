@@ -36,6 +36,50 @@ describe("useEditorSurfaceController", () => {
     expect(onStatusChange).toHaveBeenLastCalledWith("Opened B.ets");
   });
 
+  it("reports a pending file open before content loads", () => {
+    const pending = createDeferred<string>();
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      workspaceApi: { openFile: vi.fn(() => pending.promise) } as unknown as WorkspaceApi,
+      onStatusChange,
+    });
+
+    void act(() => {
+      void result.current.openFile("/workspace/A.ets");
+    });
+
+    expect(onStatusChange).toHaveBeenCalledWith("Opening A.ets...");
+  });
+
+  it("reports open failure only for the latest navigation transaction", async () => {
+    const first = createDeferred<string>();
+    const second = createDeferred<string>();
+    const onStatusChange = vi.fn();
+    const openFile = vi.fn((path: string) => path.endsWith("A.ets") ? first.promise : second.promise);
+    const { result } = renderHarness({
+      workspaceApi: { openFile } as unknown as WorkspaceApi,
+      onStatusChange,
+    });
+
+    void act(() => {
+      void result.current.openFile("/workspace/A.ets");
+      void result.current.openFile("/workspace/B.ets");
+    });
+    await act(async () => {
+      first.reject(new Error("A failed"));
+      await Promise.resolve();
+    });
+
+    expect(onStatusChange).not.toHaveBeenCalledWith("Open failed A.ets");
+
+    await act(async () => {
+      second.reject(new Error("B failed"));
+      await Promise.resolve();
+    });
+
+    expect(onStatusChange).toHaveBeenLastCalledWith("Open failed B.ets");
+  });
+
   it("does not cache stale file content when users rapidly switch jump targets", async () => {
     const first = createDeferred<string>();
     const second = createDeferred<string>();
@@ -219,8 +263,10 @@ function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceCont
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
