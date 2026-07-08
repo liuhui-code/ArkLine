@@ -19,14 +19,11 @@ import {
   type WorkspaceTextSearchOptions,
 } from "@/features/search/workspace-text-search";
 import { scheduleSearchPreview } from "@/features/search/search-preview-loader";
+import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
-import type {
-  WorkspaceApi,
-  WorkspaceIndexQueryScope,
-  WorkspaceViewModel,
-} from "@/features/workspace/workspace-api";
+import type { WorkspaceApi, WorkspaceIndexQueryScope, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexReadiness } from "@/features/workspace/workspace-index-api-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
@@ -96,8 +93,15 @@ export function useSearchEverywhereController({
     wholeWord: false,
   });
   const searchSessionStoreRef = useRef(createSearchSessionStore());
-  const searchEverywhereRequestRef = useRef(0);
-  const searchPreviewRequestRef = useRef(0);
+  const workspaceApiRef = useRef(workspaceApi);
+  const workspaceRootRef = useRef<string | null>(workspace?.rootPath ?? null);
+  workspaceApiRef.current = workspaceApi;
+  workspaceRootRef.current = workspace?.rootPath ?? null;
+  const interactionRuntimeRef = useRef(createSearchInteractionRuntime({ cancel: (kind, generation) => {
+    const rootPath = workspaceRootRef.current;
+    if (!rootPath || !workspaceApiRef.current.cancelWorkspaceSearch) return;
+    void workspaceApiRef.current.cancelWorkspaceSearch(rootPath, kind, generation).catch(() => undefined);
+  } }));
   const navigationCloseHandledRef = useRef(false);
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
@@ -116,7 +120,7 @@ export function useSearchEverywhereController({
   }
 
   function handleOverlayQueryChange(value: string) {
-    invalidateSearchSession(false);
+    invalidateSearchSession();
     setQuickOpenQuery(value);
   }
 
@@ -161,15 +165,14 @@ export function useSearchEverywhereController({
       searchSessionStoreRef.current.patch({ previewContent: null });
       return;
     }
-    const requestId = searchPreviewRequestRef.current + 1;
-    searchPreviewRequestRef.current = requestId;
+    const requestId = interactionRuntimeRef.current.startPreview();
     searchSessionStoreRef.current.patch({ previewContent: null });
     scheduleSearchPreview({
       path: selected.path,
       requestId,
       delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
       readFile: readSearchFile,
-      isCurrent: (id) => searchPreviewRequestRef.current === id,
+      isCurrent: (id) => interactionRuntimeRef.current.isCurrentPreview(id),
       onPreview: (content) => searchSessionStoreRef.current.patch({ previewContent: content }),
     });
   }
@@ -230,8 +233,9 @@ export function useSearchEverywhereController({
 
   useEffect(() => {
     if (activeOverlay !== "searchEverywhere") return;
-    const requestId = searchEverywhereRequestRef.current + 1;
-    searchEverywhereRequestRef.current = requestId;
+    const requestId = interactionRuntimeRef.current.startQuery(
+      searchEverywhereMode === "searchEverywhere" ? "searchEverywhere" : "text",
+    );
 
     if (!workspace) {
       clearSearchResults(debouncedSearchQuery.trim());
@@ -280,8 +284,8 @@ export function useSearchEverywhereController({
         .then((candidates) => ({ candidates }))
       : Promise.resolve({ candidates: queryIndexCandidates(query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1) });
 
-    void indexRequest.then(({ candidates, explain, nextCursor }) => {
-      if (searchEverywhereRequestRef.current !== requestId) return;
+    void trackSearchRequest(requestId, indexRequest).then(({ candidates, explain, nextCursor }) => {
+      if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
       recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
       const visibleCandidates = searchEverywhereEntityCandidates(candidates);
       const ordered = orderSearchEverywhereCandidates(visibleCandidates, {
@@ -340,8 +344,8 @@ export function useSearchEverywhereController({
       })
       : fallbackTextSearch(query, dirty, requestId).then((result) => ({ result, suppressMissExplain: false }));
 
-    void searchRequest.then(({ result, suppressMissExplain }) => {
-      if (searchEverywhereRequestRef.current !== requestId) return;
+    void trackSearchRequest(requestId, searchRequest).then(({ result, suppressMissExplain }) => {
+      if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
       recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
       searchSessionStoreRef.current.patch({
         result,
@@ -356,7 +360,7 @@ export function useSearchEverywhereController({
       if (!suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && query.trim()) {
         const missLabel = searchOverlayLabel(searchEverywhereMode);
         void explainIndexMiss("search", query.trim()).then((explanation) => {
-          if (searchEverywhereRequestRef.current === requestId && explanation) {
+          if (interactionRuntimeRef.current.isCurrentQuery(requestId) && explanation) {
             onStatusChange(`${missLabel} miss: ${explanation}`);
           }
         });
@@ -368,12 +372,12 @@ export function useSearchEverywhereController({
     const session = searchSessionStoreRef.current.getSnapshot();
     if (!workspace || session.textPageLoading) return;
     const query = debouncedSearchQuery;
-    const requestId = searchEverywhereRequestRef.current;
+    const requestId = interactionRuntimeRef.current.getCurrentQueryGeneration();
     if (searchEverywhereMode === "searchEverywhere") {
       if (!session.entityNextCursor || !workspaceApi.queryWorkspaceCandidatesWithReadiness) return;
       searchSessionStoreRef.current.patch({ textPageLoading: true });
       const envelope = await workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT, session.entityNextCursor);
-      if (searchEverywhereRequestRef.current !== requestId) return;
+      if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
       searchSessionStoreRef.current.patch({
         candidates: [...session.candidates, ...searchEverywhereEntityCandidates(envelope.items)],
         entityNextCursor: envelope.nextCursor ?? null,
@@ -385,7 +389,7 @@ export function useSearchEverywhereController({
     if (!session.textNextCursor) return;
     searchSessionStoreRef.current.patch({ textPageLoading: true });
     const result = await fallbackTextSearch(query, hasDirtyDocuments(), requestId, session.textNextCursor);
-    if (searchEverywhereRequestRef.current !== requestId) return;
+    if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
     searchSessionStoreRef.current.patch({
       result: { ...result, matches: [...session.result.matches, ...result.matches] },
       truncationNotice: textSearchPartialNotice(result),
@@ -431,19 +435,13 @@ export function useSearchEverywhereController({
     });
   }
 
-  function invalidateSearchSession(cancelRunning = true) {
-    const previousGeneration = searchEverywhereRequestRef.current;
-    searchEverywhereRequestRef.current += 1;
-    searchPreviewRequestRef.current += 1;
-    if (cancelRunning && previousGeneration > 0) cancelSearchGeneration(previousGeneration);
+  function trackSearchRequest<T>(requestId: number, request: Promise<T>) {
+    return request.finally(() => interactionRuntimeRef.current.finishQuery(requestId));
   }
 
-  function cancelSearchGeneration(generation: number) {
-    if (!workspace?.rootPath || !workspaceApi.cancelWorkspaceSearch) {
-      return;
-    }
-    const kind = searchEverywhereMode === "searchEverywhere" ? "searchEverywhere" : "text";
-    void workspaceApi.cancelWorkspaceSearch(workspace.rootPath, kind, generation).catch(() => undefined);
+  function invalidateSearchSession(cancelRunning = true) {
+    interactionRuntimeRef.current.invalidateForeground({ cancelActive: cancelRunning });
+    searchSessionStoreRef.current.patch({ previewContent: null, textPageLoading: false });
   }
 
   function closeSearchOverlayForNavigation() {
@@ -469,7 +467,7 @@ export function useSearchEverywhereController({
       return;
     }
     void explainIndexMiss("search", query.trim()).then((explanation) => {
-      if (searchEverywhereRequestRef.current === requestId && explanation) {
+      if (interactionRuntimeRef.current.isCurrentQuery(requestId) && explanation) {
         onStatusChange(`Search Everywhere miss: ${explanation}`);
       }
     });

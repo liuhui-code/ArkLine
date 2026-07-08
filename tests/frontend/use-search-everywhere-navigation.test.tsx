@@ -112,6 +112,67 @@ describe("useSearchEverywhereController navigation isolation", () => {
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith("/workspace", "EntryFinal", "all", 25);
   });
+
+  it("does not let a stale slow query overwrite newer search results", async () => {
+    vi.useFakeTimers();
+    const first = deferred<CandidateEnvelope>();
+    const second = deferred<CandidateEnvelope>();
+    const queryWorkspaceCandidatesWithReadiness = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    act(() => result.current.search.handleOverlayQueryChange("Final"));
+    await flushSearchDebounce();
+    await act(async () => {
+      second.resolve({
+        items: [candidate({ title: "FinalAbility", path: "/workspace/FinalAbility.ets" })],
+        readiness: readiness(),
+        explain: [],
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      first.resolve({
+        items: [candidate({ title: "OldEntry", path: "/workspace/OldEntry.ets" })],
+        readiness: readiness(),
+        explain: [],
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.search.searchEverywhereCandidates.map((item) => item.title)).toEqual(["FinalAbility"]);
+  });
+
+  it("does not repopulate results after closing the search panel", async () => {
+    vi.useFakeTimers();
+    const pending = deferred<CandidateEnvelope>();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(() => pending.promise);
+    const { result } = renderHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    act(() => result.current.search.resetSearchOverlayState());
+    await act(async () => {
+      pending.resolve({
+        items: [candidate({ title: "EntryAbility", path: "/workspace/EntryAbility.ets" })],
+        readiness: readiness(),
+        explain: [],
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.search.searchEverywhereCandidates).toHaveLength(0);
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -155,6 +216,20 @@ type HarnessOptions = {
   navigateToLocation: (location: { path: string; line: number; column: number }, label: "Usage") => Promise<void>;
   recordUiInteraction: Parameters<typeof useSearchEverywhereController>[0]["recordUiInteraction"];
 };
+
+type CandidateEnvelope = {
+  items: SearchCandidate[];
+  readiness: WorkspaceIndexReadiness;
+  explain: string[];
+};
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((innerResolve) => {
+    resolve = innerResolve;
+  });
+  return { promise, resolve };
+}
 
 async function flushSearchDebounce() {
   await act(async () => {
