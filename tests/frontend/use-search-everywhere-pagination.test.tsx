@@ -32,6 +32,33 @@ describe("useSearchEverywhereController pagination", () => {
     expect(result.current.search.searchEverywhereResult.matches).toHaveLength(52);
     expect(result.current.search.searchEverywhereCanLoadMore).toBe(false);
   });
+
+  it("loads the next page when keyboard selection moves past the last text result", async () => {
+    vi.useFakeTimers();
+    const files = {
+      "/workspace/a.ets": Array.from({ length: 51 }, (_, index) => `width(${index + 1})`).join("\n"),
+      "/workspace/b.ets": "width(52)",
+    };
+    const { result } = renderHarness({
+      query: "width",
+      getTextSearchPaths: () => Object.keys(files),
+      getOpenDocumentContent: (path) => files[path as keyof typeof files] ?? null,
+      hasDirtyDocuments: () => true,
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    await flushSearchDebounce();
+    act(() => result.current.search.setSearchEverywhereSelectedIndex(49));
+
+    await act(async () => {
+      result.current.search.moveSearchEverywhereSelection(1);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.search.searchEverywhereResult.matches).toHaveLength(52);
+    expect(result.current.search.searchEverywhereSelectedIndex).toBe(50);
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {

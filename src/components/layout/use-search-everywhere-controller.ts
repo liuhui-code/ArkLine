@@ -135,6 +135,15 @@ export function useSearchEverywhereController({
       : session.result.matches.length;
     if (resultCount <= 0) return;
     const normalized = Math.min(Math.max(session.selectedIndex, 0), resultCount - 1);
+    if (
+      direction > 0
+      && searchEverywhereMode !== "searchEverywhere"
+      && normalized === resultCount - 1
+      && session.textNextCursor
+    ) {
+      void loadNextSearchEverywherePage(resultCount);
+      return;
+    }
     setSearchEverywhereSelectedIndex((normalized + direction + resultCount) % resultCount);
   }
 
@@ -354,7 +363,7 @@ export function useSearchEverywhereController({
     });
   }
 
-  async function loadNextSearchEverywherePage() {
+  async function loadNextSearchEverywherePage(selectIndexAfterLoad?: number) {
     const session = searchSessionStoreRef.current.getSnapshot();
     if (!workspace || searchEverywhereMode === "searchEverywhere" || session.textPageLoading || !session.textNextCursor) return;
     const query = debouncedSearchQuery;
@@ -367,7 +376,9 @@ export function useSearchEverywhereController({
       truncationNotice: textSearchPartialNotice(result),
       textNextCursor: result.nextCursor ?? null,
       textPageLoading: false,
+      selectedIndex: selectIndexAfterLoad ?? session.selectedIndex,
     });
+    if (selectIndexAfterLoad != null) scheduleSelectedPreview(selectIndexAfterLoad);
   }
 
   function fallbackTextSearch(
