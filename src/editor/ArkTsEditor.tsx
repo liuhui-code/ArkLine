@@ -21,11 +21,10 @@ import {
   type EditorContextMenuRequest,
   type EditorLineColumn,
 } from "@/editor/editor-events";
+import { isLargeEditorDocument } from "@/editor/editor-document-budget";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
-
-const LARGE_DOCUMENT_CHARACTER_THRESHOLD = 300_000;
 
 type ArkTsEditorProps = {
   focusToken?: number;
@@ -76,7 +75,7 @@ export function ArkTsEditor({
   const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
   const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
-  const largeDocumentMode = useMemo(() => value.length >= LARGE_DOCUMENT_CHARACTER_THRESHOLD, [value]);
+  const largeDocumentMode = useMemo(() => isLargeEditorDocument(value), [value]);
 
   onChangeRef.current = onChange;
   onSelectionChangeRef.current = onSelectionChange;
@@ -186,7 +185,7 @@ export function ArkTsEditor({
 
     view.dispatch({
       effects: gitTraceCompartment.reconfigure(
-        gitBlameVisible
+        gitBlameVisible && !largeDocumentMode
           ? createGitTraceGutter({
               blameAttributions,
               selectedLine: selectedBlameLine,
@@ -195,7 +194,7 @@ export function ArkTsEditor({
           : [],
       ),
     });
-  }, [blameAttributions, gitBlameVisible, onGitTraceLineClick, selectedBlameLine]);
+  }, [blameAttributions, gitBlameVisible, largeDocumentMode, onGitTraceLineClick, selectedBlameLine]);
 
   useEffect(() => {
     const view = viewRef.current;

@@ -104,6 +104,10 @@ export function createEditorExtensions(
   },
   largeDocumentMode = false,
 ): Extension[] {
+  const keymaps = largeDocumentMode
+    ? [indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]
+    : [indentWithTab, ...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap];
+
   return [
     EditorView.contentAttributes.of({
       "aria-label": "Editor Content",
@@ -115,25 +119,19 @@ export function createEditorExtensions(
     rectangularSelection(),
     history(),
     highlightActiveLine(),
-    definitionHoverDecorationField,
     jumpRevealDecorationField,
-    keymap.of([
-      indentWithTab,
-      ...defaultKeymap,
-      ...historyKeymap,
-      ...foldKeymap,
-      ...searchKeymap,
-    ]),
+    ...(largeDocumentMode ? [] : [definitionHoverDecorationField]),
+    keymap.of(keymaps),
     createDocumentChangeListener(onChange),
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),
-    ...(onDefinitionHoverChange ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
-    ...(onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
+    ...(!largeDocumentMode && onDefinitionHoverChange ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
+    ...(!largeDocumentMode && onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
     ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
     editorStructureCompartment.of(structureExtensionForDocument(largeDocumentMode)),
     languageCompartment.of(languageExtensionForPath(path, largeDocumentMode)),
-    gitTraceCompartment.of(gitTrace ? createGitTraceGutter(gitTrace) : []),
+    gitTraceCompartment.of(gitTrace && !largeDocumentMode ? createGitTraceGutter(gitTrace) : []),
   ];
 }
