@@ -90,6 +90,7 @@ ArkTS workspace and attached here.
 Headless runtime smoke scripts:
 
 ```bash
+pnpm perf:runtime
 node scripts/perf-search-input.mjs --files=5000 --strict
 node scripts/perf-file-switch.mjs --files=5000 --switches=50 --strict
 ```

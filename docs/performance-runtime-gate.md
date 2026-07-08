@@ -23,6 +23,7 @@ Run the gate against synthetic fixtures and at least one real ArkTS workspace:
 ## Local Smoke Commands
 
 ```bash
+pnpm perf:runtime
 node scripts/perf-search-input.mjs --files=5000 --strict
 node scripts/perf-file-switch.mjs --files=5000 --switches=50 --strict
 ```

@@ -38,6 +38,9 @@ jobs:
       - name: Run Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+      - name: Run runtime performance gate
+        run: pnpm perf:runtime
+
       - name: Build desktop bundle
         run: pnpm package:windows
 
