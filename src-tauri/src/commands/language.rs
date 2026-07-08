@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use tauri::{AppHandle, State};
 
 use crate::models::language::{
@@ -9,7 +11,13 @@ use crate::services::language_command_service::{
     goto_definition_blocking, goto_definition_candidates_blocking, hover_symbol_blocking,
     inspect_language_service_blocking,
 };
+use crate::services::language_client_runtime_service::{
+    run_language_request, LanguageClientRequest, LanguageClientSource,
+};
 use crate::services::language_service::LanguageRuntime;
+
+const LANGUAGE_COMMAND_TIMEOUT_MS: u64 = 3500;
+static LANGUAGE_COMMAND_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
 
 #[tauri::command]
 pub async fn inspect_language_service(
@@ -25,7 +33,11 @@ pub async fn hover_symbol(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
 ) -> Result<Option<HoverResponse>, String> {
-    hover_symbol_blocking(app, runtime.inner().clone(), request).await
+    run_language_request(
+        language_request(LanguageClientSource::Hover),
+        hover_symbol_blocking(app, runtime.inner().clone(), request),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -34,7 +46,11 @@ pub async fn goto_definition(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
 ) -> Result<Option<DefinitionTarget>, String> {
-    goto_definition_blocking(app, runtime.inner().clone(), request).await
+    run_language_request(
+        language_request(LanguageClientSource::Definition),
+        goto_definition_blocking(app, runtime.inner().clone(), request),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -43,7 +59,11 @@ pub async fn goto_definition_candidates(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
 ) -> Result<Vec<DefinitionCandidate>, String> {
-    goto_definition_candidates_blocking(app, runtime.inner().clone(), request).await
+    run_language_request(
+        language_request(LanguageClientSource::DefinitionCandidates),
+        goto_definition_candidates_blocking(app, runtime.inner().clone(), request),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -52,7 +72,11 @@ pub async fn complete_symbol(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
 ) -> Result<Vec<CompletionItem>, String> {
-    complete_symbol_blocking(app, runtime.inner().clone(), request).await
+    run_language_request(
+        language_request(LanguageClientSource::Completion),
+        complete_symbol_blocking(app, runtime.inner().clone(), request),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -61,7 +85,11 @@ pub async fn document_symbols(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
 ) -> Result<Vec<DocumentSymbol>, String> {
-    document_symbols_blocking(app, runtime.inner().clone(), request).await
+    run_language_request(
+        language_request(LanguageClientSource::DocumentSymbols),
+        document_symbols_blocking(app, runtime.inner().clone(), request),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -70,5 +98,14 @@ pub async fn find_usages(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
 ) -> Result<Vec<UsageResult>, String> {
-    find_usages_blocking(app, runtime.inner().clone(), request).await
+    run_language_request(
+        language_request(LanguageClientSource::Usages),
+        find_usages_blocking(app, runtime.inner().clone(), request),
+    )
+    .await
+}
+
+fn language_request(source: LanguageClientSource) -> LanguageClientRequest {
+    let request_id = LANGUAGE_COMMAND_REQUEST_ID.fetch_add(1, Ordering::Relaxed) + 1;
+    LanguageClientRequest::new(source, request_id, request_id, LANGUAGE_COMMAND_TIMEOUT_MS)
 }

@@ -76,6 +76,7 @@ mod services {
     pub mod git_command_service;
     pub mod git_trace_service;
     pub mod language_command_service;
+    pub mod language_client_runtime_service;
     pub mod language_service;
     pub mod process_command_service;
     pub mod semantic;
