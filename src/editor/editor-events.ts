@@ -1,5 +1,6 @@
 import { StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet, ViewUpdate } from "@codemirror/view";
+import { readSelectedTextWithinBudget } from "@/editor/editor-selection-budget";
 
 export type EditorLineColumn = {
   line: number;
@@ -229,9 +230,7 @@ export function createSelectionChangeListener(
     onSelectionChange({
       line: currentLine.number,
       column: safeHead - currentLine.from + 1,
-      selectedText: selectionFrom === selectionTo
-        ? undefined
-        : update.state.doc.sliceString(selectionFrom, selectionTo),
+      selectedText: readSelectedTextWithinBudget(update.state.doc, selectionFrom, selectionTo),
     });
   });
 }
