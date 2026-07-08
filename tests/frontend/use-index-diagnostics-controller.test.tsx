@@ -1,8 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useIndexDiagnosticsController } from "@/components/layout/use-index-diagnostics-controller";
 import type { AppSettings } from "@/features/settings/settings-store";
+import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
@@ -11,6 +13,10 @@ import type {
 } from "@/features/workspace/workspace-index-api-types";
 
 describe("useIndexDiagnosticsController", () => {
+  beforeEach(() => {
+    workspaceIndexProjectionStore.reset();
+  });
+
   it("opens diagnostics and loads health, task status, and current file readiness", async () => {
     const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
     const getWorkspaceIndexTaskStatuses = vi.fn(async () => [taskStatus({ taskId: "task-1" })]);
@@ -78,6 +84,7 @@ describe("useIndexDiagnosticsController", () => {
 
     await act(async () => {
       await result.current.indexSdkSymbolsForSettings(settings("/sdk"));
+      await waitForProjectionFlush();
     });
 
     expect(submitWorkspaceSdkIndex).toHaveBeenCalledWith("/workspace", "/sdk", "settings");
@@ -191,6 +198,7 @@ function options(overrides: Partial<Parameters<typeof useIndexDiagnosticsControl
   return {
     workspaceApi: workspaceApi({}),
     workspace: workspace(),
+    workspaceIndexState: indexState(),
     activePath: "/workspace/Entry.ets",
     applyWorkspaceIndexRefreshResult: vi.fn(),
     openSettings: vi.fn(async () => undefined),
@@ -198,6 +206,22 @@ function options(overrides: Partial<Parameters<typeof useIndexDiagnosticsControl
     retrySearchQuery: vi.fn(),
     onStatusChange: vi.fn(),
     ...overrides,
+  };
+}
+
+function waitForProjectionFlush() {
+  return new Promise((resolve) => window.setTimeout(resolve, 550));
+}
+
+function indexState(): WorkspaceIndexState {
+  return {
+    status: "ready",
+    rootPath: "/workspace",
+    filePaths: ["/workspace/Entry.ets"],
+    symbols: [],
+    indexedAt: 1,
+    partialReason: null,
+    queryReadiness: null,
   };
 }
 

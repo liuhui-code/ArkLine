@@ -151,7 +151,10 @@ describe("app shell model", () => {
       workspace: workspaceModel,
       workspaceIndex: index,
       workspaceIndexState: index.state,
-      workspaceIndexTaskStatuses: [],
+      workspaceIndexStatusSummary: {
+        workspaceIndexText: "Index: ready (2 files)",
+        sdkIndexText: null,
+      },
       quickOpenQuery: "set",
       recentFiles: ["/workspace/src/Main.ets", "/workspace/src/Settings.ets"],
       recentProjects: ["/workspace/settings-project"],
@@ -162,23 +165,23 @@ describe("app shell model", () => {
       settingsApplyState: "idle",
     });
 
-    expect(derived.quickOpenResults[0]).toEqual({ path: "/workspace/src/Settings.ets" });
-    expect(derived.recentFileResults.map((item) => item.path)).toEqual(["/workspace/src/Settings.ets"]);
-    expect(derived.recentProjectResults.map((item) => item.name)).toEqual(["settings-project"]);
+    expect(derived.quickOpenResults).toEqual([]);
+    expect(derived.recentFileResults).toEqual([]);
+    expect(derived.recentProjectResults).toEqual([]);
     expect(derived.overlayVisible).toBe(true);
     expect(derived.overlayLabel).toBe("Find in Files");
     expect(derived.workspaceIndexText).toBe("Index: ready (2 files)");
   });
 
-  it("derives status bar index text from layer readiness when available", () => {
+  it("derives status bar index text from projected index summary", () => {
     const derived = getAppShellDerivedState({
       workspace: workspace({ truncated: false, visibleFiles: ["/workspace/Entry.ets"] }),
       workspaceIndex: createWorkspaceIndexStore(),
       workspaceIndexState: indexState({ status: "partial", filePaths: [] }),
-      workspaceIndexTaskStatuses: [],
-      layerReadiness: layerReadiness([
-        layer({ layer: "symbols", workspaceStatus: "failed", currentFileStatus: "missing", failedCount: 1 }),
-      ]),
+      workspaceIndexStatusSummary: {
+        workspaceIndexText: "Index: Degraded, 1 failure",
+        sdkIndexText: null,
+      },
       quickOpenQuery: "",
       recentFiles: [],
       recentProjects: [],
@@ -207,7 +210,10 @@ describe("app shell model", () => {
           retryable: true,
         },
       }),
-      workspaceIndexTaskStatuses: [],
+      workspaceIndexStatusSummary: {
+        workspaceIndexText: "Index: Partial",
+        sdkIndexText: null,
+      },
       quickOpenQuery: "",
       recentFiles: [],
       recentProjects: [],

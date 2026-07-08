@@ -3,6 +3,11 @@ import {
   SDK_INDEX_READY_WAIT_ATTEMPTS,
   SDK_INDEX_READY_WAIT_INTERVAL_MS,
 } from "@/components/layout/app-shell-constants";
+import {
+  getIndexStatusText,
+  getLayerReadinessStatusText,
+  getSdkIndexStatusText,
+} from "@/components/layout/app-shell-model";
 import type { IndexExplainContext } from "@/components/layout/app-shell-types";
 import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import type { AppSettings } from "@/features/settings/settings-store";
@@ -17,10 +22,12 @@ import type {
   WorkspaceIndexTaskStatus,
   WorkspaceViewModel,
 } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
 export type UseIndexDiagnosticsControllerOptions = {
   workspaceApi: WorkspaceApi;
   workspace: WorkspaceViewModel | null;
+  workspaceIndexState: WorkspaceIndexState;
   activePath: string | null;
   applyWorkspaceIndexRefreshResult: (result: WorkspaceIndexRefreshResult) => void;
   openSettings: () => Promise<void>;
@@ -32,6 +39,7 @@ export type UseIndexDiagnosticsControllerOptions = {
 export function useIndexDiagnosticsController({
   workspaceApi,
   workspace,
+  workspaceIndexState,
   activePath,
   applyWorkspaceIndexRefreshResult,
   openSettings,
@@ -55,6 +63,11 @@ export function useIndexDiagnosticsController({
   const workspaceIndexTaskStatuses = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.taskStatuses
     : [];
+  const workspaceIndexStatusSummary = {
+    workspaceIndexText: getLayerReadinessStatusText(layerReadiness)
+      ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
+    sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),
+  };
 
   useEffect(() => {
     if (!workspace?.rootPath) {
@@ -256,6 +269,7 @@ export function useIndexDiagnosticsController({
     currentFileReadiness,
     layerReadiness,
     workspaceIndexTaskStatuses,
+    workspaceIndexStatusSummary,
     recordWorkspaceIndexTaskStatus,
     refreshWorkspaceIndexTaskStatuses,
     refreshIndexDiagnostics,
