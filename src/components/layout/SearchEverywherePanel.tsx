@@ -3,6 +3,7 @@ import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
 import { groupSearchCandidates, groupSearchMatches, searchModePresentation } from "@/components/layout/search-everywhere-panel-model";
 import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
+import { createSearchPreviewWindow } from "@/features/search/search-preview-window";
 import { createSearchResultWindow } from "@/features/search/search-result-window";
 import type {
   WorkspaceTextSearchMatch,
@@ -371,6 +372,7 @@ export function SearchEverywherePanel({
 function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; content: string | null }) {
   const hitLine = highlightPreview(match.preview, match.previewStart, match.previewEnd);
   const lines = content?.split(/\r?\n/u) ?? null;
+  const previewWindow = lines ? createSearchPreviewWindow(lines, match.line) : null;
 
   return (
     <>
@@ -379,18 +381,18 @@ function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; co
           <strong>{match.fileName}</strong>
           <span>{match.relativePath}:{match.line}:{match.column}</span>
         </div>
-        <span>{lines ? `${lines.length.toLocaleString()} lines` : "Loading file preview"}</span>
+        <span>{previewWindow ? `${previewWindow.totalLines.toLocaleString()} lines` : "Loading file preview"}</span>
       </div>
       <pre className="search-everywhere__preview-code">
-        {lines ? lines.map((line, index) => {
-          const lineNumber = index + 1;
+        {previewWindow ? previewWindow.lines.map((line) => {
+          const lineNumber = line.lineNumber;
           return (
             <div
               key={`file:${lineNumber}`}
               className={`search-everywhere__preview-line${lineNumber === match.line ? " search-everywhere__preview-line--hit" : ""}`}
             >
               <span className="search-everywhere__preview-number">{lineNumber}</span>
-              <span>{lineNumber === match.line ? hitLine : line}</span>
+              <span>{lineNumber === match.line ? hitLine : line.text}</span>
             </div>
           );
         }) : (
