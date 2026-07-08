@@ -1,7 +1,9 @@
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
+import { groupSearchCandidates, groupSearchMatches, searchModePresentation } from "@/components/layout/search-everywhere-panel-model";
 import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
+import { createSearchResultWindow } from "@/features/search/search-result-window";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -72,8 +74,10 @@ export function SearchEverywherePanel({
   const selected = result.matches[selectedIndex] ?? null;
   const regexMode = result.query.kind === "regex" || result.query.kind === "invalid";
   const presentation = searchModePresentation(mode, regexMode);
-  const groups = groupSearchMatches(result.matches);
-  const candidateGroups = groupSearchCandidates(candidates);
+  const textWindow = createSearchResultWindow(result.matches, selectedIndex);
+  const candidateWindow = createSearchResultWindow(candidates, selectedIndex);
+  const groups = groupSearchMatches(textWindow.items);
+  const candidateGroups = groupSearchCandidates(candidateWindow.items);
   const resultsLabel = `${presentation.title} Results`;
   const resultCount = mode === "searchEverywhere" ? candidates.length : result.matches.length;
   const pointerOpenRef = useRef(0);
@@ -346,94 +350,6 @@ export function SearchEverywherePanel({
     <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
     </>
   );
-}
-
-function searchModePresentation(mode: SearchEverywhereMode, regexMode: boolean) {
-  const searchKind = regexMode ? "Regular expression" : "Text";
-
-  if (mode === "find") {
-    return {
-      title: "Find in Files",
-      description: `${searchKind} search across the workspace`,
-      searchPlaceholder: "Find in files, or use /regex/",
-    };
-  }
-
-  if (mode === "replace") {
-    return {
-      title: "Replace in Files",
-      description: `${searchKind} search with replacement preview`,
-      searchPlaceholder: "Find text to replace, or use /regex/",
-    };
-  }
-
-  return {
-    title: "Search Everywhere",
-    description: `${searchKind} search across the workspace`,
-    searchPlaceholder: "Search code, or use /regex/",
-  };
-}
-
-function groupSearchMatches(matches: WorkspaceTextSearchMatch[]) {
-  const groups: {
-    path: string;
-    fileName: string;
-    relativePath: string;
-    matches: { item: WorkspaceTextSearchMatch; index: number }[];
-  }[] = [];
-  const groupByPath = new Map<string, (typeof groups)[number]>();
-
-  matches.forEach((item, index) => {
-    let group = groupByPath.get(item.path);
-    if (!group) {
-      group = {
-        path: item.path,
-        fileName: item.fileName,
-        relativePath: item.relativePath,
-        matches: [],
-      };
-      groups.push(group);
-      groupByPath.set(item.path, group);
-    }
-
-    group.matches.push({ item, index });
-  });
-
-  return groups;
-}
-
-function groupSearchCandidates(candidates: SearchCandidate[]) {
-  const order: SearchCandidate["source"][] = ["class", "symbol", "file", "api", "action", "sdk", "text"];
-  return order
-    .map((source) => ({
-      source,
-      label: candidateGroupLabel(source),
-      description: candidateGroupDescription(source),
-      items: candidates
-        .map((item, index) => ({ item, index }))
-        .filter(({ item }) => item.source === source),
-    }))
-    .filter((group) => group.items.length > 0);
-}
-
-function candidateGroupLabel(source: SearchCandidate["source"]) {
-  if (source === "class") return "Classes";
-  if (source === "symbol") return "Symbols";
-  if (source === "file") return "Files";
-  if (source === "action") return "Actions";
-  if (source === "api") return "API";
-  if (source === "sdk") return "SDK";
-  return "Text";
-}
-
-function candidateGroupDescription(source: SearchCandidate["source"]) {
-  if (source === "class") return "types and ArkUI structs";
-  if (source === "symbol") return "functions and methods";
-  if (source === "file") return "workspace files";
-  if (source === "action") return "commands";
-  if (source === "api") return "SDK and system APIs";
-  if (source === "sdk") return "SDK declarations";
-  return "content matches";
 }
 
 function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; content: string | null }) {
