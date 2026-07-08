@@ -84,3 +84,41 @@ against a real ArkTS project on the target machine.
 
 Do not mark MVP complete until Windows measurements are captured against a real
 ArkTS workspace and attached here.
+
+## Runtime Gate
+
+Headless runtime smoke scripts:
+
+```bash
+node scripts/perf-search-input.mjs --files=5000 --strict
+node scripts/perf-file-switch.mjs --files=5000 --switches=50 --strict
+```
+
+Record the JSON output here for every release candidate. The scripts are model-level
+checks; they do not replace packaged app profiling, but they catch large regressions
+in search input and file switch projections before release.
+
+Latest local headless run on 2026-07-08:
+
+```json
+{
+  "searchInput": {
+    "fileCount": 5000,
+    "operations": 100,
+    "targetP95Ms": 50,
+    "p50Ms": 0.246,
+    "p95Ms": 0.867,
+    "maxMs": 2.479,
+    "pass": true
+  },
+  "fileSwitch": {
+    "fileCount": 5000,
+    "switches": 50,
+    "targetP95Ms": 300,
+    "p50Ms": 0.005,
+    "p95Ms": 0.012,
+    "maxMs": 0.076,
+    "pass": true
+  }
+}
+```
