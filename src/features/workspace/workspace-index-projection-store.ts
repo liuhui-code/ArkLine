@@ -1,7 +1,10 @@
 import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
+import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace-api-contract";
 
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
+  refreshResult: WorkspaceIndexRefreshResult | null;
+  refreshEventCount: number;
   taskStatuses: WorkspaceIndexTaskStatus[];
   eventCount: number;
   updatedAt: number | null;
@@ -12,6 +15,8 @@ type Listener = () => void;
 function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
   return {
     rootPath: null,
+    refreshResult: null,
+    refreshEventCount: 0,
     taskStatuses: [],
     eventCount: 0,
     updatedAt: null,
@@ -51,6 +56,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
     },
     replaceTaskStatuses(rootPath: string, statuses: WorkspaceIndexTaskStatus[]) {
       commit({
+        ...snapshot,
         rootPath,
         taskStatuses: [...statuses],
         eventCount: snapshot.eventCount + 1,
@@ -60,8 +66,19 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
     recordTaskStatus(status: WorkspaceIndexTaskStatus) {
       const current = snapshot.rootPath === status.rootPath ? snapshot.taskStatuses : [];
       commit({
+        ...snapshot,
         rootPath: status.rootPath,
         taskStatuses: mergeTaskStatus(current, status),
+        eventCount: snapshot.eventCount + 1,
+        updatedAt: Date.now(),
+      });
+    },
+    recordRefreshResult(rootPath: string, result: WorkspaceIndexRefreshResult) {
+      commit({
+        ...snapshot,
+        rootPath,
+        refreshResult: result,
+        refreshEventCount: snapshot.refreshEventCount + 1,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });

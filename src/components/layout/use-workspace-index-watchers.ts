@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { WORKSPACE_INDEX_WATCH_INTERVAL_MS } from "@/components/layout/app-shell-constants";
+import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type {
   WorkspaceApi,
   WorkspaceIndexRefreshResult,
@@ -23,6 +24,22 @@ export function useWorkspaceIndexWatchers({
   recordWorkspaceIndexTaskStatus,
   onStatusChange,
 }: UseWorkspaceIndexWatchersOptions) {
+  const indexProjection = useSyncExternalStore(
+    workspaceIndexProjectionStore.subscribe,
+    workspaceIndexProjectionStore.snapshot,
+    workspaceIndexProjectionStore.snapshot,
+  );
+
+  useEffect(() => {
+    const result = indexProjection.refreshResult;
+    if (!rootPath || indexProjection.rootPath !== rootPath || !result?.changed) {
+      return;
+    }
+
+    applyWorkspaceIndexRefreshResult(result);
+    onStatusChange(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
+  }, [rootPath, indexProjection.refreshEventCount]);
+
   useEffect(() => {
     if (!rootPath) {
       return;
@@ -38,8 +55,7 @@ export function useWorkspaceIndexWatchers({
         return;
       }
 
-      applyWorkspaceIndexRefreshResult(result);
-      onStatusChange(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
+      workspaceIndexProjectionStore.recordRefreshResult(watchedRootPath, result);
     }
 
     async function pollWorkspaceIndex() {
@@ -54,8 +70,7 @@ export function useWorkspaceIndexWatchers({
           return;
         }
 
-        applyWorkspaceIndexRefreshResult(result);
-        onStatusChange(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
+        workspaceIndexProjectionStore.recordRefreshResult(watchedRootPath, result);
       } catch (error) {
         if (!disposed) {
           onStatusChange(`Workspace index refresh failed: ${error instanceof Error ? error.message : String(error)}`);
