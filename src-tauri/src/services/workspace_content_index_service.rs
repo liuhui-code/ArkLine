@@ -81,6 +81,7 @@ pub fn search_indexed_workspace_content(
             partial: false,
             searched_files: 0,
             limit_reached: false,
+            next_cursor: None,
         });
     }
 
@@ -143,6 +144,7 @@ pub fn search_indexed_workspace_content(
         partial: false,
         searched_files,
         limit_reached: false,
+        next_cursor: None,
     })
 }
 

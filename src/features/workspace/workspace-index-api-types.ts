@@ -1,4 +1,4 @@
-import type { WorkspaceTextSearchOptions } from "@/features/search/workspace-text-search";
+import type { WorkspaceTextSearchCursor, WorkspaceTextSearchOptions } from "@/features/search/workspace-text-search";
 
 export type WorkspaceIndexDiagnostics = {
   rootPath: string;
@@ -161,6 +161,7 @@ export type WorkspaceTextSearchRequest = {
   rootPath: string;
   query: string;
   generation?: number;
+  cursor?: WorkspaceTextSearchCursor | null;
   options: WorkspaceTextSearchOptions;
   limit: number;
   contextLines: number;

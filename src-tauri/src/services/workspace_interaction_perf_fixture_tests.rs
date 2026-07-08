@@ -183,6 +183,7 @@ fn build_interaction_smoothness_report(root: &Path) -> Result<InteractionSmoothn
             root_path: snapshot.root_path.clone(),
             query: text_query.clone(),
             generation: Some(1),
+            cursor: None,
             options: WorkspaceTextSearchOptions {
                 case_sensitive: false,
                 whole_word: false,

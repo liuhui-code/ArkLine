@@ -361,6 +361,8 @@ mod services {
     mod workspace_text_search_cancellation_service_tests;
     pub mod workspace_text_search_service;
     #[cfg(test)]
+    mod workspace_text_search_service_tests;
+    #[cfg(test)]
     mod workspace_usage_confidence_tests;
     pub mod workspace_usage_query_service;
     #[cfg(test)]

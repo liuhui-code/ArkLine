@@ -119,6 +119,7 @@ fn coalesces_watcher_changes_before_refreshing_the_index() {
         root_path: root_path.clone(),
         query: "AfterManagerRefresh".to_string(),
         generation: None,
+        cursor: None,
         options: WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,

@@ -369,7 +369,7 @@ export function useSearchEverywhereController({
     const query = debouncedSearchQuery;
     const requestId = searchEverywhereRequestRef.current;
     searchSessionStoreRef.current.patch({ textPageLoading: true });
-    const result = await fallbackTextSearch(query, true, requestId, session.textNextCursor);
+    const result = await fallbackTextSearch(query, hasDirtyDocuments(), requestId, session.textNextCursor);
     if (searchEverywhereRequestRef.current !== requestId) return;
     searchSessionStoreRef.current.patch({
       result: { ...result, matches: [...session.result.matches, ...result.matches] },
@@ -388,10 +388,11 @@ export function useSearchEverywhereController({
     cursor: Parameters<typeof searchWorkspaceText>[0]["cursor"] = null,
   ) {
     const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (workspace && canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !dirty && !cursor) {
+    if (workspace && canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !dirty) {
       return workspaceApi.searchWorkspaceText({
         query,
         generation,
+        cursor,
         rootPath: workspace.rootPath,
         options: searchEverywhereOptions,
         limit: 50,

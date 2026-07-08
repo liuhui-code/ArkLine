@@ -422,9 +422,18 @@ pub struct WorkspaceTextSearchRequest {
     pub query: String,
     #[serde(default)]
     pub generation: Option<u64>,
+    #[serde(default)]
+    pub cursor: Option<WorkspaceTextSearchCursor>,
     pub options: WorkspaceTextSearchOptions,
     pub limit: usize,
     pub context_lines: usize,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceTextSearchCursor {
+    pub path_index: usize,
+    pub line_index: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -469,4 +478,6 @@ pub struct WorkspaceTextSearchResult {
     pub searched_files: usize,
     #[serde(default)]
     pub limit_reached: bool,
+    #[serde(default)]
+    pub next_cursor: Option<WorkspaceTextSearchCursor>,
 }

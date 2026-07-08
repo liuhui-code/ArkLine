@@ -59,6 +59,42 @@ describe("useSearchEverywhereController pagination", () => {
     expect(result.current.search.searchEverywhereResult.matches).toHaveLength(52);
     expect(result.current.search.searchEverywhereSelectedIndex).toBe(50);
   });
+
+  it("passes the stored cursor to native text search when loading more", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+    const searchWorkspaceText = vi
+      .fn()
+      .mockResolvedValueOnce({
+        query: { kind: "text" as const, query: "width" },
+        matches: [match("a.ets", 1)],
+        nextCursor: { pathIndex: 0, lineIndex: 1 },
+        limitReached: true,
+        partial: true,
+      })
+      .mockResolvedValueOnce({
+        query: { kind: "text" as const, query: "width" },
+        matches: [match("a.ets", 2)],
+        nextCursor: null,
+        limitReached: false,
+        partial: false,
+      });
+    const { result } = renderHarness({
+      query: "width",
+      workspaceApi: workspaceApi({ searchWorkspaceText }),
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    await flushSearchDebounce();
+    await act(async () => {
+      await result.current.search.loadNextSearchEverywherePage?.();
+    });
+
+    expect(searchWorkspaceText).toHaveBeenLastCalledWith(expect.objectContaining({
+      cursor: { pathIndex: 0, lineIndex: 1 },
+    }));
+    expect(result.current.search.searchEverywhereResult.matches.map((item) => item.line)).toEqual([1, 2]);
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -66,7 +102,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
     const [overlay, setOverlay] = useState<OverlayKey>("searchEverywhere");
     const [query, setQuery] = useState(overrides.query ?? "");
     const search = useSearchEverywhereController({
-      workspaceApi: workspaceApi({}),
+      workspaceApi: overrides.workspaceApi ?? workspaceApi({}),
       workspace: workspace(),
       activePath: "/workspace/a.ets",
       editorSelectedText: "",
@@ -105,7 +141,24 @@ type HarnessOptions = {
   getTextSearchPaths: () => string[];
   getOpenDocumentContent: (path: string) => string | null;
   hasDirtyDocuments: () => boolean;
+  workspaceApi: WorkspaceApi;
 };
+
+function match(fileName: string, line: number) {
+  return {
+    path: `/workspace/${fileName}`,
+    relativePath: fileName,
+    fileName,
+    line,
+    column: 1,
+    summary: "width",
+    preview: "width",
+    previewStart: 0,
+    previewEnd: 5,
+    contextBefore: [],
+    contextAfter: [],
+  };
+}
 
 function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
   return {

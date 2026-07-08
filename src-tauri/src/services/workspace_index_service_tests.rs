@@ -228,6 +228,7 @@ fn refresh_workspace_index_builds_queryable_content_index() {
         root_path: root_path.clone(),
         query: "indexedcontent".to_string(),
         generation: None,
+        cursor: None,
         options: WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,
@@ -429,6 +430,7 @@ fn refreshes_content_index_for_modified_event_paths_without_file_set_changes() {
         root_path: root_path.clone(),
         query: "afterrefresh".to_string(),
         generation: None,
+        cursor: None,
         options: WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,
@@ -441,6 +443,7 @@ fn refreshes_content_index_for_modified_event_paths_without_file_set_changes() {
         root_path: root_path.clone(),
         query: "beforerefresh".to_string(),
         generation: None,
+        cursor: None,
         options: WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,

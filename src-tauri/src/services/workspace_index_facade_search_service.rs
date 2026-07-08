@@ -127,6 +127,7 @@ fn query_facade_search_text_scope(
         root_path: root_path.to_string(),
         query: query.to_string(),
         generation: None,
+        cursor: None,
         options: crate::models::workspace::WorkspaceTextSearchOptions {
             case_sensitive: false,
             whole_word: false,
