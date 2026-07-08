@@ -79,10 +79,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProjectPathInput: () => undefined,
     setProjectOpenError: () => undefined,
   });
-  const { documentsRef, tabsRef, openTabs, activePath, editorContent, syncTabs, syncEditor, setActiveDocument, resetTabs } = useEditorDocuments();
+  const { documentsRef, tabsRef, openTabs, activePath, syncTabs, setActiveDocument, resetTabs } = useEditorDocuments();
   const getActiveContent = useCallback(() => (
-    activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent
-  ), [activePath, documentsRef, editorContent]);
+    activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? "" : ""
+  ), [activePath, documentsRef]);
   const activeDocumentProjection = useActiveDocumentProjection({ documentsRef, activePath, line: editorSelection.line, column: editorSelection.column, selectedText: editorSelectedText });
   const { focusEditor, focusEditorSoon, isEditorFocused, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
     activePath,

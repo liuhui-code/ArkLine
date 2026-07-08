@@ -7,19 +7,13 @@ export function useEditorDocuments() {
   const tabsRef = useRef(createEditorTabsStore(documentsRef.current));
   const [openTabs, setOpenTabs] = useState<{ path: string; title: string; isDirty: boolean }[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
-  const [editorContent, setEditorContent] = useState("");
 
   function syncTabs() {
     setOpenTabs([...tabsRef.current.state.openTabs]);
   }
 
-  function syncEditor(path: string | null) {
-    setEditorContent(path ? documentsRef.current.getDocument(path)?.currentContent ?? "" : "");
-  }
-
   function setActiveDocument(path: string | null) {
     setActivePath(path);
-    syncEditor(path);
   }
 
   function resetTabs() {
@@ -34,10 +28,7 @@ export function useEditorDocuments() {
     openTabs,
     activePath,
     setActivePath,
-    editorContent,
-    setEditorContent,
     syncTabs,
-    syncEditor,
     setActiveDocument,
     resetTabs,
   };

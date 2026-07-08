@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { useEditorDocuments } from "@/components/layout/use-editor-documents";
 
 describe("useEditorDocuments", () => {
-  it("syncs open tabs and active document content", () => {
+  it("syncs open tabs and active document path", () => {
     const { result } = renderHook(() => useEditorDocuments());
 
     act(() => {
@@ -17,7 +17,7 @@ describe("useEditorDocuments", () => {
       { path: "/workspace/src/A.ets", title: "A.ets", isDirty: false },
     ]);
     expect(result.current.activePath).toBe("/workspace/src/A.ets");
-    expect(result.current.editorContent).toBe("class A {}");
+    expect(result.current.documentsRef.current.getDocument("/workspace/src/A.ets")?.currentContent).toBe("class A {}");
   });
 
   it("resets tabs without clearing document records", () => {
@@ -34,6 +34,6 @@ describe("useEditorDocuments", () => {
     expect(result.current.openTabs).toEqual([]);
     expect(result.current.tabsRef.current.state.activePath).toBeNull();
     expect(result.current.documentsRef.current.getDocument("/workspace/src/A.ets")?.currentContent).toBe("class A {}");
-    expect(result.current.editorContent).toBe("");
+    expect(result.current.activePath).toBeNull();
   });
 });
