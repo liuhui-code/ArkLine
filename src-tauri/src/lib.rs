@@ -74,6 +74,7 @@ mod services {
     pub mod document_service;
     pub mod environment_doctor;
     pub mod git_trace_service;
+    pub mod language_command_service;
     pub mod language_service;
     pub mod process_command_service;
     pub mod semantic;

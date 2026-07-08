@@ -8,10 +8,11 @@ use crate::services::semantic::router::SemanticRouter;
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::settings_store::AppSettings;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub struct LanguageRuntime {
-    state: Mutex<LanguageRuntimeState>,
+    state: Arc<Mutex<LanguageRuntimeState>>,
 }
 
 struct LanguageRuntimeState {
@@ -23,10 +24,10 @@ impl Default for LanguageRuntime {
     fn default() -> Self {
         let config = SemanticHostConfig::default();
         Self {
-            state: Mutex::new(LanguageRuntimeState {
+            state: Arc::new(Mutex::new(LanguageRuntimeState {
                 config: config.clone(),
                 router: SemanticRouter::new(config),
-            }),
+            })),
         }
     }
 }
