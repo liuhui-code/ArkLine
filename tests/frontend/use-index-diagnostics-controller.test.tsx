@@ -165,6 +165,32 @@ describe("useIndexDiagnosticsController", () => {
     expect(result.current.layerReadiness?.currentFilePath).toBe("/workspace/Other.ets");
   });
 
+  it("refreshes current file readiness when diagnostics is open and active file changes", async () => {
+    const getWorkspaceIndexFileReadiness = vi.fn(async (_rootPath: string, path: string) => readiness(path));
+    const { result, rerender } = renderHook(
+      ({ activePath }) => useIndexDiagnosticsController(options({
+        activePath,
+        workspaceApi: workspaceApi({ getWorkspaceIndexFileReadiness }),
+      })),
+      { initialProps: { activePath: "/workspace/Entry.ets" } },
+    );
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.currentFileReadiness?.path).toBe("/workspace/Entry.ets");
+
+    await act(async () => {
+      rerender({ activePath: "/workspace/Other.ets" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getWorkspaceIndexFileReadiness).toHaveBeenLastCalledWith("/workspace", "/workspace/Other.ets");
+    expect(result.current.currentFileReadiness?.path).toBe("/workspace/Other.ets");
+  });
+
   it("clears layer readiness when the workspace is cleared", async () => {
     const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
     const { result, rerender } = renderHook(
@@ -295,11 +321,11 @@ function diagnostics(): WorkspaceIndexDiagnostics {
   };
 }
 
-function readiness(): WorkspaceIndexFileReadiness {
+function readiness(path = "/workspace/Entry.ets"): WorkspaceIndexFileReadiness {
   return {
     rootPath: "/workspace",
-    path: "/workspace/Entry.ets",
-    fileName: "Entry.ets",
+    path,
+    fileName: path.split("/").pop() ?? "Entry.ets",
     discoveryIndex: "ready",
     fileIndex: "ready",
     contentIndex: "ready",

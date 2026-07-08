@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   SDK_INDEX_READY_WAIT_ATTEMPTS,
   SDK_INDEX_READY_WAIT_INTERVAL_MS,
@@ -55,6 +55,7 @@ export function useIndexDiagnosticsController({
   const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
+  const fileReadinessRequestIdRef = useRef(0);
   const indexProjection = useSyncExternalStore(
     workspaceIndexProjectionStore.subscribe,
     workspaceIndexProjectionStore.snapshot,
@@ -80,6 +81,11 @@ export function useIndexDiagnosticsController({
     if (!layerReadiness) return;
     void refreshLayerReadiness();
   }, [workspace?.rootPath, activePath]);
+
+  useEffect(() => {
+    if (!indexDiagnosticsVisible) return;
+    void refreshCurrentFileReadiness();
+  }, [indexDiagnosticsVisible, workspace?.rootPath, activePath]);
 
   async function refreshWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
     if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return;
@@ -107,6 +113,25 @@ export function useIndexDiagnosticsController({
     }
   }
 
+  async function refreshCurrentFileReadiness(rootPath = workspace?.rootPath, path = activePath) {
+    const requestId = fileReadinessRequestIdRef.current + 1;
+    fileReadinessRequestIdRef.current = requestId;
+    if (!rootPath || !path || !workspaceApi.getWorkspaceIndexFileReadiness) {
+      setCurrentFileReadiness(null);
+      return;
+    }
+    try {
+      const readiness = await workspaceApi.getWorkspaceIndexFileReadiness(rootPath, path);
+      if (fileReadinessRequestIdRef.current === requestId) {
+        setCurrentFileReadiness(readiness);
+      }
+    } catch {
+      if (fileReadinessRequestIdRef.current === requestId) {
+        setCurrentFileReadiness(null);
+      }
+    }
+  }
+
   async function refreshIndexDiagnostics() {
     if (!workspace?.rootPath) {
       setIndexDiagnostics(null);
@@ -116,19 +141,16 @@ export function useIndexDiagnosticsController({
     }
     setIndexDiagnosticsLoading(true);
     try {
-      const [diagnostics, statuses, readiness, layers] = await Promise.all([
+      const [diagnostics, statuses, layers] = await Promise.all([
         workspaceApi.inspectWorkspaceIndex?.(workspace.rootPath) ?? Promise.resolve(null),
         workspaceApi.getWorkspaceIndexTaskStatuses?.(workspace.rootPath) ?? Promise.resolve([]),
-        activePath && workspaceApi.getWorkspaceIndexFileReadiness
-          ? workspaceApi.getWorkspaceIndexFileReadiness(workspace.rootPath, activePath)
-          : Promise.resolve(null),
         workspaceApi.getWorkspaceIndexLayerReadiness
           ? workspaceApi.getWorkspaceIndexLayerReadiness(workspace.rootPath, activePath)
           : Promise.resolve(null),
       ]);
       setIndexDiagnostics(diagnostics);
       workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses);
-      setCurrentFileReadiness(readiness);
+      await refreshCurrentFileReadiness(workspace.rootPath, activePath);
       setLayerReadiness(layers);
     } finally {
       setIndexDiagnosticsLoading(false);
