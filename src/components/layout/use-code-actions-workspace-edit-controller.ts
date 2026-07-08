@@ -38,16 +38,15 @@ export type UseCodeActionsWorkspaceEditControllerOptions = {
   workspace: WorkspaceViewModel | null;
   workspaceApi: WorkspaceApi;
   activePath: string | null;
-  editorContent: string;
   editorSelection: { line: number; column: number };
   settingsApplying: boolean;
+  getActiveContent: () => string;
   documentsRef: DocumentStoreRef;
   tabsRef: TabsStoreRef;
   setWorkspace: Dispatch<SetStateAction<WorkspaceViewModel | null>>;
   syncTabs: () => void;
   syncWorkspaceIndex: (workspace: WorkspaceViewModel) => void;
   setActiveDocument: (path: string | null) => void;
-  setEditorContent: (content: string) => void;
   clearCompletionSession: () => void;
   resetCompletionAnchor: () => void;
   closeOverlay: () => void;
@@ -60,16 +59,15 @@ export function useCodeActionsWorkspaceEditController({
   workspace,
   workspaceApi,
   activePath,
-  editorContent,
   editorSelection,
   settingsApplying,
+  getActiveContent,
   documentsRef,
   tabsRef,
   setWorkspace,
   syncTabs,
   syncWorkspaceIndex,
   setActiveDocument,
-  setEditorContent,
   clearCompletionSession,
   resetCompletionAnchor,
   closeOverlay,
@@ -138,9 +136,6 @@ export function useCodeActionsWorkspaceEditController({
 
       const content = await workspaceApi.openFile(path);
       documentsRef.current.applyExternalChange(path, content);
-      if (activePath && normalizePath(activePath) === normalizePath(path)) {
-        setEditorContent(documentsRef.current.getDocument(path)?.currentContent ?? content);
-      }
     }
   }
 
@@ -356,12 +351,11 @@ export function useCodeActionsWorkspaceEditController({
 
     const requestId = codeActionsRequestRef.current + 1;
     codeActionsRequestRef.current = requestId;
-    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
     const request = {
       path: activePath,
       line: editorSelection.line,
       column: editorSelection.column,
-      content: currentContent,
+      content: getActiveContent(),
     };
 
     clearCompletionSession();

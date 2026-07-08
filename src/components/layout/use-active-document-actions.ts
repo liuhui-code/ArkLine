@@ -7,10 +7,8 @@ type DocumentStore = ReturnType<typeof createDocumentStore>;
 
 export type UseActiveDocumentActionsOptions = {
   activePath: string | null;
-  editorContent: string;
   documentsRef: MutableRefObject<DocumentStore>;
   syncTabs: () => void;
-  setEditorContent: (content: string) => void;
   saveFile: (path: string, content: string) => Promise<void>;
   getFormatOnSave: () => boolean;
   refreshProblems: (path: string, content: string) => Promise<void>;
@@ -21,10 +19,8 @@ export type UseActiveDocumentActionsOptions = {
 
 export function useActiveDocumentActions({
   activePath,
-  editorContent,
   documentsRef,
   syncTabs,
-  setEditorContent,
   saveFile,
   getFormatOnSave,
   refreshProblems,
@@ -34,11 +30,10 @@ export function useActiveDocumentActions({
 }: UseActiveDocumentActionsOptions) {
   async function formatActiveDocument() {
     if (!activePath) return;
-    const content = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
+    const content = documentsRef.current.getDocument(activePath)?.currentContent ?? "";
     const formatted = formatArkTsDocument(content);
     documentsRef.current.updateDocument(activePath, formatted);
     syncTabs();
-    setEditorContent(formatted);
     await refreshProblems(activePath, formatted);
     showProblems();
     onStatusChange(`Formatted ${getPathBasename(activePath)}`);
@@ -46,7 +41,7 @@ export function useActiveDocumentActions({
 
   async function saveActiveDocument() {
     if (!activePath) return;
-    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent;
+    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? "";
     const content = getFormatOnSave()
       ? formatArkTsDocument(currentContent)
       : currentContent;
@@ -54,7 +49,6 @@ export function useActiveDocumentActions({
     await saveFile(activePath, content);
     documentsRef.current.saveDocument(activePath);
     syncTabs();
-    setEditorContent(content);
     refreshBlame();
     await refreshProblems(activePath, content);
     onStatusChange(`Saved ${getPathBasename(activePath)}`);

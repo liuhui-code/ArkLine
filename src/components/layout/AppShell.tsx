@@ -79,7 +79,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProjectPathInput: () => undefined,
     setProjectOpenError: () => undefined,
   });
-  const { documentsRef, tabsRef, openTabs, activePath, editorContent, setEditorContent, syncTabs, syncEditor, setActiveDocument, resetTabs } = useEditorDocuments();
+  const { documentsRef, tabsRef, openTabs, activePath, editorContent, syncTabs, syncEditor, setActiveDocument, resetTabs } = useEditorDocuments();
   const activeDocumentProjection = useActiveDocumentProjection({ documentsRef, activePath, line: editorSelection.line, column: editorSelection.column, selectedText: editorSelectedText });
   const { focusEditor, focusEditorSoon, isEditorFocused, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
     activePath,
@@ -118,10 +118,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   });
   const { formatActiveDocument, saveActiveDocument } = useActiveDocumentActions({
     activePath,
-    editorContent,
     documentsRef,
     syncTabs,
-    setEditorContent,
     saveFile: workspaceApi.saveFile,
     getFormatOnSave: () => settingsRef.current.state.settings.validation.formatOnSave,
     refreshProblems,
@@ -253,16 +251,15 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspace,
     workspaceApi,
     activePath,
-    editorContent,
     editorSelection,
     settingsApplying,
+    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
     documentsRef,
     tabsRef,
     setWorkspace,
     syncTabs,
     syncWorkspaceIndex,
     setActiveDocument,
-    setEditorContent,
     clearCompletionSession,
     resetCompletionAnchor: () => setCompletionAnchor(null),
     closeOverlay: () => setActiveOverlay("none"),

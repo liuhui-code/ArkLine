@@ -12,10 +12,8 @@ describe("useActiveDocumentActions", () => {
       const documents = useEditorDocuments();
       const actions = useActiveDocumentActions({
         activePath: documents.activePath,
-        editorContent: documents.editorContent,
         documentsRef: documents.documentsRef,
         syncTabs: documents.syncTabs,
-        setEditorContent: documents.setEditorContent,
         saveFile: vi.fn(async () => undefined),
         getFormatOnSave: () => false,
         refreshProblems,
@@ -36,8 +34,9 @@ describe("useActiveDocumentActions", () => {
       await result.current.actions.formatActiveDocument();
     });
 
-    expect(result.current.documents.editorContent).not.toBe("const  a=1");
-    expect(refreshProblems).toHaveBeenCalledWith("/workspace/A.ets", result.current.documents.editorContent);
+    const formatted = result.current.documents.documentsRef.current.getDocument("/workspace/A.ets")?.currentContent;
+    expect(formatted).not.toBe("const  a=1");
+    expect(refreshProblems).toHaveBeenCalledWith("/workspace/A.ets", formatted);
     expect(showProblems).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenCalledWith("Formatted A.ets");
   });
@@ -50,10 +49,8 @@ describe("useActiveDocumentActions", () => {
       const documents = useEditorDocuments();
       const actions = useActiveDocumentActions({
         activePath: documents.activePath,
-        editorContent: documents.editorContent,
         documentsRef: documents.documentsRef,
         syncTabs: documents.syncTabs,
-        setEditorContent: documents.setEditorContent,
         saveFile,
         getFormatOnSave: () => true,
         refreshProblems: vi.fn(async () => undefined),
@@ -74,7 +71,8 @@ describe("useActiveDocumentActions", () => {
       await result.current.actions.saveActiveDocument();
     });
 
-    expect(saveFile).toHaveBeenCalledWith("/workspace/A.ets", result.current.documents.editorContent);
+    const saved = result.current.documents.documentsRef.current.getDocument("/workspace/A.ets")?.currentContent;
+    expect(saveFile).toHaveBeenCalledWith("/workspace/A.ets", saved);
     expect(result.current.documents.documentsRef.current.getDocument("/workspace/A.ets")?.isDirty).toBe(false);
     expect(refreshBlame).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenCalledWith("Saved A.ets");
