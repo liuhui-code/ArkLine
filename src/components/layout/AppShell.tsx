@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAppShellDerivedState } from "@/components/layout/app-shell-derived-state";
 import { AppShellOverlays } from "@/components/layout/AppShellOverlays";
 import { AppShellMainLayout } from "@/components/layout/AppShellMainLayout";
@@ -80,6 +80,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProjectOpenError: () => undefined,
   });
   const { documentsRef, tabsRef, openTabs, activePath, editorContent, syncTabs, syncEditor, setActiveDocument, resetTabs } = useEditorDocuments();
+  const getActiveContent = useCallback(() => (
+    activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent
+  ), [activePath, documentsRef, editorContent]);
   const activeDocumentProjection = useActiveDocumentProjection({ documentsRef, activePath, line: editorSelection.line, column: editorSelection.column, selectedText: editorSelectedText });
   const { focusEditor, focusEditorSoon, isEditorFocused, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
     activePath,
@@ -112,7 +115,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const { problems, resetProblems, refreshProblems, runLint, replaceBuildProblems } = useProblemsController({
     workspaceApi,
     activePath,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     showProblems: () => showBottomTool("problems"),
     onStatusChange: setStatusText,
   });
@@ -204,7 +207,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       setWorkspaceIndexState({ ...workspaceIndexRef.current.state });
     },
     getOpenDocumentContent: (path) => documentsRef.current.getDocument(path)?.currentContent ?? null,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     hasDirtyDocuments: () => documentsRef.current.getDocuments().some((document) => document.isDirty),
     rememberCurrentLocation,
     navigateToLocation,
@@ -222,7 +225,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     quickOpenQuery,
     activeOverlay,
     settingsApplying,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     setActiveOverlay,
     setQuickOpenQuery,
     setInsertTextTarget,
@@ -239,7 +242,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     rootPath: workspace?.rootPath,
     activePath,
     editorLine: editorSelection.line,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     onBeforeShow: () => setActiveOverlay("none"),
     rememberCurrentLocation,
     setSelectionTarget,
@@ -253,7 +256,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     activePath,
     editorSelection,
     settingsApplying,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     documentsRef,
     tabsRef,
     setWorkspace,
@@ -297,7 +300,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspace,
     activePath,
     editorSelection,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     settingsApplying,
     rememberCurrentLocation,
     navigateToUsage: (item) => navigateToLocation({ path: item.path, line: item.line, column: item.column }, "Usage"),
@@ -309,7 +312,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspace,
     activePath,
     editorSelection,
-    getActiveContent: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? editorContent : editorContent,
+    getActiveContent,
     settingsApplying,
     openEditorQueryPanel,
     setUsageSearch,
@@ -328,8 +331,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspaceApi,
     activePath,
     activeLine: editorSelection.line,
-    activeText: activeDocument?.currentContent ?? editorContent,
-    baseText: activeDocument?.originalContent ?? editorContent,
+    activeText: getActiveContent(),
+    baseText: activeDocument?.originalContent ?? getActiveContent(),
     gitToolVisible: bottomContentVisible && activeBottomTool === "git",
     showGit: () => showBottomTool("git"),
     setEditorSelection,
