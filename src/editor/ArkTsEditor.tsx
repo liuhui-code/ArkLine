@@ -203,9 +203,11 @@ export function ArkTsEditor({
       return;
     }
 
-    const targetLine = Math.min(Math.max(selectionTarget.line, 1), view.state.doc.lines);
+    const targetLineInput = Number.isFinite(selectionTarget.line) ? selectionTarget.line : 1;
+    const targetColumnInput = Number.isFinite(selectionTarget.column) ? selectionTarget.column : 1;
+    const targetLine = Math.min(Math.max(targetLineInput, 1), view.state.doc.lines);
     const line = view.state.doc.line(targetLine);
-    const targetColumn = Math.max(selectionTarget.column, 1);
+    const targetColumn = Math.max(targetColumnInput, 1);
     const position = Math.min(line.from + targetColumn - 1, line.to);
     const revealRange = resolveDefinitionTokenRange(view, position);
 

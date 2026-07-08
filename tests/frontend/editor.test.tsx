@@ -344,6 +344,22 @@ describe("ArkTsEditor", () => {
     scrollIntoView.mockRestore();
   });
 
+  it("does not crash when a jump target contains non-finite coordinates", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(() => render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"line 1\nline 2"}
+        selectionTarget={{ line: Number.NaN, column: Number.POSITIVE_INFINITY, nonce: 1 }}
+        onChange={() => undefined}
+      />,
+    )).not.toThrow();
+
+    consoleError.mockRestore();
+  });
+
   it("briefly reveals the jumped token after navigation", () => {
     vi.useFakeTimers();
 
