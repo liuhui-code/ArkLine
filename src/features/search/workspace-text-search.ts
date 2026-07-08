@@ -30,6 +30,12 @@ export type WorkspaceTextSearchResult = {
   partial?: boolean;
   searchedFiles?: number;
   limitReached?: boolean;
+  nextCursor?: WorkspaceTextSearchCursor | null;
+};
+
+export type WorkspaceTextSearchCursor = {
+  pathIndex: number;
+  lineIndex: number;
 };
 
 type SearchWorkspaceTextOptions = {
@@ -40,6 +46,7 @@ type SearchWorkspaceTextOptions = {
   options?: WorkspaceTextSearchOptions;
   contextLines?: number;
   limit?: number;
+  cursor?: WorkspaceTextSearchCursor | null;
 };
 
 const REGEX_QUERY_PATTERN = /^\/(.+)\/([a-z]*)$/i;
@@ -91,38 +98,35 @@ export async function searchWorkspaceText({
   options = { caseSensitive: false, wholeWord: false },
   contextLines = 2,
   limit = 50,
+  cursor = null,
 }: SearchWorkspaceTextOptions): Promise<WorkspaceTextSearchResult> {
   const parsedQuery = parseSearchQuery(query);
   if (parsedQuery.kind === "invalid" || !parsedQuery.query) {
-    return { query: parsedQuery, matches: [], partial: false, searchedFiles: 0, limitReached: false };
+    return { query: parsedQuery, matches: [], partial: false, searchedFiles: 0, limitReached: false, nextCursor: null };
   }
 
   const matches: WorkspaceTextSearchMatch[] = [];
   let searchedFiles = 0;
-  let limitReached = false;
+  let nextCursor: WorkspaceTextSearchCursor | null = null;
+  const startPathIndex = Math.min(Math.max(cursor?.pathIndex ?? 0, 0), paths.length);
 
-  for (const path of paths) {
-    if (matches.length >= limit) {
-      limitReached = true;
-      break;
-    }
-
+  for (let pathIndex = startPathIndex; pathIndex < paths.length; pathIndex += 1) {
+    const path = paths[pathIndex];
     const content = await readFile(path);
     if (!content) {
       continue;
     }
 
     const lines = content.split(/\r?\n/u);
+    const startLineIndex = pathIndex === startPathIndex ? Math.min(Math.max(cursor?.lineIndex ?? 0, 0), lines.length) : 0;
+    if (startLineIndex >= lines.length) {
+      continue;
+    }
     const relativePath = getRelativeWorkspacePath(rootPath, path);
     const fileName = getPathBasename(path);
     searchedFiles += 1;
 
-    for (let index = 0; index < lines.length; index += 1) {
-      if (matches.length >= limit) {
-        limitReached = true;
-        break;
-      }
-
+    for (let index = startLineIndex; index < lines.length; index += 1) {
       const lineText = lines[index] ?? "";
       const matchRange = findLineMatch(lineText, parsedQuery, options);
       if (!matchRange) {
@@ -142,10 +146,17 @@ export async function searchWorkspaceText({
         contextBefore: sliceContext(lines, index - contextLines, index),
         contextAfter: sliceContext(lines, index + 1, index + 1 + contextLines),
       });
+      if (matches.length >= limit) {
+        nextCursor = nextTextSearchCursor(paths, lines, pathIndex, index + 1);
+        break;
+      }
+    }
+    if (nextCursor) {
+      break;
     }
   }
 
-  return { query: parsedQuery, matches, partial: limitReached, searchedFiles, limitReached };
+  return { query: parsedQuery, matches, partial: Boolean(nextCursor), searchedFiles, limitReached: Boolean(nextCursor), nextCursor };
 }
 
 function findLineMatch(lineText: string, query: SearchQuery, options: WorkspaceTextSearchOptions) {
@@ -214,4 +225,20 @@ function sliceContext(lines: string[], start: number, end: number) {
   }
 
   return context;
+}
+
+function nextTextSearchCursor(
+  paths: string[],
+  currentLines: string[],
+  pathIndex: number,
+  nextLineIndex: number,
+): WorkspaceTextSearchCursor | null {
+  if (nextLineIndex < currentLines.length) {
+    return { pathIndex, lineIndex: nextLineIndex };
+  }
+  const nextPathIndex = pathIndex + 1;
+  if (nextPathIndex >= paths.length) {
+    return null;
+  }
+  return { pathIndex: nextPathIndex, lineIndex: 0 };
 }

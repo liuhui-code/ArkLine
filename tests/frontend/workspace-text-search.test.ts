@@ -110,4 +110,32 @@ describe("workspace text search", () => {
     expect(wholeWord.matches).toHaveLength(1);
     expect(wholeWord.matches[0]?.line).toBe(3);
   });
+
+  it("returns a cursor for the next result page without repeating matches", async () => {
+    const files = {
+      "/workspace/a.ets": ["width(1)", "height(1)", "width(2)"].join("\n"),
+      "/workspace/b.ets": ["width(3)", "width(4)"].join("\n"),
+    };
+
+    const firstPage = await searchWorkspaceText({
+      query: "width",
+      rootPath: "/workspace",
+      paths: Object.keys(files),
+      limit: 2,
+      readFile: async (path) => files[path as keyof typeof files] ?? null,
+    });
+    const secondPage = await searchWorkspaceText({
+      query: "width",
+      rootPath: "/workspace",
+      paths: Object.keys(files),
+      limit: 2,
+      cursor: firstPage.nextCursor,
+      readFile: async (path) => files[path as keyof typeof files] ?? null,
+    });
+
+    expect(firstPage.matches.map((match) => `${match.relativePath}:${match.line}`)).toEqual(["a.ets:1", "a.ets:3"]);
+    expect(firstPage.nextCursor).toEqual({ pathIndex: 1, lineIndex: 0 });
+    expect(secondPage.matches.map((match) => `${match.relativePath}:${match.line}`)).toEqual(["b.ets:1", "b.ets:2"]);
+    expect(secondPage.nextCursor).toBeNull();
+  });
 });
