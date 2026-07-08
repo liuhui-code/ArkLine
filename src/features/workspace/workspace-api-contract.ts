@@ -334,8 +334,8 @@ export type WorkspaceApi = {
   submitWorkspaceSdkIndex?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceSearchEverywhere?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
+  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;

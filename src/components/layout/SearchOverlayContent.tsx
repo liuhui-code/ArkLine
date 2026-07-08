@@ -205,7 +205,7 @@ export function SearchOverlayContent({
         candidates={searchSession.candidates}
         selectedIndex={searchSession.selectedIndex}
         selectedPreviewContent={searchSession.previewContent}
-        canLoadMore={Boolean(searchSession.textNextCursor)}
+        canLoadMore={Boolean(searchSession.entityNextCursor ?? searchSession.textNextCursor)}
         pageLoading={searchSession.textPageLoading}
         partialNotice={searchSession.truncationNotice ?? workspacePartialNotice}
         onChangeQuery={onChangeQuery}

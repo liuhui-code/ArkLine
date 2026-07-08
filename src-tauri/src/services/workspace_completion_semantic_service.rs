@@ -92,6 +92,7 @@ pub fn query_semantic_completions_with_readiness(
         items,
         readiness,
         explain: Vec::new(),
+        next_cursor: None,
     })
 }
 

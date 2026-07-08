@@ -22,8 +22,8 @@ type WorkspaceIndexQueryApiDependencies = {
 export type WorkspaceIndexQueryApi = {
   queryWorkspaceQuickOpen(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceSearchEverywhere(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidates(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceCandidates(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
+  queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbols(rootPath: string, filePath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness(rootPath: string, filePath: string, query: string, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
@@ -57,9 +57,9 @@ export function createWorkspaceIndexQueryApi({
       void limit;
       return [];
     },
-    async queryWorkspaceCandidates(rootPath, query, scope, limit) {
+    async queryWorkspaceCandidates(rootPath, query, scope, limit, cursor = null) {
       if (hasTauriRuntime()) {
-        return invoke<SearchCandidate[]>("query_workspace_candidates", { rootPath, query, scope, limit });
+        return invoke<SearchCandidate[]>("query_workspace_candidates", { rootPath, query, scope, limit, cursor });
       }
 
       void rootPath;
@@ -68,11 +68,11 @@ export function createWorkspaceIndexQueryApi({
       void limit;
       return [];
     },
-    async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit) {
+    async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit, cursor = null) {
       if (hasTauriRuntime()) {
         return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>(
           "query_workspace_candidates_with_readiness",
-          { rootPath, query, scope, limit },
+          { rootPath, query, scope, limit, cursor },
         );
       }
 

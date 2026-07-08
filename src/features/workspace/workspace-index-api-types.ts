@@ -184,6 +184,7 @@ export type WorkspaceIndexQueryEnvelope<T> = {
   items: T[];
   readiness: WorkspaceIndexReadiness;
   explain?: string[];
+  nextCursor?: number | null;
 };
 
 export type WorkspaceIndexExplainRequest = {

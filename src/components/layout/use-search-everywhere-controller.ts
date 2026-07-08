@@ -137,9 +137,8 @@ export function useSearchEverywhereController({
     const normalized = Math.min(Math.max(session.selectedIndex, 0), resultCount - 1);
     if (
       direction > 0
-      && searchEverywhereMode !== "searchEverywhere"
+      && ((searchEverywhereMode === "searchEverywhere" && session.entityNextCursor) || (searchEverywhereMode !== "searchEverywhere" && session.textNextCursor))
       && normalized === resultCount - 1
-      && session.textNextCursor
     ) {
       void loadNextSearchEverywherePage(resultCount);
       return;
@@ -267,11 +266,11 @@ export function useSearchEverywhereController({
       return;
     }
     const startedAt = Date.now();
-    const indexRequest: Promise<{ candidates: SearchCandidate[]; explain?: string[] }> = workspaceApi.queryWorkspaceCandidatesWithReadiness
+    const indexRequest: Promise<{ candidates: SearchCandidate[]; explain?: string[]; nextCursor?: number | null }> = workspaceApi.queryWorkspaceCandidatesWithReadiness
       ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
         .then((envelope) => {
           replaceQueryReadiness(envelope.readiness);
-          return { candidates: envelope.items, explain: envelope.explain };
+          return { candidates: envelope.items, explain: envelope.explain, nextCursor: envelope.nextCursor ?? null };
         })
       : workspaceApi.queryWorkspaceCandidates
       ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1).then((candidates) => ({ candidates }))
@@ -281,7 +280,7 @@ export function useSearchEverywhereController({
         .then((candidates) => ({ candidates }))
       : Promise.resolve({ candidates: queryIndexCandidates(query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1) });
 
-    void indexRequest.then(({ candidates, explain }) => {
+    void indexRequest.then(({ candidates, explain, nextCursor }) => {
       if (searchEverywhereRequestRef.current !== requestId) return;
       recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
       const visibleCandidates = searchEverywhereEntityCandidates(candidates);
@@ -301,6 +300,7 @@ export function useSearchEverywhereController({
         result: { query: { kind: "text", query: query.trim() }, matches: [] },
         selectedIndex: 0,
         previewContent: null,
+        entityNextCursor: workspaceApi.queryWorkspaceCandidatesWithReadiness && capped.metadata.truncated ? capped.items.length : nextCursor ?? null,
         textNextCursor: null,
         textPageLoading: false,
       });
@@ -348,6 +348,7 @@ export function useSearchEverywhereController({
         truncationNotice: textSearchPartialNotice(result),
         previewContent: null,
         selectedIndex: 0,
+        entityNextCursor: null,
         textNextCursor: result.nextCursor ?? null,
         textPageLoading: false,
       });
@@ -365,9 +366,23 @@ export function useSearchEverywhereController({
 
   async function loadNextSearchEverywherePage(selectIndexAfterLoad?: number) {
     const session = searchSessionStoreRef.current.getSnapshot();
-    if (!workspace || searchEverywhereMode === "searchEverywhere" || session.textPageLoading || !session.textNextCursor) return;
+    if (!workspace || session.textPageLoading) return;
     const query = debouncedSearchQuery;
     const requestId = searchEverywhereRequestRef.current;
+    if (searchEverywhereMode === "searchEverywhere") {
+      if (!session.entityNextCursor || !workspaceApi.queryWorkspaceCandidatesWithReadiness) return;
+      searchSessionStoreRef.current.patch({ textPageLoading: true });
+      const envelope = await workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT, session.entityNextCursor);
+      if (searchEverywhereRequestRef.current !== requestId) return;
+      searchSessionStoreRef.current.patch({
+        candidates: [...session.candidates, ...searchEverywhereEntityCandidates(envelope.items)],
+        entityNextCursor: envelope.nextCursor ?? null,
+        textPageLoading: false,
+        selectedIndex: selectIndexAfterLoad ?? session.selectedIndex,
+      });
+      return;
+    }
+    if (!session.textNextCursor) return;
     searchSessionStoreRef.current.patch({ textPageLoading: true });
     const result = await fallbackTextSearch(query, hasDirtyDocuments(), requestId, session.textNextCursor);
     if (searchEverywhereRequestRef.current !== requestId) return;

@@ -8,6 +8,9 @@ use crate::services::workspace_index_facade_service::{
     query_facade_file_symbols_with_readiness, query_facade_search_everywhere_with_readiness,
     query_facade_text_search_result_with_cancellation,
 };
+use crate::services::workspace_index_facade_envelope_service::search_query_envelope;
+use crate::services::workspace_index_facade_event_service::record_facade_query_event;
+use crate::services::workspace_index_facade_search_service::query_facade_search_everywhere_page;
 use crate::services::workspace_index_query_service::{
     query_workspace_quick_open, query_workspace_search_everywhere, WorkspaceIndexQueryScope,
 };
@@ -25,15 +28,15 @@ pub async fn query_workspace_candidates_blocking(
     query: String,
     scope: WorkspaceIndexQueryScope,
     limit: usize,
+    cursor: Option<usize>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     spawn_blocking(move || {
-        query_facade_search_everywhere_with_readiness(
-            &index_runtime,
-            &root_path,
-            &query,
-            scope,
-            limit,
-        )
+        if cursor.is_none() {
+            return query_facade_search_everywhere_with_readiness(&index_runtime, &root_path, &query, scope, limit);
+        }
+        let envelope = query_facade_search_everywhere_page(&index_runtime, &root_path, &query, scope, limit, cursor)?;
+        record_facade_query_event(&root_path, "searchEverywhere", &envelope)?;
+        Ok(search_query_envelope(envelope))
     })
     .await
     .map_err(|error| error.to_string())?

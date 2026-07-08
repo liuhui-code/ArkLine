@@ -36,12 +36,14 @@ fn typed_query_envelope<T>(
         items,
         readiness,
         explain,
+        next_cursor,
         ..
     } = envelope;
     WorkspaceIndexQueryEnvelope {
         items: items.into_iter().filter_map(map_item).collect(),
         readiness,
         explain,
+        next_cursor,
     }
 }
 

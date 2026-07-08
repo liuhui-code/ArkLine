@@ -95,6 +95,42 @@ describe("useSearchEverywhereController pagination", () => {
     }));
     expect(result.current.search.searchEverywhereResult.matches.map((item) => item.line)).toEqual([1, 2]);
   });
+
+  it("loads the next search everywhere candidate page from keyboard navigation", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 50 }, (_, index) => candidate(`Alpha${index}.ets`)),
+        readiness: readiness(),
+        nextCursor: 50,
+      })
+      .mockResolvedValueOnce({
+        items: [candidate("Alpha50.ets")],
+        readiness: readiness(),
+        nextCursor: null,
+      });
+    const { result } = renderHarness({
+      query: "Alpha",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    act(() => {
+      result.current.search.openSearchOverlay("searchEverywhere");
+      result.current.search.handleOverlayQueryChange("Alpha");
+    });
+    await flushSearchDebounce();
+    act(() => result.current.search.setSearchEverywhereSelectedIndex(49));
+    await act(async () => {
+      result.current.search.moveSearchEverywhereSelection(1);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith("/workspace", "Alpha", "all", 24, 24);
+    expect(result.current.search.searchEverywhereCandidates).toHaveLength(25);
+    expect(result.current.search.searchEverywhereSelectedIndex).toBe(24);
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -157,6 +193,26 @@ function match(fileName: string, line: number) {
     previewEnd: 5,
     contextBefore: [],
     contextAfter: [],
+  };
+}
+
+function candidate(fileName: string) {
+  return {
+    id: fileName,
+    title: fileName,
+    subtitle: fileName,
+    path: `/workspace/${fileName}`,
+    source: "file",
+  };
+}
+
+function readiness() {
+  return {
+    rootPath: "/workspace",
+    requestedGeneration: 1,
+    servedGeneration: 1,
+    state: "ready" as const,
+    retryable: false,
   };
 }
 

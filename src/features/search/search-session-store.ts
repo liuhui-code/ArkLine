@@ -10,6 +10,7 @@ export type SearchSessionSnapshot = {
   truncationNotice: string | null;
   selectedIndex: number;
   previewContent: string | null;
+  entityNextCursor: number | null;
   textNextCursor: WorkspaceTextSearchCursor | null;
   textPageLoading: boolean;
 };
@@ -23,6 +24,7 @@ export function createSearchSessionStore() {
     truncationNotice: null,
     selectedIndex: 0,
     previewContent: null,
+    entityNextCursor: null,
     textNextCursor: null,
     textPageLoading: false,
   };
@@ -51,6 +53,7 @@ export function createSearchSessionStore() {
         candidates: [],
         truncationNotice: null,
         selectedIndex: 0,
+        entityNextCursor: null,
         textNextCursor: null,
         textPageLoading: false,
       };

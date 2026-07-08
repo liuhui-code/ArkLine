@@ -99,6 +99,7 @@ pub struct WorkspaceIndexFacadeEnvelope {
     pub readiness: WorkspaceIndexReadiness,
     pub confidence: Option<String>,
     pub explain: Vec<String>,
+    pub next_cursor: Option<usize>,
 }
 
 pub fn query_workspace_index_facade(

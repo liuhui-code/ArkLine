@@ -243,6 +243,7 @@ pub async fn query_workspace_candidates(
     query: String,
     scope: String,
     limit: usize,
+    cursor: Option<usize>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
     Ok(query_workspace_candidates_blocking(
@@ -251,6 +252,7 @@ pub async fn query_workspace_candidates(
         query,
         parse_index_query_scope(&scope)?,
         limit,
+        cursor,
     )
     .await?
     .items)
@@ -262,6 +264,7 @@ pub async fn query_workspace_candidates_with_readiness(
     query: String,
     scope: String,
     limit: usize,
+    cursor: Option<usize>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     query_workspace_candidates_blocking(
@@ -270,6 +273,7 @@ pub async fn query_workspace_candidates_with_readiness(
         query,
         parse_index_query_scope(&scope)?,
         limit,
+        cursor,
     )
     .await
 }

@@ -25,6 +25,7 @@ pub fn query_usages_with_readiness(
             items: Vec::new(),
             readiness,
             explain: Vec::new(),
+            next_cursor: None,
         });
     };
     let references = query_references_by_symbol_id(root_path, &symbol_id, limit)?;
@@ -44,6 +45,7 @@ pub fn query_usages_with_readiness(
         items,
         readiness,
         explain: Vec::new(),
+        next_cursor: None,
     })
 }
 

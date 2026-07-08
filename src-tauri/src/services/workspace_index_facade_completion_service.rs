@@ -38,6 +38,7 @@ pub fn query_facade_completion(
         readiness: envelope.readiness,
         confidence: Some("semantic".to_string()),
         explain,
+        next_cursor: None,
     })
 }
 

@@ -45,7 +45,8 @@ export function searchSessionCompat<T extends object>(
     },
     searchEverywhereCanLoadMore: {
       get() {
-        return Boolean(store.getSnapshot().textNextCursor);
+        const snapshot = store.getSnapshot();
+        return Boolean(snapshot.entityNextCursor ?? snapshot.textNextCursor);
       },
     },
     searchEverywherePageLoading: {

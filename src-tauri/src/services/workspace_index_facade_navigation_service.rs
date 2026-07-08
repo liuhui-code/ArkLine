@@ -47,6 +47,7 @@ pub fn query_facade_definition(
         readiness: envelope.readiness,
         confidence,
         explain,
+        next_cursor: None,
     })
 }
 
@@ -81,6 +82,7 @@ pub fn query_facade_usages(
         readiness: envelope.readiness,
         confidence,
         explain,
+        next_cursor: None,
     })
 }
 
