@@ -171,7 +171,7 @@ export function useSearchEverywhereController({
       path: selected.path,
       requestId,
       delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
-      readFile: readSearchFile,
+      readFile: (path) => readSearchFile(path, false),
       isCurrent: (id) => interactionRuntimeRef.current.isCurrentPreview(id),
       onPreview: (content) => searchSessionStoreRef.current.patch({ previewContent: content }),
     });
@@ -450,12 +450,13 @@ export function useSearchEverywhereController({
     setActiveOverlay("none");
   }
 
-  async function readSearchFile(path: string) {
+  async function readSearchFile(path: string, allowBackendRead = true) {
     if (normalizePath(path) === normalizePath(activePath ?? "")) {
       return getOpenDocumentContent(path) ?? getActiveContent();
     }
     const openContent = getOpenDocumentContent(path);
-    return openContent ?? await workspaceApi.openFile(path);
+    if (openContent != null || !allowBackendRead) return openContent;
+    return await workspaceApi.openFile(path);
   }
 
   function explainSearchEverywhereMiss(requestId: number, query: string, explain?: string[]) {

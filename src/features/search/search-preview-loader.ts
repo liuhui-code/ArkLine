@@ -2,7 +2,7 @@ export type SearchPreviewLoaderOptions = {
   path: string;
   requestId: number;
   delayMs: number;
-  readFile: (path: string) => Promise<string>;
+  readFile: (path: string) => Promise<string | null>;
   isCurrent: (requestId: number) => boolean;
   onPreview: (content: string | null) => void;
 };

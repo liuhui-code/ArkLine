@@ -13,7 +13,7 @@ describe("useSearchEverywhereController preview loading", () => {
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 
-  it("debounces selected result preview file reads", async () => {
+  it("does not read unopened files only to render a selected result preview", async () => {
     vi.useFakeTimers();
     Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
     const openFile = vi.fn(async () => "struct Other {\n  width(100)\n}");
@@ -57,7 +57,34 @@ describe("useSearchEverywhereController preview loading", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(openFile).toHaveBeenCalledWith("/workspace/Other.ets");
+    expect(openFile).not.toHaveBeenCalled();
+    expect(result.current.search.searchEverywherePreviewContent).toBeNull();
+  });
+
+  it("uses already loaded document content for selected result preview", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
+    const openFile = vi.fn(async () => "disk content");
+    const searchWorkspaceText = vi.fn(async () => ({
+      query: { kind: "text" as const, query: "width" },
+      matches: [textMatch("/workspace/Other.ets")],
+    }));
+    const { result } = renderHarness({
+      query: "width",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ openFile, searchWorkspaceText }),
+      getOpenDocumentContent: (path) => path.endsWith("Other.ets") ? "struct Other {\n  width(100)\n}" : null,
+    });
+
+    act(() => result.current.search.openSearchOverlay("find"));
+    await flushSearchDebounce();
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(openFile).not.toHaveBeenCalled();
     expect(result.current.search.searchEverywherePreviewContent).toContain("width");
   });
 });
@@ -82,7 +109,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       getTextSearchPaths: vi.fn(() => []),
       getRecentPaths: vi.fn(() => []),
       replaceQueryReadiness: vi.fn(),
-      getOpenDocumentContent: vi.fn(() => null),
+      getOpenDocumentContent: overrides.getOpenDocumentContent ?? vi.fn(() => null),
       getActiveContent: () => "struct Entry {}",
       hasDirtyDocuments: vi.fn(() => false),
       rememberCurrentLocation: vi.fn(),
@@ -110,7 +137,24 @@ type HarnessOptions = {
   activePath: string | null;
   query: string;
   overlay: OverlayKey;
+  getOpenDocumentContent: (path: string) => string | null;
 };
+
+function textMatch(path: string) {
+  return {
+    path,
+    relativePath: "Other.ets",
+    fileName: "Other.ets",
+    line: 2,
+    column: 3,
+    summary: "width(100)",
+    preview: "  width(100)",
+    previewStart: 2,
+    previewEnd: 7,
+    contextBefore: [],
+    contextAfter: [],
+  };
+}
 
 function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
   return {
