@@ -9,9 +9,11 @@ use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
-use crate::services::workspace_index_candidate_page_service::query_workspace_candidate_page;
+use crate::services::workspace_index_candidate_page_service::{
+    query_workspace_candidate_page, query_workspace_file_symbol_page,
+};
 use crate::services::workspace_index_query_service::{
-    query_workspace_file_symbols_with_readiness, WorkspaceIndexQueryScope,
+    WorkspaceIndexQueryScope,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
@@ -66,13 +68,18 @@ pub fn query_facade_file_symbols(
     query: &str,
     limit: usize,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
-    let envelope = query_workspace_file_symbols_with_readiness(
-        index_runtime,
-        root_path,
-        file_path,
-        query,
-        limit,
-    )?;
+    query_facade_file_symbols_page(index_runtime, root_path, file_path, query, limit, None)
+}
+
+pub fn query_facade_file_symbols_page(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+    file_path: &str,
+    query: &str,
+    limit: usize,
+    cursor: Option<usize>,
+) -> Result<WorkspaceIndexFacadeEnvelope, String> {
+    let envelope = query_workspace_file_symbol_page(index_runtime, root_path, file_path, query, limit, cursor)?;
     let explain = explain_facade_query(
         "fileSymbols",
         &envelope.readiness,
@@ -88,7 +95,7 @@ pub fn query_facade_file_symbols(
         readiness: envelope.readiness,
         confidence: Some("indexed".to_string()),
         explain,
-        next_cursor: None,
+        next_cursor: envelope.next_cursor,
     })
 }
 

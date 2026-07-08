@@ -94,6 +94,39 @@ describe("useCurrentFileSymbolsController", () => {
     expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith("/workspace", "/workspace/A.ets", "", 200);
   });
 
+  it("loads the next indexed symbol page when selection reaches the end", async () => {
+    const queryWorkspaceFileSymbolsWithReadiness = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: Array.from({ length: 80 }, (_, index) => symbolCandidate(`method${index}`, index + 1)),
+        readiness: readiness(),
+        nextCursor: 80,
+      })
+      .mockResolvedValueOnce({
+        items: [symbolCandidate("method80", 81)],
+        readiness: readiness(),
+        nextCursor: null,
+      });
+    const { result } = renderHook(() => useCurrentFileSymbolsController(options({
+      rootPath: "/workspace",
+      getActiveContent: () => "",
+      workspaceApi: workspaceApi({ queryWorkspaceFileSymbolsWithReadiness }),
+    })));
+
+    act(() => result.current.showCurrentClassMethods());
+    await waitFor(() => expect(result.current.visibleCurrentClassMethods).toHaveLength(80));
+    act(() => result.current.setCurrentMethodsSelectedIndex(79));
+
+    await waitFor(() => expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenLastCalledWith(
+      "/workspace",
+      "/workspace/A.ets",
+      "",
+      80,
+      80,
+    ));
+    await waitFor(() => expect(result.current.visibleCurrentClassMethods).toHaveLength(81));
+  });
+
   it("opens a selected method at its source location", () => {
     const rememberCurrentLocation = vi.fn();
     const setSelectionTarget = vi.fn();
@@ -150,4 +183,30 @@ function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
     loadSettings: vi.fn(),
     ...overrides,
   } as unknown as WorkspaceApi;
+}
+
+function symbolCandidate(name: string, line: number): SearchCandidate {
+  return {
+    id: `symbol:${name}`,
+    source: "symbol",
+    kind: "method",
+    title: name,
+    subtitle: "A.ets",
+    signature: `${name}()`,
+    path: "/workspace/A.ets",
+    line,
+    column: 3,
+    score: 1,
+    freshness: "ready",
+  };
+}
+
+function readiness() {
+  return {
+    rootPath: "/workspace",
+    requestedGeneration: 1,
+    servedGeneration: 1,
+    state: "ready" as const,
+    retryable: false,
+  };
 }

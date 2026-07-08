@@ -336,8 +336,8 @@ export type WorkspaceApi = {
   queryWorkspaceSearchEverywhere?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
   queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
-  queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
+  queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
   queryUsagesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<UsageResult>>;
   semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;

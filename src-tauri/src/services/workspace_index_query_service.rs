@@ -111,7 +111,7 @@ pub fn query_workspace_candidates(
     })
 }
 
-pub fn query_workspace_file_symbols_with_readiness(
+#[allow(dead_code)] pub fn query_workspace_file_symbols_with_readiness(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     file_path: &str,

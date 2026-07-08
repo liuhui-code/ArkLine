@@ -284,6 +284,7 @@ pub async fn query_workspace_file_symbols(
     file_path: String,
     query: String,
     limit: usize,
+    cursor: Option<usize>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
     Ok(query_workspace_file_symbols_blocking(
@@ -292,6 +293,7 @@ pub async fn query_workspace_file_symbols(
         file_path,
         query,
         limit,
+        cursor,
     )
     .await?
     .items)
@@ -303,6 +305,7 @@ pub async fn query_workspace_file_symbols_with_readiness(
     file_path: String,
     query: String,
     limit: usize,
+    cursor: Option<usize>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     query_workspace_file_symbols_blocking(
@@ -311,6 +314,7 @@ pub async fn query_workspace_file_symbols_with_readiness(
         file_path,
         query,
         limit,
+        cursor,
     )
     .await
 }

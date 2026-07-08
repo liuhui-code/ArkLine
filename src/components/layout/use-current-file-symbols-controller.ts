@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { candidateToCurrentClassMethod } from "@/components/layout/indexed-completion-model";
 import { collectCurrentClassMethods, type CurrentClassMethod } from "@/features/workspace/current-class-methods";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import { normalizePath } from "@/features/workspace/workspace-store";
+
+const FILE_SYMBOL_PAGE_SIZE = 80;
 
 export type UseCurrentFileSymbolsControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -35,6 +38,8 @@ export function useCurrentFileSymbolsController({
   const [currentMethodsQuery, setCurrentMethodsQuery] = useState("");
   const [currentMethodsSelectedIndex, setCurrentMethodsSelectedIndex] = useState(0);
   const [indexedCurrentMethods, setIndexedCurrentMethods] = useState<{ path: string; methods: CurrentClassMethod[] } | null>(null);
+  const [currentMethodsNextCursor, setCurrentMethodsNextCursor] = useState<number | null>(null);
+  const [currentMethodsLoading, setCurrentMethodsLoading] = useState(false);
 
   function showCurrentClassMethods() {
     if (!activePath) {
@@ -45,23 +50,39 @@ export function useCurrentFileSymbolsController({
     setCurrentMethodsQuery("");
     setCurrentMethodsSelectedIndex(0);
     setIndexedCurrentMethods(null);
+    setCurrentMethodsNextCursor(null);
     setCurrentMethodsVisible(true);
     onStatusChange("File Structure");
     void loadIndexedCurrentClassMethods(activePath);
   }
 
   async function loadIndexedCurrentClassMethods(path: string) {
-    if (!rootPath || !workspaceApi.queryWorkspaceFileSymbols) {
+    await loadIndexedCurrentClassMethodPage(path, null, false);
+  }
+
+  async function loadIndexedCurrentClassMethodPage(path: string, cursor: number | null, append: boolean) {
+    if (!rootPath || (!workspaceApi.queryWorkspaceFileSymbolsWithReadiness && !workspaceApi.queryWorkspaceFileSymbols)) {
       return;
     }
+    if (currentMethodsLoading) return;
+    setCurrentMethodsLoading(true);
     try {
-      const candidates = await workspaceApi.queryWorkspaceFileSymbols(rootPath, path, "", 200);
-      const methods = candidates
-        .filter((candidate) => candidate.source === "symbol" && ["method", "function", "field", "property", "variable"].includes(candidate.kind ?? ""))
-        .map(candidateToCurrentClassMethod);
-      setIndexedCurrentMethods({ path, methods });
+      const envelope = workspaceApi.queryWorkspaceFileSymbolsWithReadiness
+        ? await workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, "", FILE_SYMBOL_PAGE_SIZE, cursor)
+        : { items: await workspaceApi.queryWorkspaceFileSymbols!(rootPath, path, "", 200), nextCursor: null };
+      const methods = fileSymbolMethods(envelope.items);
+      setIndexedCurrentMethods((current) => ({
+        path,
+        methods: append && current && normalizePath(current.path) === normalizePath(path)
+          ? [...current.methods, ...methods]
+          : methods,
+      }));
+      setCurrentMethodsNextCursor(envelope.nextCursor ?? null);
     } catch {
       setIndexedCurrentMethods(null);
+      setCurrentMethodsNextCursor(null);
+    } finally {
+      setCurrentMethodsLoading(false);
     }
   }
 
@@ -74,6 +95,7 @@ export function useCurrentFileSymbolsController({
     setCurrentMethodsVisible(false);
     setCurrentMethodsQuery("");
     setCurrentMethodsSelectedIndex(0);
+    setCurrentMethodsNextCursor(null);
   }
 
   function openCurrentClassMethod(method: CurrentClassMethod) {
@@ -119,6 +141,12 @@ export function useCurrentFileSymbolsController({
     });
   }, [visibleCurrentClassMethods.length]);
 
+  useEffect(() => {
+    if (!currentMethodsVisible || !activePath || currentMethodsLoading || currentMethodsNextCursor == null) return;
+    if (currentMethodsSelectedIndex < visibleCurrentClassMethods.length - 1) return;
+    void loadIndexedCurrentClassMethodPage(activePath, currentMethodsNextCursor, true);
+  }, [activePath, currentMethodsLoading, currentMethodsNextCursor, currentMethodsSelectedIndex, currentMethodsVisible, visibleCurrentClassMethods.length]);
+
   return {
     currentMethodsVisible,
     currentMethodsQuery,
@@ -131,4 +159,10 @@ export function useCurrentFileSymbolsController({
     closeCurrentClassMethods,
     openCurrentClassMethod,
   };
+}
+
+function fileSymbolMethods(candidates: SearchCandidate[]) {
+  return candidates
+    .filter((candidate) => candidate.source === "symbol" && ["method", "function", "field", "property", "variable"].includes(candidate.kind ?? ""))
+    .map(candidateToCurrentClassMethod);
 }
