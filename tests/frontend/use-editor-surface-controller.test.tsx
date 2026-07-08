@@ -51,6 +51,64 @@ describe("useEditorSurfaceController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Opening A.ets...");
   });
 
+  it("activates an already loaded document without reading it again", async () => {
+    const openFile = vi.fn(async () => "fresh disk content");
+    const setActiveDocument = vi.fn();
+    const documents = new Map<string, { currentContent: string }>();
+    documents.set("/workspace/A.ets", { currentContent: "dirty in-memory content" });
+    const { result } = renderHarness({
+      workspaceApi: { openFile } as unknown as WorkspaceApi,
+      documentsRef: {
+        current: {
+          getDocument: (path: string) => documents.get(path),
+          openDocument: (path: string, content: string) => documents.set(path, { currentContent: content }),
+          updateDocument: (path: string, content: string) => {
+            documents.set(path, { currentContent: content });
+            return { dirtyChanged: true };
+          },
+        },
+      },
+      setActiveDocument,
+    });
+
+    await act(async () => {
+      await result.current.openFile("/workspace/A.ets");
+    });
+
+    expect(openFile).not.toHaveBeenCalled();
+    expect(setActiveDocument).toHaveBeenCalledWith("/workspace/A.ets");
+    expect(documents.get("/workspace/A.ets")?.currentContent).toBe("dirty in-memory content");
+  });
+
+  it("opens a cached closed document as a tab without replacing its content", async () => {
+    const openTab = vi.fn();
+    const openFile = vi.fn(async () => "fresh disk content");
+    const documents = new Map<string, { currentContent: string }>();
+    documents.set("/workspace/Closed.ets", { currentContent: "cached content" });
+    const { result } = renderHarness({
+      workspaceApi: { openFile } as unknown as WorkspaceApi,
+      documentsRef: {
+        current: {
+          getDocument: (path: string) => documents.get(path),
+          openDocument: (path: string, content: string) => documents.set(path, { currentContent: content }),
+          updateDocument: (path: string, content: string) => {
+            documents.set(path, { currentContent: content });
+            return { dirtyChanged: true };
+          },
+        },
+      },
+      tabsRef: { current: { openTab } },
+    });
+
+    await act(async () => {
+      await result.current.openFile("/workspace/Closed.ets");
+    });
+
+    expect(openFile).not.toHaveBeenCalled();
+    expect(openTab).toHaveBeenCalledWith("/workspace/Closed.ets");
+    expect(documents.get("/workspace/Closed.ets")?.currentContent).toBe("cached content");
+  });
+
   it("reports open failure only for the latest navigation transaction", async () => {
     const first = createDeferred<string>();
     const second = createDeferred<string>();

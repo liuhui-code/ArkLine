@@ -67,8 +67,13 @@ export function useEditorSurfaceController({
   const navigationRuntimeRef = useRef(createNavigationTransactionRuntime());
 
   async function openFile(path: string) {
-    const transaction = navigationRuntimeRef.current.start(path);
     const title = getPathBasename(path);
+    if (documentsRef.current.getDocument(path)) {
+      activateLoadedDocument(path);
+      onStatusChange(`Opened ${title}`);
+      return;
+    }
+    const transaction = navigationRuntimeRef.current.start(path);
     onStatusChange(`Opening ${title}...`);
     let content: string;
     try {
@@ -83,9 +88,13 @@ export function useEditorSurfaceController({
     if (!navigationRuntimeRef.current.isCurrent(transaction.id)) {
       return;
     }
-    if (!documentsRef.current.getDocument(path)) {
-      documentsRef.current.openDocument(path, content);
-    }
+    documentsRef.current.openDocument(path, content);
+    activateLoadedDocument(path);
+    navigationRuntimeRef.current.finish(transaction.id);
+    onStatusChange(`Opened ${title}`);
+  }
+
+  function activateLoadedDocument(path: string) {
     tabsRef.current.openTab(path);
     syncTabs();
     setActiveDocument(path);
@@ -99,8 +108,6 @@ export function useEditorSurfaceController({
     setActiveOverlay("none");
     setQuickOpenQuery("");
     bumpEditorFocusToken();
-    navigationRuntimeRef.current.finish(transaction.id);
-    onStatusChange(`Opened ${title}`);
   }
 
   function submitGoToLine() {
