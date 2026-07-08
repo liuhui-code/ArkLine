@@ -1,4 +1,4 @@
-import { useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   decideDefinitionEnvelope,
   definitionCandidatesToUsageItems,
@@ -24,9 +24,12 @@ import {
   type DefinitionResolvedSource,
 } from "@/features/workspace/definition-query-model";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
+import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
 import type { UsageSearchState } from "@/features/workspace/usage-search";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
+
+const DEFINITION_TIMEOUT_MS = 3500;
 
 export type UseDefinitionControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -77,6 +80,7 @@ export function useDefinitionController({
   onStatusChange,
 }: UseDefinitionControllerOptions) {
   const [definitionDebugText, setDefinitionDebugText] = useState("");
+  const languageSessionStore = useMemo(() => createLanguageSessionStore(), []);
   const definitionRequestRef = useRef(0);
 
   function setDefinitionDebug(message: string) {
@@ -106,9 +110,11 @@ export function useDefinitionController({
       return;
     }
     const currentContent = getActiveContent();
-    const requestId = definitionRequestRef.current + 1;
+    const languageSession = languageSessionStore.begin("definition", "definition:editor", DEFINITION_TIMEOUT_MS);
+    const requestId = languageSession.requestId;
     definitionRequestRef.current = requestId;
-    const isStaleRequest = () => definitionRequestRef.current !== requestId;
+    const isStaleRequest = () => definitionRequestRef.current !== requestId || !languageSessionStore.isCurrent(languageSession);
+    const completeDefinitionRequest = () => languageSessionStore.complete(languageSession);
     const request = {
       path: activePath,
       line: selectionOverride?.line ?? editorSelection.line,
@@ -188,7 +194,20 @@ export function useDefinitionController({
     if (workspace?.rootPath && workspaceApi.queryDefinitionCandidatesWithReadiness) {
       await scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       if (isStaleRequest()) return;
-      const envelope = await workspaceApi.queryDefinitionCandidatesWithReadiness(workspace.rootPath, request);
+      let envelope;
+      try {
+        envelope = await languageRequestTimeout(
+          workspaceApi.queryDefinitionCandidatesWithReadiness(workspace.rootPath, request),
+          languageSession.timeoutMs,
+        );
+      } catch (error) {
+        if (isStaleRequest()) return;
+        const message = error instanceof Error ? error.message : String(error);
+        setDefinitionDebug(`Go to Definition failed: ${message}`);
+        onStatusChange(`Go to Definition failed: ${message}`);
+        completeDefinitionRequest();
+        return;
+      }
       if (isStaleRequest()) return;
       indexedDefinitionExplain = envelope.explain;
       const decision = decideDefinitionEnvelope(envelope);
@@ -196,6 +215,7 @@ export function useDefinitionController({
         const blockedDebugMessage = formatDefinitionBlockedDebugMessage(source, decision.message);
         if (blockedDebugMessage) setDefinitionDebug(blockedDebugMessage);
         onStatusChange(formatDefinitionBlockedStatus(decision.message));
+        completeDefinitionRequest();
         return;
       }
       if (decision.kind === "candidates") {
@@ -204,26 +224,40 @@ export function useDefinitionController({
           "indexed",
           formatDefinitionCandidatePanelMessage(decision.readinessState),
         );
+        completeDefinitionRequest();
         return;
       }
       if (decision.kind === "resolved") {
         await showResolvedDefinition(decision.target, "indexed", decision.readinessState);
+        completeDefinitionRequest();
         return;
       }
       if (decision.kind === "waitForRefresh") {
         const message = formatDefinitionRefreshWaitMessage(decision.count, decision.readinessState);
         if (source === "modifierClick") setDefinitionDebug(message);
         onStatusChange(message);
+        completeDefinitionRequest();
         return;
       }
     }
 
     if (!workspaceApi.gotoDefinition) {
       await showDefinitionMiss("indexedNoTarget");
+      completeDefinitionRequest();
       return;
     }
 
-    const target = await workspaceApi.gotoDefinition(request);
+    let target;
+    try {
+      target = await languageRequestTimeout(workspaceApi.gotoDefinition(request), languageSession.timeoutMs);
+    } catch (error) {
+      if (isStaleRequest()) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setDefinitionDebug(`Go to Definition failed: ${message}`);
+      onStatusChange(`Go to Definition failed: ${message}`);
+      languageSessionStore.complete(languageSession);
+      return;
+    }
     if (isStaleRequest()) return;
     const semanticCandidates = target || !workspaceApi.gotoDefinitionCandidates
       ? []
@@ -231,6 +265,7 @@ export function useDefinitionController({
     if (isStaleRequest()) return;
     if (semanticCandidates.length > 1) {
       showDefinitionCandidates(semanticCandidates, "semantic");
+      completeDefinitionRequest();
       return;
     }
 
@@ -258,13 +293,16 @@ export function useDefinitionController({
       if (isStaleRequest()) return;
       if (fallbackCandidates.length > 1) {
         showDefinitionCandidates(fallbackCandidates, "fallback");
+        completeDefinitionRequest();
         return;
       }
       await showDefinitionMiss("languageAndFallbackNoTarget");
+      completeDefinitionRequest();
       return;
     }
     const resolvedSource = target ? "semantic" : "fallback";
     await showResolvedDefinition(resolvedTarget, resolvedSource);
+    completeDefinitionRequest();
   }
 
   return { definitionDebugText, goToDefinitionFromEditor };

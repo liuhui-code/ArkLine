@@ -1,10 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsagesController } from "@/components/layout/use-usages-controller";
 import type { UsageResult } from "@/features/workspace/usage-search";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 
 describe("useUsagesController", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("finds usages through the readiness-aware facade", async () => {
     const item = usage({ path: "/workspace/A.ets", line: 4, column: 2 });
     const onStatusChange = vi.fn();
@@ -86,6 +90,56 @@ describe("useUsagesController", () => {
     expect(rememberCurrentLocation).toHaveBeenCalledTimes(1);
     expect(navigateToUsage).toHaveBeenCalledWith(item);
   });
+
+  it("ignores stale usage results after a newer request starts", async () => {
+    const first = createDeferred<ReturnType<typeof usage>[]>();
+    const second = createDeferred<ReturnType<typeof usage>[]>();
+    const queryUsagesWithReadiness = vi
+      .fn()
+      .mockReturnValueOnce(first.promise.then((items) => ({ items, readiness: readiness("ready") })))
+      .mockReturnValueOnce(second.promise.then((items) => ({ items, readiness: readiness("ready") })));
+    const { result } = renderHook(() => useUsagesController(options({
+      workspaceApi: workspaceApi({ queryUsagesWithReadiness }),
+    })));
+
+    void act(() => {
+      void result.current.findUsagesFromEditor();
+      void result.current.findUsagesFromEditor();
+    });
+    await act(async () => {
+      second.resolve([usage({ line: 9 })]);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.usageSearch.items[0]?.line).toBe(9));
+
+    await act(async () => {
+      first.resolve([usage({ line: 4 })]);
+      await Promise.resolve();
+    });
+
+    expect(result.current.usageSearch.items.map((item) => item.line)).toEqual([9]);
+  });
+
+  it("reports timeout for stalled usage queries", async () => {
+    vi.useFakeTimers();
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useUsagesController(options({
+      workspaceApi: workspaceApi({
+        queryUsagesWithReadiness: vi.fn(() => new Promise<never>(() => undefined)),
+      }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      const request = result.current.findUsagesFromEditor();
+      vi.advanceTimersByTime(3500);
+      await request;
+    });
+
+    expect(result.current.usageSearch.status).toBe("error");
+    expect(result.current.usageSearch.message).toBe("Language request timed out after 3500ms");
+    expect(onStatusChange).toHaveBeenCalledWith("Find Usages failed: Language request timed out after 3500ms");
+  });
 });
 
 function options(overrides: Partial<Parameters<typeof useUsagesController>[0]> = {}) {
@@ -156,4 +210,12 @@ function usage(input: Partial<UsageResult>): UsageResult {
     confidence: "exact",
     ...input,
   };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }
