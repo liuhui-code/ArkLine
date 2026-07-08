@@ -1,11 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCompletionController } from "@/components/layout/use-completion-controller";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { OverlayKey } from "@/components/layout/shell-state";
 
 describe("useCompletionController", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("opens manual completion results in the completion overlay", async () => {
     const onStatusChange = vi.fn();
     const { result } = renderHarness({
@@ -112,6 +116,27 @@ describe("useCompletionController", () => {
     });
 
     expect(result.current.completion.completionPresentationResults[0]?.label).toBe("width");
+  });
+
+  it("reports a timeout for a stalled completion request", async () => {
+    vi.useFakeTimers();
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(() => new Promise<[]>(() => undefined)),
+      }),
+      onStatusChange,
+    });
+
+    await act(async () => {
+      const request = result.current.completion.openCompletionFromEditor();
+      vi.advanceTimersByTime(2500);
+      await request;
+    });
+
+    expect(result.current.completion.completionStatus).toBe("error");
+    expect(result.current.completion.completionMessage).toBe("Completion failed: Language request timed out after 2500ms");
+    expect(onStatusChange).toHaveBeenCalledWith("Completion failed: Language request timed out after 2500ms");
   });
 });
 

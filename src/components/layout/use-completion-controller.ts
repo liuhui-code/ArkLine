@@ -7,11 +7,14 @@ import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app
 import { extractCompletionPrefix } from "@/components/layout/app-shell-helpers";
 import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
+import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
+
+const COMPLETION_TIMEOUT_MS = 2500;
 
 export type UseCompletionControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -60,6 +63,7 @@ export function useCompletionController({
   const [completionSession, setCompletionSession] = useState<CompletionSession | null>(null);
   const [completionHistoryVersion, setCompletionHistoryVersion] = useState(0);
   const completionHistoryStore = useMemo(() => createCompletionHistoryStore(), []);
+  const languageSessionStore = useMemo(() => createLanguageSessionStore(), []);
   const completionRequestRef = useRef(0);
   const typingCompletionTimerRef = useRef<number | null>(null);
 
@@ -72,6 +76,7 @@ export function useCompletionController({
 
   function clearCompletionSession() {
     completionRequestRef.current += 1;
+    languageSessionStore.cancel("completion");
     setCompletionItems([]);
     setCompletionReplacePrefix("");
     setCompletionSelectedIndex(0);
@@ -101,7 +106,8 @@ export function useCompletionController({
       onStatusChange("Completion unavailable");
       return;
     }
-    const requestId = completionRequestRef.current + 1;
+    const languageSession = languageSessionStore.begin("completion", `completion:${trigger}`, COMPLETION_TIMEOUT_MS);
+    const requestId = languageSession.requestId;
     completionRequestRef.current = requestId;
     const selection = {
       line: selectionOverride?.line ?? editorSelection.line,
@@ -113,7 +119,7 @@ export function useCompletionController({
     const query = trigger === "typing" ? replacePrefix : "";
     let completionResult: { items: LanguageCompletionItem[]; explain?: string[] };
     try {
-      completionResult = await collectCompletionCandidateResult({
+      completionResult = await languageRequestTimeout(collectCompletionCandidateResult({
         workspaceApi,
         rootPath,
         path,
@@ -122,9 +128,10 @@ export function useCompletionController({
         content: currentContent,
         query,
         replacePrefix,
-      });
+      }), languageSession.timeoutMs);
     } catch (error) {
-      if (completionRequestRef.current !== requestId) return;
+      if (completionRequestRef.current !== requestId || !languageSessionStore.isCurrent(languageSession)) return;
+      languageSessionStore.complete(languageSession);
       const message = error instanceof Error ? error.message : String(error);
       setCompletionItems([]);
       setCompletionReplacePrefix(replacePrefix);
@@ -143,7 +150,8 @@ export function useCompletionController({
       onStatusChange(`Completion failed: ${message}`);
       return;
     }
-    if (completionRequestRef.current !== requestId) return;
+    if (completionRequestRef.current !== requestId || !languageSessionStore.isCurrent(languageSession)) return;
+    languageSessionStore.complete(languageSession);
 
     const results = completionResult.items;
     const emptyCompletionExplanation = results.length === 0
@@ -199,6 +207,7 @@ export function useCompletionController({
       completionReplacePrefix,
     );
     completionRequestRef.current += 1;
+    languageSessionStore.cancel("completion");
     completionHistoryStore.recordAccepted(item.label);
     setCompletionHistoryVersion((version) => version + 1);
     setInsertTextTarget({ text, replaceBefore, nonce: Date.now() });
