@@ -70,6 +70,7 @@ mod services {
     pub mod device_log_stream_service;
     pub mod device_log_writer_worker_service;
     pub mod diff_service;
+    pub mod document_command_service;
     pub mod document_service;
     pub mod environment_doctor;
     pub mod git_trace_service;
