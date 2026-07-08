@@ -3,8 +3,8 @@ import {
   getWorkspaceScanText,
 } from "@/components/layout/app-shell-model";
 import { LAZY_PROJECT_TREE_FILE_THRESHOLD } from "@/components/layout/app-shell-constants";
+import { searchOverlayLabel } from "@/components/layout/search-everywhere-controller-model";
 import { filterRecentFileResults, filterRecentProjectResults, getOverlayLabel } from "@/components/layout/search-overlay-model";
-import { searchOverlayLabel } from "@/components/layout/use-search-everywhere-controller";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { describeSemanticCapabilities } from "@/features/semantic/semantic-capability-state";
