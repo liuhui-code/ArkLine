@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { candidateToCurrentClassMethod } from "@/components/layout/indexed-completion-model";
 import { collectCurrentClassMethods, type CurrentClassMethod } from "@/features/workspace/current-class-methods";
+import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import { normalizePath } from "@/features/workspace/workspace-store";
 
 const FILE_SYMBOL_PAGE_SIZE = 80;
+const FILE_SYMBOL_TIMEOUT_MS = 2500;
 
 export type UseCurrentFileSymbolsControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -40,6 +42,8 @@ export function useCurrentFileSymbolsController({
   const [indexedCurrentMethods, setIndexedCurrentMethods] = useState<{ path: string; methods: CurrentClassMethod[] } | null>(null);
   const [currentMethodsNextCursor, setCurrentMethodsNextCursor] = useState<number | null>(null);
   const [currentMethodsLoading, setCurrentMethodsLoading] = useState(false);
+  const languageSessionStore = useMemo(() => createLanguageSessionStore(), []);
+  const currentMethodsRequestRef = useRef(0);
 
   function showCurrentClassMethods() {
     if (!activePath) {
@@ -51,6 +55,8 @@ export function useCurrentFileSymbolsController({
     setCurrentMethodsSelectedIndex(0);
     setIndexedCurrentMethods(null);
     setCurrentMethodsNextCursor(null);
+    setCurrentMethodsLoading(false);
+    languageSessionStore.cancel("documentSymbols");
     setCurrentMethodsVisible(true);
     onStatusChange("File Structure");
     void loadIndexedCurrentClassMethods(activePath);
@@ -65,11 +71,15 @@ export function useCurrentFileSymbolsController({
       return;
     }
     if (currentMethodsLoading) return;
+    const languageSession = languageSessionStore.begin("documentSymbols", "documentSymbols:palette", FILE_SYMBOL_TIMEOUT_MS);
+    currentMethodsRequestRef.current = languageSession.requestId;
+    const isStaleRequest = () => currentMethodsRequestRef.current !== languageSession.requestId || !languageSessionStore.isCurrent(languageSession);
     setCurrentMethodsLoading(true);
     try {
       const envelope = workspaceApi.queryWorkspaceFileSymbolsWithReadiness
-        ? await workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, "", FILE_SYMBOL_PAGE_SIZE, cursor)
-        : { items: await workspaceApi.queryWorkspaceFileSymbols!(rootPath, path, "", 200), nextCursor: null };
+        ? await languageRequestTimeout(workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, "", FILE_SYMBOL_PAGE_SIZE, cursor), languageSession.timeoutMs)
+        : { items: await languageRequestTimeout(workspaceApi.queryWorkspaceFileSymbols!(rootPath, path, "", 200), languageSession.timeoutMs), nextCursor: null };
+      if (isStaleRequest()) return;
       const methods = fileSymbolMethods(envelope.items);
       setIndexedCurrentMethods((current) => ({
         path,
@@ -78,11 +88,14 @@ export function useCurrentFileSymbolsController({
           : methods,
       }));
       setCurrentMethodsNextCursor(envelope.nextCursor ?? null);
+      setCurrentMethodsLoading(false);
+      languageSessionStore.complete(languageSession);
     } catch {
+      if (isStaleRequest()) return;
       setIndexedCurrentMethods(null);
       setCurrentMethodsNextCursor(null);
-    } finally {
       setCurrentMethodsLoading(false);
+      languageSessionStore.complete(languageSession);
     }
   }
 
@@ -96,6 +109,9 @@ export function useCurrentFileSymbolsController({
     setCurrentMethodsQuery("");
     setCurrentMethodsSelectedIndex(0);
     setCurrentMethodsNextCursor(null);
+    setCurrentMethodsLoading(false);
+    currentMethodsRequestRef.current += 1;
+    languageSessionStore.cancel("documentSymbols");
   }
 
   function openCurrentClassMethod(method: CurrentClassMethod) {

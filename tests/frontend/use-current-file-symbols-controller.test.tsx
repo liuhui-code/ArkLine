@@ -127,6 +127,36 @@ describe("useCurrentFileSymbolsController", () => {
     await waitFor(() => expect(result.current.visibleCurrentClassMethods).toHaveLength(81));
   });
 
+  it("ignores stale indexed symbol responses after reopening the palette", async () => {
+    const first = createDeferred<ReturnType<typeof symbolEnvelope>>();
+    const second = createDeferred<ReturnType<typeof symbolEnvelope>>();
+    const queryWorkspaceFileSymbolsWithReadiness = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const { result } = renderHook(() => useCurrentFileSymbolsController(options({
+      rootPath: "/workspace",
+      getActiveContent: () => "",
+      workspaceApi: workspaceApi({ queryWorkspaceFileSymbolsWithReadiness }),
+    })));
+
+    act(() => result.current.showCurrentClassMethods());
+    act(() => result.current.closeCurrentClassMethods());
+    act(() => result.current.showCurrentClassMethods());
+    await act(async () => {
+      second.resolve(symbolEnvelope("freshMethod", 8));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(result.current.visibleCurrentClassMethods.map((method) => method.name)).toEqual(["freshMethod"]));
+
+    await act(async () => {
+      first.resolve(symbolEnvelope("staleMethod", 4));
+      await Promise.resolve();
+    });
+
+    expect(result.current.visibleCurrentClassMethods.map((method) => method.name)).toEqual(["freshMethod"]);
+  });
+
   it("opens a selected method at its source location", () => {
     const rememberCurrentLocation = vi.fn();
     const setSelectionTarget = vi.fn();
@@ -209,4 +239,20 @@ function readiness() {
     state: "ready" as const,
     retryable: false,
   };
+}
+
+function symbolEnvelope(name: string, line: number) {
+  return {
+    items: [symbolCandidate(name, line)],
+    readiness: readiness(),
+    nextCursor: null,
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }
