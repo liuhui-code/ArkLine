@@ -292,6 +292,8 @@ export function useSearchEverywhereController({
         result: { query: { kind: "text", query: query.trim() }, matches: [] },
         selectedIndex: 0,
         previewContent: null,
+        textNextCursor: null,
+        textPageLoading: false,
       });
       if (visibleCandidates.length === 0 && query.trim()) explainSearchEverywhereMiss(requestId, query, explain);
     });
@@ -337,6 +339,8 @@ export function useSearchEverywhereController({
         truncationNotice: textSearchPartialNotice(result),
         previewContent: null,
         selectedIndex: 0,
+        textNextCursor: result.nextCursor ?? null,
+        textPageLoading: false,
       });
       scheduleSelectedPreview(0);
       if (!suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && query.trim()) {
@@ -350,9 +354,30 @@ export function useSearchEverywhereController({
     });
   }
 
-  function fallbackTextSearch(query: string, dirty: boolean, generation: number) {
+  async function loadNextSearchEverywherePage() {
+    const session = searchSessionStoreRef.current.getSnapshot();
+    if (!workspace || searchEverywhereMode === "searchEverywhere" || session.textPageLoading || !session.textNextCursor) return;
+    const query = debouncedSearchQuery;
+    const requestId = searchEverywhereRequestRef.current;
+    searchSessionStoreRef.current.patch({ textPageLoading: true });
+    const result = await fallbackTextSearch(query, true, requestId, session.textNextCursor);
+    if (searchEverywhereRequestRef.current !== requestId) return;
+    searchSessionStoreRef.current.patch({
+      result: { ...result, matches: [...session.result.matches, ...result.matches] },
+      truncationNotice: textSearchPartialNotice(result),
+      textNextCursor: result.nextCursor ?? null,
+      textPageLoading: false,
+    });
+  }
+
+  function fallbackTextSearch(
+    query: string,
+    dirty: boolean,
+    generation: number,
+    cursor: Parameters<typeof searchWorkspaceText>[0]["cursor"] = null,
+  ) {
     const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (workspace && canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !dirty) {
+    if (workspace && canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !dirty && !cursor) {
       return workspaceApi.searchWorkspaceText({
         query,
         generation,
@@ -375,6 +400,7 @@ export function useSearchEverywhereController({
         }
       },
       limit: 50,
+      cursor,
     });
   }
 
@@ -438,6 +464,7 @@ export function useSearchEverywhereController({
     openSearchEverywhereResult,
     openSearchEverywhereCandidate,
     openSelectedSearchEverywhereResult,
+    loadNextSearchEverywherePage,
     toggleSearchEverywhereCaseSensitive,
     toggleSearchEverywhereWholeWord,
   }, searchSessionStoreRef.current);

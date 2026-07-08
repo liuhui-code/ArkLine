@@ -8,6 +8,9 @@ export type SearchSessionCompatFields = {
   readonly searchEverywhereTruncationNotice: string | null;
   readonly searchEverywhereSelectedIndex: number;
   readonly searchEverywherePreviewContent: string | null;
+  readonly searchEverywhereCanLoadMore: boolean;
+  readonly searchEverywherePageLoading: boolean;
+  loadNextSearchEverywherePage?: () => Promise<void>;
 };
 
 export function searchSessionCompat<T extends object>(
@@ -38,6 +41,16 @@ export function searchSessionCompat<T extends object>(
     searchEverywherePreviewContent: {
       get() {
         return store.getSnapshot().previewContent;
+      },
+    },
+    searchEverywhereCanLoadMore: {
+      get() {
+        return Boolean(store.getSnapshot().textNextCursor);
+      },
+    },
+    searchEverywherePageLoading: {
+      get() {
+        return store.getSnapshot().textPageLoading;
       },
     },
   }) as T & SearchSessionCompatFields;

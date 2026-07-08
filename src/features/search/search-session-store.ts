@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
+import type { WorkspaceTextSearchCursor, WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 const emptyResult: WorkspaceTextSearchResult = { query: { kind: "text", query: "" }, matches: [] };
@@ -10,6 +10,8 @@ export type SearchSessionSnapshot = {
   truncationNotice: string | null;
   selectedIndex: number;
   previewContent: string | null;
+  textNextCursor: WorkspaceTextSearchCursor | null;
+  textPageLoading: boolean;
 };
 
 export type SearchSessionStore = ReturnType<typeof createSearchSessionStore>;
@@ -21,6 +23,8 @@ export function createSearchSessionStore() {
     truncationNotice: null,
     selectedIndex: 0,
     previewContent: null,
+    textNextCursor: null,
+    textPageLoading: false,
   };
   const listeners = new Set<() => void>();
 
@@ -41,7 +45,15 @@ export function createSearchSessionStore() {
       emit();
     },
     clear(query = "") {
-      snapshot = { ...snapshot, result: { query: { kind: "text", query }, matches: [] }, candidates: [], truncationNotice: null, selectedIndex: 0 };
+      snapshot = {
+        ...snapshot,
+        result: { query: { kind: "text", query }, matches: [] },
+        candidates: [],
+        truncationNotice: null,
+        selectedIndex: 0,
+        textNextCursor: null,
+        textPageLoading: false,
+      };
       emit();
     },
   };
