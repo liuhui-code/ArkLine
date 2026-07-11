@@ -13,6 +13,7 @@ import {
   executeSearchEntityQuery,
   type SearchEntityQueryResult,
 } from "@/components/layout/search-entity-query-session";
+import { buildTextSearchAppendPatch } from "@/components/layout/search-pagination-session";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
   searchWorkspaceText,
@@ -373,13 +374,7 @@ export function useSearchEverywhereController({
     searchSessionStoreRef.current.patch({ textPageLoading: true });
     const result = await fallbackTextSearch(query, hasDirtyDocuments(), requestId, session.textNextCursor);
     if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
-    searchSessionStoreRef.current.patch({
-      result: { ...result, matches: [...session.result.matches, ...result.matches] },
-      truncationNotice: textSearchPartialNotice(result),
-      textNextCursor: result.nextCursor ?? null,
-      textPageLoading: false,
-      selectedIndex: selectIndexAfterLoad ?? session.selectedIndex,
-    });
+    searchSessionStoreRef.current.patch(buildTextSearchAppendPatch(session, result, selectIndexAfterLoad));
     if (selectIndexAfterLoad != null) scheduleSelectedPreview(selectIndexAfterLoad);
   }
 
