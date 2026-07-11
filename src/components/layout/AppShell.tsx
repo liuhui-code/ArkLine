@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getAppShellDerivedState } from "@/components/layout/app-shell-derived-state";
 import { AppShellOverlays } from "@/components/layout/AppShellOverlays";
 import { AppShellMainLayout } from "@/components/layout/AppShellMainLayout";
@@ -10,6 +10,7 @@ import { useBuildControllerState } from "@/components/layout/use-build-controlle
 import { useCodeActionsWorkspaceEditController } from "@/components/layout/use-code-actions-workspace-edit-controller";
 import { useProjectOpening } from "@/components/layout/use-project-opening";
 import { useGitAndDiffController } from "@/components/layout/use-git-and-diff-controller";
+import { createActiveDocumentRuntime } from "@/features/documents/active-document-runtime";
 import { useEditorDocuments } from "@/components/layout/use-editor-documents";
 import { useEditorNavigation } from "@/components/layout/use-editor-navigation";
 import { useEditorSurfaceController } from "@/components/layout/use-editor-surface-controller";
@@ -80,14 +81,8 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setProjectOpenError: () => undefined,
   });
   const { documentsRef, tabsRef, openTabs, activePath, syncTabs, setActiveDocument, resetTabs } = useEditorDocuments();
-  const getActiveContent = useCallback(() => (
-    activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? "" : ""
-  ), [activePath, documentsRef]);
-  const activeContentReader = {
-    getActiveContent,
-    getActiveContentLength: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent.length ?? 0 : 0,
-    getActiveContentSlice: (start: number, end: number) => activePath ? documentsRef.current.getDocument(activePath)?.currentContent.slice(start, end) ?? "" : "",
-  };
+  const activeContentReader = createActiveDocumentRuntime(documentsRef, () => activePath);
+  const { getActiveContent } = activeContentReader;
   const activeDocumentProjection = useActiveDocumentProjection({ documentsRef, activePath, line: editorSelection.line, column: editorSelection.column, selectedText: editorSelectedText });
   const { focusEditor, focusEditorSoon, isEditorFocused, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
     activePath,
