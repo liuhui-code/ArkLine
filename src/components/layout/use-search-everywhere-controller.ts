@@ -15,6 +15,10 @@ import {
 } from "@/components/layout/search-entity-query-session";
 import { buildTextSearchAppendPatch } from "@/components/layout/search-pagination-session";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
+import {
+  openSearchCandidateNavigation,
+  openSearchResultNavigation,
+} from "@/components/layout/search-navigation-action";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
   searchWorkspaceText,
@@ -36,7 +40,7 @@ import type { SearchCandidate } from "@/features/workspace/workspace-index-store
 import type { WorkspaceIndexReadiness } from "@/features/workspace/workspace-index-api-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
-import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
+import { normalizePath } from "@/features/workspace/workspace-store";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
@@ -183,24 +187,25 @@ export function useSearchEverywhereController({
   }
 
   async function openSearchEverywhereResult(path: string, line: number, column: number) {
-    const startedAt = Date.now();
-    rememberCurrentLocation();
-    closeSearchOverlayForNavigation();
-    await navigateToLocation({ path, line, column }, "Usage");
-    recordUiInteraction?.("searchJump", getPathBasename(path), startedAt, Date.now());
+    await openSearchResultNavigation({
+      path,
+      line,
+      column,
+      rememberCurrentLocation,
+      closeSearchOverlayForNavigation,
+      navigateToLocation,
+      recordUiInteraction,
+    });
   }
 
   async function openSearchEverywhereCandidate(candidate: SearchCandidate) {
-    if (!candidate.path) return;
-    const startedAt = Date.now();
-    rememberCurrentLocation();
-    closeSearchOverlayForNavigation();
-    await navigateToLocation({
-      path: candidate.path,
-      line: candidate.line ?? 1,
-      column: candidate.column ?? 1,
-    }, "Usage");
-    recordUiInteraction?.("searchJump", candidate.title, startedAt, Date.now());
+    await openSearchCandidateNavigation({
+      candidate,
+      rememberCurrentLocation,
+      closeSearchOverlayForNavigation,
+      navigateToLocation,
+      recordUiInteraction,
+    });
   }
 
   async function openSelectedSearchEverywhereResult() {
