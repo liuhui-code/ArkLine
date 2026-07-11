@@ -27,8 +27,8 @@ import {
 import { buildSearchEverywhereControllerResult } from "@/components/layout/search-controller-result";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
-  searchWorkspaceText,
   type WorkspaceTextSearchOptions,
+  type WorkspaceTextSearchCursor,
 } from "@/features/search/workspace-text-search";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
@@ -43,7 +43,6 @@ import type { SearchCandidate } from "@/features/workspace/workspace-index-store
 import type { WorkspaceIndexReadiness } from "@/features/workspace/workspace-index-api-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
-import { normalizePath } from "@/features/workspace/workspace-store";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 import {
   reportSearchEverywhereMiss,
@@ -53,6 +52,11 @@ import {
   runEntitySearchRequest,
   runTextSearchRequest,
 } from "@/components/layout/search-request-runner";
+import {
+  canUseNativeTextSearchRuntime,
+  readSearchFileForSearch,
+  runFallbackTextSearch,
+} from "@/components/layout/search-text-fallback";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -399,34 +403,19 @@ export function useSearchEverywhereController({
     query: string,
     dirty: boolean,
     generation: number,
-    cursor: Parameters<typeof searchWorkspaceText>[0]["cursor"] = null,
+    cursor: WorkspaceTextSearchCursor | null = null,
   ) {
-    const canUseNativeTextSearch = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-    if (workspace && canUseNativeTextSearch && workspaceApi.searchWorkspaceText && !dirty) {
-      return workspaceApi.searchWorkspaceText({
-        query,
-        generation,
-        cursor,
-        rootPath: workspace.rootPath,
-        options: searchEverywhereOptions,
-        limit: 50,
-        contextLines: 2,
-      });
-    }
-    return searchWorkspaceText({
+    return runFallbackTextSearch({
       query,
-      rootPath: workspace?.rootPath ?? "",
-      paths: getTextSearchPaths(),
-      options: searchEverywhereOptions,
-      readFile: async (path) => {
-        try {
-          return await readSearchFile(path);
-        } catch {
-          return null;
-        }
-      },
-      limit: 50,
+      dirty,
+      generation,
       cursor,
+      rootPath: workspace?.rootPath ?? "",
+      options: searchEverywhereOptions,
+      paths: getTextSearchPaths(),
+      canUseNativeTextSearch: canUseNativeTextSearchRuntime(),
+      searchNative: workspaceApi.searchWorkspaceText,
+      readFile: (path) => readSearchFile(path),
     });
   }
 
@@ -444,12 +433,14 @@ export function useSearchEverywhereController({
   }
 
   async function readSearchFile(path: string, allowBackendRead = true) {
-    if (normalizePath(path) === normalizePath(activePath ?? "")) {
-      return getOpenDocumentContent(path) ?? getActiveContent();
-    }
-    const openContent = getOpenDocumentContent(path);
-    if (openContent != null || !allowBackendRead) return openContent;
-    return await workspaceApi.openFile(path);
+    return await readSearchFileForSearch({
+      path,
+      activePath,
+      getOpenDocumentContent,
+      getActiveContent,
+      openFile: workspaceApi.openFile,
+      allowBackendRead,
+    });
   }
 
   return buildSearchEverywhereControllerResult({
