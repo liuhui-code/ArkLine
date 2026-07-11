@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
-  searchOverlayLabel,
   textCandidatesToSearchResult,
   textSearchInteractionKind,
   textSearchPartialNotice,
@@ -40,10 +39,8 @@ import {
   buildTextSearchResultPatch,
   executeSearchTextQuery,
   planSearchTextQuery,
-  shouldExplainTextSearchMiss,
 } from "@/features/search/search-text-query-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
-import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { WorkspaceApi, WorkspaceIndexQueryScope, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexReadiness } from "@/features/workspace/workspace-index-api-types";
@@ -51,6 +48,10 @@ import type { OverlayKey } from "@/components/layout/shell-state";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
 import { normalizePath } from "@/features/workspace/workspace-store";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
+import {
+  reportSearchEverywhereMiss,
+  reportTextSearchMiss,
+} from "@/components/layout/search-miss-reporting";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -306,7 +307,17 @@ export function useSearchEverywhereController({
           readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
         });
         searchSessionStoreRef.current.patch(patch);
-        if (visibleCount === 0 && query.trim()) explainSearchEverywhereMiss(requestId, query, explain);
+        if (visibleCount === 0 && query.trim()) {
+          void reportSearchEverywhereMiss({
+            requestId,
+            query,
+            explain,
+            isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
+            explainIndexMiss,
+            recordRecentQueryExplain,
+            onStatusChange,
+          });
+        }
       },
     });
   }
@@ -351,14 +362,16 @@ export function useSearchEverywhereController({
           truncationNotice: textSearchPartialNotice(result),
         });
         scheduleSelectedPreview(0);
-        if (shouldExplainTextSearchMiss(result, suppressMissExplain, query)) {
-          const missLabel = searchOverlayLabel(searchEverywhereMode);
-          void explainIndexMiss("search", query.trim()).then((explanation) => {
-            if (interactionRuntimeRef.current.isCurrentQuery(requestId) && explanation) {
-              onStatusChange(`${missLabel} miss: ${explanation}`);
-            }
-          });
-        }
+        void reportTextSearchMiss({
+          mode: searchEverywhereMode,
+          requestId,
+          query,
+          result,
+          suppressMissExplain,
+          isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
+          explainIndexMiss,
+          onStatusChange,
+        });
       },
     });
   }
@@ -444,21 +457,6 @@ export function useSearchEverywhereController({
     const openContent = getOpenDocumentContent(path);
     if (openContent != null || !allowBackendRead) return openContent;
     return await workspaceApi.openFile(path);
-  }
-
-  function explainSearchEverywhereMiss(requestId: number, query: string, explain?: string[]) {
-    const envelopeExplanation = formatQueryEnvelopeExplain(explain);
-    if (envelopeExplanation) {
-      const message = `Search Everywhere miss: ${envelopeExplanation}`;
-      recordRecentQueryExplain({ kind: "search", query: query.trim(), message, explain });
-      onStatusChange(message);
-      return;
-    }
-    void explainIndexMiss("search", query.trim()).then((explanation) => {
-      if (interactionRuntimeRef.current.isCurrentQuery(requestId) && explanation) {
-        onStatusChange(`Search Everywhere miss: ${explanation}`);
-      }
-    });
   }
 
   return buildSearchEverywhereControllerResult({
