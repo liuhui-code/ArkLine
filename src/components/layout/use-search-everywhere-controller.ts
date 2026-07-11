@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
-  normalizeSelectedSearchText,
   searchOverlayLabel,
   textCandidatesToSearchResult,
   textSearchInteractionKind,
@@ -25,6 +24,8 @@ import {
 } from "@/components/layout/search-navigation-action";
 import {
   closeSearchOverlayForNavigationAction,
+  handleSearchOverlayQueryChangeAction,
+  openSearchOverlayAction,
   resetSearchOverlayStateAction,
 } from "@/components/layout/search-overlay-actions";
 import { buildSearchEverywhereControllerResult } from "@/components/layout/search-controller-result";
@@ -132,23 +133,18 @@ export function useSearchEverywhereController({
   });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
-    setSearchEverywhereMode(mode);
-    if (mode === "searchEverywhere") {
-      setSearchEverywhereScope("all");
-      setQuickOpenQuery(normalizeSelectedSearchText(editorSelectedText));
-    }
-    setActiveOverlay("searchEverywhere");
-    if (mode === "find" || mode === "replace") {
-      const selectedSearchText = normalizeSelectedSearchText(editorSelectedText);
-      if (selectedSearchText) {
-        setQuickOpenQuery(selectedSearchText);
-      }
-    }
+    openSearchOverlayAction({
+      mode,
+      editorSelectedText,
+      setSearchEverywhereMode,
+      setSearchEverywhereScope,
+      setQuickOpenQuery,
+      setActiveOverlay,
+    });
   }
 
   function handleOverlayQueryChange(value: string) {
-    invalidateSearchSession();
-    setQuickOpenQuery(value);
+    handleSearchOverlayQueryChangeAction({ value, invalidateSearchSession, setQuickOpenQuery });
   }
 
   function resetSearchOverlayState() {
