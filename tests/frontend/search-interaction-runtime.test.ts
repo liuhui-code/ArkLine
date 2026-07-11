@@ -57,4 +57,58 @@ describe("search interaction runtime", () => {
 
     expect(cancel).not.toHaveBeenCalled();
   });
+
+  it("applies only the latest query run", async () => {
+    const runtime = createSearchInteractionRuntime();
+    const apply = vi.fn();
+    let resolveFirst: (value: string) => void = () => undefined;
+    const first = runtime.runQuery({
+      kind: "text",
+      request: () => new Promise<string>((resolve) => {
+        resolveFirst = resolve;
+      }),
+      apply,
+    });
+    const second = runtime.runQuery({
+      kind: "text",
+      request: async () => "second",
+      apply,
+    });
+
+    resolveFirst("first");
+    await Promise.all([first, second]);
+
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith("second", 2);
+  });
+
+  it("tracks an already-started query without applying stale results", async () => {
+    const runtime = createSearchInteractionRuntime();
+    const apply = vi.fn();
+    const generation = runtime.startQuery("searchEverywhere");
+    const tracked = runtime.trackQuery({
+      generation,
+      request: Promise.resolve("first"),
+      apply,
+    });
+
+    runtime.startQuery("text");
+    await tracked;
+
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("finishes completed query runs before later invalidation", async () => {
+    const cancel = vi.fn();
+    const runtime = createSearchInteractionRuntime({ cancel });
+
+    await runtime.runQuery({
+      kind: "searchEverywhere",
+      request: async () => "done",
+      apply: vi.fn(),
+    });
+    runtime.invalidateForeground();
+
+    expect(cancel).not.toHaveBeenCalled();
+  });
 });
