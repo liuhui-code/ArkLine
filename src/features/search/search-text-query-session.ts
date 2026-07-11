@@ -32,6 +32,25 @@ export type SearchTextQueryExecutionInput = {
   onIndexedReadiness: (readiness: WorkspaceIndexReadiness) => void;
 };
 
+export function buildTextSearchResultPatch(result: WorkspaceTextSearchResult) {
+  return {
+    result,
+    previewContent: null,
+    selectedIndex: 0,
+    entityNextCursor: null,
+    textNextCursor: result.nextCursor ?? null,
+    textPageLoading: false,
+  };
+}
+
+export function shouldExplainTextSearchMiss(
+  result: WorkspaceTextSearchResult,
+  suppressMissExplain: boolean,
+  query: string,
+) {
+  return !suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && Boolean(query.trim());
+}
+
 export function planSearchTextQuery({
   query,
   minimumQueryLength,

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { executeSearchTextQuery, planSearchTextQuery } from "@/features/search/search-text-query-session";
+import {
+  buildTextSearchResultPatch,
+  executeSearchTextQuery,
+  planSearchTextQuery,
+  shouldExplainTextSearchMiss,
+} from "@/features/search/search-text-query-session";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 const plainOptions = { caseSensitive: false, wholeWord: false };
@@ -98,6 +103,29 @@ describe("search text query session", () => {
     });
 
     expect(result.result.matches[0]?.summary).toBe("fallback");
+  });
+
+  it("builds the result patch for a fresh text result page", () => {
+    const result = { ...textResult("page"), nextCursor: { pathIndex: 1, lineIndex: 2 } };
+
+    expect(buildTextSearchResultPatch(result)).toMatchObject({
+      result,
+      previewContent: null,
+      selectedIndex: 0,
+      entityNextCursor: null,
+      textNextCursor: { pathIndex: 1, lineIndex: 2 },
+      textPageLoading: false,
+    });
+  });
+
+  it("explains text misses only when the result is empty and eligible", () => {
+    expect(shouldExplainTextSearchMiss(textResult("hit"), false, "width")).toBe(false);
+    expect(shouldExplainTextSearchMiss({ ...textResult("hit"), matches: [] }, false, "width")).toBe(true);
+    expect(shouldExplainTextSearchMiss({ ...textResult("hit"), matches: [] }, true, "width")).toBe(false);
+    expect(shouldExplainTextSearchMiss({
+      query: { kind: "invalid" as const, query: "/(/", message: "invalid" },
+      matches: [],
+    }, false, "/(/")).toBe(false);
   });
 });
 

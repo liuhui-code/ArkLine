@@ -19,7 +19,12 @@ import {
 } from "@/features/search/workspace-text-search";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
-import { executeSearchTextQuery, planSearchTextQuery } from "@/features/search/search-text-query-session";
+import {
+  buildTextSearchResultPatch,
+  executeSearchTextQuery,
+  planSearchTextQuery,
+  shouldExplainTextSearchMiss,
+} from "@/features/search/search-text-query-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
@@ -337,16 +342,11 @@ export function useSearchEverywhereController({
       if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
       recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
       searchSessionStoreRef.current.patch({
-        result,
+        ...buildTextSearchResultPatch(result),
         truncationNotice: textSearchPartialNotice(result),
-        previewContent: null,
-        selectedIndex: 0,
-        entityNextCursor: null,
-        textNextCursor: result.nextCursor ?? null,
-        textPageLoading: false,
       });
       scheduleSelectedPreview(0);
-      if (!suppressMissExplain && result.query.kind !== "invalid" && result.matches.length === 0 && query.trim()) {
+      if (shouldExplainTextSearchMiss(result, suppressMissExplain, query)) {
         const missLabel = searchOverlayLabel(searchEverywhereMode);
         void explainIndexMiss("search", query.trim()).then((explanation) => {
           if (interactionRuntimeRef.current.isCurrentQuery(requestId) && explanation) {
