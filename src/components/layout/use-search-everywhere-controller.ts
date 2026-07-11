@@ -2,12 +2,10 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import {
   textCandidatesToSearchResult,
   textSearchInteractionKind,
-  textSearchPartialNotice,
 } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
   buildSearchEntityAppendPatch,
-  buildSearchEntityPatch,
   executeSearchEntityQuery,
   type SearchEntityQueryResult,
 } from "@/components/layout/search-entity-query-session";
@@ -36,7 +34,6 @@ import {
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
 import {
-  buildTextSearchResultPatch,
   executeSearchTextQuery,
   planSearchTextQuery,
 } from "@/features/search/search-text-query-session";
@@ -52,6 +49,10 @@ import {
   reportSearchEverywhereMiss,
   reportTextSearchMiss,
 } from "@/components/layout/search-miss-reporting";
+import {
+  buildEntitySearchApplication,
+  buildTextSearchApplication,
+} from "@/components/layout/search-result-application";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -294,24 +295,23 @@ export function useSearchEverywhereController({
           replaceQueryReadiness(envelope.readiness);
         },
       }),
-      apply: ({ candidates, explain, nextCursor }, requestId) => {
+      apply: (result, requestId) => {
         recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
-        const { patch, visibleCount } = buildSearchEntityPatch({
-          candidates,
+        const application = buildEntitySearchApplication({
+          result,
           query,
           scope: searchEverywhereScope,
           displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
           activePath,
           recentPaths: getRecentPaths(),
-          nextCursor,
           readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
         });
-        searchSessionStoreRef.current.patch(patch);
-        if (visibleCount === 0 && query.trim()) {
+        searchSessionStoreRef.current.patch(application.patch);
+        if (application.missReport) {
           void reportSearchEverywhereMiss({
             requestId,
-            query,
-            explain,
+            query: application.missReport.query,
+            explain: application.missReport.explain,
             isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
             explainIndexMiss,
             recordRecentQueryExplain,
@@ -355,19 +355,14 @@ export function useSearchEverywhereController({
         convertIndexed: (items) => textCandidatesToSearchResult(workspace.rootPath, query, items),
         onIndexedReadiness: replaceQueryReadiness,
       }),
-      apply: ({ result, suppressMissExplain }, requestId) => {
+      apply: (result, requestId) => {
         recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
-        searchSessionStoreRef.current.patch({
-          ...buildTextSearchResultPatch(result),
-          truncationNotice: textSearchPartialNotice(result),
-        });
-        scheduleSelectedPreview(0);
+        const application = buildTextSearchApplication({ mode: searchEverywhereMode, query, result });
+        searchSessionStoreRef.current.patch(application.patch);
+        scheduleSelectedPreview(application.previewIndex);
         void reportTextSearchMiss({
-          mode: searchEverywhereMode,
           requestId,
-          query,
-          result,
-          suppressMissExplain,
+          ...application.missReport,
           isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
           explainIndexMiss,
           onStatusChange,
