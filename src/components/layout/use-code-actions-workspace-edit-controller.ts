@@ -1,59 +1,29 @@
-import { useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useRef, useState } from "react";
 import {
-  actionMatchesSource,
   pathWithinDirectory,
   replaceDirectoryPrefix,
   uniqueNormalizedPaths,
 } from "@/components/layout/app-shell-model";
 import {
+  buildCodeActionsEditorRequest,
+  codeActionsSourceStatus,
+  emptyCodeActionsMessage,
+  filterCodeActionsForSource,
+  type CodeActionsSource,
+} from "@/components/layout/code-actions-request-model";
+import {
   isWorkspaceEditPlan,
   type CodeActionsStatus,
   type ProjectMutationDialogState,
 } from "@/components/layout/app-shell-types";
+import type { UseCodeActionsWorkspaceEditControllerOptions } from "@/components/layout/code-actions-controller-types";
 import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import type {
-  WorkspaceApi,
   WorkspaceEditPreview as WorkspaceEditPreviewModel,
-  WorkspaceViewModel,
 } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
-
-type DocumentStoreRef = MutableRefObject<{
-  getDocument(path: string): { currentContent: string; isDirty: boolean } | undefined;
-  openDocument(path: string, content: string): void;
-  applyExternalChange(path: string, content: string): void;
-}>;
-
-type TabsStoreRef = MutableRefObject<{
-  state: {
-    openTabs: { path: string; title: string; isDirty: boolean }[];
-    recentFiles: string[];
-    activePath: string | null;
-  };
-}>;
-
-export type UseCodeActionsWorkspaceEditControllerOptions = {
-  workspace: WorkspaceViewModel | null;
-  workspaceApi: WorkspaceApi;
-  activePath: string | null;
-  editorSelection: { line: number; column: number };
-  settingsApplying: boolean;
-  getActiveContent: () => string;
-  documentsRef: DocumentStoreRef;
-  tabsRef: TabsStoreRef;
-  setWorkspace: Dispatch<SetStateAction<WorkspaceViewModel | null>>;
-  syncTabs: () => void;
-  syncWorkspaceIndex: (workspace: WorkspaceViewModel) => void;
-  setActiveDocument: (path: string | null) => void;
-  clearCompletionSession: () => void;
-  resetCompletionAnchor: () => void;
-  closeOverlay: () => void;
-  hideCurrentClassMethods: () => void;
-  focusEditorSoon: () => void;
-  onStatusChange: (message: string) => void;
-};
 
 export function useCodeActionsWorkspaceEditController({
   workspace,
@@ -339,7 +309,7 @@ export function useCodeActionsWorkspaceEditController({
     await previewWorkspaceMutationPlan(plan);
   }
 
-  async function showCodeActionsFromEditor(source: "all" | "rename" | "generate" | "refactor" = "all") {
+  async function showCodeActionsFromEditor(source: CodeActionsSource = "all") {
     if (settingsApplying) {
       onStatusChange("SDK settings are still applying");
       return;
@@ -351,12 +321,7 @@ export function useCodeActionsWorkspaceEditController({
 
     const requestId = codeActionsRequestRef.current + 1;
     codeActionsRequestRef.current = requestId;
-    const request = {
-      path: activePath,
-      line: editorSelection.line,
-      column: editorSelection.column,
-      content: getActiveContent(),
-    };
+    const request = buildCodeActionsEditorRequest({ activePath, editorSelection, getActiveContent });
 
     clearCompletionSession();
     resetCompletionAnchor();
@@ -368,7 +333,7 @@ export function useCodeActionsWorkspaceEditController({
     setCodeActionsMessage(undefined);
     setCodeActionsStatus("loading");
     setCodeActionsVisible(true);
-    onStatusChange(source === "all" ? "Code Actions" : source === "rename" ? "Rename Symbol" : source === "generate" ? "Generate Code" : "Refactor This");
+    onStatusChange(codeActionsSourceStatus(source));
 
     try {
       const actions = await workspaceApi.listCodeActions(request);
@@ -376,11 +341,11 @@ export function useCodeActionsWorkspaceEditController({
         return;
       }
 
-      const visibleActions = actions.filter((action) => actionMatchesSource(action, source));
+      const visibleActions = filterCodeActionsForSource(actions, source);
       setCodeActions(visibleActions);
       setCodeActionsSelectedIndex(0);
       setCodeActionsStatus(visibleActions.length > 0 ? "ready" : "empty");
-      setCodeActionsMessage(visibleActions.length > 0 ? undefined : `No ${source === "all" ? "code actions" : source} actions available`);
+      setCodeActionsMessage(visibleActions.length > 0 ? undefined : emptyCodeActionsMessage(source));
       onStatusChange(visibleActions.length > 0 ? `Code Actions: ${visibleActions.length}` : "Code Actions: none");
     } catch (error) {
       if (codeActionsRequestRef.current !== requestId) {
