@@ -5,6 +5,7 @@ import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentat
 import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
 import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app-shell-model";
 import { extractCompletionPrefix, getLineTextBeforeCursor } from "@/components/layout/app-shell-helpers";
+import { buildLanguageQueryRequest } from "@/components/layout/language-query-request-model";
 import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
@@ -109,13 +110,13 @@ export function useCompletionController({
     const languageSession = languageSessionStore.begin("completion", `completion:${trigger}`, COMPLETION_TIMEOUT_MS);
     const requestId = languageSession.requestId;
     completionRequestRef.current = requestId;
-    const selection = {
-      line: selectionOverride?.line ?? editorSelection.line,
-      column: selectionOverride?.column ?? editorSelection.column,
-    };
     const path = activePath;
-    const currentContent = getActiveContent();
-    const replacePrefix = extractCompletionPrefix(currentContent, selection.line, selection.column);
+    const request = buildLanguageQueryRequest({
+      activePath: path,
+      editorSelection: selectionOverride ?? editorSelection,
+      getActiveContent,
+    });
+    const replacePrefix = extractCompletionPrefix(request.content, request.line, request.column);
     const query = trigger === "typing" ? replacePrefix : "";
     let completionResult: { items: LanguageCompletionItem[]; explain?: string[] };
     try {
@@ -123,9 +124,9 @@ export function useCompletionController({
         workspaceApi,
         rootPath,
         path,
-        line: selection.line,
-        column: selection.column,
-        content: currentContent,
+        line: request.line,
+        column: request.column,
+        content: request.content,
         query,
         replacePrefix,
       }), languageSession.timeoutMs);
@@ -160,14 +161,14 @@ export function useCompletionController({
     if (emptyCompletionExplanation) {
       recordRecentQueryExplain({
         kind: "completion",
-        query: query || replacePrefix || `${getPathBasename(path)}:${selection.line}:${selection.column}`,
+        query: query || replacePrefix || `${getPathBasename(path)}:${request.line}:${request.column}`,
         message: emptyCompletionExplanation,
         explain: completionResult.explain,
       });
     }
     setCompletionItems(results);
     setCompletionReplacePrefix(replacePrefix);
-    setCompletionSession({ path, line: selection.line, replacePrefix });
+    setCompletionSession({ path, line: request.line, replacePrefix });
     setCompletionSelectedIndex(0);
     setQuickOpenQuery(query);
     setCompletionTrigger(trigger);

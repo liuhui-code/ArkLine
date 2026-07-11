@@ -118,6 +118,29 @@ describe("useCompletionController", () => {
     expect(result.current.completion.completionPresentationResults[0]?.label).toBe("width");
   });
 
+  it("passes a stable language query snapshot to completion providers", async () => {
+    const completeSymbol = vi.fn(async () => [
+      { label: "width", detail: "ArkUI property", kind: "property" },
+    ]);
+    const { result } = renderHarness({
+      activePath: "/workspace/Entry.ets",
+      activeContent: "Button().wid",
+      editorSelection: { line: 1, column: 13 },
+      workspaceApi: workspaceApi({ completeSymbol }),
+    });
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+
+    expect(completeSymbol).toHaveBeenCalledWith({
+      path: "/workspace/Entry.ets",
+      line: 1,
+      column: 13,
+      content: "Button().wid",
+    });
+  });
+
   it("reports a timeout for a stalled completion request", async () => {
     vi.useFakeTimers();
     const onStatusChange = vi.fn();
