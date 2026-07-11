@@ -13,7 +13,10 @@ import {
   executeSearchEntityQuery,
   type SearchEntityQueryResult,
 } from "@/components/layout/search-entity-query-session";
-import { buildTextSearchAppendPatch } from "@/components/layout/search-pagination-session";
+import {
+  buildTextSearchAppendPatch,
+  resolveSearchSelectionMove,
+} from "@/components/layout/search-pagination-session";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
 import {
   openSearchCandidateNavigation,
@@ -157,17 +160,18 @@ export function useSearchEverywhereController({
     const resultCount = searchEverywhereMode === "searchEverywhere"
       ? session.candidates.length
       : session.result.matches.length;
-    if (resultCount <= 0) return;
-    const normalized = Math.min(Math.max(session.selectedIndex, 0), resultCount - 1);
-    if (
-      direction > 0
-      && ((searchEverywhereMode === "searchEverywhere" && session.entityNextCursor) || (searchEverywhereMode !== "searchEverywhere" && session.textNextCursor))
-      && normalized === resultCount - 1
-    ) {
-      void loadNextSearchEverywherePage(resultCount);
+    const move = resolveSearchSelectionMove({
+      mode: searchEverywhereMode,
+      direction,
+      selectedIndex: session.selectedIndex,
+      resultCount,
+      canLoadMore: searchEverywhereMode === "searchEverywhere" ? Boolean(session.entityNextCursor) : Boolean(session.textNextCursor),
+    });
+    if (move.kind === "loadMore") {
+      void loadNextSearchEverywherePage(move.selectIndexAfterLoad);
       return;
     }
-    setSearchEverywhereSelectedIndex((normalized + direction + resultCount) % resultCount);
+    if (move.kind === "select") setSearchEverywhereSelectedIndex(move.selectedIndex);
   }
 
   function setSearchEverywhereSelectedIndex(selectedIndex: number) {

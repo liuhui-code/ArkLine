@@ -1,8 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { buildTextSearchAppendPatch } from "@/components/layout/search-pagination-session";
+import {
+  buildTextSearchAppendPatch,
+  resolveSearchSelectionMove,
+} from "@/components/layout/search-pagination-session";
 import type { WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 
 describe("search pagination session", () => {
+  it("wraps selection movement within visible results", () => {
+    expect(resolveSearchSelectionMove({
+      mode: "find",
+      direction: 1,
+      selectedIndex: 1,
+      resultCount: 3,
+      canLoadMore: false,
+    })).toEqual({ kind: "select", selectedIndex: 2 });
+
+    expect(resolveSearchSelectionMove({
+      mode: "find",
+      direction: -1,
+      selectedIndex: 0,
+      resultCount: 3,
+      canLoadMore: false,
+    })).toEqual({ kind: "select", selectedIndex: 2 });
+  });
+
+  it("loads the next page when moving past the final result", () => {
+    expect(resolveSearchSelectionMove({
+      mode: "searchEverywhere",
+      direction: 1,
+      selectedIndex: 49,
+      resultCount: 50,
+      canLoadMore: true,
+    })).toEqual({ kind: "loadMore", selectIndexAfterLoad: 50 });
+  });
+
+  it("does nothing when no results are visible", () => {
+    expect(resolveSearchSelectionMove({
+      mode: "replace",
+      direction: 1,
+      selectedIndex: 0,
+      resultCount: 0,
+      canLoadMore: true,
+    })).toEqual({ kind: "none" });
+  });
+
   it("appends text search pages and preserves selection by default", () => {
     const patch = buildTextSearchAppendPatch(
       {
