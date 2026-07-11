@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDefinitionController } from "@/components/layout/use-definition-controller";
+import { LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD } from "@/components/layout/language-query-request-model";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { idleUsageSearchState, type UsageSearchState } from "@/features/workspace/usage-search";
@@ -190,6 +191,29 @@ describe("useDefinitionController", () => {
 
     expect(getActiveContent).toHaveBeenCalledTimes(1);
     expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 2, column: 3 }));
+  });
+
+  it("skips legacy definition fallback for oversized requests after indexed miss", async () => {
+    const gotoDefinition = vi.fn(async () => ({ path: "/workspace/B.ets", line: 1, column: 1 }));
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useDefinitionController(options({
+      getActiveContent: () => "x".repeat(LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD),
+      workspaceApi: workspaceApi({
+        gotoDefinition,
+        queryDefinitionCandidatesWithReadiness: vi.fn(async () => ({
+          items: [],
+          readiness: readiness("ready"),
+        })),
+      }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(gotoDefinition).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenCalledWith(expect.stringContaining("Go to Definition skipped"));
   });
 });
 

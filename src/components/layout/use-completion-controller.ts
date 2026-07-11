@@ -6,6 +6,7 @@ import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
 import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app-shell-model";
 import { extractCompletionPrefix, getLineTextBeforeCursor } from "@/components/layout/app-shell-helpers";
 import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { decideLanguageQuerySync, formatLanguageQuerySyncBlockedMessage } from "@/components/layout/language-query-policy-guard";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
@@ -118,6 +119,22 @@ export function useCompletionController({
       getActiveContent,
     });
     languageQuerySnapshotStore.record({ kind: "completion", snapshot });
+    const syncDecision = decideLanguageQuerySync(snapshot);
+    if (!syncDecision.allowSyncRequest) {
+      languageSessionStore.complete(languageSession);
+      const message = formatLanguageQuerySyncBlockedMessage("Completion", syncDecision);
+      setCompletionItems([]);
+      setCompletionReplacePrefix("");
+      setCompletionSelectedIndex(0);
+      setCompletionSession(null);
+      setCompletionTrigger(trigger);
+      setCompletionStatus("empty");
+      setCompletionMessage(message);
+      setActiveOverlay((current) => (current === "completion" ? "none" : current));
+      focusEditorSoon();
+      onStatusChange(message);
+      return;
+    }
     const request = snapshot.request;
     const replacePrefix = extractCompletionPrefix(request.content, request.line, request.column);
     const query = trigger === "typing" ? replacePrefix : "";

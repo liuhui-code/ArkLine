@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsagesController } from "@/components/layout/use-usages-controller";
+import { LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD } from "@/components/layout/language-query-request-model";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { UsageResult } from "@/features/workspace/usage-search";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
@@ -79,6 +80,25 @@ describe("useUsagesController", () => {
     expect(result.current.queryPanelVisible).toBe(true);
     expect(result.current.usageSearch.status).toBe("error");
     expect(result.current.usageSearch.message).toBe("Find Usages unavailable");
+  });
+
+  it("skips legacy usage search for oversized requests without indexed query support", async () => {
+    const findUsages = vi.fn(async () => [usage({ line: 4 })]);
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useUsagesController(options({
+      getActiveContent: () => "x".repeat(LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD),
+      workspaceApi: workspaceApi({ findUsages }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.findUsagesFromEditor();
+    });
+
+    expect(findUsages).not.toHaveBeenCalled();
+    expect(result.current.usageSearch.status).toBe("empty");
+    expect(result.current.usageSearch.message).toContain("Find Usages skipped");
+    expect(onStatusChange).toHaveBeenCalledWith(expect.stringContaining("Find Usages skipped"));
   });
 
   it("opens selected usage results through navigation", async () => {

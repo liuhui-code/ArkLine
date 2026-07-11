@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { decideLanguageQuerySync, formatLanguageQuerySyncBlockedMessage } from "@/components/layout/language-query-policy-guard";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import {
   decideDefinitionEnvelope,
@@ -122,6 +123,7 @@ export function useDefinitionController({
       getActiveContent,
     });
     languageQuerySnapshotStore.record({ kind: "definition", snapshot });
+    const syncDecision = decideLanguageQuerySync(snapshot);
     const request = snapshot.request;
     const activeBasename = getPathBasename(activePath);
     onStatusChange(formatDefinitionQueryStatus(source, activeBasename, request.line, request.column));
@@ -245,6 +247,14 @@ export function useDefinitionController({
 
     if (!workspaceApi.gotoDefinition) {
       await showDefinitionMiss("indexedNoTarget");
+      completeDefinitionRequest();
+      return;
+    }
+
+    if (!syncDecision.allowSyncRequest) {
+      const message = formatLanguageQuerySyncBlockedMessage("Go to Definition", syncDecision);
+      setDefinitionDebug(message);
+      onStatusChange(message);
       completeDefinitionRequest();
       return;
     }

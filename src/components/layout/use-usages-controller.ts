@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
 import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { decideLanguageQuerySync, formatLanguageQuerySyncBlockedMessage } from "@/components/layout/language-query-policy-guard";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import { getPathBasename } from "@/features/workspace/workspace-store";
@@ -68,6 +69,14 @@ export function useUsagesController({
     const snapshot = buildLanguageQuerySnapshot({ activePath, editorSelection, getActiveContent });
     languageQuerySnapshotStore.record({ kind: "usages", snapshot });
     const request = snapshot.request;
+    const syncDecision = decideLanguageQuerySync(snapshot);
+    const hasIndexedUsageQuery = Boolean(workspace?.rootPath && workspaceApi.queryUsagesWithReadiness);
+    if (!syncDecision.allowSyncRequest && !hasIndexedUsageQuery) {
+      const message = formatLanguageQuerySyncBlockedMessage("Find Usages", syncDecision);
+      setUsageSearch({ status: "empty", items: [], requestedSymbol: request, message });
+      onStatusChange(message);
+      return;
+    }
     const languageSession = languageSessionStore.begin("usages", "usages:editor", USAGES_TIMEOUT_MS);
     usagesRequestRef.current = languageSession.requestId;
     const isStaleRequest = () => usagesRequestRef.current !== languageSession.requestId || !languageSessionStore.isCurrent(languageSession);

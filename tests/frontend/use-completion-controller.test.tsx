@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCompletionController } from "@/components/layout/use-completion-controller";
+import { LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD } from "@/components/layout/language-query-request-model";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { OverlayKey } from "@/components/layout/shell-state";
@@ -146,6 +147,25 @@ describe("useCompletionController", () => {
       column: 13,
       content: "Button().wid",
     });
+  });
+
+  it("skips oversized completion requests before calling language providers", async () => {
+    const completeSymbol = vi.fn(async () => [{ label: "width", detail: "ArkUI property", kind: "property" }]);
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      activeContent: "x".repeat(LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD),
+      workspaceApi: workspaceApi({ completeSymbol }),
+      onStatusChange,
+    });
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+
+    expect(completeSymbol).not.toHaveBeenCalled();
+    expect(result.current.completion.completionStatus).toBe("empty");
+    expect(result.current.completion.completionMessage).toContain("Completion skipped");
+    expect(onStatusChange).toHaveBeenCalledWith(expect.stringContaining("Completion skipped"));
   });
 
   it("reports a timeout for a stalled completion request", async () => {

@@ -31,3 +31,10 @@ export function decideLanguageQuerySync(snapshot: LanguageQuerySnapshot): Langua
     reason: "Content snapshot is within the synchronous request budget.",
   };
 }
+
+export function formatLanguageQuerySyncBlockedMessage(
+  action: "Completion" | "Go to Definition" | "Find Usages",
+  decision: LanguageQuerySyncDecision,
+) {
+  return `${action} skipped: ${decision.reason}`;
+}
