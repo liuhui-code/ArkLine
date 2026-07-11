@@ -150,6 +150,37 @@ describe("useDefinitionController", () => {
 
     expect(setSelectionTarget).toHaveBeenCalledTimes(1);
   });
+
+  it("uses one active content snapshot for same-file fallback definition", async () => {
+    const getActiveContent = vi.fn(() => [
+      "class A {",
+      "  run() {}",
+      "  build() {",
+      "    this.run();",
+      "  }",
+      "}",
+    ].join("\n"));
+    const setSelectionTarget = vi.fn();
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({
+        gotoDefinition: vi.fn(async () => null),
+      }),
+      workspace: {
+        ...workspace(),
+        visibleFiles: ["/workspace/A.ets"],
+      },
+      editorSelection: { line: 4, column: 11 },
+      getActiveContent,
+      setSelectionTarget,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(getActiveContent).toHaveBeenCalledTimes(1);
+    expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 2, column: 3 }));
+  });
 });
 
 function options(overrides: Partial<Parameters<typeof useDefinitionController>[0]> = {}) {

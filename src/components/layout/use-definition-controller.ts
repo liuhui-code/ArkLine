@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { buildLanguageQueryRequest } from "@/components/layout/language-query-request-model";
 import {
   decideDefinitionEnvelope,
   definitionCandidatesToUsageItems,
@@ -109,18 +110,16 @@ export function useDefinitionController({
       onStatusChange(formatDefinitionUnavailableStatus("lookupUnavailable"));
       return;
     }
-    const currentContent = getActiveContent();
     const languageSession = languageSessionStore.begin("definition", "definition:editor", DEFINITION_TIMEOUT_MS);
     const requestId = languageSession.requestId;
     definitionRequestRef.current = requestId;
     const isStaleRequest = () => definitionRequestRef.current !== requestId || !languageSessionStore.isCurrent(languageSession);
     const completeDefinitionRequest = () => languageSessionStore.complete(languageSession);
-    const request = {
-      path: activePath,
-      line: selectionOverride?.line ?? editorSelection.line,
-      column: selectionOverride?.column ?? editorSelection.column,
-      content: currentContent,
-    };
+    const request = buildLanguageQueryRequest({
+      activePath,
+      editorSelection: selectionOverride ?? editorSelection,
+      getActiveContent,
+    });
     const activeBasename = getPathBasename(activePath);
     onStatusChange(formatDefinitionQueryStatus(source, activeBasename, request.line, request.column));
     const queryDebugMessage = formatDefinitionQueryDebugMessage(source, activeBasename, request.line, request.column);
@@ -271,13 +270,13 @@ export function useDefinitionController({
 
     const fallbackRequest = {
       path: activePath,
-      content: currentContent,
+      content: request.content,
       line: request.line,
       column: request.column,
       workspaceFiles: workspace?.visibleFiles ?? [activePath],
       readFile: async (path: string) => {
         if (normalizePath(path) === normalizePath(activePath)) {
-          return getActiveContent();
+          return request.content;
         }
         try {
           return await workspaceApi.openFile(path);
