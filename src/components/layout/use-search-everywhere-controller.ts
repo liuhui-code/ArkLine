@@ -18,8 +18,8 @@ import {
   searchWorkspaceText,
   type WorkspaceTextSearchOptions,
 } from "@/features/search/workspace-text-search";
-import { scheduleSearchPreview } from "@/features/search/search-preview-loader";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
+import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
@@ -156,24 +156,14 @@ export function useSearchEverywhereController({
   }
 
   function scheduleSelectedPreview(selectedIndex: number) {
-    if (activeOverlay !== "searchEverywhere" || searchEverywhereMode === "searchEverywhere") {
-      searchSessionStoreRef.current.patch({ previewContent: null });
-      return;
-    }
-    const selected = searchSessionStoreRef.current.getSnapshot().result.matches[selectedIndex];
-    if (!selected) {
-      searchSessionStoreRef.current.patch({ previewContent: null });
-      return;
-    }
-    const requestId = interactionRuntimeRef.current.startPreview();
-    searchSessionStoreRef.current.patch({ previewContent: null });
-    scheduleSearchPreview({
-      path: selected.path,
-      requestId,
+    schedulePreviewSession({
+      activeOverlay,
+      mode: searchEverywhereMode,
+      selectedIndex,
       delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
+      sessionStore: searchSessionStoreRef.current,
+      interactionRuntime: interactionRuntimeRef.current,
       readFile: (path) => readSearchFile(path, false),
-      isCurrent: (id) => interactionRuntimeRef.current.isCurrentPreview(id),
-      onPreview: (content) => searchSessionStoreRef.current.patch({ previewContent: content }),
     });
   }
 
