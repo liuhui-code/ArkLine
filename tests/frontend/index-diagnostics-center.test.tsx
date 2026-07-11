@@ -1,9 +1,15 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexDiagnosticsCenter } from "@/components/layout/IndexDiagnosticsCenter";
+import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-api";
 
 describe("IndexDiagnosticsCenter", () => {
+  afterEach(() => {
+    languageQuerySnapshotStore.clear();
+  });
+
   it("renders UI latency evidence in the performance timeline", () => {
     render(
       <IndexDiagnosticsCenter
@@ -299,6 +305,43 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(currentFile).getByText("Discovery")).toBeVisible();
     expect(within(currentFile).getByText("ready")).toBeVisible();
     expect(within(currentFile).getByText("Entry.ets was discovered but has not completed foreground file catalog indexing.")).toBeVisible();
+  });
+
+  it("renders recent language query snapshot metadata", () => {
+    languageQuerySnapshotStore.record({
+      kind: "completion",
+      snapshot: buildLanguageQuerySnapshot({
+        activePath: "C:/workspace/src/Entry.ets",
+        editorSelection: { line: 6, column: 12 },
+        getActiveContent: () => "Button().width",
+      }),
+      createdAt: 1,
+    });
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const snapshots = screen.getByRole("region", { name: "Language Query Snapshots" });
+    expect(within(snapshots).getByText("completion · Entry.ets:6:12")).toBeVisible();
+    expect(within(snapshots).getByText("normal")).toBeVisible();
+    expect(within(snapshots).getByText("14 chars")).toBeVisible();
   });
 });
 

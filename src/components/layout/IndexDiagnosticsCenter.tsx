@@ -16,6 +16,8 @@ import {
 import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
 import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
+import { LanguageQuerySnapshotPanel } from "@/components/layout/LanguageQuerySnapshotPanel";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import "./index-diagnostics-center.css";
 
 type IndexDiagnosticsCenterProps = {
@@ -65,6 +67,7 @@ export function IndexDiagnosticsCenter({
 
   const queryEvents = diagnostics?.recentEvents.filter((event) => event.scope === "query") ?? [];
   const queryTimeline = buildQueryExplainTimeline({ frontend: recentQueryExplains, backend: queryEvents });
+  const languageQuerySnapshots = languageQuerySnapshotStore.snapshot();
   const dbSize = formatBytes(diagnostics?.dbSizeBytes ?? 0);
   const queuePressure = diagnostics?.queuePressure;
   const repairActions = diagnostics?.repairActions ?? [];
@@ -98,6 +101,7 @@ export function IndexDiagnosticsCenter({
             <span>Current File</span>
             <span>Layers</span>
             <span>Query Explain</span>
+            <span>Language Queries</span>
             <span>Health</span>
             <span>Timeline</span>
           </aside>
@@ -203,6 +207,8 @@ export function IndexDiagnosticsCenter({
                 <div className="index-diagnostics__empty">No query explain events yet.</div>
               ) : null}
             </section>
+
+            <LanguageQuerySnapshotPanel records={languageQuerySnapshots} />
 
             <section className="index-diagnostics__section" aria-label="Health / Storage">
               <div className="index-diagnostics__section-title">
