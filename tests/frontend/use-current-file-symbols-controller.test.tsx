@@ -38,6 +38,17 @@ describe("useCurrentFileSymbolsController", () => {
     expect(result.current.visibleCurrentClassMethods.map((method) => method.signature)).toEqual(["about(title: string)"]);
   });
 
+  it("does not read active document content before the file structure popup opens", () => {
+    const getActiveContent = vi.fn(() => content);
+    const { result } = renderHook(() => useCurrentFileSymbolsController(options({ getActiveContent })));
+
+    expect(getActiveContent).not.toHaveBeenCalled();
+
+    act(() => result.current.showCurrentClassMethods());
+
+    expect(getActiveContent).toHaveBeenCalledTimes(1);
+  });
+
   it("uses active document content instead of stale shell content", () => {
     const { result } = renderHook(() => useCurrentFileSymbolsController(options({
       getActiveContent: () => content,

@@ -1,3 +1,5 @@
+import { scanLines } from "@/features/workspace/text-line-scanner";
+
 export type CurrentClassMethod = {
   kind: "method" | "member";
   name: string;
@@ -9,6 +11,13 @@ export type CurrentClassMethod = {
 type ClassBlock = {
   startLine: number;
   endLine: number;
+  methods: CurrentClassMethod[];
+};
+
+type ActiveClassBlock = {
+  startLine: number;
+  depth: number;
+  methods: CurrentClassMethod[];
 };
 
 const classStartPattern = /^\s*(?:export\s+)?(?:abstract\s+)?(?:class|struct)\s+[A-Za-z_$][\w$]*[^{]*\{/;
@@ -17,75 +26,74 @@ const memberPattern = /^(\s*)(?:(?:public|private|protected|static|readonly|over
 const nonMethodNames = new Set(["if", "for", "while", "switch", "catch", "function"]);
 
 export function collectCurrentClassMethods(content: string, caretLine: number): CurrentClassMethod[] {
-  const lines = content.split("\n");
-  const block = findEnclosingClassBlock(lines, caretLine);
+  const block = findEnclosingClassBlock(content, Math.max(1, caretLine));
   if (!block) {
     return [];
   }
-
-  const methods: CurrentClassMethod[] = [];
-  let depth = 0;
-  for (let index = block.startLine - 1; index < block.endLine; index += 1) {
-    const line = lines[index] ?? "";
-    if (index > block.startLine - 1 && depth === 1) {
-      const match = methodPattern.exec(line);
-      if (match) {
-        const [, indent, name, args] = match;
-        if (!nonMethodNames.has(name) && !line.includes("=>") && !line.trimStart().startsWith(".")) {
-          methods.push({
-            kind: "method",
-            name,
-            signature: `${name}(${args.trim()})`,
-            line: index + 1,
-            column: indent.length + line.slice(indent.length).indexOf(name) + 1,
-          });
-        }
-      }
-
-      const memberMatch = memberPattern.exec(line);
-      if (memberMatch && !line.includes("(") && !line.trimStart().startsWith("@")) {
-        const [, indent, name, typeName] = memberMatch;
-        if (!nonMethodNames.has(name)) {
-          methods.push({
-            kind: "member",
-            name,
-            signature: typeName?.trim() ? `${name}: ${typeName.trim()}` : name,
-            line: index + 1,
-            column: indent.length + line.slice(indent.length).indexOf(name) + 1,
-          });
-        }
-      }
-    }
-    depth += braceDelta(line);
-  }
-
-  return methods;
+  return block.methods;
 }
 
-function findEnclosingClassBlock(lines: string[], caretLine: number): ClassBlock | null {
-  const caret = Math.max(1, Math.min(caretLine, lines.length));
+function findEnclosingClassBlock(content: string, caret: number): ClassBlock | null {
   let best: ClassBlock | null = null;
+  const activeBlocks: ActiveClassBlock[] = [];
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    if (!classStartPattern.test(line)) {
-      continue;
+  scanLines(content, ({ text: lineText, line }) => {
+    for (const block of activeBlocks) {
+      if (line > block.startLine && block.depth === 1) {
+        const method = parseCurrentClassMethod(lineText, line);
+        if (method) block.methods.push(method);
+      }
     }
 
-    let depth = 0;
-    for (let blockIndex = index; blockIndex < lines.length; blockIndex += 1) {
-      depth += braceDelta(lines[blockIndex] ?? "");
-      if (depth === 0) {
-        const block = { startLine: index + 1, endLine: blockIndex + 1 };
-        if (block.startLine <= caret && caret <= block.endLine) {
-          best = block;
-        }
-        break;
+    if (classStartPattern.test(lineText)) {
+      activeBlocks.push({ startLine: line, depth: 0, methods: [] });
+    }
+
+    const delta = braceDelta(lineText);
+    for (let index = activeBlocks.length - 1; index >= 0; index -= 1) {
+      const block = activeBlocks[index]!;
+      block.depth += delta;
+      if (block.depth !== 0) continue;
+      if (block.startLine <= caret && caret <= line) {
+        best = { startLine: block.startLine, endLine: line, methods: block.methods };
       }
+      activeBlocks.splice(index, 1);
+    }
+  });
+
+  return best;
+}
+
+function parseCurrentClassMethod(line: string, lineNumber: number): CurrentClassMethod | null {
+  const methodMatch = methodPattern.exec(line);
+  if (methodMatch) {
+    const [, indent, name, args] = methodMatch;
+    if (!nonMethodNames.has(name) && !line.includes("=>") && !line.trimStart().startsWith(".")) {
+      return {
+        kind: "method",
+        name,
+        signature: `${name}(${args.trim()})`,
+        line: lineNumber,
+        column: indent.length + line.slice(indent.length).indexOf(name) + 1,
+      };
     }
   }
 
-  return best;
+  const memberMatch = memberPattern.exec(line);
+  if (!memberMatch || line.includes("(") || line.trimStart().startsWith("@")) {
+    return null;
+  }
+  const [, indent, name, typeName] = memberMatch;
+  if (nonMethodNames.has(name)) {
+    return null;
+  }
+  return {
+    kind: "member",
+    name,
+    signature: typeName?.trim() ? `${name}: ${typeName.trim()}` : name,
+    line: lineNumber,
+    column: indent.length + line.slice(indent.length).indexOf(name) + 1,
+  };
 }
 
 function braceDelta(line: string) {

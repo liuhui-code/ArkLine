@@ -124,8 +124,8 @@ export function useCurrentFileSymbolsController({
   }
 
   const localCurrentClassMethods = useMemo(() => (
-    collectCurrentClassMethods(getActiveContent(), editorLine)
-  ), [editorLine, getActiveContent]);
+    currentMethodsVisible ? collectCurrentClassMethods(getActiveContent(), editorLine) : []
+  ), [currentMethodsVisible, editorLine, getActiveContent]);
 
   const currentClassMethods = useMemo(() => {
     const indexed = indexedCurrentMethods;
