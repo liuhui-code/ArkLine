@@ -4,7 +4,7 @@ import { createCompletionHistoryStore } from "@/components/layout/completion-his
 import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
 import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app-shell-model";
-import { extractCompletionPrefix } from "@/components/layout/app-shell-helpers";
+import { extractCompletionPrefix, getLineTextBeforeCursor } from "@/components/layout/app-shell-helpers";
 import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
@@ -375,12 +375,6 @@ export function useCompletionController({
     insertCompletionItem,
     syncCompletionForEditorSelection,
   };
-}
-
-function getLineTextBeforeCursor(content: string, line: number, column: number) {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[Math.max(0, line - 1)] ?? "";
-  return lineText.slice(0, Math.max(0, column - 1));
 }
 
 function completionInsertTextToPlainText(insertText: string) {

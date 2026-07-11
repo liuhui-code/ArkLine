@@ -14,11 +14,45 @@ export function parseGoToLineQuery(query: string) {
 }
 
 export function extractCompletionPrefix(content: string, line: number, column: number) {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[line - 1] ?? "";
-  const safeColumn = Math.max(column - 1, 0);
-  const prefix = lineText.slice(0, safeColumn).match(/[@A-Za-z0-9_$]+$/);
+  const prefix = getLineTextBeforeCursor(content, line, column).match(/[@A-Za-z0-9_$]+$/);
   return prefix?.[0] ?? "";
+}
+
+export function getLineTextBeforeCursor(content: string, line: number, column: number) {
+  const bounds = findLineBounds(content, line);
+  const safeColumn = Math.max(column - 1, 0);
+  return content.slice(bounds.start, Math.min(bounds.start + safeColumn, bounds.end));
+}
+
+function findLineBounds(content: string, line: number) {
+  const targetLine = Math.max(1, line);
+  let currentLine = 1;
+  let lineStart = 0;
+
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) !== 10) {
+      continue;
+    }
+
+    if (currentLine === targetLine) {
+      return { start: lineStart, end: trimCarriageReturn(content, index) };
+    }
+
+    currentLine += 1;
+    lineStart = index + 1;
+    if (currentLine > targetLine) {
+      break;
+    }
+  }
+
+  if (currentLine === targetLine) {
+    return { start: lineStart, end: content.length };
+  }
+  return { start: content.length, end: content.length };
+}
+
+function trimCarriageReturn(content: string, lineEnd: number) {
+  return lineEnd > 0 && content.charCodeAt(lineEnd - 1) === 13 ? lineEnd - 1 : lineEnd;
 }
 
 type CommandPaletteAction = {
