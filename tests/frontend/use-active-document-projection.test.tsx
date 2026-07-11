@@ -1,11 +1,11 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useRef } from "react";
 import { useActiveDocumentProjection } from "@/components/layout/use-active-document-projection";
 import { createDocumentStore } from "@/features/documents/document-store";
 
 describe("useActiveDocumentProjection", () => {
-  it("does not replace the projection for content-only updates after dirty state is stable", () => {
+  it("does not replace the projection for content-only updates after dirty state is stable", async () => {
     const { result } = renderHook(() => {
       const documentsRef = useRef(createDocumentStore());
       if (!documentsRef.current.getDocument("/workspace/A.ets")) {
@@ -24,13 +24,13 @@ describe("useActiveDocumentProjection", () => {
     act(() => {
       result.current.documentsRef.current.updateDocument("/workspace/A.ets", "initial text");
     });
+    await waitFor(() => expect(result.current.projection.isDirty).toBe(true));
     const dirtyProjection = result.current.projection;
 
     act(() => {
       result.current.documentsRef.current.updateDocument("/workspace/A.ets", "initial text!");
     });
 
-    expect(result.current.projection).toBe(dirtyProjection);
-    expect(result.current.projection.isDirty).toBe(true);
+    await waitFor(() => expect(result.current.projection).toBe(dirtyProjection));
   });
 });

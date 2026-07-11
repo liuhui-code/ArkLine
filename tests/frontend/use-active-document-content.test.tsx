@@ -1,11 +1,11 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { describe, expect, it } from "vitest";
 import { useActiveDocumentContent } from "@/components/layout/use-active-document-content";
 import { createDocumentStore } from "@/features/documents/document-store";
 
 describe("useActiveDocumentContent", () => {
-  it("subscribes to the active document content only", () => {
+  it("subscribes to the active document content only", async () => {
     const { result } = renderHook(() => {
       const documentsRef = useRef(createDocumentStore());
       if (!documentsRef.current.getDocument("/workspace/A.ets")) {
@@ -27,6 +27,6 @@ describe("useActiveDocumentContent", () => {
     act(() => {
       result.current.documentsRef.current.updateDocument("/workspace/A.ets", "A changed");
     });
-    expect(result.current.content).toBe("A changed");
+    await waitFor(() => expect(result.current.content).toBe("A changed"));
   });
 });

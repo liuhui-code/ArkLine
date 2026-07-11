@@ -1,4 +1,5 @@
 import { createDocumentStore } from "@/features/documents/document-store";
+import { vi } from "vitest";
 
 describe("document store safety", () => {
   it("keeps a dirty buffer when the file changes externally", () => {
@@ -19,5 +20,34 @@ describe("document store safety", () => {
 
     expect(store.applyExternalChange("C:/work/main.ets", "disk edit")).toBe("updated");
     expect(store.getDocument("C:/work/main.ets")?.currentContent).toBe("disk edit");
+  });
+
+  it("coalesces repeated notifications for the same path", async () => {
+    const store = createDocumentStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.openDocument("C:/work/main.ets", "original");
+    store.updateDocument("C:/work/main.ets", "edit 1");
+    store.updateDocument("C:/work/main.ets", "edit 2");
+
+    expect(listener).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0]?.[0]).toBe(listener.mock.calls[0]?.[1].path);
+    expect(listener.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ currentContent: "edit 2" }));
+  });
+
+  it("keeps separate notifications for different paths", async () => {
+    const store = createDocumentStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    store.openDocument("C:/work/A.ets", "A");
+    store.openDocument("C:/work/B.ets", "B");
+
+    await Promise.resolve();
+    expect(listener.mock.calls.map((call) => call[1].path)).toEqual(listener.mock.calls.map((call) => call[0]));
+    expect(listener.mock.calls.map((call) => call[1].currentContent)).toEqual(["A", "B"]);
   });
 });

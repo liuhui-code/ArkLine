@@ -13,9 +13,23 @@ export type ExternalChangeResult = "updated" | "conflict";
 export function createDocumentStore() {
   const documents = new Map<string, DocumentRecord>();
   const listeners = new Set<(path: string, document: DocumentRecord) => void>();
+  const pendingNotifications = new Map<string, DocumentRecord>();
+  let notificationScheduled = false;
 
   function notify(path: string, document: DocumentRecord) {
-    listeners.forEach((listener) => listener(path, document));
+    pendingNotifications.set(path, document);
+    if (notificationScheduled) {
+      return;
+    }
+    notificationScheduled = true;
+    queueMicrotask(() => {
+      notificationScheduled = false;
+      const pending = [...pendingNotifications.entries()];
+      pendingNotifications.clear();
+      pending.forEach(([pendingPath, pendingDocument]) => {
+        listeners.forEach((listener) => listener(pendingPath, pendingDocument));
+      });
+    });
   }
 
   return {
