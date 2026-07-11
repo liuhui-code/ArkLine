@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSearchEntityQueryRequest,
   buildSearchEntityAppendPatch,
   buildSearchEntityPatch,
   executeSearchEntityQuery,
@@ -8,6 +9,50 @@ import {
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 describe("search entity query session", () => {
+  it("builds readiness-first entity query requests", async () => {
+    const envelope = {
+      items: [candidate("file", "Entry.ets")],
+      readiness: readinessState(),
+      explain: ["reason:ready"],
+      nextCursor: 5,
+    };
+    const readiness = async () => envelope;
+    const indexed = async () => [candidate("class", "Fallback")];
+    const observed: unknown[] = [];
+
+    const input = buildSearchEntityQueryRequest({
+      query: "Entry",
+      scope: "all",
+      limit: 25,
+      runReadiness: readiness,
+      runIndexed: indexed,
+      runLegacy: undefined,
+      runLocal: () => [],
+      onReadiness: (value) => observed.push(value),
+    });
+    const result = await executeSearchEntityQuery(input);
+
+    expect(result).toEqual({ candidates: envelope.items, explain: ["reason:ready"], nextCursor: 5 });
+    expect(observed).toEqual([envelope]);
+  });
+
+  it("builds local fallback entity query requests", async () => {
+    const input = buildSearchEntityQueryRequest({
+      query: "Entry",
+      scope: "classes",
+      limit: 25,
+      runReadiness: undefined,
+      runIndexed: undefined,
+      runLegacy: undefined,
+      runLocal: () => [candidate("class", "Entry")],
+      onReadiness: () => undefined,
+    });
+
+    await expect(executeSearchEntityQuery(input)).resolves.toEqual({
+      candidates: [candidate("class", "Entry")],
+    });
+  });
+
   it("filters legacy candidates by scope", () => {
     const result = filterLegacySearchEntityCandidates([
       candidate("file", "Entry.ets"),

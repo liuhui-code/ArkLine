@@ -31,6 +31,37 @@ export type SearchEntityQueryExecutionInput = {
   onReadiness: (envelope: WorkspaceIndexQueryEnvelope<SearchCandidate>) => void;
 };
 
+export type SearchEntityQueryRequestInput = {
+  query: string;
+  scope: WorkspaceIndexQueryScope;
+  limit: number;
+  runReadiness?: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  runIndexed?: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => Promise<SearchCandidate[]>;
+  runLegacy?: (query: string, limit: number) => Promise<SearchCandidate[]>;
+  runLocal: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
+  onReadiness: (envelope: WorkspaceIndexQueryEnvelope<SearchCandidate>) => void;
+};
+
+export function buildSearchEntityQueryRequest({
+  query,
+  scope,
+  limit,
+  runReadiness,
+  runIndexed,
+  runLegacy,
+  runLocal,
+  onReadiness,
+}: SearchEntityQueryRequestInput): SearchEntityQueryExecutionInput {
+  return {
+    runReadiness: runReadiness ? () => runReadiness(query, scope, limit) : undefined,
+    runIndexed: runIndexed ? () => runIndexed(query, scope, limit) : undefined,
+    runLegacy: runLegacy ? () => runLegacy(query, limit) : undefined,
+    runLocal: () => runLocal(query, scope, limit),
+    scope,
+    onReadiness,
+  };
+}
+
 export function filterLegacySearchEntityCandidates(
   candidates: SearchCandidate[],
   scope: WorkspaceIndexQueryScope,

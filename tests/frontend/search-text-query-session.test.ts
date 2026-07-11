@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSearchTextQueryRequest,
   buildTextSearchResultPatch,
   executeSearchTextQuery,
   planSearchTextQuery,
@@ -76,6 +77,42 @@ describe("search text query session", () => {
 
     expect(result.result.matches[0]?.summary).toBe("indexed");
     expect(result.suppressMissExplain).toBe(true);
+  });
+
+  it("builds text query requests with indexed and fallback runners", async () => {
+    const readiness = readinessState("ready");
+    const input = buildSearchTextQueryRequest({
+      plan: { kind: "indexed", query: "width" },
+      rootPath: "/workspace",
+      query: "width",
+      generation: 42,
+      runIndexed: async (rootPath, query, scope, limit) => {
+        expect([rootPath, query, scope, limit]).toEqual(["/workspace", "width", "text", 50]);
+        return { items: [candidate()], readiness };
+      },
+      runFallback: async (_query, _generation) => textResult("fallback"),
+      convertIndexed: () => textResult("indexed"),
+      onIndexedReadiness: (next) => expect(next).toBe(readiness),
+    });
+    const result = await executeSearchTextQuery(input);
+
+    expect(result.result.matches[0]?.summary).toBe("indexed");
+  });
+
+  it("passes the query generation to fallback text search requests", async () => {
+    const input = buildSearchTextQueryRequest({
+      plan: { kind: "fallback", query: "width" },
+      rootPath: "/workspace",
+      query: "width",
+      generation: 99,
+      runIndexed: async () => ({ items: [candidate()], readiness: readinessState("ready") }),
+      runFallback: async (query, generation) => textResult(`${query}:${generation}`),
+      convertIndexed: () => textResult("indexed"),
+      onIndexedReadiness: () => undefined,
+    });
+    const result = await executeSearchTextQuery(input);
+
+    expect(result.result.matches[0]?.summary).toBe("width:99");
   });
 
   it("falls back when indexed readiness is missing and empty", async () => {

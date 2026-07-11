@@ -32,6 +32,41 @@ export type SearchTextQueryExecutionInput = {
   onIndexedReadiness: (readiness: WorkspaceIndexReadiness) => void;
 };
 
+export type SearchTextQueryRequestInput = {
+  plan: SearchTextQueryPlan;
+  rootPath: string;
+  query: string;
+  generation: number;
+  runIndexed: (
+    rootPath: string,
+    query: string,
+    scope: "text",
+    limit: number,
+  ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  runFallback: (query: string, generation: number) => Promise<WorkspaceTextSearchResult>;
+  convertIndexed: (items: SearchCandidate[]) => WorkspaceTextSearchResult;
+  onIndexedReadiness: (readiness: WorkspaceIndexReadiness) => void;
+};
+
+export function buildSearchTextQueryRequest({
+  plan,
+  rootPath,
+  query,
+  generation,
+  runIndexed,
+  runFallback,
+  convertIndexed,
+  onIndexedReadiness,
+}: SearchTextQueryRequestInput): SearchTextQueryExecutionInput {
+  return {
+    plan,
+    runIndexed: () => runIndexed(rootPath, query, "text", 50),
+    runFallback: () => runFallback(query, generation),
+    convertIndexed,
+    onIndexedReadiness,
+  };
+}
+
 export function buildTextSearchResultPatch(result: WorkspaceTextSearchResult) {
   return {
     result,

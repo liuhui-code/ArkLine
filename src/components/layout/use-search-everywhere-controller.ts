@@ -5,6 +5,7 @@ import {
 } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
+  buildSearchEntityQueryRequest,
   buildSearchEntityAppendPatch,
   executeSearchEntityQuery,
   type SearchEntityQueryResult,
@@ -34,6 +35,7 @@ import {
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
 import {
+  buildSearchTextQueryRequest,
   executeSearchTextQuery,
   planSearchTextQuery,
 } from "@/features/search/search-text-query-session";
@@ -279,22 +281,24 @@ export function useSearchEverywhereController({
     const startedAt = Date.now();
     void interactionRuntimeRef.current.trackQuery<SearchEntityQueryResult>({
       generation: requestId,
-      request: executeSearchEntityQuery({
+      request: executeSearchEntityQuery(buildSearchEntityQueryRequest({
+        query,
+        scope: searchEverywhereScope,
+        limit: SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1,
         runReadiness: workspaceApi.queryWorkspaceCandidatesWithReadiness
-          ? () => workspaceApi.queryWorkspaceCandidatesWithReadiness!(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
+          ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidatesWithReadiness!(workspace.rootPath, query, scope, limit)
           : undefined,
         runIndexed: workspaceApi.queryWorkspaceCandidates
-          ? () => workspaceApi.queryWorkspaceCandidates!(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
+          ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidates!(workspace.rootPath, query, scope, limit)
           : undefined,
         runLegacy: workspaceApi.queryWorkspaceSearchEverywhere
-          ? () => workspaceApi.queryWorkspaceSearchEverywhere!(workspace.rootPath, query, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
+          ? (query, limit) => workspaceApi.queryWorkspaceSearchEverywhere!(workspace.rootPath, query, limit)
           : undefined,
-        runLocal: () => queryIndexCandidates(query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1),
-        scope: searchEverywhereScope,
+        runLocal: queryIndexCandidates,
         onReadiness: (envelope) => {
           replaceQueryReadiness(envelope.readiness);
         },
-      }),
+      })),
       apply: (result, requestId) => {
         recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
         const application = buildEntitySearchApplication({
@@ -348,13 +352,16 @@ export function useSearchEverywhereController({
 
     void interactionRuntimeRef.current.trackQuery({
       generation: requestId,
-      request: executeSearchTextQuery({
+      request: executeSearchTextQuery(buildSearchTextQueryRequest({
         plan,
-        runIndexed: () => indexedText!(workspace.rootPath, query, "text", 50),
-        runFallback: () => fallbackTextSearch(query, dirty, requestId),
+        rootPath: workspace.rootPath,
+        query,
+        generation: requestId,
+        runIndexed: (rootPath, query, scope, limit) => indexedText!(rootPath, query, scope, limit),
+        runFallback: (query, generation) => fallbackTextSearch(query, dirty, generation),
         convertIndexed: (items) => textCandidatesToSearchResult(workspace.rootPath, query, items),
         onIndexedReadiness: replaceQueryReadiness,
-      }),
+      })),
       apply: (result, requestId) => {
         recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
         const application = buildTextSearchApplication({ mode: searchEverywhereMode, query, result });
