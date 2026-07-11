@@ -4,6 +4,7 @@ import {
   buildLanguageQuerySnapshot,
   classifyLanguageQueryContent,
   LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD,
+  LANGUAGE_QUERY_CONTENT_BUDGET,
 } from "@/components/layout/language-query-request-model";
 import { LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD } from "@/editor/editor-document-budget";
 
@@ -39,8 +40,39 @@ describe("language query request model", () => {
       contentLength: LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD,
       largeDocument: true,
       contentClass: "large",
+      contentBudgetExceeded: true,
     });
     expect(getActiveContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a budgeted content slice when active content length is known", () => {
+    const getActiveContent = vi.fn(() => "full content should not be requested");
+    const getActiveContentLength = vi.fn(() => LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD);
+    const getActiveContentSlice = vi.fn((start: number, end: number) => `slice:${start}:${end}`);
+
+    const snapshot = buildLanguageQuerySnapshot({
+      activePath: "/workspace/Huge.ets",
+      editorSelection: { line: 9, column: 4 },
+      getActiveContent,
+      getActiveContentLength,
+      getActiveContentSlice,
+    });
+
+    expect(snapshot.request).toEqual({
+      path: "/workspace/Huge.ets",
+      line: 9,
+      column: 4,
+      content: `slice:0:${LANGUAGE_QUERY_CONTENT_BUDGET}`,
+    });
+    expect(snapshot.meta).toEqual({
+      contentLength: LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD,
+      largeDocument: true,
+      contentClass: "oversized",
+      contentBudgetExceeded: true,
+    });
+    expect(getActiveContent).not.toHaveBeenCalled();
+    expect(getActiveContentLength).toHaveBeenCalledTimes(1);
+    expect(getActiveContentSlice).toHaveBeenCalledWith(0, LANGUAGE_QUERY_CONTENT_BUDGET);
   });
 
   it("classifies normal large and oversized language query content", () => {

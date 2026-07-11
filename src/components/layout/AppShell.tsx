@@ -83,6 +83,11 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const getActiveContent = useCallback(() => (
     activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? "" : ""
   ), [activePath, documentsRef]);
+  const activeContentReader = {
+    getActiveContent,
+    getActiveContentLength: () => activePath ? documentsRef.current.getDocument(activePath)?.currentContent.length ?? 0 : 0,
+    getActiveContentSlice: (start: number, end: number) => activePath ? documentsRef.current.getDocument(activePath)?.currentContent.slice(start, end) ?? "" : "",
+  };
   const activeDocumentProjection = useActiveDocumentProjection({ documentsRef, activePath, line: editorSelection.line, column: editorSelection.column, selectedText: editorSelectedText });
   const { focusEditor, focusEditorSoon, isEditorFocused, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
     activePath,
@@ -226,7 +231,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     quickOpenQuery,
     activeOverlay,
     settingsApplying,
-    getActiveContent,
+    ...activeContentReader,
     setActiveOverlay,
     setQuickOpenQuery,
     setInsertTextTarget,
@@ -301,7 +306,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspace,
     activePath,
     editorSelection,
-    getActiveContent,
+    ...activeContentReader,
     settingsApplying,
     rememberCurrentLocation,
     navigateToUsage: (item) => navigateToLocation({ path: item.path, line: item.line, column: item.column }, "Usage"),
@@ -313,7 +318,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspace,
     activePath,
     editorSelection,
-    getActiveContent,
+    ...activeContentReader,
     settingsApplying,
     openEditorQueryPanel,
     setUsageSearch,

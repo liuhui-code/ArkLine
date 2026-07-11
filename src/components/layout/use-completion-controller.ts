@@ -28,6 +28,8 @@ export type UseCompletionControllerOptions = {
   activeOverlay: OverlayKey;
   settingsApplying: boolean;
   getActiveContent: () => string;
+  getActiveContentLength?: () => number;
+  getActiveContentSlice?: (start: number, end: number) => string;
   setActiveOverlay: Dispatch<SetStateAction<OverlayKey>>;
   setQuickOpenQuery: (query: string) => void;
   setInsertTextTarget: (target: { text: string; replaceBefore?: number; nonce: number } | null) => void;
@@ -47,6 +49,8 @@ export function useCompletionController({
   activeOverlay,
   settingsApplying,
   getActiveContent,
+  getActiveContentLength,
+  getActiveContentSlice,
   setActiveOverlay,
   setQuickOpenQuery,
   setInsertTextTarget,
@@ -117,6 +121,8 @@ export function useCompletionController({
       activePath: path,
       editorSelection: selectionOverride ?? editorSelection,
       getActiveContent,
+      getActiveContentLength,
+      getActiveContentSlice,
     });
     languageQuerySnapshotStore.record({ kind: "completion", snapshot });
     const syncDecision = decideLanguageQuerySync(snapshot);

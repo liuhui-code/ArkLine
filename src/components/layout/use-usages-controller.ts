@@ -16,6 +16,8 @@ export type UseUsagesControllerOptions = {
   activePath: string | null;
   editorSelection: { line: number; column: number };
   getActiveContent: () => string;
+  getActiveContentLength?: () => number;
+  getActiveContentSlice?: (start: number, end: number) => string;
   settingsApplying: boolean;
   rememberCurrentLocation: () => void;
   navigateToUsage: (item: UsageResult) => Promise<void>;
@@ -34,6 +36,8 @@ export function useUsagesController({
   activePath,
   editorSelection,
   getActiveContent,
+  getActiveContentLength,
+  getActiveContentSlice,
   settingsApplying,
   rememberCurrentLocation,
   navigateToUsage,
@@ -66,7 +70,13 @@ export function useUsagesController({
       setUsageSearch({ status: "error", items: [], message: "Find Usages unavailable" });
       return;
     }
-    const snapshot = buildLanguageQuerySnapshot({ activePath, editorSelection, getActiveContent });
+    const snapshot = buildLanguageQuerySnapshot({
+      activePath,
+      editorSelection,
+      getActiveContent,
+      getActiveContentLength,
+      getActiveContentSlice,
+    });
     languageQuerySnapshotStore.record({ kind: "usages", snapshot });
     const request = snapshot.request;
     const syncDecision = decideLanguageQuerySync(snapshot);
