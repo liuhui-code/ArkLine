@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
-  capSearchEverywhereCandidates,
-  orderSearchEverywhereCandidates,
-} from "@/components/layout/search-overlay-model";
-import {
   normalizeSelectedSearchText,
   searchOverlayLabel,
   textCandidatesToSearchResult,
@@ -11,7 +7,12 @@ import {
   textSearchPartialNotice,
 } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
-import { filterSearchCandidatesByScope, searchEverywhereEntityCandidates } from "@/components/layout/app-shell-model";
+import {
+  searchEverywhereEntityCandidates,
+  buildSearchEntityPatch,
+  filterLegacySearchEntityCandidates,
+  type SearchEntityQueryResult,
+} from "@/components/layout/search-entity-query-session";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
   searchWorkspaceText,
@@ -265,7 +266,7 @@ export function useSearchEverywhereController({
       return;
     }
     const startedAt = Date.now();
-    const indexRequest: Promise<{ candidates: SearchCandidate[]; explain?: string[]; nextCursor?: number | null }> = workspaceApi.queryWorkspaceCandidatesWithReadiness
+    const indexRequest: Promise<SearchEntityQueryResult> = workspaceApi.queryWorkspaceCandidatesWithReadiness
       ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
         .then((envelope) => {
           replaceQueryReadiness(envelope.readiness);
@@ -275,35 +276,24 @@ export function useSearchEverywhereController({
       ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1).then((candidates) => ({ candidates }))
       : workspaceApi.queryWorkspaceSearchEverywhere
       ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, query, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
-        .then((candidates) => filterSearchCandidatesByScope(candidates, searchEverywhereScope))
-        .then((candidates) => ({ candidates }))
+        .then((candidates) => filterLegacySearchEntityCandidates(candidates, searchEverywhereScope))
       : Promise.resolve({ candidates: queryIndexCandidates(query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1) });
 
     void trackSearchRequest(requestId, indexRequest).then(({ candidates, explain, nextCursor }) => {
       if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
       recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
-      const visibleCandidates = searchEverywhereEntityCandidates(candidates);
-      const ordered = orderSearchEverywhereCandidates(visibleCandidates, {
-        activePath,
-        recentPaths: getRecentPaths(),
-      });
-      const capped = capSearchEverywhereCandidates(ordered, {
+      const { patch, visibleCount } = buildSearchEntityPatch({
+        candidates,
+        query,
         scope: searchEverywhereScope,
         displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
+        activePath,
+        recentPaths: getRecentPaths(),
+        nextCursor,
+        readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
       });
-      searchSessionStoreRef.current.patch({
-        candidates: capped.items,
-        truncationNotice: capped.metadata.truncated
-        ? `Showing ${capped.metadata.returnedCount} of at least ${capped.metadata.fetchedCount} ${searchEverywhereScope} result(s). Refine the query to see more.`
-        : null,
-        result: { query: { kind: "text", query: query.trim() }, matches: [] },
-        selectedIndex: 0,
-        previewContent: null,
-        entityNextCursor: workspaceApi.queryWorkspaceCandidatesWithReadiness && capped.metadata.truncated ? capped.items.length : nextCursor ?? null,
-        textNextCursor: null,
-        textPageLoading: false,
-      });
-      if (visibleCandidates.length === 0 && query.trim()) explainSearchEverywhereMiss(requestId, query, explain);
+      searchSessionStoreRef.current.patch(patch);
+      if (visibleCount === 0 && query.trim()) explainSearchEverywhereMiss(requestId, query, explain);
     });
   }
 
