@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildLanguageQueryRequest } from "@/components/layout/language-query-request-model";
+import {
+  buildLanguageQueryRequest,
+  buildLanguageQuerySnapshot,
+} from "@/components/layout/language-query-request-model";
+import { LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD } from "@/editor/editor-document-budget";
 
 describe("language query request model", () => {
   it("builds a stable language query request from the active document snapshot", () => {
@@ -14,6 +18,24 @@ describe("language query request model", () => {
       line: 7,
       column: 5,
       content: "class Entry {}",
+    });
+    expect(getActiveContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports snapshot metadata without changing the request payload", () => {
+    const content = "x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD);
+    const getActiveContent = vi.fn(() => content);
+
+    const snapshot = buildLanguageQuerySnapshot({
+      activePath: "/workspace/Large.ets",
+      editorSelection: { line: 1, column: 1 },
+      getActiveContent,
+    });
+
+    expect(snapshot.request.content).toBe(content);
+    expect(snapshot.meta).toEqual({
+      contentLength: LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD,
+      largeDocument: true,
     });
     expect(getActiveContent).toHaveBeenCalledTimes(1);
   });

@@ -1,3 +1,5 @@
+import { isLargeEditorDocument } from "@/editor/editor-document-budget";
+
 export type LanguageQuerySnapshotInput = {
   activePath: string;
   editorSelection: { line: number; column: number };
@@ -11,11 +13,30 @@ export type LanguageQueryEditorRequest = {
   content: string;
 };
 
+export type LanguageQuerySnapshot = {
+  request: LanguageQueryEditorRequest;
+  meta: {
+    contentLength: number;
+    largeDocument: boolean;
+  };
+};
+
 export function buildLanguageQueryRequest(input: LanguageQuerySnapshotInput): LanguageQueryEditorRequest {
+  return buildLanguageQuerySnapshot(input).request;
+}
+
+export function buildLanguageQuerySnapshot(input: LanguageQuerySnapshotInput): LanguageQuerySnapshot {
+  const content = input.getActiveContent();
   return {
-    path: input.activePath,
-    line: input.editorSelection.line,
-    column: input.editorSelection.column,
-    content: input.getActiveContent(),
+    request: {
+      path: input.activePath,
+      line: input.editorSelection.line,
+      column: input.editorSelection.column,
+      content,
+    },
+    meta: {
+      contentLength: content.length,
+      largeDocument: isLargeEditorDocument(content),
+    },
   };
 }
