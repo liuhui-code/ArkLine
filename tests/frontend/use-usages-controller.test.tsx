@@ -1,12 +1,14 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useUsagesController } from "@/components/layout/use-usages-controller";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { UsageResult } from "@/features/workspace/usage-search";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 
 describe("useUsagesController", () => {
   afterEach(() => {
     vi.useRealTimers();
+    languageQuerySnapshotStore.clear();
   });
 
   it("finds usages through the readiness-aware facade", async () => {
@@ -29,6 +31,11 @@ describe("useUsagesController", () => {
     expect(result.current.queryPanelVisible).toBe(true);
     expect(result.current.usageSearch.status).toBe("ready");
     expect(result.current.usageSearch.items).toEqual([item]);
+    expect(languageQuerySnapshotStore.snapshot()[0]).toMatchObject({
+      kind: "usages",
+      path: "/workspace/A.ets",
+      contentClass: "normal",
+    });
     expect(onStatusChange).toHaveBeenCalledWith("Usages: 1 matches");
   });
 

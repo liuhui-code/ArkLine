@@ -5,7 +5,8 @@ import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentat
 import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
 import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app-shell-model";
 import { extractCompletionPrefix, getLineTextBeforeCursor } from "@/components/layout/app-shell-helpers";
-import { buildLanguageQueryRequest } from "@/components/layout/language-query-request-model";
+import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
@@ -111,11 +112,13 @@ export function useCompletionController({
     const requestId = languageSession.requestId;
     completionRequestRef.current = requestId;
     const path = activePath;
-    const request = buildLanguageQueryRequest({
+    const snapshot = buildLanguageQuerySnapshot({
       activePath: path,
       editorSelection: selectionOverride ?? editorSelection,
       getActiveContent,
     });
+    languageQuerySnapshotStore.record({ kind: "completion", snapshot });
+    const request = snapshot.request;
     const replacePrefix = extractCompletionPrefix(request.content, request.line, request.column);
     const query = trigger === "typing" ? replacePrefix : "";
     let completionResult: { items: LanguageCompletionItem[]; explain?: string[] };

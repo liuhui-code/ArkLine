@@ -47,3 +47,5 @@ export function createLanguageQuerySnapshotStore(limit = 20) {
     },
   };
 }
+
+export const languageQuerySnapshotStore = createLanguageQuerySnapshotStore();

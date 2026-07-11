@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { buildLanguageQueryRequest } from "@/components/layout/language-query-request-model";
+import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import {
   decideDefinitionEnvelope,
   definitionCandidatesToUsageItems,
@@ -115,11 +116,13 @@ export function useDefinitionController({
     definitionRequestRef.current = requestId;
     const isStaleRequest = () => definitionRequestRef.current !== requestId || !languageSessionStore.isCurrent(languageSession);
     const completeDefinitionRequest = () => languageSessionStore.complete(languageSession);
-    const request = buildLanguageQueryRequest({
+    const snapshot = buildLanguageQuerySnapshot({
       activePath,
       editorSelection: selectionOverride ?? editorSelection,
       getActiveContent,
     });
+    languageQuerySnapshotStore.record({ kind: "definition", snapshot });
+    const request = snapshot.request;
     const activeBasename = getPathBasename(activePath);
     onStatusChange(formatDefinitionQueryStatus(source, activeBasename, request.line, request.column));
     const queryDebugMessage = formatDefinitionQueryDebugMessage(source, activeBasename, request.line, request.column);

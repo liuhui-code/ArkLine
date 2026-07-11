@@ -5,12 +5,13 @@ import {
   uniqueNormalizedPaths,
 } from "@/components/layout/app-shell-model";
 import {
-  buildCodeActionsEditorRequest,
+  buildCodeActionsEditorSnapshot,
   codeActionsSourceStatus,
   emptyCodeActionsMessage,
   filterCodeActionsForSource,
   type CodeActionsSource,
 } from "@/components/layout/code-actions-request-model";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import {
   isWorkspaceEditPlan,
   type CodeActionsStatus,
@@ -321,7 +322,9 @@ export function useCodeActionsWorkspaceEditController({
 
     const requestId = codeActionsRequestRef.current + 1;
     codeActionsRequestRef.current = requestId;
-    const request = buildCodeActionsEditorRequest({ activePath, editorSelection, getActiveContent });
+    const snapshot = buildCodeActionsEditorSnapshot({ activePath, editorSelection, getActiveContent });
+    languageQuerySnapshotStore.record({ kind: "codeActions", snapshot });
+    const request = snapshot.request;
 
     clearCompletionSession();
     resetCompletionAnchor();

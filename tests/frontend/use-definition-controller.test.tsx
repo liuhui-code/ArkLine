@@ -1,10 +1,15 @@
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { useDefinitionController } from "@/components/layout/use-definition-controller";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { idleUsageSearchState, type UsageSearchState } from "@/features/workspace/usage-search";
 
 describe("useDefinitionController", () => {
+  afterEach(() => {
+    languageQuerySnapshotStore.clear();
+  });
+
   it("opens indexed resolved definition targets", async () => {
     const openFile = vi.fn(async () => undefined);
     const setSelectionTarget = vi.fn();
@@ -27,6 +32,11 @@ describe("useDefinitionController", () => {
 
     expect(openFile).toHaveBeenCalledWith("/workspace/B.ets");
     expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 8, column: 2 }));
+    expect(languageQuerySnapshotStore.snapshot()[0]).toMatchObject({
+      kind: "definition",
+      path: "/workspace/A.ets",
+      contentClass: "normal",
+    });
     expect(onStatusChange).toHaveBeenCalledWith("Definition: B.ets:8:2");
   });
 

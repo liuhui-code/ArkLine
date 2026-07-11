@@ -2,12 +2,14 @@ import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCompletionController } from "@/components/layout/use-completion-controller";
+import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { OverlayKey } from "@/components/layout/shell-state";
 
 describe("useCompletionController", () => {
   afterEach(() => {
     vi.useRealTimers();
+    languageQuerySnapshotStore.clear();
   });
 
   it("opens manual completion results in the completion overlay", async () => {
@@ -28,6 +30,11 @@ describe("useCompletionController", () => {
     expect(result.current.overlay).toBe("completion");
     expect(result.current.completion.completionPopupVisible).toBe(true);
     expect(result.current.completion.completionPresentationResults.map((item) => item.label)).toEqual(["build()"]);
+    expect(languageQuerySnapshotStore.snapshot()[0]).toMatchObject({
+      kind: "completion",
+      path: "/workspace/A.ets",
+      contentClass: "normal",
+    });
     expect(onStatusChange).toHaveBeenCalledWith("Completion: 1 items");
   });
 
