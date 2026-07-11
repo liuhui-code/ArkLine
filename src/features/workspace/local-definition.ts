@@ -1,4 +1,5 @@
 import { normalizePath, splitPathSegments } from "@/features/workspace/workspace-store";
+import { getLineText, getOffsetAtLineColumn, scanLines } from "@/features/workspace/text-line-scanner";
 
 export type DefinitionLocation = {
   path: string;
@@ -29,19 +30,6 @@ type ImportBinding = {
 };
 
 const identifierPattern = /[A-Za-z0-9_$]/;
-
-function getOffsetAtLineColumn(content: string, line: number, column: number) {
-  const lines = content.split("\n");
-  const safeLine = Math.min(Math.max(line, 1), lines.length);
-  let offset = 0;
-
-  for (let index = 0; index < safeLine - 1; index += 1) {
-    offset += (lines[index] ?? "").length + 1;
-  }
-
-  const currentLine = lines[safeLine - 1] ?? "";
-  return Math.min(offset + Math.max(column - 1, 0), offset + currentLine.length);
-}
 
 function getIdentifierAtOffset(content: string, offset: number) {
   if (!content) {
@@ -76,7 +64,7 @@ function escapeRegExp(value: string) {
 }
 
 function previewDeclarationLine(content: string, line: number) {
-  return (content.split("\n")[line - 1] ?? "").trim();
+  return getLineText(content, line).trim();
 }
 
 function findDeclarationInContent(path: string, content: string, identifier: string): DefinitionLocation | null {
@@ -88,23 +76,23 @@ function findDeclarationInContent(path: string, content: string, identifier: str
     new RegExp(`^\\s*export\\s+default\\s+(?:struct|class|interface|enum|type|function)\\s+(${escapedIdentifier})\\b`),
   ];
 
-  const lines = content.split("\n");
-
   for (const matcher of declarationMatchers) {
-    for (let index = 0; index < lines.length; index += 1) {
-      const lineText = lines[index] ?? "";
+    let declaration: DefinitionLocation | null = null;
+    scanLines(content, ({ text: lineText, line }) => {
       const match = lineText.match(matcher);
 
       if (!match || !match[1]) {
-        continue;
+        return;
       }
 
-      return {
+      declaration = {
         path,
-        line: index + 1,
+        line,
         column: lineText.indexOf(match[1]) + 1,
       };
-    }
+      return false;
+    });
+    if (declaration) return declaration;
   }
 
   return null;
