@@ -14,6 +14,7 @@ import {
   type SearchEntityQueryResult,
 } from "@/components/layout/search-entity-query-session";
 import { buildTextSearchAppendPatch } from "@/components/layout/search-pagination-session";
+import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
   searchWorkspaceText,
@@ -91,7 +92,6 @@ export function useSearchEverywhereController({
   recordUiInteraction,
   onStatusChange,
 }: UseSearchEverywhereControllerOptions) {
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
   const [searchEverywhereScope, setSearchEverywhereScope] = useState<WorkspaceIndexQueryScope>("all");
   const [searchEverywhereReplaceQuery, setSearchEverywhereReplaceQuery] = useState("");
@@ -110,6 +110,14 @@ export function useSearchEverywhereController({
     void workspaceApiRef.current.cancelWorkspaceSearch(rootPath, kind, generation).catch(() => undefined);
   } }));
   const navigationCloseHandledRef = useRef(false);
+  const { debouncedSearchQuery, resetDebouncedSearchQuery } = useSearchOverlayDebouncedQuery({
+    activeOverlay,
+    quickOpenQuery,
+    mode: searchEverywhereMode,
+    debounceMs: SEARCH_DEBOUNCE_MS,
+    navigationCloseHandledRef,
+    invalidateSearchSession,
+  });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
     setSearchEverywhereMode(mode);
@@ -135,7 +143,7 @@ export function useSearchEverywhereController({
     const startedAt = Date.now();
     invalidateSearchSession();
     recordUiInteraction?.("searchClose", searchOverlayLabel(searchEverywhereMode), startedAt, Date.now());
-    setDebouncedSearchQuery("");
+    resetDebouncedSearchQuery();
     searchSessionStoreRef.current.patch({ selectedIndex: 0, previewContent: null });
   }
 
@@ -213,20 +221,6 @@ export function useSearchEverywhereController({
   function toggleSearchEverywhereWholeWord() {
     setSearchEverywhereOptions((current) => ({ ...current, wholeWord: !current.wholeWord }));
   }
-
-  useEffect(() => {
-    if (activeOverlay !== "searchEverywhere") {
-      if (navigationCloseHandledRef.current) {
-        navigationCloseHandledRef.current = false;
-      } else {
-        invalidateSearchSession();
-      }
-      setDebouncedSearchQuery(quickOpenQuery);
-      return;
-    }
-    const timeout = window.setTimeout(() => setDebouncedSearchQuery(quickOpenQuery), SEARCH_DEBOUNCE_MS[searchEverywhereMode]);
-    return () => window.clearTimeout(timeout);
-  }, [activeOverlay, quickOpenQuery, searchEverywhereMode]);
 
   useEffect(() => {
     if (activeOverlay !== "searchEverywhere") return;
