@@ -1,6 +1,7 @@
 import type { LanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
 
 export type LanguageQuerySnapshotKind = "completion" | "definition" | "usages" | "codeActions";
+export type LanguageQuerySnapshotPolicy = "fullContent" | "preferIndexed" | "preferWorkerOrIndex";
 
 export type LanguageQuerySnapshotRecordInput = {
   kind: LanguageQuerySnapshotKind;
@@ -16,8 +17,31 @@ export type LanguageQuerySnapshotRecord = {
   column: number;
   contentLength: number;
   contentClass: LanguageQuerySnapshot["meta"]["contentClass"];
+  policy: LanguageQuerySnapshotPolicy;
   createdAt: number;
 };
+
+export function languageQuerySnapshotPolicy(
+  contentClass: LanguageQuerySnapshot["meta"]["contentClass"],
+): LanguageQuerySnapshotPolicy {
+  if (contentClass === "oversized") {
+    return "preferWorkerOrIndex";
+  }
+  if (contentClass === "large") {
+    return "preferIndexed";
+  }
+  return "fullContent";
+}
+
+export function formatLanguageQuerySnapshotPolicy(policy: LanguageQuerySnapshotPolicy) {
+  if (policy === "preferWorkerOrIndex") {
+    return "Prefer worker/index path";
+  }
+  if (policy === "preferIndexed") {
+    return "Prefer indexed result";
+  }
+  return "Full content request";
+}
 
 export function createLanguageQuerySnapshotStore(limit = 20) {
   const records: LanguageQuerySnapshotRecord[] = [];
@@ -33,6 +57,7 @@ export function createLanguageQuerySnapshotStore(limit = 20) {
         column: input.snapshot.request.column,
         contentLength: input.snapshot.meta.contentLength,
         contentClass: input.snapshot.meta.contentClass,
+        policy: languageQuerySnapshotPolicy(input.snapshot.meta.contentClass),
         createdAt,
       };
       records.unshift(next);

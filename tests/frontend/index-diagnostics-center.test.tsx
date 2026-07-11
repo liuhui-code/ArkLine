@@ -341,7 +341,7 @@ describe("IndexDiagnosticsCenter", () => {
     const snapshots = screen.getByRole("region", { name: "Language Query Snapshots" });
     expect(within(snapshots).getByText("completion · Entry.ets:6:12")).toBeVisible();
     expect(within(snapshots).getByText("normal")).toBeVisible();
-    expect(within(snapshots).getByText("14 chars")).toBeVisible();
+    expect(within(snapshots).getByText("14 chars · Full content request")).toBeVisible();
   });
 });
 
