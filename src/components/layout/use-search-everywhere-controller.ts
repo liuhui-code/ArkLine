@@ -14,12 +14,12 @@ import type { SearchEverywhereMode } from "@/components/layout/SearchEverywhereP
 import { filterSearchCandidatesByScope, searchEverywhereEntityCandidates } from "@/components/layout/app-shell-model";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
-  parseSearchQuery,
   searchWorkspaceText,
   type WorkspaceTextSearchOptions,
 } from "@/features/search/workspace-text-search";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
+import { planSearchTextQuery } from "@/features/search/search-text-query-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
@@ -313,15 +313,19 @@ export function useSearchEverywhereController({
     }
     const startedAt = Date.now();
     const dirty = hasDirtyDocuments();
-    const parsedTextQuery = parseSearchQuery(query);
     const indexedText = workspaceApi.queryWorkspaceCandidatesWithReadiness;
-    const canUseIndexedTextFacade = indexedText
-      && parsedTextQuery.kind === "text"
-      && Boolean(parsedTextQuery.query)
-      && !searchEverywhereOptions.caseSensitive
-      && !searchEverywhereOptions.wholeWord
-      && !dirty;
-    const searchRequest = canUseIndexedTextFacade
+    const plan = planSearchTextQuery({
+      query,
+      minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
+      options: searchEverywhereOptions,
+      dirty,
+      indexedAvailable: Boolean(indexedText),
+    });
+    if (plan.kind === "clear") {
+      clearSearchResults(plan.query);
+      return;
+    }
+    const searchRequest = plan.kind === "indexed" && indexedText
       ? indexedText(workspace.rootPath, query, "text", 50).then((envelope) => {
         replaceQueryReadiness(envelope.readiness);
         if (envelope.readiness.state === "missing" && envelope.items.length === 0) {
