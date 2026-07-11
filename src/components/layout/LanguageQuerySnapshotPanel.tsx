@@ -14,7 +14,7 @@ export function LanguageQuerySnapshotPanel({ records }: { records: LanguageQuery
       {records.length > 0 ? records.map((record) => (
         <div className="index-diagnostics__event" key={record.id}>
           <span>{record.kind} · {getPathBasename(record.path)}:{record.line}:{record.column}</span>
-          <strong>{record.contentClass}</strong>
+          <strong>{record.contentClass} · {record.syncDecision.label}</strong>
           <code>{record.contentLength.toLocaleString()} chars · {formatLanguageQuerySnapshotPolicy(record.policy)}</code>
         </div>
       )) : (

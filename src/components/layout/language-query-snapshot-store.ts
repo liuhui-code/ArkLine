@@ -1,4 +1,8 @@
 import type { LanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import {
+  decideLanguageQuerySync,
+  type LanguageQuerySyncDecision,
+} from "@/components/layout/language-query-policy-guard";
 
 export type LanguageQuerySnapshotKind = "completion" | "definition" | "usages" | "codeActions";
 export type LanguageQuerySnapshotPolicy = "fullContent" | "preferIndexed" | "preferWorkerOrIndex";
@@ -18,6 +22,7 @@ export type LanguageQuerySnapshotRecord = {
   contentLength: number;
   contentClass: LanguageQuerySnapshot["meta"]["contentClass"];
   policy: LanguageQuerySnapshotPolicy;
+  syncDecision: LanguageQuerySyncDecision;
   createdAt: number;
 };
 
@@ -58,6 +63,7 @@ export function createLanguageQuerySnapshotStore(limit = 20) {
         contentLength: input.snapshot.meta.contentLength,
         contentClass: input.snapshot.meta.contentClass,
         policy: languageQuerySnapshotPolicy(input.snapshot.meta.contentClass),
+        syncDecision: decideLanguageQuerySync(input.snapshot),
         createdAt,
       };
       records.unshift(next);

@@ -51,6 +51,11 @@ describe("language query snapshot store", () => {
       "preferIndexed",
       "fullContent",
     ]);
+    expect(store.snapshot().map((record) => record.syncDecision.allowSyncRequest)).toEqual([
+      false,
+      true,
+      true,
+    ]);
   });
 });
 
