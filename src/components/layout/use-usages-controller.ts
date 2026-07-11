@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
+import { buildLanguageQueryRequest } from "@/components/layout/language-query-request-model";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 import { idleUsageSearchState, type UsageResult, type UsageSearchState } from "@/features/workspace/usage-search";
@@ -63,12 +64,7 @@ export function useUsagesController({
       setUsageSearch({ status: "error", items: [], message: "Find Usages unavailable" });
       return;
     }
-    const request = {
-      path: activePath,
-      line: editorSelection.line,
-      column: editorSelection.column,
-      content: getActiveContent(),
-    };
+    const request = buildLanguageQueryRequest({ activePath, editorSelection, getActiveContent });
     const languageSession = languageSessionStore.begin("usages", "usages:editor", USAGES_TIMEOUT_MS);
     usagesRequestRef.current = languageSession.requestId;
     const isStaleRequest = () => usagesRequestRef.current !== languageSession.requestId || !languageSessionStore.isCurrent(languageSession);

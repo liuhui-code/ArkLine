@@ -1,4 +1,5 @@
 import { actionMatchesSource } from "@/components/layout/app-shell-model";
+import { buildLanguageQueryRequest, type LanguageQuerySnapshotInput } from "@/components/layout/language-query-request-model";
 import type { CodeAction } from "@/features/code-actions/code-action-model";
 
 export type CodeActionsSource = "all" | "rename" | "generate" | "refactor";
@@ -10,17 +11,8 @@ export type CodeActionsEditorRequest = {
   content: string;
 };
 
-export function buildCodeActionsEditorRequest(input: {
-  activePath: string;
-  editorSelection: { line: number; column: number };
-  getActiveContent: () => string;
-}): CodeActionsEditorRequest {
-  return {
-    path: input.activePath,
-    line: input.editorSelection.line,
-    column: input.editorSelection.column,
-    content: input.getActiveContent(),
-  };
+export function buildCodeActionsEditorRequest(input: LanguageQuerySnapshotInput): CodeActionsEditorRequest {
+  return buildLanguageQueryRequest(input);
 }
 
 export function filterCodeActionsForSource(actions: CodeAction[], source: CodeActionsSource) {
