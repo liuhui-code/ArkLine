@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSearchEntityAppendPatch,
   buildSearchEntityPatch,
+  executeSearchEntityQuery,
   filterLegacySearchEntityCandidates,
 } from "@/components/layout/search-entity-query-session";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -52,6 +54,48 @@ describe("search entity query session", () => {
 
     expect(patch.entityNextCursor).toBe(12);
   });
+
+  it("executes readiness entity queries and reports readiness", async () => {
+    const envelope = {
+      items: [candidate("file", "Entry.ets")],
+      readiness: readinessState(),
+      explain: ["query:entity"],
+      nextCursor: 2,
+    };
+    const result = await executeSearchEntityQuery({
+      runReadiness: async () => envelope,
+      runLocal: () => [],
+      scope: "all",
+      onReadiness: (next) => expect(next).toBe(envelope),
+    });
+
+    expect(result).toMatchObject({ candidates: envelope.items, explain: ["query:entity"], nextCursor: 2 });
+  });
+
+  it("executes legacy entity queries through scope filtering", async () => {
+    const result = await executeSearchEntityQuery({
+      runLegacy: async () => [candidate("file", "Entry.ets"), candidate("class", "Entry")],
+      runLocal: () => [],
+      scope: "files",
+      onReadiness: () => undefined,
+    });
+
+    expect(result.candidates.map((item) => item.source)).toEqual(["file"]);
+  });
+
+  it("builds append patches for paged entity results", () => {
+    const patch = buildSearchEntityAppendPatch(
+      [candidate("file", "Entry.ets")],
+      [candidate("text", "width"), candidate("class", "Entry")],
+      10,
+      1,
+    );
+
+    expect(patch.candidates.map((item) => item.source)).toEqual(["file", "class"]);
+    expect(patch.entityNextCursor).toBe(10);
+    expect(patch.selectedIndex).toBe(1);
+    expect(patch.textPageLoading).toBe(false);
+  });
 });
 
 function candidate(source: SearchCandidate["source"], title: string, path = `/workspace/${title}`): SearchCandidate {
@@ -66,5 +110,15 @@ function candidate(source: SearchCandidate["source"], title: string, path = `/wo
     column: 1,
     score: 1,
     freshness: "ready",
+  };
+}
+
+function readinessState() {
+  return {
+    rootPath: "/workspace",
+    requestedGeneration: 1,
+    servedGeneration: 1,
+    state: "ready" as const,
+    retryable: false,
   };
 }

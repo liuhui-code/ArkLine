@@ -8,9 +8,9 @@ import {
 } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
-  searchEverywhereEntityCandidates,
+  buildSearchEntityAppendPatch,
   buildSearchEntityPatch,
-  filterLegacySearchEntityCandidates,
+  executeSearchEntityQuery,
   type SearchEntityQueryResult,
 } from "@/components/layout/search-entity-query-session";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
@@ -266,18 +266,22 @@ export function useSearchEverywhereController({
       return;
     }
     const startedAt = Date.now();
-    const indexRequest: Promise<SearchEntityQueryResult> = workspaceApi.queryWorkspaceCandidatesWithReadiness
-      ? workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
-        .then((envelope) => {
+    const indexRequest: Promise<SearchEntityQueryResult> = executeSearchEntityQuery({
+      runReadiness: workspaceApi.queryWorkspaceCandidatesWithReadiness
+        ? () => workspaceApi.queryWorkspaceCandidatesWithReadiness!(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
+        : undefined,
+      runIndexed: workspaceApi.queryWorkspaceCandidates
+        ? () => workspaceApi.queryWorkspaceCandidates!(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
+        : undefined,
+      runLegacy: workspaceApi.queryWorkspaceSearchEverywhere
+        ? () => workspaceApi.queryWorkspaceSearchEverywhere!(workspace.rootPath, query, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
+        : undefined,
+      runLocal: () => queryIndexCandidates(query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1),
+      scope: searchEverywhereScope,
+      onReadiness: (envelope) => {
           replaceQueryReadiness(envelope.readiness);
-          return { candidates: envelope.items, explain: envelope.explain, nextCursor: envelope.nextCursor ?? null };
-        })
-      : workspaceApi.queryWorkspaceCandidates
-      ? workspaceApi.queryWorkspaceCandidates(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1).then((candidates) => ({ candidates }))
-      : workspaceApi.queryWorkspaceSearchEverywhere
-      ? workspaceApi.queryWorkspaceSearchEverywhere(workspace.rootPath, query, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1)
-        .then((candidates) => filterLegacySearchEntityCandidates(candidates, searchEverywhereScope))
-      : Promise.resolve({ candidates: queryIndexCandidates(query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1) });
+        },
+    });
 
     void trackSearchRequest(requestId, indexRequest).then(({ candidates, explain, nextCursor }) => {
       if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
@@ -357,12 +361,12 @@ export function useSearchEverywhereController({
       searchSessionStoreRef.current.patch({ textPageLoading: true });
       const envelope = await workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT, session.entityNextCursor);
       if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
-      searchSessionStoreRef.current.patch({
-        candidates: [...session.candidates, ...searchEverywhereEntityCandidates(envelope.items)],
-        entityNextCursor: envelope.nextCursor ?? null,
-        textPageLoading: false,
-        selectedIndex: selectIndexAfterLoad ?? session.selectedIndex,
-      });
+      searchSessionStoreRef.current.patch(buildSearchEntityAppendPatch(
+        session.candidates,
+        envelope.items,
+        envelope.nextCursor,
+        selectIndexAfterLoad ?? session.selectedIndex,
+      ));
       return;
     }
     if (!session.textNextCursor) return;
