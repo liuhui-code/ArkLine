@@ -23,6 +23,7 @@ import {
   openSearchResultNavigation,
   openSelectedSearchNavigation,
 } from "@/components/layout/search-navigation-action";
+import { buildSearchEverywhereControllerResult } from "@/components/layout/search-controller-result";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
   searchWorkspaceText,
@@ -37,7 +38,6 @@ import {
   shouldExplainTextSearchMiss,
 } from "@/features/search/search-text-query-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
-import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { WorkspaceApi, WorkspaceIndexQueryScope, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -457,24 +457,9 @@ export function useSearchEverywhereController({
     });
   }
 
-  return searchSessionCompat({
-    searchEverywhereMode,
-    searchEverywhereScope,
-    setSearchEverywhereScope,
-    searchEverywhereReplaceQuery,
-    setSearchEverywhereReplaceQuery,
-    searchEverywhereOptions,
+  return buildSearchEverywhereControllerResult({
+    state: { searchEverywhereMode, searchEverywhereScope, searchEverywhereReplaceQuery, searchEverywhereOptions },
+    actions: { setSearchEverywhereScope, setSearchEverywhereReplaceQuery, setSearchEverywhereSelectedIndex, openSearchOverlay, handleOverlayQueryChange, resetSearchOverlayState, moveSearchEverywhereSelection, openSearchEverywhereResult, openSearchEverywhereCandidate, openSelectedSearchEverywhereResult, loadNextSearchEverywherePage, toggleSearchEverywhereCaseSensitive, toggleSearchEverywhereWholeWord },
     searchSessionStore: searchSessionStoreRef.current,
-    setSearchEverywhereSelectedIndex,
-    openSearchOverlay,
-    handleOverlayQueryChange,
-    resetSearchOverlayState,
-    moveSearchEverywhereSelection,
-    openSearchEverywhereResult,
-    openSearchEverywhereCandidate,
-    openSelectedSearchEverywhereResult,
-    loadNextSearchEverywherePage,
-    toggleSearchEverywhereCaseSensitive,
-    toggleSearchEverywhereWholeWord,
-  }, searchSessionStoreRef.current);
+  });
 }
