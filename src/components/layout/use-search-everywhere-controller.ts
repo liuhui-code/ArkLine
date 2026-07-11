@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   textCandidatesToSearchResult,
-  textSearchInteractionKind,
 } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
   buildSearchEntityQueryRequest,
   buildSearchEntityAppendPatch,
   executeSearchEntityQuery,
-  type SearchEntityQueryResult,
 } from "@/components/layout/search-entity-query-session";
 import {
   buildTextSearchAppendPatch,
@@ -52,9 +50,9 @@ import {
   reportTextSearchMiss,
 } from "@/components/layout/search-miss-reporting";
 import {
-  buildEntitySearchApplication,
-  buildTextSearchApplication,
-} from "@/components/layout/search-result-application";
+  runEntitySearchRequest,
+  runTextSearchRequest,
+} from "@/components/layout/search-request-runner";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -273,15 +271,14 @@ export function useSearchEverywhereController({
 
   function runEntitySearch(requestId: number) {
     const query = debouncedSearchQuery;
-    const normalizedQuery = query.trim();
-    if (!workspace || normalizedQuery.length < MIN_SEARCH_QUERY_LENGTH) {
-      clearSearchResults(normalizedQuery);
-      return;
-    }
-    const startedAt = Date.now();
-    void interactionRuntimeRef.current.trackQuery<SearchEntityQueryResult>({
-      generation: requestId,
-      request: executeSearchEntityQuery(buildSearchEntityQueryRequest({
+    if (!workspace) return;
+    runEntitySearchRequest({
+      requestId,
+      query,
+      minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
+      trackQuery: interactionRuntimeRef.current.trackQuery,
+      clearSearchResults,
+      request: () => executeSearchEntityQuery(buildSearchEntityQueryRequest({
         query,
         scope: searchEverywhereScope,
         limit: SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1,
@@ -299,29 +296,25 @@ export function useSearchEverywhereController({
           replaceQueryReadiness(envelope.readiness);
         },
       })),
-      apply: (result, requestId) => {
-        recordUiInteraction?.("searchEverywhere", query.trim(), startedAt, Date.now());
-        const application = buildEntitySearchApplication({
-          result,
-          query,
-          scope: searchEverywhereScope,
-          displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
-          activePath,
-          recentPaths: getRecentPaths(),
-          readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
+      application: {
+        scope: searchEverywhereScope,
+        displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
+        activePath,
+        recentPaths: getRecentPaths(),
+        readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
+      },
+      patchSearchSession: searchSessionStoreRef.current.patch,
+      recordUiInteraction,
+      reportMiss: (requestId, missReport) => {
+        void reportSearchEverywhereMiss({
+          requestId,
+          query: missReport.query,
+          explain: missReport.explain,
+          isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
+          explainIndexMiss,
+          recordRecentQueryExplain,
+          onStatusChange,
         });
-        searchSessionStoreRef.current.patch(application.patch);
-        if (application.missReport) {
-          void reportSearchEverywhereMiss({
-            requestId,
-            query: application.missReport.query,
-            explain: application.missReport.explain,
-            isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
-            explainIndexMiss,
-            recordRecentQueryExplain,
-            onStatusChange,
-          });
-        }
       },
     });
   }
@@ -330,12 +323,6 @@ export function useSearchEverywhereController({
     if (!workspace) return;
     searchSessionStoreRef.current.patch({ candidates: [], truncationNotice: null });
     const query = debouncedSearchQuery;
-    const normalizedQuery = query.trim();
-    if (normalizedQuery.length < MIN_SEARCH_QUERY_LENGTH) {
-      clearSearchResults(normalizedQuery);
-      return;
-    }
-    const startedAt = Date.now();
     const dirty = hasDirtyDocuments();
     const indexedText = workspaceApi.queryWorkspaceCandidatesWithReadiness;
     const plan = planSearchTextQuery({
@@ -350,9 +337,15 @@ export function useSearchEverywhereController({
       return;
     }
 
-    void interactionRuntimeRef.current.trackQuery({
-      generation: requestId,
-      request: executeSearchTextQuery(buildSearchTextQueryRequest({
+    runTextSearchRequest({
+      requestId,
+      mode: searchEverywhereMode,
+      query,
+      minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
+      trackQuery: interactionRuntimeRef.current.trackQuery,
+      clearSearchResults,
+      patchSearchSession: searchSessionStoreRef.current.patch,
+      request: () => executeSearchTextQuery(buildSearchTextQueryRequest({
         plan,
         rootPath: workspace.rootPath,
         query,
@@ -362,14 +355,12 @@ export function useSearchEverywhereController({
         convertIndexed: (items) => textCandidatesToSearchResult(workspace.rootPath, query, items),
         onIndexedReadiness: replaceQueryReadiness,
       })),
-      apply: (result, requestId) => {
-        recordUiInteraction?.(textSearchInteractionKind(searchEverywhereMode), query.trim(), startedAt, Date.now());
-        const application = buildTextSearchApplication({ mode: searchEverywhereMode, query, result });
-        searchSessionStoreRef.current.patch(application.patch);
-        scheduleSelectedPreview(application.previewIndex);
+      recordUiInteraction,
+      scheduleSelectedPreview,
+      reportMiss: (requestId, missReport) => {
         void reportTextSearchMiss({
           requestId,
-          ...application.missReport,
+          ...missReport,
           isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
           explainIndexMiss,
           onStatusChange,
