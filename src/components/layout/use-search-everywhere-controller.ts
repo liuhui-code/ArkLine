@@ -18,6 +18,7 @@ import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overl
 import {
   openSearchCandidateNavigation,
   openSearchResultNavigation,
+  openSelectedSearchNavigation,
 } from "@/components/layout/search-navigation-action";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
@@ -210,13 +211,16 @@ export function useSearchEverywhereController({
 
   async function openSelectedSearchEverywhereResult() {
     const session = searchSessionStoreRef.current.getSnapshot();
-    if (searchEverywhereMode === "searchEverywhere") {
-      const selectedCandidate = session.candidates[session.selectedIndex];
-      if (selectedCandidate) await openSearchEverywhereCandidate(selectedCandidate);
-      return;
-    }
-    const selected = session.result.matches[session.selectedIndex];
-    if (selected) await openSearchEverywhereResult(selected.path, selected.line, selected.column);
+    await openSelectedSearchNavigation({
+      mode: searchEverywhereMode,
+      selectedIndex: session.selectedIndex,
+      candidates: session.candidates,
+      matches: session.result.matches,
+      rememberCurrentLocation,
+      closeSearchOverlayForNavigation,
+      navigateToLocation,
+      recordUiInteraction,
+    });
   }
 
   function toggleSearchEverywhereCaseSensitive() {
