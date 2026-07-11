@@ -23,6 +23,10 @@ import {
   openSearchResultNavigation,
   openSelectedSearchNavigation,
 } from "@/components/layout/search-navigation-action";
+import {
+  closeSearchOverlayForNavigationAction,
+  resetSearchOverlayStateAction,
+} from "@/components/layout/search-overlay-actions";
 import { buildSearchEverywhereControllerResult } from "@/components/layout/search-controller-result";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
@@ -148,11 +152,13 @@ export function useSearchEverywhereController({
   }
 
   function resetSearchOverlayState() {
-    const startedAt = Date.now();
-    invalidateSearchSession();
-    recordUiInteraction?.("searchClose", searchOverlayLabel(searchEverywhereMode), startedAt, Date.now());
-    resetDebouncedSearchQuery();
-    searchSessionStoreRef.current.patch({ selectedIndex: 0, previewContent: null });
+    resetSearchOverlayStateAction({
+      mode: searchEverywhereMode,
+      invalidateSearchSession,
+      resetDebouncedSearchQuery,
+      patchSearchSession: searchSessionStoreRef.current.patch,
+      recordUiInteraction,
+    });
   }
 
   function moveSearchEverywhereSelection(direction: 1 | -1) {
@@ -428,9 +434,11 @@ export function useSearchEverywhereController({
   }
 
   function closeSearchOverlayForNavigation() {
-    invalidateSearchSession();
-    navigationCloseHandledRef.current = true;
-    setActiveOverlay("none");
+    closeSearchOverlayForNavigationAction({
+      navigationCloseHandledRef,
+      invalidateSearchSession,
+      setActiveOverlay,
+    });
   }
 
   async function readSearchFile(path: string, allowBackendRead = true) {
