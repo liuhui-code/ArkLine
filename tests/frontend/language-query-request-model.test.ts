@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildLanguageQueryRequest,
   buildLanguageQuerySnapshot,
+  classifyLanguageQueryContent,
+  LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD,
 } from "@/components/layout/language-query-request-model";
 import { LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD } from "@/editor/editor-document-budget";
 
@@ -36,7 +38,14 @@ describe("language query request model", () => {
     expect(snapshot.meta).toEqual({
       contentLength: LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD,
       largeDocument: true,
+      contentClass: "large",
     });
     expect(getActiveContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies normal large and oversized language query content", () => {
+    expect(classifyLanguageQueryContent("x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD - 1))).toBe("normal");
+    expect(classifyLanguageQueryContent("x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD))).toBe("large");
+    expect(classifyLanguageQueryContent("x".repeat(LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD))).toBe("oversized");
   });
 });

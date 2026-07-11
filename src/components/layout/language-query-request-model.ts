@@ -1,5 +1,9 @@
 import { isLargeEditorDocument } from "@/editor/editor-document-budget";
 
+export const LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD = 1_000_000;
+
+export type LanguageQueryContentClass = "normal" | "large" | "oversized";
+
 export type LanguageQuerySnapshotInput = {
   activePath: string;
   editorSelection: { line: number; column: number };
@@ -18,6 +22,7 @@ export type LanguageQuerySnapshot = {
   meta: {
     contentLength: number;
     largeDocument: boolean;
+    contentClass: LanguageQueryContentClass;
   };
 };
 
@@ -37,6 +42,14 @@ export function buildLanguageQuerySnapshot(input: LanguageQuerySnapshotInput): L
     meta: {
       contentLength: content.length,
       largeDocument: isLargeEditorDocument(content),
+      contentClass: classifyLanguageQueryContent(content),
     },
   };
+}
+
+export function classifyLanguageQueryContent(content: string): LanguageQueryContentClass {
+  if (content.length >= LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD) {
+    return "oversized";
+  }
+  return isLargeEditorDocument(content) ? "large" : "normal";
 }
