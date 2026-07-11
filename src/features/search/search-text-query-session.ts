@@ -1,4 +1,10 @@
-import { parseSearchQuery, type WorkspaceTextSearchOptions } from "@/features/search/workspace-text-search";
+import {
+  parseSearchQuery,
+  type WorkspaceTextSearchOptions,
+  type WorkspaceTextSearchResult,
+} from "@/features/search/workspace-text-search";
+import type { WorkspaceIndexQueryEnvelope, WorkspaceIndexReadiness } from "@/features/workspace/workspace-index-api-types";
+import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 export type SearchTextQueryPlan =
   | { kind: "clear"; query: string }
@@ -11,6 +17,19 @@ export type SearchTextQueryPlanInput = {
   options: WorkspaceTextSearchOptions;
   dirty: boolean;
   indexedAvailable: boolean;
+};
+
+export type SearchTextQueryExecutionResult = {
+  result: WorkspaceTextSearchResult;
+  suppressMissExplain: boolean;
+};
+
+export type SearchTextQueryExecutionInput = {
+  plan: SearchTextQueryPlan;
+  runIndexed: () => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  runFallback: () => Promise<WorkspaceTextSearchResult>;
+  convertIndexed: (items: SearchCandidate[]) => WorkspaceTextSearchResult;
+  onIndexedReadiness: (readiness: WorkspaceIndexReadiness) => void;
 };
 
 export function planSearchTextQuery({
@@ -32,4 +51,25 @@ export function planSearchTextQuery({
     && !options.wholeWord
     && !dirty;
   return canUseIndexedTextFacade ? { kind: "indexed", query } : { kind: "fallback", query };
+}
+
+export async function executeSearchTextQuery({
+  plan,
+  runIndexed,
+  runFallback,
+  convertIndexed,
+  onIndexedReadiness,
+}: SearchTextQueryExecutionInput): Promise<SearchTextQueryExecutionResult> {
+  if (plan.kind !== "indexed") {
+    return { result: await runFallback(), suppressMissExplain: false };
+  }
+  const envelope = await runIndexed();
+  onIndexedReadiness(envelope.readiness);
+  if (envelope.readiness.state === "missing" && envelope.items.length === 0) {
+    return { result: await runFallback(), suppressMissExplain: false };
+  }
+  return {
+    result: convertIndexed(envelope.items),
+    suppressMissExplain: envelope.readiness.state !== "ready",
+  };
 }

@@ -19,7 +19,7 @@ import {
 } from "@/features/search/workspace-text-search";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
-import { planSearchTextQuery } from "@/features/search/search-text-query-session";
+import { executeSearchTextQuery, planSearchTextQuery } from "@/features/search/search-text-query-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import { searchSessionCompat } from "@/features/search/search-session-compat";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
@@ -325,18 +325,13 @@ export function useSearchEverywhereController({
       clearSearchResults(plan.query);
       return;
     }
-    const searchRequest = plan.kind === "indexed" && indexedText
-      ? indexedText(workspace.rootPath, query, "text", 50).then((envelope) => {
-        replaceQueryReadiness(envelope.readiness);
-        if (envelope.readiness.state === "missing" && envelope.items.length === 0) {
-          return fallbackTextSearch(query, dirty, requestId).then((result) => ({ result, suppressMissExplain: false }));
-        }
-        return {
-          result: textCandidatesToSearchResult(workspace.rootPath, query, envelope.items),
-          suppressMissExplain: envelope.readiness.state !== "ready",
-        };
-      })
-      : fallbackTextSearch(query, dirty, requestId).then((result) => ({ result, suppressMissExplain: false }));
+    const searchRequest = executeSearchTextQuery({
+      plan,
+      runIndexed: () => indexedText!(workspace.rootPath, query, "text", 50),
+      runFallback: () => fallbackTextSearch(query, dirty, requestId),
+      convertIndexed: (items) => textCandidatesToSearchResult(workspace.rootPath, query, items),
+      onIndexedReadiness: replaceQueryReadiness,
+    });
 
     void trackSearchRequest(requestId, searchRequest).then(({ result, suppressMissExplain }) => {
       if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
