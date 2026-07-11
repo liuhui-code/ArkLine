@@ -50,4 +50,33 @@ describe("document store safety", () => {
     expect(listener.mock.calls.map((call) => call[1].path)).toEqual(listener.mock.calls.map((call) => call[0]));
     expect(listener.mock.calls.map((call) => call[1].currentContent)).toEqual(["A", "B"]);
   });
+
+  it("tracks whether any document is dirty without scanning callers", () => {
+    const store = createDocumentStore();
+
+    store.openDocument("C:/work/A.ets", "A");
+    store.openDocument("C:/work/B.ets", "B");
+    expect(store.hasDirtyDocuments()).toBe(false);
+
+    store.updateDocument("C:/work/A.ets", "A changed");
+    expect(store.hasDirtyDocuments()).toBe(true);
+
+    store.saveDocument("C:/work/A.ets");
+    expect(store.hasDirtyDocuments()).toBe(false);
+  });
+
+  it("keeps dirty state correct across external updates and reopening", () => {
+    const store = createDocumentStore();
+
+    store.openDocument("C:/work/A.ets", "A");
+    store.updateDocument("C:/work/A.ets", "A changed");
+    expect(store.applyExternalChange("C:/work/A.ets", "disk A")).toBe("conflict");
+    expect(store.hasDirtyDocuments()).toBe(true);
+
+    store.openDocument("C:/work/A.ets", "fresh A");
+    expect(store.hasDirtyDocuments()).toBe(false);
+
+    expect(store.applyExternalChange("C:/work/A.ets", "disk A 2")).toBe("updated");
+    expect(store.hasDirtyDocuments()).toBe(false);
+  });
 });

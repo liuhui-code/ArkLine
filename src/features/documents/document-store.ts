@@ -15,6 +15,7 @@ export function createDocumentStore() {
   const listeners = new Set<(path: string, document: DocumentRecord) => void>();
   const pendingNotifications = new Map<string, DocumentRecord>();
   let notificationScheduled = false;
+  let dirtyCount = 0;
 
   function notify(path: string, document: DocumentRecord) {
     pendingNotifications.set(path, document);
@@ -32,9 +33,21 @@ export function createDocumentStore() {
     });
   }
 
+  function setDirtyState(document: DocumentRecord, nextDirty: boolean) {
+    if (document.isDirty === nextDirty) {
+      return;
+    }
+    dirtyCount += nextDirty ? 1 : -1;
+    document.isDirty = nextDirty;
+  }
+
   return {
     openDocument(path: string, content: string) {
       const normalized = normalizePath(path);
+      const existing = documents.get(normalized);
+      if (existing?.isDirty) {
+        dirtyCount -= 1;
+      }
       const document = {
         path: normalized,
         originalContent: content,
@@ -55,7 +68,7 @@ export function createDocumentStore() {
 
       const wasDirty = existing.isDirty;
       existing.currentContent = content;
-      existing.isDirty = existing.currentContent !== existing.originalContent;
+      setDirtyState(existing, existing.currentContent !== existing.originalContent);
       notify(normalized, existing);
       return { dirtyChanged: wasDirty !== existing.isDirty };
     },
@@ -76,7 +89,7 @@ export function createDocumentStore() {
       existing.originalContent = content;
       existing.currentContent = content;
       existing.externalContent = null;
-      existing.isDirty = false;
+      setDirtyState(existing, false);
       notify(normalized, existing);
       return "updated";
     },
@@ -90,7 +103,7 @@ export function createDocumentStore() {
 
       existing.originalContent = existing.currentContent;
       existing.externalContent = null;
-      existing.isDirty = false;
+      setDirtyState(existing, false);
       notify(normalized, existing);
     },
     getDocument(path: string) {
@@ -98,6 +111,9 @@ export function createDocumentStore() {
     },
     getDocuments() {
       return [...documents.values()];
+    },
+    hasDirtyDocuments() {
+      return dirtyCount > 0;
     },
     subscribe(listener: (path: string, document: DocumentRecord) => void) {
       listeners.add(listener);

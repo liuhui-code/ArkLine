@@ -79,7 +79,6 @@ describe("useSearchEverywhereController", () => {
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
 
     act(() => result.current.search.handleOverlayQueryChange("EntryA"));
-
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
 
     await flushSearchDebounce();
@@ -136,18 +135,23 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.search.searchEverywhereCandidates).toEqual([]);
   });
 
-  it("keeps query changes local instead of cancelling backend work per keystroke", () => {
+  it("cancels stale backend work while keeping the next query debounced", () => {
     vi.useFakeTimers();
     const cancelWorkspaceSearch = vi.fn(async () => undefined);
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+      readiness: readiness(), explain: [],
+    }));
     const { result } = renderHarness({
       query: "Entry",
       overlay: "searchEverywhere",
-      workspaceApi: workspaceApi({ cancelWorkspaceSearch }),
+      workspaceApi: workspaceApi({ cancelWorkspaceSearch, queryWorkspaceCandidatesWithReadiness }),
     });
 
     act(() => result.current.search.handleOverlayQueryChange("EntryA"));
 
-    expect(cancelWorkspaceSearch).not.toHaveBeenCalled();
+    expect(cancelWorkspaceSearch).toHaveBeenCalledWith("/workspace", "searchEverywhere", expect.any(Number));
+    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalledWith("/workspace", "EntryA", "all", 25);
   });
 
   it("notifies the backend to cancel text search when the overlay resets", () => {

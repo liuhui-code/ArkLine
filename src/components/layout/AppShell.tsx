@@ -209,7 +209,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     },
     getOpenDocumentContent: (path) => documentsRef.current.getDocument(path)?.currentContent ?? null,
     getActiveContent,
-    hasDirtyDocuments: () => documentsRef.current.getDocuments().some((document) => document.isDirty),
+    hasDirtyDocuments: () => documentsRef.current.hasDirtyDocuments(),
     rememberCurrentLocation,
     navigateToLocation,
     explainIndexMiss,
