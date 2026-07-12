@@ -263,6 +263,10 @@ pub struct WorkspaceIndexTaskStatus {
     pub generation: u64,
     pub progress_current: usize,
     pub progress_total: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub target_paths: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_path_count: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub started_at: Option<u128>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -179,6 +179,8 @@ pub fn task_status_from_task(
         generation: task.generation,
         progress_current: if terminal { 1 } else { 0 },
         progress_total: 1,
+        target_paths: target_path_sample(task),
+        target_path_count: target_path_count(task),
         started_at: running.then_some(now),
         last_heartbeat_at: running.then_some(now),
         stalled: false,
@@ -261,6 +263,8 @@ pub fn task_status_from_result(result: &WorkspaceIndexTaskResult) -> WorkspaceIn
         generation: result.generation,
         progress_current: result.progress_current,
         progress_total: result.progress_total,
+        target_paths: Vec::new(),
+        target_path_count: None,
         started_at: result.started_at,
         last_heartbeat_at: result.finished_at.or(result.started_at),
         stalled: false,
@@ -273,6 +277,14 @@ pub fn task_status_from_result(result: &WorkspaceIndexTaskResult) -> WorkspaceIn
 
 pub fn task_id(generation: &u64, kind: &str) -> String {
     format!("{generation}:{kind}")
+}
+
+fn target_path_sample(task: &WorkspaceIndexTask) -> Vec<String> {
+    task.changed_paths.iter().take(3).cloned().collect()
+}
+
+fn target_path_count(task: &WorkspaceIndexTask) -> Option<usize> {
+    (!task.changed_paths.is_empty()).then_some(task.changed_paths.len())
 }
 
 pub fn current_time_millis() -> u128 {

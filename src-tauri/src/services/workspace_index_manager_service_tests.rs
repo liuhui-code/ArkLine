@@ -10,6 +10,7 @@ use crate::services::workspace_content_index_service::search_indexed_workspace_c
 use crate::services::workspace_discovery_store_service::load_discovered_files;
 use crate::services::workspace_file_fingerprint_service::classify_file_fingerprints;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
@@ -294,6 +295,38 @@ fn exposes_latest_index_task_status_for_a_workspace() {
     assert!(!completed[0].stalled);
     assert!(completed[0].finished_at.is_some());
     assert!(completed[0].error.is_none());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn queued_foreground_status_exposes_bounded_target_paths() {
+    let root = unique_temp_dir("workspace-index-manager-target-paths");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let paths = vec![
+        root.join("A.ets").to_string_lossy().to_string(),
+        root.join("B.ets").to_string_lossy().to_string(),
+        root.join("C.ets").to_string_lossy().to_string(),
+        root.join("D.ets").to_string_lossy().to_string(),
+    ];
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager
+        .schedule_changed_path_task(
+            &root_path,
+            &paths,
+            WorkspaceIndexTaskPriority::ForegroundNavigation,
+            "foreground-navigation",
+        )
+        .unwrap();
+    let queued = manager.get_index_task_statuses(&root_path).unwrap();
+
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].kind, "changed-paths");
+    assert_eq!(queued[0].reason, "foreground-navigation");
+    assert_eq!(queued[0].target_paths, paths[..3].to_vec());
+    assert_eq!(queued[0].target_path_count, Some(4));
 
     fs::remove_dir_all(root).unwrap();
 }

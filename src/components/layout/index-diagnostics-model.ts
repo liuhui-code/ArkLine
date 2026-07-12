@@ -189,13 +189,17 @@ function firstNonEmpty(...values: Array<string | undefined>) {
 }
 
 function isActiveForegroundNavigationForPath(task: WorkspaceIndexTaskStatus, currentFilePath: string | null) {
-  if (task.kind !== "foreground-navigation" || isTerminalTaskStatus(task.status)) {
+  if (!isForegroundNavigationTask(task) || isTerminalTaskStatus(task.status)) {
     return false;
   }
   if (!currentFilePath || !task.targetPaths || task.targetPaths.length === 0) {
     return true;
   }
   return task.targetPaths.includes(currentFilePath);
+}
+
+function isForegroundNavigationTask(task: WorkspaceIndexTaskStatus) {
+  return task.kind === "foreground-navigation" || task.reason === "foreground-navigation";
 }
 
 function actionStateFromTask(task: WorkspaceIndexTaskStatus | undefined, label: string) {

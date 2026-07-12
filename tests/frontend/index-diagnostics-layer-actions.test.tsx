@@ -56,7 +56,7 @@ describe("IndexDiagnosticsCenter layer actions", () => {
         fileReadiness={null}
         layerReadiness={layerReadiness()}
         recentQueryExplains={[]}
-        taskStatuses={[taskStatus("foreground-navigation", "running")]}
+        taskStatuses={[{ ...taskStatus("changed-paths", "running"), reason: "foreground-navigation" }]}
         onClose={vi.fn()}
         onRefresh={vi.fn()}
         onResumeIndexing={vi.fn()}
@@ -91,7 +91,8 @@ describe("IndexDiagnosticsCenter layer actions", () => {
         layerReadiness={layerReadiness()}
         recentQueryExplains={[]}
         taskStatuses={[{
-          ...taskStatus("foreground-navigation", "running"),
+          ...taskStatus("changed-paths", "running"),
+          reason: "foreground-navigation",
           targetPaths: ["/workspace/Other.ets"],
           targetPathCount: 1,
         }]}

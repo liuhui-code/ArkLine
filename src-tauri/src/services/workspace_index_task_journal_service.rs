@@ -92,6 +92,8 @@ pub fn load_recent_task_statuses(
                 generation: row.get::<_, i64>(5)? as u64,
                 progress_current: row.get::<_, i64>(6)? as usize,
                 progress_total: row.get::<_, i64>(7)? as usize,
+                target_paths: Vec::new(),
+                target_path_count: None,
                 started_at: row.get::<_, Option<i64>>(8)?.map(|value| value as u128),
                 finished_at: row.get::<_, Option<i64>>(9)?.map(|value| value as u128),
                 last_heartbeat_at: row.get::<_, Option<i64>>(10)?.map(|value| value as u128),
