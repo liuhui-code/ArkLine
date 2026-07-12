@@ -29,6 +29,7 @@ import type { UiLatencySample } from "@/features/performance/ui-latency-monitor"
 import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 import { LanguageQuerySnapshotPanel } from "@/components/layout/LanguageQuerySnapshotPanel";
+import { IndexDiagnosticsSdkTaskSummary } from "@/components/layout/IndexDiagnosticsSdkTaskSummary";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import "./index-diagnostics-center.css";
 
@@ -274,6 +275,7 @@ export function IndexDiagnosticsCenter({
                 <Metric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
                 <Metric label="Last error" value={diagnostics?.lastError ?? "none"} />
               </div>
+              <IndexDiagnosticsSdkTaskSummary task={activeSdkTask} />
               {schemaRebuildActions.length > 0 ? (
                 <div className="index-diagnostics__table" aria-label="Schema Rebuild Required">
                   <div className="index-diagnostics__row index-diagnostics__row--header index-diagnostics__row--schema">

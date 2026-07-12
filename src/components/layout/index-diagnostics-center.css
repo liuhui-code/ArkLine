@@ -61,6 +61,36 @@
   grid-template-columns: minmax(160px, 1fr) 120px 120px;
 }
 
+.index-diagnostics__sdk-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px 110px minmax(170px, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-subtle));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--text-secondary);
+}
+
+.index-diagnostics__sdk-task strong,
+.index-diagnostics__sdk-task span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-diagnostics__sdk-task strong {
+  display: block;
+  color: var(--text-primary);
+}
+
+.index-diagnostics__sdk-task--stalled {
+  border-color: color-mix(in srgb, var(--warning) 44%, var(--border-subtle));
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+}
+
 .index-diagnostics__active-task {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px 118px 110px;
