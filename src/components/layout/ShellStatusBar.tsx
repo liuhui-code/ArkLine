@@ -25,7 +25,7 @@ type ShellStatusBarProps = {
   onRefreshGitBlame: () => void;
   onShowCurrentLineBlame: () => void;
   onCloseGitBlame: () => void;
-  onOpenIndexDiagnostics: () => void;
+  onOpenIndexDiagnostics: (sectionTarget?: string) => void;
 };
 
 export function ShellStatusBar({
@@ -59,7 +59,7 @@ export function ShellStatusBar({
           type="button"
           className="status-pill status-pill--button"
           aria-label={`Open Index Diagnostics: ${workspaceIndexText}`}
-          onClick={onOpenIndexDiagnostics}
+          onClick={() => onOpenIndexDiagnostics("index-diagnostics-processes")}
         >
           {workspaceIndexText}
         </button>
@@ -68,7 +68,7 @@ export function ShellStatusBar({
             type="button"
             className="status-pill status-pill--button"
             aria-label={`Open Index Diagnostics: ${sdkIndexText}`}
-            onClick={onOpenIndexDiagnostics}
+            onClick={() => onOpenIndexDiagnostics("index-diagnostics-health")}
           >
             {sdkIndexText}
           </button>

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
@@ -34,6 +35,7 @@ import "./index-diagnostics-center.css";
 type IndexDiagnosticsCenterProps = {
   open: boolean;
   loading: boolean;
+  sectionTarget?: string | null;
   activePath: string | null;
   currentFileDirty: boolean;
   diagnostics: WorkspaceIndexDiagnostics | null;
@@ -55,6 +57,7 @@ type IndexDiagnosticsCenterProps = {
 export function IndexDiagnosticsCenter({
   open,
   loading,
+  sectionTarget = null,
   activePath,
   currentFileDirty,
   diagnostics,
@@ -72,6 +75,11 @@ export function IndexDiagnosticsCenter({
   onRebuildSdkIndex,
   onConfigureSdk,
 }: IndexDiagnosticsCenterProps) {
+  useEffect(() => {
+    if (!open || !sectionTarget) return;
+    document.getElementById(sectionTarget)?.scrollIntoView({ block: "start" });
+  }, [open, sectionTarget]);
+
   if (!open) {
     return null;
   }

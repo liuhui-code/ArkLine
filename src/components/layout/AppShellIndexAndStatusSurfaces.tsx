@@ -29,6 +29,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   onOpenSettingsFromExplainPanel: () => void;
   onRetryLatestExplainQuery: () => void;
   indexDiagnosticsVisible: boolean;
+  indexDiagnosticsSectionTarget: string | null;
   indexDiagnosticsLoading: boolean;
   currentFileDirty: boolean;
   indexDiagnostics: WorkspaceIndexDiagnostics | null;
@@ -61,7 +62,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   onRefreshGitBlame: () => void;
   onShowCurrentLineBlame: () => void;
   onCloseGitBlame: () => void;
-  onOpenIndexDiagnostics: () => void;
+  onOpenIndexDiagnostics: (sectionTarget?: string) => void;
 };
 
 export function AppShellIndexAndStatusSurfaces({
@@ -77,6 +78,7 @@ export function AppShellIndexAndStatusSurfaces({
   onOpenSettingsFromExplainPanel,
   onRetryLatestExplainQuery,
   indexDiagnosticsVisible,
+  indexDiagnosticsSectionTarget,
   indexDiagnosticsLoading,
   currentFileDirty,
   indexDiagnostics,
@@ -141,6 +143,7 @@ export function AppShellIndexAndStatusSurfaces({
       <IndexDiagnosticsCenter
         open={indexDiagnosticsVisible}
         loading={indexDiagnosticsLoading}
+        sectionTarget={indexDiagnosticsSectionTarget}
         activePath={activePath}
         currentFileDirty={currentFileDirty}
         diagnostics={indexDiagnostics}

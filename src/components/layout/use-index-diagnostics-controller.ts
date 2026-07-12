@@ -53,6 +53,7 @@ export function useIndexDiagnosticsController({
   const [latestExplainContext, setLatestExplainContext] = useState<IndexExplainContext | null>(null);
   const [indexExplainPanelVisible, setIndexExplainPanelVisible] = useState(false);
   const [indexDiagnosticsVisible, setIndexDiagnosticsVisible] = useState(false);
+  const [indexDiagnosticsSectionTarget, setIndexDiagnosticsSectionTarget] = useState<string | null>(null);
   const [indexDiagnosticsLoading, setIndexDiagnosticsLoading] = useState(false);
   const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
@@ -168,7 +169,8 @@ export function useIndexDiagnosticsController({
     }
   }
 
-  function openIndexDiagnostics() {
+  function openIndexDiagnostics(sectionTarget: string | null = null) {
+    setIndexDiagnosticsSectionTarget(sectionTarget);
     setIndexDiagnosticsVisible(true);
     void refreshIndexDiagnostics();
   }
@@ -330,6 +332,7 @@ export function useIndexDiagnosticsController({
     setIndexExplainPanelVisible,
     indexDiagnosticsVisible,
     setIndexDiagnosticsVisible,
+    indexDiagnosticsSectionTarget,
     indexDiagnosticsLoading,
     indexDiagnostics,
     currentFileReadiness,

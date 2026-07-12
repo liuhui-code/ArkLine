@@ -4,7 +4,7 @@ import type { SemanticCapabilityState } from "@/features/semantic/semantic-capab
 
 function renderStatusBar(capability: SemanticCapabilityState, overrides: {
   sdkIndexText?: string | null;
-  onOpenIndexDiagnostics?: () => void;
+  onOpenIndexDiagnostics?: (sectionTarget?: string) => void;
 } = {}) {
   return render(
     <ShellStatusBar
@@ -50,7 +50,22 @@ describe("ShellStatusBar", () => {
     expect(screen.getByLabelText("SDK Capability")).toHaveAttribute("title", "SDK settings are still applying");
   });
 
-  it("opens index diagnostics from the SDK index status", () => {
+  it("opens index diagnostics at the project process section", () => {
+    const onOpenIndexDiagnostics = vi.fn();
+    renderStatusBar({
+      status: "semantic",
+      semanticNavigation: true,
+      semanticCompletion: true,
+      localFallback: true,
+      message: "SDK ready",
+    }, { onOpenIndexDiagnostics });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Index Diagnostics: Index: ready (2 files)" }));
+
+    expect(onOpenIndexDiagnostics).toHaveBeenCalledWith("index-diagnostics-processes");
+  });
+
+  it("opens index diagnostics at the SDK health section", () => {
     const onOpenIndexDiagnostics = vi.fn();
     renderStatusBar({
       status: "semantic",
@@ -67,6 +82,6 @@ describe("ShellStatusBar", () => {
       name: "Open Index Diagnostics: SDK API: stalled · No heartbeat > 60s",
     }));
 
-    expect(onOpenIndexDiagnostics).toHaveBeenCalledTimes(1);
+    expect(onOpenIndexDiagnostics).toHaveBeenCalledWith("index-diagnostics-health");
   });
 });
