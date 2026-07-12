@@ -25,6 +25,9 @@ mod models {
     pub mod terminal;
     pub mod workspace;
     pub mod workspace_edit;
+    pub mod workspace_index_diagnostics;
+    #[cfg(test)]
+    mod workspace_index_diagnostics_tests;
     pub mod workspace_index_layer;
 }
 
