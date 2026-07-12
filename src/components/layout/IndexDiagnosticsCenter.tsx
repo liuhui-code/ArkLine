@@ -286,9 +286,12 @@ export function IndexDiagnosticsCenter({
                       Resume Indexing
                     </button>
                   ) : action === "rebuildProjectIndex" ? (
-                    <button type="button" className="toolbar__button" key={action} onClick={onRebuildProjectIndex}>
-                      Rebuild Project Index
-                    </button>
+                    <span className="index-diagnostics__repair-running" key={action}>
+                      <button type="button" className="toolbar__button" disabled={Boolean(activeProjectTask)} onClick={onRebuildProjectIndex}>
+                        {activeProjectTask ? "Running Project Index" : "Rebuild Project Index"}
+                      </button>
+                      {activeProjectTask ? <span>{activeProjectTask.progress}</span> : null}
+                    </span>
                   ) : action === "rebuildSdkIndex" ? (
                     <button type="button" className="toolbar__button" key={action} onClick={onRebuildSdkIndex}>
                       Rebuild SDK Index

@@ -73,6 +73,13 @@
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
+.index-diagnostics__repair-running {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-muted);
+}
+
 .index-diagnostics__status {
   justify-self: start;
   padding: 1px 7px;
