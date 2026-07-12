@@ -20,6 +20,7 @@ use crate::services::workspace_index_persistence_service::{
     persist_catalog_cache, persist_catalog_cache_for_open,
     persist_incremental_index_state_with_priority, restore_catalog_cache_state,
 };
+use crate::services::workspace_index_refresh_path_plan_service::plan_workspace_index_refresh_paths;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
 use crate::services::workspace_index_snapshot_state_service::{
@@ -131,45 +132,21 @@ impl WorkspaceIndexRuntime {
         priority: WorkspaceIndexTaskPriority,
     ) -> Result<WorkspaceIndexRefreshResult, String> {
         let previous_state = self.get_index_state(root_path)?;
-        let previous_paths = previous_state
-            .file_paths
-            .iter()
-            .cloned()
-            .collect::<HashSet<_>>();
         let snapshot = scan_workspace(Path::new(root_path))?;
-        let current_paths = snapshot
+        let current_snapshot_paths = snapshot
             .files
             .iter()
             .map(|path| normalize_index_path(path))
-            .collect::<HashSet<_>>();
-        let mut added_paths = current_paths
-            .difference(&previous_paths)
-            .cloned()
             .collect::<Vec<_>>();
-        let mut removed_paths = previous_paths
-            .difference(&current_paths)
-            .cloned()
-            .collect::<Vec<_>>();
-
-        added_paths.sort();
-        removed_paths.sort();
-
-        let direct_content_paths = changed_paths
-            .iter()
-            .map(|path| normalize_index_path(path))
-            .filter(|path| current_paths.contains(path))
-            .collect::<Vec<_>>();
-        let mut dependency_seed_paths = changed_paths
-            .iter()
-            .map(|path| normalize_index_path(path))
-            .collect::<Vec<_>>();
-        dependency_seed_paths.extend(removed_paths.clone());
-        dependency_seed_paths.sort();
-        dependency_seed_paths.dedup();
+        let path_plan = plan_workspace_index_refresh_paths(
+            &previous_state.file_paths,
+            &current_snapshot_paths,
+            changed_paths,
+        );
         let dependency_paths = expand_changed_paths(
             root_path,
-            &dependency_seed_paths,
-            &current_paths,
+            &path_plan.dependency_seed_paths,
+            &path_plan.current_paths,
             INDEX_DEPENDENCY_EXPANSION_LIMIT,
         )?;
         let mut content_paths = match dependency_paths {
@@ -179,40 +156,41 @@ impl WorkspaceIndexRuntime {
                 return Ok(WorkspaceIndexRefreshResult {
                     state,
                     changed: true,
-                    added_paths,
-                    removed_paths,
+                    added_paths: path_plan.added_paths,
+                    removed_paths: path_plan.removed_paths,
                 });
             }
         };
-        content_paths.extend(direct_content_paths);
-        content_paths.extend(added_paths.clone());
+        content_paths.extend(path_plan.direct_content_paths.clone());
+        content_paths.extend(path_plan.added_paths.clone());
         content_paths.sort();
         content_paths.dedup();
 
-        let changed =
-            !added_paths.is_empty() || !removed_paths.is_empty() || !content_paths.is_empty();
-        let state = if previous_paths.is_empty() {
+        let changed = !path_plan.added_paths.is_empty()
+            || !path_plan.removed_paths.is_empty()
+            || !content_paths.is_empty();
+        let state = if path_plan.previous_paths.is_empty() {
             self.index_workspace_snapshot(&snapshot)?
         } else {
             self.replace_workspace_index_from_snapshot(
                 &snapshot,
                 &previous_state.symbols,
                 &content_paths,
-                &removed_paths,
+                &path_plan.removed_paths,
                 priority,
             )?
         };
-        if !previous_paths.is_empty() {
-            update_workspace_content(root_path, &content_paths, &removed_paths)?;
+        if !path_plan.previous_paths.is_empty() {
+            update_workspace_content(root_path, &content_paths, &path_plan.removed_paths)?;
             update_file_fingerprints(root_path, &content_paths, now_epoch_ms()? as u64)?;
-            remove_file_fingerprints(root_path, &removed_paths)?;
+            remove_file_fingerprints(root_path, &path_plan.removed_paths)?;
         }
 
         Ok(WorkspaceIndexRefreshResult {
             state,
             changed,
-            added_paths,
-            removed_paths,
+            added_paths: path_plan.added_paths,
+            removed_paths: path_plan.removed_paths,
         })
     }
 

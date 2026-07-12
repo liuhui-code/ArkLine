@@ -241,6 +241,9 @@ mod workspace_index_repair_service_tests;
 pub mod workspace_index_resume_service;
 #[cfg(test)]
 mod workspace_index_resume_service_tests;
+pub(crate) mod workspace_index_refresh_path_plan_service;
+#[cfg(test)]
+mod workspace_index_refresh_path_plan_service_tests;
 #[cfg(test)]
 mod workspace_index_running_lifecycle_service_tests;
 pub mod workspace_index_scheduler_service;
