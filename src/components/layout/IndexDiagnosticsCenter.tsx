@@ -29,6 +29,7 @@ import type { UiLatencySample } from "@/features/performance/ui-latency-monitor"
 import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 import { LanguageQuerySnapshotPanel } from "@/components/layout/LanguageQuerySnapshotPanel";
+import { IndexDiagnosticsActiveTaskStrip } from "@/components/layout/IndexDiagnosticsActiveTaskStrip";
 import { IndexDiagnosticsHealthTaskSummary } from "@/components/layout/IndexDiagnosticsHealthTaskSummary";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import "./index-diagnostics-center.css";
@@ -128,17 +129,7 @@ export function IndexDiagnosticsCenter({
           </div>
         </header>
 
-        {activeTask ? (
-          <div className={`index-diagnostics__active-task index-diagnostics__active-task--${activeTask.status}`} role="status" aria-label="Active Index Task">
-            <div>
-              <strong>{activeTask.title}</strong>
-              <span>{activeTask.detail}</span>
-            </div>
-            <span>{activeTask.kind}</span>
-            <span>{activeTask.progress}</span>
-            <span>{activeTask.duration}</span>
-          </div>
-        ) : null}
+        <IndexDiagnosticsActiveTaskStrip task={activeTask} />
 
         <div className="index-diagnostics__body">
           <aside className="index-diagnostics__nav" aria-label="Index Diagnostics Sections">
