@@ -30,7 +30,9 @@ import type { IpcLatencySample } from "@/features/performance/ipc-latency-store"
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 import { LanguageQuerySnapshotPanel } from "@/components/layout/LanguageQuerySnapshotPanel";
 import { IndexDiagnosticsActiveTaskStrip } from "@/components/layout/IndexDiagnosticsActiveTaskStrip";
+import { IndexDiagnosticsCurrentFileSection } from "@/components/layout/IndexDiagnosticsCurrentFileSection";
 import { IndexDiagnosticsHealthTaskSummary } from "@/components/layout/IndexDiagnosticsHealthTaskSummary";
+import { IndexDiagnosticsMetric } from "@/components/layout/IndexDiagnosticsMetric";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import "./index-diagnostics-center.css";
 
@@ -151,10 +153,10 @@ export function IndexDiagnosticsCenter({
                 <span>{queuePressure?.pendingTaskCount ?? taskStatuses.length} pending</span>
               </div>
               <div className="index-diagnostics__grid">
-                <Metric label="Pending total" value={String(queuePressure?.pendingTaskCount ?? 0)} />
-                <Metric label="Workspace pending" value={String(queuePressure?.workspacePendingTaskCount ?? 0)} />
-                <Metric label="Top priority" value={queuePressure?.highestPriority ?? "none"} />
-                <Metric label="Top task" value={queuePressure?.highestPriorityTaskKind ?? "none"} />
+                <IndexDiagnosticsMetric label="Pending total" value={String(queuePressure?.pendingTaskCount ?? 0)} />
+                <IndexDiagnosticsMetric label="Workspace pending" value={String(queuePressure?.workspacePendingTaskCount ?? 0)} />
+                <IndexDiagnosticsMetric label="Top priority" value={queuePressure?.highestPriority ?? "none"} />
+                <IndexDiagnosticsMetric label="Top task" value={queuePressure?.highestPriorityTaskKind ?? "none"} />
               </div>
               <div className="index-diagnostics__table">
                 <div className="index-diagnostics__row index-diagnostics__row--header">
@@ -181,28 +183,11 @@ export function IndexDiagnosticsCenter({
               </div>
             </section>
 
-            <section className="index-diagnostics__section" id="index-diagnostics-current-file" aria-label="Current File Readiness">
-              <div className="index-diagnostics__section-title">
-                <h3>Current File Readiness</h3>
-                <span>{fileReadiness?.fileName ?? activePath ?? "No file"}</span>
-              </div>
-              <p className="index-diagnostics__reason">
-                {fileReadiness?.reason ?? "No current file readiness evidence is available."}
-              </p>
-              <div className="index-diagnostics__grid">
-                <Metric label="Discovery" value={fileReadiness?.discoveryIndex ?? "unknown"} />
-                <Metric label="FileIndex" value={fileReadiness?.fileIndex ?? "unknown"} />
-                <Metric label="ContentIndex" value={fileReadiness?.contentIndex ?? "unknown"} />
-                <Metric label="SymbolIndex" value={fileReadiness?.symbolIndex ?? "unknown"} />
-                <Metric label="Parser" value={fileReadiness?.parserStatus ?? "unknown"} />
-                <Metric label="Generation" value={String(fileReadiness?.indexedGeneration ?? "none")} />
-                <Metric label="Editor dirty" value={currentFileDirty ? "newer than index" : "clean"} />
-                <Metric label="Ctrl+Click" value={fileReadiness?.definitionAvailable ? "available" : "blocked"} />
-                <Metric label="Completion" value={fileReadiness?.completionAvailable ? "available" : "blocked"} />
-                <Metric label="Usages" value={fileReadiness?.usagesAvailable ? "available" : "blocked"} />
-                <Metric label="Search" value={fileReadiness?.searchAvailable ? "available" : "blocked"} />
-              </div>
-            </section>
+            <IndexDiagnosticsCurrentFileSection
+              activePath={activePath}
+              currentFileDirty={currentFileDirty}
+              fileReadiness={fileReadiness}
+            />
 
             <section className="index-diagnostics__section" id="index-diagnostics-layers" aria-label="Index Layers">
               <div className="index-diagnostics__section-title">
@@ -252,19 +237,19 @@ export function IndexDiagnosticsCenter({
                 <span>{diagnostics?.rootPath ?? "No workspace"}</span>
               </div>
               <div className="index-diagnostics__grid">
-                <Metric label="Schema domains" value={String(Object.keys(diagnostics?.schemaVersions ?? {}).length)} />
-                <Metric label="Symbols" value={String(diagnostics?.symbolCount ?? 0)} />
-                <Metric label="Text rows" value={String(diagnostics?.contentLineCount ?? 0)} />
-                <Metric label="SDK symbols" value={String(diagnostics?.sdkSymbolCount ?? 0)} />
-                <Metric label="Discovery" value={diagnostics?.discoveryStatus ?? "none"} />
-                <Metric label="Discovered files" value={(diagnostics?.discoveredFileCount ?? 0).toLocaleString()} />
-                <Metric label="Excluded entries" value={(diagnostics?.discoveryExcludedCount ?? 0).toLocaleString()} />
-                <Metric label="Discovery cursor" value={diagnostics?.discoveryHasMore ? "has more" : "complete"} />
-                <Metric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
-                <Metric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
-                <Metric label="DB size" value={viewModel.dbSize} />
-                <Metric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
-                <Metric label="Last error" value={diagnostics?.lastError ?? "none"} />
+                <IndexDiagnosticsMetric label="Schema domains" value={String(Object.keys(diagnostics?.schemaVersions ?? {}).length)} />
+                <IndexDiagnosticsMetric label="Symbols" value={String(diagnostics?.symbolCount ?? 0)} />
+                <IndexDiagnosticsMetric label="Text rows" value={String(diagnostics?.contentLineCount ?? 0)} />
+                <IndexDiagnosticsMetric label="SDK symbols" value={String(diagnostics?.sdkSymbolCount ?? 0)} />
+                <IndexDiagnosticsMetric label="Discovery" value={diagnostics?.discoveryStatus ?? "none"} />
+                <IndexDiagnosticsMetric label="Discovered files" value={(diagnostics?.discoveredFileCount ?? 0).toLocaleString()} />
+                <IndexDiagnosticsMetric label="Excluded entries" value={(diagnostics?.discoveryExcludedCount ?? 0).toLocaleString()} />
+                <IndexDiagnosticsMetric label="Discovery cursor" value={diagnostics?.discoveryHasMore ? "has more" : "complete"} />
+                <IndexDiagnosticsMetric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
+                <IndexDiagnosticsMetric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
+                <IndexDiagnosticsMetric label="DB size" value={viewModel.dbSize} />
+                <IndexDiagnosticsMetric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
+                <IndexDiagnosticsMetric label="Last error" value={diagnostics?.lastError ?? "none"} />
               </div>
               <IndexDiagnosticsHealthTaskSummary
                 task={activeProjectTask}
@@ -459,14 +444,5 @@ function QueryExplainSummary({ summary }: { summary: QueryEnvelopeExplainSummary
         </div>
       ))}
     </dl>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="index-diagnostics__metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
