@@ -39,6 +39,7 @@ import { createSearchSessionLifecycle } from "@/components/layout/search-session
 import { createSearchNextPageAction } from "@/components/layout/search-next-page-action";
 import { createSearchRunActions } from "@/components/layout/search-run-actions";
 import { createSearchPreviewAction } from "@/components/layout/search-preview-action";
+import { createSearchControllerContext } from "@/components/layout/search-controller-context";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -131,9 +132,16 @@ export function useSearchEverywhereController({
     getActiveContent,
     openFile: workspaceApi.openFile,
   });
+  const searchContext = createSearchControllerContext({
+    getMode: () => searchEverywhereMode,
+    getQuery: () => debouncedSearchQuery,
+    getRootPath: () => workspace?.rootPath ?? null,
+    getScope: () => searchEverywhereScope,
+    getOptions: () => searchEverywhereOptions,
+  });
   const scheduleSelectedPreview = createSearchPreviewAction({
     getActiveOverlay: () => activeOverlay,
-    getMode: () => searchEverywhereMode,
+    getMode: searchContext.getMode,
     delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
     sessionStore: searchSessionStoreRef.current,
     interactionRuntime: interactionRuntimeRef.current,
@@ -154,11 +162,11 @@ export function useSearchEverywhereController({
     recordUiInteraction,
   });
   const loadNextSearchPageAction = createSearchNextPageAction({
-    getMode: () => searchEverywhereMode,
+    getMode: searchContext.getMode,
     sessionStore: searchSessionStoreRef.current,
-    getRootPath: () => workspace?.rootPath ?? null,
-    getQuery: () => debouncedSearchQuery,
-    getScope: () => searchEverywhereScope,
+    getRootPath: searchContext.getRootPath,
+    getQuery: searchContext.getQuery,
+    getScope: searchContext.getScope,
     displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
     interactionRuntime: interactionRuntimeRef.current,
     queryEntityPage: workspaceApi.queryWorkspaceCandidatesWithReadiness,
@@ -167,11 +175,11 @@ export function useSearchEverywhereController({
     scheduleSelectedPreview,
   });
   const searchRunActions = createSearchRunActions({
-    getQuery: () => debouncedSearchQuery,
-    getRootPath: () => workspace?.rootPath ?? null,
-    getMode: () => searchEverywhereMode,
-    getScope: () => searchEverywhereScope,
-    getOptions: () => searchEverywhereOptions,
+    getQuery: searchContext.getQuery,
+    getRootPath: searchContext.getRootPath,
+    getMode: searchContext.getMode,
+    getScope: searchContext.getScope,
+    getOptions: searchContext.getOptions,
     getDirty: hasDirtyDocuments,
     displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
     minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
