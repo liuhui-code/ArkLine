@@ -1,7 +1,4 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import {
-  textCandidatesToSearchResult,
-} from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
   resolveSearchSelectionMove,
@@ -26,11 +23,6 @@ import {
 } from "@/features/search/workspace-text-search";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
-import {
-  buildSearchTextQueryRequest,
-  executeSearchTextQuery,
-  planSearchTextQuery,
-} from "@/features/search/search-text-query-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import type { WorkspaceApi, WorkspaceIndexQueryScope, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -43,15 +35,13 @@ import {
   reportTextSearchMiss,
 } from "@/components/layout/search-miss-reporting";
 import {
-  runTextSearchRequest,
-} from "@/components/layout/search-request-runner";
-import {
   canUseNativeTextSearchRuntime,
   readSearchFileForSearch,
   runFallbackTextSearch,
 } from "@/components/layout/search-text-fallback";
 import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
 import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
+import { runSearchTextQuery } from "@/components/layout/search-text-runner";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -300,41 +290,20 @@ export function useSearchEverywhereController({
   }
 
   function runTextSearch(requestId: number) {
-    if (!workspace) return;
-    searchSessionStoreRef.current.patch({ candidates: [], truncationNotice: null });
-    const query = debouncedSearchQuery;
-    const dirty = hasDirtyDocuments();
-    const indexedText = workspaceApi.queryWorkspaceCandidatesWithReadiness;
-    const plan = planSearchTextQuery({
-      query,
-      minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
-      options: searchEverywhereOptions,
-      dirty,
-      indexedAvailable: Boolean(indexedText),
-    });
-    if (plan.kind === "clear") {
-      clearSearchResults(plan.query);
-      return;
-    }
-
-    runTextSearchRequest({
+    runSearchTextQuery({
       requestId,
       mode: searchEverywhereMode,
-      query,
+      query: debouncedSearchQuery,
+      rootPath: workspace?.rootPath ?? null,
       minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
+      options: searchEverywhereOptions,
+      dirty: hasDirtyDocuments(),
+      workspaceApi,
+      runFallback: fallbackTextSearch,
+      replaceQueryReadiness,
       trackQuery: interactionRuntimeRef.current.trackQuery,
       clearSearchResults,
       patchSearchSession: searchSessionStoreRef.current.patch,
-      request: () => executeSearchTextQuery(buildSearchTextQueryRequest({
-        plan,
-        rootPath: workspace.rootPath,
-        query,
-        generation: requestId,
-        runIndexed: (rootPath, query, scope, limit) => indexedText!(rootPath, query, scope, limit),
-        runFallback: (query, generation) => fallbackTextSearch(query, dirty, generation),
-        convertIndexed: (items) => textCandidatesToSearchResult(workspace.rootPath, query, items),
-        onIndexedReadiness: replaceQueryReadiness,
-      })),
       recordUiInteraction,
       scheduleSelectedPreview,
       reportMiss: (requestId, missReport) => {
