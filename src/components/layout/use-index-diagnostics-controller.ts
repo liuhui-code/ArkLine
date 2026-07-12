@@ -5,6 +5,7 @@ import {
 } from "@/components/layout/app-shell-constants";
 import {
   getIndexStatusText,
+  getIndexHealthStatusText,
   getLayerReadinessStatusText,
   getSdkIndexStatusText,
 } from "@/components/layout/app-shell-model";
@@ -69,7 +70,8 @@ export function useIndexDiagnosticsController({
     ? indexProjection.taskStatuses
     : [];
   const workspaceIndexStatusSummary = {
-    workspaceIndexText: getLayerReadinessStatusText(layerReadiness)
+    workspaceIndexText: getIndexHealthStatusText(indexDiagnostics)
+      ?? getLayerReadinessStatusText(layerReadiness)
       ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
     sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),
   };

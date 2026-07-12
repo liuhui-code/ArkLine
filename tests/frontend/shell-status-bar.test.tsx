@@ -3,6 +3,7 @@ import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
 
 function renderStatusBar(capability: SemanticCapabilityState, overrides: {
+  workspaceIndexText?: string;
   sdkIndexText?: string | null;
   onOpenIndexDiagnostics?: (sectionTarget?: string) => void;
 } = {}) {
@@ -19,7 +20,7 @@ function renderStatusBar(capability: SemanticCapabilityState, overrides: {
       statusText="Ready"
       workspaceName="Demo"
       workspaceScanText={null}
-      workspaceIndexText="Index: ready (2 files)"
+      workspaceIndexText={overrides.workspaceIndexText ?? "Index: ready (2 files)"}
       sdkIndexText={overrides.sdkIndexText ?? null}
       terminalRunning={false}
       buildMessage="Build idle"
@@ -80,6 +81,26 @@ describe("ShellStatusBar", () => {
 
     fireEvent.click(screen.getByRole("button", {
       name: "Open Index Diagnostics: SDK API: stalled · No heartbeat > 60s",
+    }));
+
+    expect(onOpenIndexDiagnostics).toHaveBeenCalledWith("index-diagnostics-health");
+  });
+
+  it("opens index diagnostics at health when project index is backing off", () => {
+    const onOpenIndexDiagnostics = vi.fn();
+    renderStatusBar({
+      status: "semantic",
+      semanticNavigation: true,
+      semanticCompletion: true,
+      localFallback: true,
+      message: "SDK ready",
+    }, {
+      workspaceIndexText: "Index: Backoff, recommended retry delay 2000ms",
+      onOpenIndexDiagnostics,
+    });
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Open Index Diagnostics: Index: Backoff, recommended retry delay 2000ms",
     }));
 
     expect(onOpenIndexDiagnostics).toHaveBeenCalledWith("index-diagnostics-health");

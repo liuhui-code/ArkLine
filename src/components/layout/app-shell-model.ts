@@ -13,6 +13,7 @@ import type { CodeAction } from "@/features/code-actions/code-action-model";
 import type {
   WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexTaskStatus,
+  WorkspaceIndexDiagnostics,
   WorkspaceViewModel,
   WorkspaceIndexQueryScope,
 } from "@/features/workspace/workspace-api";
@@ -133,6 +134,25 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
   }
 
   return `Index: ${indexState.status} (${indexState.filePaths.length.toLocaleString()} files)`;
+}
+
+export function getIndexHealthStatusText(
+  diagnostics: Pick<WorkspaceIndexDiagnostics, "retryBackoffCount" | "latestRetryBackoff"> | null,
+) {
+  const backoffCount = diagnostics?.retryBackoffCount ?? 0;
+  if (backoffCount <= 0) {
+    return null;
+  }
+  const suffix = backoffCount === 1 ? "retry delayed" : "retries delayed";
+  return diagnostics?.latestRetryBackoff
+    ? `Index: Backoff, ${diagnostics.latestRetryBackoff}`
+    : `Index: Backoff, ${backoffCount.toLocaleString()} ${suffix}`;
+}
+
+export function getIndexDiagnosticsStatusTarget(workspaceIndexText: string) {
+  return workspaceIndexText.startsWith("Index: Backoff")
+    ? "index-diagnostics-health"
+    : "index-diagnostics-processes";
 }
 
 export function getActiveProjectIndexTaskStatus(statuses: WorkspaceIndexTaskStatus[]) {

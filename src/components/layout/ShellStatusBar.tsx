@@ -1,4 +1,5 @@
 import type { BottomToolKey } from "@/components/layout/shell-state";
+import { getIndexDiagnosticsStatusTarget } from "@/components/layout/app-shell-model";
 import { SemanticCapabilityBadge } from "@/components/layout/SemanticCapabilityBadge";
 import { SemanticModeBadge } from "@/components/layout/SemanticModeBadge";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
@@ -59,7 +60,7 @@ export function ShellStatusBar({
           type="button"
           className="status-pill status-pill--button"
           aria-label={`Open Index Diagnostics: ${workspaceIndexText}`}
-          onClick={() => onOpenIndexDiagnostics("index-diagnostics-processes")}
+          onClick={() => onOpenIndexDiagnostics(getIndexDiagnosticsStatusTarget(workspaceIndexText))}
         >
           {workspaceIndexText}
         </button>

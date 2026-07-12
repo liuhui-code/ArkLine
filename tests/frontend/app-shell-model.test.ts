@@ -6,6 +6,8 @@ import {
   constrainCompletionPopupPosition,
   filterSearchCandidatesByScope,
   getCompletionPopupPosition,
+  getIndexDiagnosticsStatusTarget,
+  getIndexHealthStatusText,
   getIndexStatusText,
   getLayerReadinessStatusText,
   getSdkIndexStatusText,
@@ -100,6 +102,15 @@ describe("app shell model", () => {
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "refresh-workspace", stalled: true }),
     ])).toBe("Index: Stalled, 1 task > 60s");
+    expect(getIndexHealthStatusText({ retryBackoffCount: 1, latestRetryBackoff: null }))
+      .toBe("Index: Backoff, 1 retry delayed");
+    expect(getIndexHealthStatusText({ retryBackoffCount: 2, latestRetryBackoff: "recommended retry delay 2000ms" }))
+      .toBe("Index: Backoff, recommended retry delay 2000ms");
+    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null })).toBeNull();
+    expect(getIndexDiagnosticsStatusTarget("Index: Backoff, recommended retry delay 2000ms"))
+      .toBe("index-diagnostics-health");
+    expect(getIndexDiagnosticsStatusTarget("Index: ready (2 files)"))
+      .toBe("index-diagnostics-processes");
     expect(getSdkIndexStatusText([
       taskStatus({ kind: "sdk", status: "running", progressCurrent: 7, progressTotal: 20 }),
     ])).toBe("SDK API: running · 7/20 (35%)");
