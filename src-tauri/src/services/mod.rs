@@ -312,6 +312,9 @@ mod workspace_reference_refresh_plan_service_tests;
 #[cfg(test)]
 mod workspace_reference_receiver_tests;
 pub mod workspace_reference_receiver_type_service;
+pub(crate) mod workspace_reference_query_service;
+#[cfg(test)]
+mod workspace_reference_query_service_tests;
 pub mod workspace_sdk_api_cache_service;
 #[cfg(test)]
 mod workspace_sdk_api_cache_service_tests;
