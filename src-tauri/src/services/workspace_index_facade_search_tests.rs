@@ -6,6 +6,7 @@ use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
 use crate::services::workspace_index_event_service::load_recent_index_events;
+use crate::services::workspace_index_facade_search_service::query_facade_text_search;
 use crate::services::workspace_index_facade_service::{
     query_facade_text_search_result, query_workspace_index_facade, WorkspaceIndexFacadeEnvelope,
     WorkspaceIndexFacadeItem, WorkspaceIndexFacadeRequest,
@@ -238,6 +239,57 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
             && event.phase == "hit"
             && event.payload_json.contains("query:textSearch")
     }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn facade_routes_whole_word_text_search_through_index() {
+    let root = create_empty_workspace("facade-whole-word-text-search");
+    let source_dir = create_workspace_source_dir(&root);
+    let source_path = source_dir.join("Index.ets");
+    fs::write(&source_path, "indexBuilder()\nstruct Index {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::remove_file(&source_path).unwrap();
+
+    let result = query_facade_text_search_result(
+        &runtime,
+        WorkspaceTextSearchRequest {
+            root_path: root_path.clone(),
+            query: "index".to_string(),
+            generation: None,
+            cursor: None,
+            options: WorkspaceTextSearchOptions {
+                case_sensitive: false,
+                whole_word: true,
+            },
+            limit: 4,
+            context_lines: 0,
+        },
+    )
+    .unwrap();
+    let envelope = query_facade_text_search(
+        &runtime,
+        WorkspaceTextSearchRequest {
+            root_path: root_path.clone(),
+            query: "index".to_string(),
+            generation: None,
+            cursor: None,
+            options: WorkspaceTextSearchOptions {
+                case_sensitive: false,
+                whole_word: true,
+            },
+            limit: 4,
+            context_lines: 0,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(result.matches.len(), 1);
+    assert_eq!(result.matches[0].preview, "struct Index {}");
+    assert_eq!(envelope.confidence.as_deref(), Some("indexed"));
+
     fs::remove_dir_all(root).unwrap();
 }
 

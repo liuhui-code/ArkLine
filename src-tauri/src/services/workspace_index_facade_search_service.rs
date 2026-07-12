@@ -319,5 +319,5 @@ fn text_search_candidates_from_result(
 
 fn should_use_indexed_text_search(request: &WorkspaceTextSearchRequest) -> bool {
     let query = request.query.trim();
-    !query.is_empty() && !query.starts_with('/') && !request.options.whole_word
+    !query.is_empty() && !query.starts_with('/')
 }

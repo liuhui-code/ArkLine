@@ -191,6 +191,26 @@ fn case_sensitive_index_search_does_not_let_lowercase_candidates_take_the_limit(
 }
 
 #[test]
+fn whole_word_index_search_does_not_let_embedded_candidates_take_the_limit() {
+    let root = unique_temp_dir("workspace-content-whole-word-limit");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    let file_path = root.join("entry").join("src").join("Index.ets");
+    fs::write(&file_path, ["indexBuilder()", "struct Index {}"].join("\n")).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    index_workspace_content(&root_path, &[file_path.to_string_lossy().to_string()]).unwrap();
+    let mut search_request = request(&root_path, "index");
+    search_request.options.whole_word = true;
+    search_request.limit = 1;
+
+    let result = search_indexed_workspace_content(&search_request).unwrap();
+
+    assert_eq!(result.matches.len(), 1);
+    assert_eq!(result.matches[0].preview, "struct Index {}");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn indexed_content_search_returns_cursor_for_next_page() {
     let root = unique_temp_dir("workspace-content-cursor");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();

@@ -11,6 +11,12 @@ use crate::models::workspace::{
 use crate::services::workspace_content_query_service::{load_candidate_lines, IndexedLine};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
+struct MatchedIndexedLine {
+    line: IndexedLine,
+    start: usize,
+    end: usize,
+}
+
 pub fn index_workspace_content(root_path: &str, indexed_paths: &[String]) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
@@ -92,29 +98,48 @@ pub fn search_indexed_workspace_content(
         .cursor
         .as_ref()
         .map_or(0, |cursor| cursor.path_index);
-    let lines = load_candidate_lines(
+    let scan_limit = indexed_candidate_scan_limit(request);
+    let candidate_lines = load_candidate_lines(
         &connection,
         &root_key,
         query,
         request.options.case_sensitive,
-        request.limit + 1,
+        scan_limit + 1,
         offset,
     )?;
-    let limit_reached = lines.len() > request.limit;
-    let searched_files = lines
+    let loaded_candidate_count = candidate_lines.len();
+    let searched_files = candidate_lines
         .iter()
         .map(|line| line.path.as_str())
         .collect::<HashSet<_>>()
         .len();
-    let visible_lines = lines.into_iter().take(request.limit).collect::<Vec<_>>();
-    let grouped_lines = load_context_lines(&connection, &root_key, &visible_lines)?;
-    let mut matches = Vec::new();
-
-    for line in visible_lines {
-        let Some((start, end)) = find_line_match(&line.text, query, request.options.case_sensitive)
-        else {
+    let mut consumed_candidates = 0;
+    let mut visible_lines = Vec::new();
+    for line in candidate_lines.into_iter().take(scan_limit) {
+        consumed_candidates += 1;
+        let Some((start, end)) = find_line_match(
+            &line.text,
+            query,
+            request.options.case_sensitive,
+            request.options.whole_word,
+        ) else {
             continue;
         };
+        visible_lines.push(MatchedIndexedLine { line, start, end });
+        if visible_lines.len() >= request.limit {
+            break;
+        }
+    }
+    let limit_reached = loaded_candidate_count > consumed_candidates;
+    let context_sources = visible_lines
+        .iter()
+        .map(|matched| matched.line.clone())
+        .collect::<Vec<_>>();
+    let grouped_lines = load_context_lines(&connection, &root_key, &context_sources)?;
+    let mut matches = Vec::new();
+
+    for matched in visible_lines {
+        let line = matched.line;
         let context_lines = grouped_lines.get(&line.path).cloned().unwrap_or_default();
         let line_index = line.line_number.saturating_sub(1);
 
@@ -124,11 +149,11 @@ pub fn search_indexed_workspace_content(
             relative_path: relative_workspace_path(&request.root_path, &file_path),
             file_name: file_name(&file_path),
             line: line.line_number,
-            column: start + 1,
-            summary: build_summary(&line.text, start, end),
+            column: matched.start + 1,
+            summary: build_summary(&line.text, matched.start, matched.end),
             preview: line.text.clone(),
-            preview_start: start,
-            preview_end: end,
+            preview_start: matched.start,
+            preview_end: matched.end,
             context_before: slice_context(
                 &context_lines,
                 line_index.saturating_sub(request.context_lines),
@@ -149,7 +174,7 @@ pub fn search_indexed_workspace_content(
         searched_files,
         limit_reached,
         next_cursor: limit_reached.then_some(WorkspaceTextSearchCursor {
-            path_index: offset + request.limit,
+            path_index: offset + consumed_candidates,
             line_index: 0,
         }),
     })
@@ -297,7 +322,19 @@ fn load_context_lines(
     Ok(grouped)
 }
 
-fn find_line_match(line_text: &str, query: &str, case_sensitive: bool) -> Option<(usize, usize)> {
+fn indexed_candidate_scan_limit(request: &WorkspaceTextSearchRequest) -> usize {
+    if request.options.whole_word {
+        return request.limit.saturating_mul(8).max(request.limit + 1);
+    }
+    request.limit + 1
+}
+
+fn find_line_match(
+    line_text: &str,
+    query: &str,
+    case_sensitive: bool,
+    whole_word: bool,
+) -> Option<(usize, usize)> {
     let search_line = if case_sensitive {
         line_text.to_string()
     } else {
@@ -308,8 +345,36 @@ fn find_line_match(line_text: &str, query: &str, case_sensitive: bool) -> Option
     } else {
         query.to_lowercase()
     };
-    let start = search_line.find(&search_query)?;
-    Some((start, start + search_query.len()))
+    let mut start = search_line.find(&search_query);
+    while let Some(start_index) = start {
+        let end_index = start_index + search_query.len();
+        if !whole_word || is_whole_word_boundary(line_text, start_index, end_index) {
+            return Some((start_index, end_index));
+        }
+        start = search_line[start_index + 1..]
+            .find(&search_query)
+            .map(|offset| start_index + 1 + offset);
+    }
+    None
+}
+
+fn is_whole_word_boundary(line_text: &str, start: usize, end: usize) -> bool {
+    let left = if start > 0 {
+        line_text[..start].chars().next_back()
+    } else {
+        None
+    };
+    let right = if end < line_text.len() {
+        line_text[end..].chars().next()
+    } else {
+        None
+    };
+
+    !left.is_some_and(is_word_character) && !right.is_some_and(is_word_character)
+}
+
+fn is_word_character(value: char) -> bool {
+    value == '_' || value.is_ascii_alphanumeric()
 }
 
 fn build_summary(line_text: &str, start: usize, end: usize) -> String {

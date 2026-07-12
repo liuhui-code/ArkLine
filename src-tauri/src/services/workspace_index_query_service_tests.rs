@@ -352,6 +352,27 @@ fn query_facade_routes_plain_text_to_index_and_regex_to_file_search() {
 }
 
 #[test]
+fn query_service_routes_whole_word_text_search_to_index() {
+    let root = unique_temp_dir("query-service-whole-word-text-index");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    let source_path = root.join("entry").join("src").join("Index.ets");
+    fs::write(&source_path, "indexBuilder()\nstruct Index {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::remove_file(&source_path).unwrap();
+    let mut request = plain_request(&root_path, "index");
+    request.options.whole_word = true;
+
+    let result = search_workspace_text(&runtime, request).unwrap();
+
+    assert_eq!(result.matches.len(), 1);
+    assert_eq!(result.matches[0].preview, "struct Index {}");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn all_scope_excludes_full_text_candidates() {
     let root = unique_temp_dir("workspace-query-all-no-text");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
