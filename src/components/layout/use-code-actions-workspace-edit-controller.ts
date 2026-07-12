@@ -1,9 +1,5 @@
 import { useRef, useState } from "react";
-import {
-  pathWithinDirectory,
-  replaceDirectoryPrefix,
-  uniqueNormalizedPaths,
-} from "@/components/layout/app-shell-model";
+import { buildAppliedWorkspaceEditUpdate } from "@/components/layout/workspace-edit-application-model";
 import {
   buildCodeActionsEditorSnapshot,
   codeActionsSourceStatus,
@@ -19,7 +15,6 @@ import {
 } from "@/components/layout/app-shell-types";
 import type { UseCodeActionsWorkspaceEditControllerOptions } from "@/components/layout/code-actions-controller-types";
 import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
-import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
 import type {
   WorkspaceEditPreview as WorkspaceEditPreviewModel,
@@ -116,62 +111,15 @@ export function useCodeActionsWorkspaceEditController({
         return current;
       }
 
-      const paths = new Set(current.visibleFiles.map(normalizePath));
-      const addedIndexPaths = new Set<string>();
-      const removedIndexPaths = new Set<string>();
-      for (const operation of plan.operations) {
-        switch (operation.kind) {
-          case "createFile":
-            paths.add(normalizePath(operation.path));
-            addedIndexPaths.add(normalizePath(operation.path));
-            break;
-          case "renameFile":
-            paths.delete(normalizePath(operation.oldPath));
-            paths.add(normalizePath(operation.newPath));
-            removedIndexPaths.add(normalizePath(operation.oldPath));
-            addedIndexPaths.add(normalizePath(operation.newPath));
-            break;
-          case "renameDirectory": {
-            const affectedPaths = [...paths].filter((path) => pathWithinDirectory(path, operation.oldPath));
-            affectedPaths.forEach((path) => {
-              paths.delete(path);
-              removedIndexPaths.add(path);
-              const newPath = replaceDirectoryPrefix(path, operation.oldPath, operation.newPath);
-              paths.add(newPath);
-              addedIndexPaths.add(newPath);
-            });
-            break;
-          }
-          case "deleteFile":
-            paths.delete(normalizePath(operation.path));
-            removedIndexPaths.add(normalizePath(operation.path));
-            break;
-          case "deleteDirectory": {
-            const affectedPaths = [...paths].filter((path) => pathWithinDirectory(path, operation.path));
-            affectedPaths.forEach((path) => {
-              paths.delete(path);
-              removedIndexPaths.add(path);
-            });
-            break;
-          }
-          case "text":
-            paths.add(normalizePath(operation.path));
-            addedIndexPaths.add(normalizePath(operation.path));
-            break;
-          case "createDirectory":
-            break;
-        }
-      }
-
-      const visibleFiles = uniqueNormalizedPaths([...paths]);
+      const update = buildAppliedWorkspaceEditUpdate({ visibleFiles: current.visibleFiles, plan });
       const nextWorkspace = {
         ...current,
-        visibleFiles,
-        fileTree: createFileTreeNodes(visibleFiles),
+        visibleFiles: update.visibleFiles,
+        fileTree: update.fileTree,
       };
       syncWorkspaceIndex(nextWorkspace);
       if (workspaceApi.updateWorkspaceIndexFiles) {
-        void workspaceApi.updateWorkspaceIndexFiles(current.rootPath, [...addedIndexPaths], [...removedIndexPaths]).catch((error) => {
+        void workspaceApi.updateWorkspaceIndexFiles(current.rootPath, update.addedIndexPaths, update.removedIndexPaths).catch((error) => {
           onStatusChange(`Workspace index update failed: ${error instanceof Error ? error.message : String(error)}`);
         });
       }
