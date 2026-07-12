@@ -253,6 +253,9 @@ pub mod workspace_index_scheduler_service;
 #[cfg(test)]
 mod workspace_index_scheduler_service_tests;
 pub mod workspace_index_schema_service;
+pub(crate) mod workspace_index_schema_version_service;
+#[cfg(test)]
+mod workspace_index_schema_version_service_tests;
 #[cfg(test)]
 mod workspace_index_schema_service_tests;
 pub mod workspace_index_service;

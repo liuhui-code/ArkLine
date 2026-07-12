@@ -1,32 +1,18 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rusqlite::Connection;
 
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_discovery_schema_service::create_discovery_tables;
 use crate::services::workspace_index_event_service::create_index_event_tables;
+pub use crate::services::workspace_index_schema_version_service::load_workspace_index_schema_versions;
+use crate::services::workspace_index_schema_version_service::{
+    create_workspace_index_schema_version_table, record_workspace_index_schema_versions,
+};
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
 use crate::services::workspace_sdk_schema_service::create_sdk_tables;
 use crate::services::workspace_symbol_resolution_schema_service::create_symbol_resolution_tables;
-
-const SCHEMA_DOMAINS: &[(&str, i64)] = &[
-    ("catalog", 1),
-    ("content", 1),
-    ("entity", 1),
-    ("symbol", 1),
-    ("stub", 1),
-    ("dependency", 1),
-    ("symbol_resolution", 1),
-    ("reference", 1),
-    ("fingerprint", 1),
-    ("sdk", 1),
-    ("task_journal", 1),
-    ("event", 1),
-    ("resume", 1),
-    ("discovery", 1),
-];
 
 pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
@@ -46,7 +32,7 @@ pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
 }
 
 pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), String> {
-    create_schema_version_table(connection)?;
+    create_workspace_index_schema_version_table(connection)?;
     create_catalog_tables(connection)?;
     create_entity_tables(connection)?;
     create_stub_tables(connection)?;
@@ -60,43 +46,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_dependency_graph_tables(connection)?;
     create_symbol_resolution_tables(connection)?;
     create_reference_index_tables(connection)?;
-    record_domain_versions(connection)
-}
-
-#[allow(dead_code)]
-pub fn load_workspace_index_schema_versions(
-    connection: &Connection,
-) -> Result<HashMap<String, i64>, String> {
-    create_schema_version_table(connection)?;
-    let mut statement = connection
-        .prepare(
-            "select domain, version
-             from workspace_index_schema_versions
-             order by domain",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })
-        .map_err(|error| error.to_string())?;
-
-    rows.collect::<Result<HashMap<_, _>, _>>()
-        .map_err(|error| error.to_string())
-}
-
-fn create_schema_version_table(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute(
-            "create table if not exists workspace_index_schema_versions (
-                domain text primary key,
-                version integer not null,
-                migrated_at integer not null default (strftime('%s','now') * 1000)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    record_workspace_index_schema_versions(connection)
 }
 
 fn create_catalog_tables(connection: &Connection) -> Result<(), String> {
@@ -455,22 +405,6 @@ fn create_resume_tables(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn record_domain_versions(connection: &Connection) -> Result<(), String> {
-    for (domain, version) in SCHEMA_DOMAINS {
-        connection
-            .execute(
-                "insert into workspace_index_schema_versions (domain, version, migrated_at)
-                 values (?1, ?2, strftime('%s','now') * 1000)
-                 on conflict(domain) do update set
-                    version = excluded.version,
-                    migrated_at = excluded.migrated_at",
-                params![domain, version],
-            )
-            .map_err(|error| error.to_string())?;
-    }
     Ok(())
 }
 
