@@ -65,6 +65,17 @@ export function formatTaskDetails(task: WorkspaceIndexTaskStatus) {
   return detail ? `${detail} · No heartbeat > 60s` : "No heartbeat > 60s";
 }
 
+export function formatTaskTargets(task: WorkspaceIndexTaskStatus) {
+  const paths = task.targetPaths ?? [];
+  if (paths.length === 0) {
+    return "-";
+  }
+  const visible = paths.map(formatCompactPath).join(", ");
+  const total = task.targetPathCount ?? paths.length;
+  const remaining = Math.max(0, total - paths.length);
+  return remaining > 0 ? `${visible} +${remaining} more` : visible;
+}
+
 export type ActiveProjectTaskSummary = {
   title: string;
   kind: string;
@@ -163,6 +174,15 @@ function formatDurationMs(durationMs: number) {
     return `${(clampedMs / 1000).toFixed(1)}s`;
   }
   return `${Math.floor(clampedMs / 60_000)}m ${Math.floor((clampedMs % 60_000) / 1000)}s`;
+}
+
+function formatCompactPath(path: string) {
+  const normalized = path.replaceAll("\\", "/");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length <= 2) {
+    return parts.join("/") || path;
+  }
+  return parts.slice(-2).join("/");
 }
 
 function performanceTimelineCount(backendCount: number, uiCount: number, ipcCount: number, renderCount: number) {

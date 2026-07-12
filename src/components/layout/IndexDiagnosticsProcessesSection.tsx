@@ -4,6 +4,7 @@ import {
   formatTaskDetails,
   formatTaskDuration,
   formatTaskProgress,
+  formatTaskTargets,
 } from "@/components/layout/index-diagnostics-model";
 
 type IndexDiagnosticsProcessesSectionProps = {
@@ -28,22 +29,24 @@ export function IndexDiagnosticsProcessesSection({
         <IndexDiagnosticsMetric label="Top task" value={queuePressure?.highestPriorityTaskKind ?? "none"} />
       </div>
       <div className="index-diagnostics__table">
-        <div className="index-diagnostics__row index-diagnostics__row--header">
+        <div className="index-diagnostics__row index-diagnostics__row--header index-diagnostics__row--processes">
           <span>Task kind</span>
           <span>Status</span>
           <span>Progress</span>
           <span>Duration</span>
+          <span>Target</span>
           <span>Details</span>
         </div>
         {taskStatuses.length > 0 ? taskStatuses.map((task) => (
           <div
-            className={`index-diagnostics__row${task.stalled ? " index-diagnostics__row--stalled" : ""}`}
+            className={`index-diagnostics__row index-diagnostics__row--processes${task.stalled ? " index-diagnostics__row--stalled" : ""}`}
             key={task.taskId}
           >
             <span>{task.kind}</span>
             <span>{task.stalled ? "stalled" : task.status}</span>
             <span>{formatTaskProgress(task)}</span>
             <span>{formatTaskDuration(task)}</span>
+            <span>{formatTaskTargets(task)}</span>
             <span>{formatTaskDetails(task)}</span>
           </div>
         )) : (

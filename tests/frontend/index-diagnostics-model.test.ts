@@ -4,6 +4,7 @@ import {
   buildActiveProjectTaskSummary,
   formatRepairAction,
   formatTaskDuration,
+  formatTaskTargets,
 } from "@/components/layout/index-diagnostics-model";
 import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 
@@ -45,6 +46,20 @@ describe("index diagnostics model", () => {
     expect(formatTaskDuration(task({ startedAt: 1_000, finishedAt: 2_250 }))).toBe("1.3s total");
     expect(formatTaskDuration(task({ startedAt: 1_000, lastHeartbeatAt: 61_500 }))).toBe("1m 0s active");
     expect(formatRepairAction("inspectParserFailures")).toBe("Inspect Parser Failures");
+  });
+
+  it("formats bounded task target path samples", () => {
+    expect(formatTaskTargets(task({}))).toBe("-");
+    expect(formatTaskTargets(task({
+      targetPaths: [
+        "/workspace/src/Entry.ets",
+        "C:\\workspace\\feature\\List.ets",
+      ],
+    }))).toBe("src/Entry.ets, feature/List.ets");
+    expect(formatTaskTargets(task({
+      targetPaths: ["/workspace/src/Entry.ets", "/workspace/src/Other.ets"],
+      targetPathCount: 5,
+    }))).toBe("src/Entry.ets, src/Other.ets +3 more");
   });
 
   it("summarizes the active project index task and ignores sdk tasks", () => {
