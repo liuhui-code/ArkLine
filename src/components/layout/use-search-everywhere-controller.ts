@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
-import {
-  resolveSearchSelectionMove,
-} from "@/components/layout/search-pagination-session";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
 import {
   openSearchCandidateNavigation,
@@ -46,6 +43,10 @@ import {
 } from "@/components/layout/search-file-reader";
 import { toggleSearchTextOption } from "@/components/layout/search-text-options-state";
 import { createWorkspaceSearchInteractionRuntime } from "@/components/layout/search-workspace-runtime";
+import {
+  moveSearchSelection,
+  setSearchSelection,
+} from "@/components/layout/search-selection-actions";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -158,27 +159,21 @@ export function useSearchEverywhereController({
   }
 
   function moveSearchEverywhereSelection(direction: 1 | -1) {
-    const session = searchSessionStoreRef.current.getSnapshot();
-    const resultCount = searchEverywhereMode === "searchEverywhere"
-      ? session.candidates.length
-      : session.result.matches.length;
-    const move = resolveSearchSelectionMove({
+    moveSearchSelection({
       mode: searchEverywhereMode,
       direction,
-      selectedIndex: session.selectedIndex,
-      resultCount,
-      canLoadMore: searchEverywhereMode === "searchEverywhere" ? Boolean(session.entityNextCursor) : Boolean(session.textNextCursor),
+      sessionStore: searchSessionStoreRef.current,
+      scheduleSelectedPreview,
+      loadNextPage: (selectedIndex) => void loadNextSearchEverywherePage(selectedIndex),
     });
-    if (move.kind === "loadMore") {
-      void loadNextSearchEverywherePage(move.selectIndexAfterLoad);
-      return;
-    }
-    if (move.kind === "select") setSearchEverywhereSelectedIndex(move.selectedIndex);
   }
 
   function setSearchEverywhereSelectedIndex(selectedIndex: number) {
-    searchSessionStoreRef.current.patch({ selectedIndex });
-    scheduleSelectedPreview(selectedIndex);
+    setSearchSelection({
+      selectedIndex,
+      sessionStore: searchSessionStoreRef.current,
+      scheduleSelectedPreview,
+    });
   }
 
   function scheduleSelectedPreview(selectedIndex: number) {
