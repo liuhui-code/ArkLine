@@ -1,5 +1,11 @@
 use crate::models::workspace::WorkspaceSearchCandidate;
 
+#[derive(Debug, Clone, Default)]
+pub struct WorkspaceSearchRankingContext {
+    pub active_path: Option<String>,
+    pub recent_paths: Vec<String>,
+}
+
 pub fn build_file_candidates(
     file_paths: &[String],
     query: &str,
@@ -30,14 +36,40 @@ pub fn sort_search_everywhere_candidates(
     candidates: &mut Vec<WorkspaceSearchCandidate>,
     limit: usize,
 ) {
+    sort_search_everywhere_candidates_with_context(
+        candidates,
+        limit,
+        &WorkspaceSearchRankingContext::default(),
+    );
+}
+
+pub fn sort_search_everywhere_candidates_with_context(
+    candidates: &mut Vec<WorkspaceSearchCandidate>,
+    limit: usize,
+    context: &WorkspaceSearchRankingContext,
+) {
+    let active_path = context.active_path.as_deref().map(normalize_search_path);
+    let recent_paths = context
+        .recent_paths
+        .iter()
+        .map(|path| normalize_search_path(path))
+        .collect::<Vec<_>>();
     candidates.sort_by(|left, right| {
         source_priority(&left.source)
             .cmp(&source_priority(&right.source))
+            .then_with(|| {
+                context_priority(left, active_path.as_deref(), &recent_paths)
+                    .cmp(&context_priority(right, active_path.as_deref(), &recent_paths))
+            })
             .then_with(|| {
                 right
                     .score
                     .partial_cmp(&left.score)
                     .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| {
+                project_proximity(right, active_path.as_deref())
+                    .cmp(&project_proximity(left, active_path.as_deref()))
             })
             .then_with(|| left.title.cmp(&right.title))
     });
@@ -91,6 +123,51 @@ fn score_text_candidate(candidate: &WorkspaceSearchCandidate, query: &str) -> Op
                 .as_ref()
                 .and_then(|path| lexical_match_score(path, query))
         })
+}
+
+fn context_priority(
+    candidate: &WorkspaceSearchCandidate,
+    active_path: Option<&str>,
+    recent_paths: &[String],
+) -> usize {
+    let Some(path) = candidate.path.as_deref().map(normalize_search_path) else {
+        return usize::MAX;
+    };
+    if active_path.is_some_and(|active| active == path) {
+        return 0;
+    }
+    recent_paths
+        .iter()
+        .position(|recent| recent == &path)
+        .map(|index| index + 1)
+        .unwrap_or(usize::MAX)
+}
+
+fn project_proximity(candidate: &WorkspaceSearchCandidate, active_path: Option<&str>) -> usize {
+    let (Some(active_path), Some(candidate_path)) = (active_path, candidate.path.as_deref()) else {
+        return 0;
+    };
+    let active_segments = directory_segments(active_path);
+    let candidate_path = normalize_search_path(candidate_path);
+    let candidate_segments = directory_segments(&candidate_path);
+    active_segments
+        .iter()
+        .zip(candidate_segments.iter())
+        .take_while(|(left, right)| left == right)
+        .count()
+}
+
+fn directory_segments(path: &str) -> Vec<&str> {
+    let mut segments = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    segments.pop();
+    segments
+}
+
+fn normalize_search_path(path: &str) -> String {
+    path.replace('\\', "/").to_lowercase()
 }
 
 fn rank_paths(paths: &[String], query: &str, limit: usize) -> Vec<(String, f64)> {
