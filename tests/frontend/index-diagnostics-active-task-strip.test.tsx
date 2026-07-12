@@ -14,6 +14,7 @@ describe("IndexDiagnosticsActiveTaskStrip", () => {
           duration: "not started",
           detail: "foreground-navigation",
           targetSummary: "src/Entry.ets +2 more",
+          targetCurrentFile: false,
         }}
       />,
     );
@@ -21,5 +22,25 @@ describe("IndexDiagnosticsActiveTaskStrip", () => {
     const strip = screen.getByRole("status", { name: "Active Index Task" });
     expect(within(strip).getByText("Project index task queued")).toBeVisible();
     expect(within(strip).getByText("src/Entry.ets +2 more")).toBeVisible();
+  });
+
+  it("highlights when the active task includes the current file target", () => {
+    render(
+      <IndexDiagnosticsActiveTaskStrip
+        task={{
+          title: "Project index task running",
+          kind: "changed-paths",
+          status: "running",
+          progress: "1/2 (50%)",
+          duration: "1.0s active",
+          detail: "foreground-navigation",
+          targetSummary: "src/Entry.ets",
+          targetCurrentFile: true,
+        }}
+      />,
+    );
+
+    const strip = screen.getByRole("status", { name: "Active Index Task" });
+    expect(within(strip).getByText("Current file · src/Entry.ets")).toBeVisible();
   });
 });

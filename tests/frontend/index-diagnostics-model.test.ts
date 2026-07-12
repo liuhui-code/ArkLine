@@ -85,6 +85,7 @@ describe("index diagnostics model", () => {
       duration: "2.5s active",
       detail: "diagnostics rebuild",
       targetSummary: null,
+      targetCurrentFile: false,
     });
   });
 
@@ -101,6 +102,20 @@ describe("index diagnostics model", () => {
     ]);
 
     expect(summary?.targetSummary).toBe("src/Entry.ets, features/Search.ets +1 more");
+  });
+
+  it("marks active project tasks that target the current editor file", () => {
+    const summary = buildActiveProjectTaskSummary([
+      task({
+        taskId: "project-1",
+        kind: "changed-paths",
+        status: "running",
+        targetPaths: ["C:\\workspace\\src\\Entry.ets"],
+      }),
+    ], "c:/workspace/src/Entry.ets");
+
+    expect(summary?.targetCurrentFile).toBe(true);
+    expect(summary?.targetSummary).toBe("src/Entry.ets");
   });
 });
 

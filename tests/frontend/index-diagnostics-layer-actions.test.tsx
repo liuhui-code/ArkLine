@@ -54,7 +54,7 @@ describe("IndexDiagnosticsCenter layer actions", () => {
         currentFileDirty={false}
         diagnostics={null}
         fileReadiness={null}
-        layerReadiness={layerReadiness()}
+        layerReadiness={layerReadiness("c:/workspace/src/Entry.ets")}
         recentQueryExplains={[]}
         taskStatuses={[{ ...taskStatus("changed-paths", "running"), reason: "foreground-navigation" }]}
         onClose={vi.fn()}
@@ -114,12 +114,43 @@ describe("IndexDiagnosticsCenter layer actions", () => {
 
     expect(onIndexCurrentFile).toHaveBeenCalledTimes(1);
   });
+
+  it("normalizes target paths before disabling current file indexing", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="c:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={null}
+        layerReadiness={layerReadiness("c:/workspace/src/Entry.ets")}
+        recentQueryExplains={[]}
+        taskStatuses={[{
+          ...taskStatus("changed-paths", "running"),
+          reason: "foreground-navigation",
+          targetPaths: ["C:\\workspace\\src\\Entry.ets"],
+          targetPathCount: 1,
+        }]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+        onIndexCurrentFile={vi.fn()}
+      />,
+    );
+
+    const layers = screen.getByRole("region", { name: "Index Layers" });
+    expect(within(layers).getByRole("button", { name: "Index Current File" })).toBeDisabled();
+  });
 });
 
-function layerReadiness(): WorkspaceIndexLayerReadinessReport {
+function layerReadiness(currentFilePath = "/workspace/Entry.ets"): WorkspaceIndexLayerReadinessReport {
   return {
     rootPath: "/workspace",
-    currentFilePath: "/workspace/Entry.ets",
+    currentFilePath,
     layers: [
       layer("projectFile", "rebuildIndex"),
       layer("sdkApi", "configureSdk"),

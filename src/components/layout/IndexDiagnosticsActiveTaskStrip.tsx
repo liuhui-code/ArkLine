@@ -5,6 +5,10 @@ export function IndexDiagnosticsActiveTaskStrip({ task }: { task: ActiveProjectT
     return null;
   }
 
+  const targetText = task.targetCurrentFile
+    ? `Current file${task.targetSummary ? ` · ${task.targetSummary}` : ""}`
+    : task.targetSummary ?? "";
+
   return (
     <div
       className={`index-diagnostics__active-task index-diagnostics__active-task--${task.status}`}
@@ -17,7 +21,7 @@ export function IndexDiagnosticsActiveTaskStrip({ task }: { task: ActiveProjectT
       </div>
       <span>{task.kind}</span>
       <span>{task.progress}</span>
-      <span>{task.targetSummary ?? ""}</span>
+      <span>{targetText}</span>
       <span>{task.duration}</span>
     </div>
   );

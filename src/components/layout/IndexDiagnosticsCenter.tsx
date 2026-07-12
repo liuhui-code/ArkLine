@@ -96,8 +96,8 @@ export function IndexDiagnosticsCenter({
   const repairActions = diagnostics?.repairActions ?? [];
   const schemaRebuildActions = diagnostics?.schemaVersionActions.filter((action) => action.status === "needs-rebuild") ?? [];
   const layerStatusText = getLayerReadinessStatusText(layerReadiness);
-  const activeProjectTask = buildActiveProjectTaskSummary(taskStatuses);
-  const activeSdkTask = buildActiveSdkTaskSummary(taskStatuses);
+  const activeProjectTask = buildActiveProjectTaskSummary(taskStatuses, activePath);
+  const activeSdkTask = buildActiveSdkTaskSummary(taskStatuses, activePath);
   const activeTask = activeProjectTask ?? activeSdkTask;
   const viewModel = buildIndexDiagnosticsViewModel({
     diagnostics: diagnostics ? {

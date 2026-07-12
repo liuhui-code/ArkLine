@@ -84,22 +84,29 @@ export type ActiveProjectTaskSummary = {
   duration: string;
   detail: string;
   targetSummary: string | null;
+  targetCurrentFile: boolean;
 };
 
-export function buildActiveProjectTaskSummary(tasks: WorkspaceIndexTaskStatus[]): ActiveProjectTaskSummary | null {
+export function buildActiveProjectTaskSummary(
+  tasks: WorkspaceIndexTaskStatus[],
+  currentFilePath: string | null = null,
+): ActiveProjectTaskSummary | null {
   const task = tasks.find((candidate) => candidate.kind !== "sdk" && !isTerminalTaskStatus(candidate.status));
   if (!task) {
     return null;
   }
-  return buildActiveTaskSummary(task, "Project index task");
+  return buildActiveTaskSummary(task, "Project index task", currentFilePath);
 }
 
-export function buildActiveSdkTaskSummary(tasks: WorkspaceIndexTaskStatus[]): ActiveProjectTaskSummary | null {
+export function buildActiveSdkTaskSummary(
+  tasks: WorkspaceIndexTaskStatus[],
+  currentFilePath: string | null = null,
+): ActiveProjectTaskSummary | null {
   const task = tasks.find((candidate) => candidate.kind === "sdk" && !isTerminalTaskStatus(candidate.status));
   if (!task) {
     return null;
   }
-  return buildActiveTaskSummary(task, "SDK index task");
+  return buildActiveTaskSummary(task, "SDK index task", currentFilePath);
 }
 
 export function formatLayerCounts(layer: { indexedCount: number; failedCount: number; staleCount: number }) {
@@ -194,7 +201,11 @@ function isTerminalTaskStatus(status: string) {
   return status === "ready" || status === "partial" || status === "stale" || status === "failed";
 }
 
-function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: string): ActiveProjectTaskSummary {
+function buildActiveTaskSummary(
+  task: WorkspaceIndexTaskStatus,
+  titlePrefix: string,
+  currentFilePath: string | null,
+): ActiveProjectTaskSummary {
   const targets = formatTaskTargets(task);
   return {
     title: `${titlePrefix} ${task.stalled ? "stalled" : task.status}`,
@@ -204,6 +215,7 @@ function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: str
     duration: formatTaskDuration(task),
     detail: formatTaskDetails(task),
     targetSummary: targets === "-" ? null : targets,
+    targetCurrentFile: taskTargetsCurrentFile(task, currentFilePath),
   };
 }
 
@@ -218,11 +230,23 @@ function isActiveForegroundNavigationForPath(task: WorkspaceIndexTaskStatus, cur
   if (!currentFilePath || !task.targetPaths || task.targetPaths.length === 0) {
     return true;
   }
-  return task.targetPaths.includes(currentFilePath);
+  return taskTargetsCurrentFile(task, currentFilePath);
 }
 
 function isForegroundNavigationTask(task: WorkspaceIndexTaskStatus) {
   return task.kind === "foreground-navigation" || task.reason === "foreground-navigation";
+}
+
+function taskTargetsCurrentFile(task: WorkspaceIndexTaskStatus, currentFilePath: string | null) {
+  if (!currentFilePath || !task.targetPaths || task.targetPaths.length === 0) {
+    return false;
+  }
+  const current = comparablePath(currentFilePath);
+  return task.targetPaths.some((path) => comparablePath(path) === current);
+}
+
+function comparablePath(path: string) {
+  return path.replaceAll("\\", "/").replace(/\/+/g, "/").toLowerCase();
 }
 
 function actionStateFromTask(task: WorkspaceIndexTaskStatus | undefined, label: string) {
