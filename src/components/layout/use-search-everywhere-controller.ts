@@ -22,8 +22,6 @@ import type { UiInteractionKind } from "@/features/performance/ui-latency-monito
 import {
   canUseNativeTextSearchRuntime,
 } from "@/components/layout/search-text-fallback";
-import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
-import { runSearchTextQuery } from "@/components/layout/search-text-runner";
 import { dispatchSearchOverlayQueryEffect } from "@/components/layout/search-query-effect-dispatcher";
 import {
   createSearchFileReader,
@@ -40,6 +38,7 @@ import { createSearchOpenActions } from "@/components/layout/search-open-actions
 import { runSearchFallbackText } from "@/components/layout/search-fallback-runner";
 import { createSearchSessionLifecycle } from "@/components/layout/search-session-lifecycle";
 import { createSearchNextPageAction } from "@/components/layout/search-next-page-action";
+import { createSearchRunActions } from "@/components/layout/search-run-actions";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -159,6 +158,29 @@ export function useSearchEverywhereController({
     hasDirtyDocuments,
     scheduleSelectedPreview,
   });
+  const searchRunActions = createSearchRunActions({
+    getQuery: () => debouncedSearchQuery,
+    getRootPath: () => workspace?.rootPath ?? null,
+    getMode: () => searchEverywhereMode,
+    getScope: () => searchEverywhereScope,
+    getOptions: () => searchEverywhereOptions,
+    getDirty: hasDirtyDocuments,
+    displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
+    minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
+    activePath,
+    recentPaths: getRecentPaths(),
+    queryIndexCandidates,
+    workspaceApi,
+    replaceQueryReadiness,
+    trackQuery: interactionRuntimeRef.current.trackQuery,
+    clearSearchResults,
+    patchSearchSession: searchSessionStoreRef.current.patch,
+    recordUiInteraction,
+    scheduleSelectedPreview,
+    reportEntityMiss: searchMissReporters.reportEntityMiss,
+    reportTextMiss: searchMissReporters.reportTextMiss,
+    runFallback: fallbackTextSearch,
+  });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
     openSearchOverlayAction({
@@ -263,45 +285,11 @@ export function useSearchEverywhereController({
   }
 
   function runEntitySearch(requestId: number) {
-    runSearchEntityQuery({
-      requestId,
-      query: debouncedSearchQuery,
-      rootPath: workspace?.rootPath ?? null,
-      scope: searchEverywhereScope,
-      displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
-      minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
-      activePath,
-      recentPaths: getRecentPaths(),
-      queryIndexCandidates,
-      workspaceApi,
-      replaceQueryReadiness,
-      trackQuery: interactionRuntimeRef.current.trackQuery,
-      clearSearchResults,
-      patchSearchSession: searchSessionStoreRef.current.patch,
-      recordUiInteraction,
-      reportMiss: searchMissReporters.reportEntityMiss,
-    });
+    searchRunActions.runEntitySearch(requestId);
   }
 
   function runTextSearch(requestId: number) {
-    runSearchTextQuery({
-      requestId,
-      mode: searchEverywhereMode,
-      query: debouncedSearchQuery,
-      rootPath: workspace?.rootPath ?? null,
-      minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
-      options: searchEverywhereOptions,
-      dirty: hasDirtyDocuments(),
-      workspaceApi,
-      runFallback: fallbackTextSearch,
-      replaceQueryReadiness,
-      trackQuery: interactionRuntimeRef.current.trackQuery,
-      clearSearchResults,
-      patchSearchSession: searchSessionStoreRef.current.patch,
-      recordUiInteraction,
-      scheduleSelectedPreview,
-      reportMiss: searchMissReporters.reportTextMiss,
-    });
+    searchRunActions.runTextSearch(requestId);
   }
 
   async function loadNextSearchEverywherePage(selectIndexAfterLoad?: number) {
