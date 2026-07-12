@@ -3,6 +3,8 @@ import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace
 
 export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff">;
 
+const RETRY_BACKOFF_DELAYS_MS = [2_000, 5_000, 15_000, 30_000];
+
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
   refreshResult: WorkspaceIndexRefreshResult | null;
@@ -69,10 +71,13 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
     },
     recordTaskStatus(status: WorkspaceIndexTaskStatus) {
       const current = snapshot.rootPath === status.rootPath ? snapshot.taskStatuses : [];
+      const taskStatuses = mergeTaskStatus(current, status);
+      const healthSummary = healthSummaryFromTaskStatuses(status, taskStatuses);
       commit({
         ...snapshot,
         rootPath: status.rootPath,
-        taskStatuses: mergeTaskStatus(current, status),
+        healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
+        taskStatuses,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -106,5 +111,42 @@ function mergeTaskStatus(
   const retained = statuses.filter((status) => status.taskId !== next.taskId);
   return [...retained, next].sort((left, right) => left.generation - right.generation);
 }
+
+function healthSummaryFromTaskStatuses(
+  current: WorkspaceIndexTaskStatus,
+  statuses: WorkspaceIndexTaskStatus[],
+): WorkspaceIndexHealthSummary | null | undefined {
+  if (current.status !== "failed") {
+    return isTerminalTaskStatus(current.status) ? { retryBackoffCount: 0, latestRetryBackoff: null } : undefined;
+  }
+  let failureCount = 0;
+  const matching = statuses
+    .filter((status) => (
+      status.rootPath === current.rootPath
+      && status.kind === current.kind
+      && status.reason === current.reason
+    ))
+    .reverse();
+  for (const status of matching) {
+    if (status.status !== "failed") {
+      break;
+    }
+    failureCount += 1;
+  }
+  if (failureCount < 2) {
+    return undefined;
+  }
+  const delay = RETRY_BACKOFF_DELAYS_MS[Math.min(failureCount - 2, RETRY_BACKOFF_DELAYS_MS.length - 1)];
+  return {
+    retryBackoffCount: 1,
+    latestRetryBackoff: `${current.kind} failed ${failureCount} consecutive time(s); recommended retry delay ${delay}ms`,
+  };
+}
+
+function isTerminalTaskStatus(status: string) {
+  return TERMINAL_TASK_STATUSES.has(status);
+}
+
+const TERMINAL_TASK_STATUSES = new Set(["ready", "partial", "stale", "cancelled", "superseded", "skipped"]);
 
 export const workspaceIndexProjectionStore = createWorkspaceIndexProjectionStore();

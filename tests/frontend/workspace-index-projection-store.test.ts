@@ -29,6 +29,25 @@ describe("workspace index projection store", () => {
     expect(listener).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
+
+  it("derives retry backoff health from consecutive failed task statuses", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordTaskStatus(taskStatus({ taskId: "first", status: "failed", generation: 1 }));
+    expect(store.snapshot().healthSummary).toBeNull();
+
+    store.recordTaskStatus(taskStatus({ taskId: "second", status: "failed", generation: 2 }));
+    expect(store.snapshot().healthSummary).toEqual({
+      retryBackoffCount: 1,
+      latestRetryBackoff: "refresh-workspace failed 2 consecutive time(s); recommended retry delay 2000ms",
+    });
+
+    store.recordTaskStatus(taskStatus({ taskId: "third", status: "ready", generation: 3 }));
+    expect(store.snapshot().healthSummary).toEqual({
+      retryBackoffCount: 0,
+      latestRetryBackoff: null,
+    });
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

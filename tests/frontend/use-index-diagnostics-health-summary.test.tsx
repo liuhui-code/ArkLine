@@ -34,6 +34,29 @@ describe("useIndexDiagnosticsController health summary", () => {
       .toBe("Index: Backoff, recommended retry delay 2000ms");
     expect(getWorkspaceIndexHealth).toHaveBeenCalledWith("/workspace");
   });
+
+  it("derives retry backoff status before health refresh is available", async () => {
+    const { result } = renderHook(() => useIndexDiagnosticsController(options()));
+
+    await act(async () => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        taskId: "first",
+        kind: "refresh-workspace",
+        status: "failed",
+        generation: 1,
+      }));
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        taskId: "second",
+        kind: "refresh-workspace",
+        status: "failed",
+        generation: 2,
+      }));
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
+      .toBe("Index: Backoff, refresh-workspace failed 2 consecutive time(s); recommended retry delay 2000ms");
+  });
 });
 
 function waitForProjectionFlush() {
