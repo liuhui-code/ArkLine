@@ -22,7 +22,10 @@ use crate::services::workspace_index_persistence_service::{
 };
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
-use crate::services::workspace_index_state_defaults_service::{build_partial_reason, empty_state};
+use crate::services::workspace_index_snapshot_state_service::{
+    build_snapshot_index_state, snapshot_file_paths,
+};
+use crate::services::workspace_index_state_defaults_service::empty_state;
 use crate::services::workspace_search_ranking_service::{
     build_file_candidates, sort_search_everywhere_candidates,
 };
@@ -52,28 +55,9 @@ impl WorkspaceIndexRuntime {
     ) -> Result<WorkspaceIndexState, String> {
         migrate_workspace_index_schema(&snapshot.root_path)?;
         let root_path = normalize_index_path(&snapshot.root_path);
-        let status = if snapshot.scan_summary.truncated {
-            WorkspaceIndexStatus::Partial
-        } else {
-            WorkspaceIndexStatus::Ready
-        };
-        let state = WorkspaceIndexState {
-            status,
-            root_path: Some(root_path.clone()),
-            file_paths: snapshot
-                .files
-                .iter()
-                .map(|path| normalize_index_path(path))
-                .collect(),
-            symbols: Vec::new(),
-            indexed_at: Some(now_epoch_ms()?),
-            partial_reason: build_partial_reason(snapshot),
-        };
-        let symbols = index_workspace_symbols(&state.file_paths);
-        let state = WorkspaceIndexState {
-            symbols: symbols.clone(),
-            ..state
-        };
+        let file_paths = snapshot_file_paths(snapshot);
+        let symbols = index_workspace_symbols(&file_paths);
+        let state = build_snapshot_index_state(snapshot, now_epoch_ms()?, symbols.clone());
         let indexed = IndexedWorkspace {
             state: state.clone(),
             file_paths: state.file_paths.clone(),
@@ -101,27 +85,10 @@ impl WorkspaceIndexRuntime {
     ) -> Result<WorkspaceIndexState, String> {
         migrate_workspace_index_schema(&snapshot.root_path)?;
         let root_path = normalize_index_path(&snapshot.root_path);
-        let status = if snapshot.scan_summary.truncated {
-            WorkspaceIndexStatus::Partial
-        } else {
-            WorkspaceIndexStatus::Ready
-        };
-        let file_paths = snapshot
-            .files
-            .iter()
-            .map(|path| normalize_index_path(path))
-            .collect::<Vec<_>>();
-        let state = WorkspaceIndexState {
-            status,
-            root_path: Some(root_path.clone()),
-            file_paths: file_paths.clone(),
-            symbols: Vec::new(),
-            indexed_at: Some(now_epoch_ms()?),
-            partial_reason: build_partial_reason(snapshot),
-        };
+        let state = build_snapshot_index_state(snapshot, now_epoch_ms()?, Vec::new());
         let indexed = IndexedWorkspace {
             state: state.clone(),
-            file_paths,
+            file_paths: state.file_paths.clone(),
             symbols: Vec::new(),
         };
 
@@ -406,30 +373,13 @@ impl WorkspaceIndexRuntime {
         priority: WorkspaceIndexTaskPriority,
     ) -> Result<WorkspaceIndexState, String> {
         let root_path = normalize_index_path(&snapshot.root_path);
-        let status = if snapshot.scan_summary.truncated {
-            WorkspaceIndexStatus::Partial
-        } else {
-            WorkspaceIndexStatus::Ready
-        };
-        let file_paths = snapshot
-            .files
-            .iter()
-            .map(|path| normalize_index_path(path))
-            .collect::<Vec<_>>();
         let symbol_update =
             update_workspace_symbols_with_delta(previous_symbols, changed_paths, removed_paths);
         let symbols = symbol_update.symbols;
-        let state = WorkspaceIndexState {
-            status,
-            root_path: Some(root_path.clone()),
-            file_paths: file_paths.clone(),
-            symbols: symbols.clone(),
-            indexed_at: Some(now_epoch_ms()?),
-            partial_reason: build_partial_reason(snapshot),
-        };
+        let state = build_snapshot_index_state(snapshot, now_epoch_ms()?, symbols.clone());
         let indexed = IndexedWorkspace {
             state: state.clone(),
-            file_paths,
+            file_paths: state.file_paths.clone(),
             symbols,
         };
 

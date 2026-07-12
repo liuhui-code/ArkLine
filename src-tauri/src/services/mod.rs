@@ -241,6 +241,9 @@ pub(crate) mod workspace_index_state_defaults_service;
 pub mod workspace_index_state_machine_service;
 #[cfg(test)]
 mod workspace_index_state_machine_service_tests;
+pub(crate) mod workspace_index_snapshot_state_service;
+#[cfg(test)]
+mod workspace_index_snapshot_state_service_tests;
 pub mod workspace_index_status_projection_service;
 #[cfg(test)]
 mod workspace_index_status_projection_service_tests;
