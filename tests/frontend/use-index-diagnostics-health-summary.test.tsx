@@ -199,6 +199,40 @@ describe("useIndexDiagnosticsController health summary", () => {
     expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
       .toBe("Index: Needs Rebuild Project Index");
   });
+
+  it("surfaces live query repair actions before diagnostics refresh includes them", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => ({
+      ...diagnostics(),
+      retryBackoffCount: 0,
+      latestRetryBackoff: null,
+      lastError: null,
+      repairActions: [],
+      recentEvents: [],
+    }));
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses: vi.fn(async () => []),
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      workspaceIndexProjectionStore.recordRecentEvent("/workspace", indexEvent({
+        eventId: "query-miss",
+        scope: "query",
+        kind: "definition",
+        phase: "miss",
+        payloadJson: JSON.stringify({ recommendedAction: "rebuildIndex" }),
+      }));
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.indexDiagnostics?.repairActions).toEqual(["rebuildProjectIndex"]);
+    expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
+      .toBe("Index: Needs Rebuild Project Index");
+  });
 });
 
 function waitForProjectionFlush() {

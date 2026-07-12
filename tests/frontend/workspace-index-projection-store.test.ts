@@ -138,6 +138,24 @@ describe("workspace index projection store", () => {
       lastError: "parser crashed",
     });
   });
+
+  it("derives repair action hints from live query explain payloads", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvents("/workspace", [
+      indexEvent({
+        eventId: "query-miss",
+        scope: "query",
+        kind: "definition",
+        phase: "miss",
+        payloadJson: JSON.stringify({ recommendedAction: "rebuildIndex" }),
+      }),
+    ]);
+
+    expect(store.snapshot().repairSummary).toEqual({
+      repairActions: ["rebuildProjectIndex"],
+    });
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

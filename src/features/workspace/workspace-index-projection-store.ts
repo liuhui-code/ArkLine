@@ -19,6 +19,10 @@ export type WorkspaceIndexErrorSummary = {
   lastError: string | null;
 };
 
+export type WorkspaceIndexRepairSummary = {
+  repairActions: string[];
+};
+
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
   refreshResult: WorkspaceIndexRefreshResult | null;
@@ -26,6 +30,7 @@ export type WorkspaceIndexProjectionSnapshot = {
   healthSummary: WorkspaceIndexHealthSummary | null;
   explainSummary: WorkspaceIndexExplainSummary | null;
   errorSummary: WorkspaceIndexErrorSummary | null;
+  repairSummary: WorkspaceIndexRepairSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
   recentEvents: WorkspaceIndexEvent[];
   timeline: WorkspaceIndexTimelineItem[];
@@ -43,6 +48,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     healthSummary: null,
     explainSummary: null,
     errorSummary: null,
+    repairSummary: null,
     taskStatuses: [],
     recentEvents: [],
     timeline: [],
@@ -119,6 +125,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const healthSummary = healthSummaryFromEvents(recentEvents);
       const explainSummary = explainSummaryFromEvents(recentEvents);
       const errorSummary = errorSummaryFromEvents(recentEvents);
+      const repairSummary = repairSummaryFromEvents(recentEvents);
       const timeline = timelineFromEvents(recentEvents);
       commit({
         ...snapshot,
@@ -128,6 +135,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
         errorSummary: errorSummary === undefined ? snapshot.errorSummary : errorSummary,
+        repairSummary: repairSummary === undefined ? snapshot.repairSummary : repairSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -138,6 +146,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const healthSummary = healthSummaryFromEvents(recentEvents);
       const explainSummary = explainSummaryFromEvents(recentEvents);
       const errorSummary = errorSummaryFromEvents(recentEvents);
+      const repairSummary = repairSummaryFromEvents(recentEvents);
       const timeline = timelineFromEvents(recentEvents);
       commit({
         ...snapshot,
@@ -147,6 +156,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
         errorSummary: errorSummary === undefined ? snapshot.errorSummary : errorSummary,
+        repairSummary: repairSummary === undefined ? snapshot.repairSummary : repairSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -194,6 +204,38 @@ function errorSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexEr
   return {
     lastError: latest.message || null,
   };
+}
+
+function repairSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexRepairSummary | undefined {
+  const action = [...events]
+    .reverse()
+    .map(repairActionFromEvent)
+    .find((candidate): candidate is string => candidate != null);
+  return action == null ? undefined : { repairActions: [action] };
+}
+
+function repairActionFromEvent(event: WorkspaceIndexEvent): string | null {
+  if (event.scope !== "query") {
+    return null;
+  }
+  const payload = parseEventPayload(event.payloadJson);
+  switch (payload?.recommendedAction) {
+    case "rebuildIndex":
+      return "rebuildProjectIndex";
+    case "configureSdk":
+      return "configureSdk";
+    default:
+      return null;
+  }
+}
+
+function parseEventPayload(payloadJson: string): { recommendedAction?: unknown } | null {
+  try {
+    const payload = JSON.parse(payloadJson);
+    return payload && typeof payload === "object" ? payload : null;
+  } catch {
+    return null;
+  }
 }
 
 function mergeRecentEvent(events: WorkspaceIndexEvent[], next: WorkspaceIndexEvent) {
