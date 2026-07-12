@@ -5,6 +5,7 @@ import {
   COMPLETION_POPUP_MARGIN,
   COMPLETION_POPUP_WIDTH,
 } from "@/components/layout/app-shell-constants";
+import { buildActiveProjectTaskSummary } from "@/components/layout/index-diagnostics-model";
 import type { CodeAction } from "@/features/code-actions/code-action-model";
 import type {
   WorkspaceIndexLayerReadinessReport,
@@ -115,9 +116,8 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
     if (activeTask.kind === "discovery") {
       return formatDiscoveryIndexStatus(activeTask);
     }
-    const progressText = activeTask.progressTotal > 0
-      ? ` (${activeTask.progressCurrent}/${activeTask.progressTotal})`
-      : "";
+    const summary = buildActiveProjectTaskSummary([activeTask]);
+    const progressText = activeTask.progressTotal > 0 && summary ? ` · ${summary.progress}` : "";
     return `Index: ${activeTask.status} ${projectIndexTaskLabel(activeTask.kind)}${progressText}`;
   }
 

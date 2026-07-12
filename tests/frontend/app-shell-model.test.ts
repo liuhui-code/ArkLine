@@ -90,7 +90,7 @@ describe("app shell model", () => {
       .toBe("Index: ready (2 files)");
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "open-workspace", status: "running", progressCurrent: 4, progressTotal: 10 }),
-    ])).toBe("Index: running project (4/10)");
+    ])).toBe("Index: running project · 4/10 (40%)");
     expect(getIndexStatusText(indexState({ status: "partial" }), [
       taskStatus({ kind: "discovery", status: "running", progressCurrent: 0, progressTotal: 1 }),
     ])).toBe("Index: Discovering files");
