@@ -178,7 +178,11 @@ export function IndexDiagnosticsCenter({
               fileReadiness={fileReadiness}
             />
 
-            <IndexDiagnosticsLayersSection layerReadiness={layerReadiness} onAction={runLayerAction} />
+            <IndexDiagnosticsLayersSection
+              layerReadiness={layerReadiness}
+              taskStatuses={taskStatuses}
+              onAction={runLayerAction}
+            />
 
             <IndexDiagnosticsQueryExplainSection
               queryTimeline={queryTimeline}

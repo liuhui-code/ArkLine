@@ -94,6 +94,31 @@ export function formatLayerCounts(layer: { indexedCount: number; failedCount: nu
   return `${layer.indexedCount.toLocaleString()} indexed · ${layer.failedCount.toLocaleString()} failed · ${layer.staleCount.toLocaleString()} stale`;
 }
 
+export function getLayerActionState(action: string | null, tasks: WorkspaceIndexTaskStatus[]) {
+  if (action == null || action === "none" || action === "wait") {
+    return { disabled: false, reason: null };
+  }
+  if (action === "indexCurrentFile") {
+    return actionStateFromTask(
+      tasks.find((task) => task.kind === "foreground-navigation" && !isTerminalTaskStatus(task.status)),
+      "Foreground navigation indexing is already active",
+    );
+  }
+  if (action === "configureSdk" || action === "rebuildSdkIndex") {
+    return actionStateFromTask(
+      tasks.find((task) => task.kind === "sdk" && !isTerminalTaskStatus(task.status)),
+      "SDK indexing is already active",
+    );
+  }
+  if (action === "rebuildIndex") {
+    return actionStateFromTask(
+      tasks.find((task) => task.kind !== "sdk" && !isTerminalTaskStatus(task.status)),
+      "Project indexing is already active",
+    );
+  }
+  return { disabled: false, reason: null };
+}
+
 export function formatClockTime(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString();
 }
@@ -157,4 +182,11 @@ function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: str
 
 function firstNonEmpty(...values: Array<string | undefined>) {
   return values.find((value) => value != null && value.trim().length > 0) ?? "";
+}
+
+function actionStateFromTask(task: WorkspaceIndexTaskStatus | undefined, label: string) {
+  if (!task) {
+    return { disabled: false, reason: null };
+  }
+  return { disabled: true, reason: `${label}: ${task.status} ${formatTaskProgress(task)}` };
 }

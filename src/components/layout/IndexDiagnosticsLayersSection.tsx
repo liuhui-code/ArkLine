@@ -1,13 +1,19 @@
 import type { WorkspaceIndexLayerReadiness } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexLayerReadinessReport } from "@/features/workspace/workspace-api";
-import { formatLayerCounts } from "@/components/layout/index-diagnostics-model";
+import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import { formatLayerCounts, getLayerActionState } from "@/components/layout/index-diagnostics-model";
 
 type IndexDiagnosticsLayersSectionProps = {
   layerReadiness: WorkspaceIndexLayerReadinessReport | null;
+  taskStatuses?: WorkspaceIndexTaskStatus[];
   onAction?: (action: string) => void;
 };
 
-export function IndexDiagnosticsLayersSection({ layerReadiness, onAction }: IndexDiagnosticsLayersSectionProps) {
+export function IndexDiagnosticsLayersSection({
+  layerReadiness,
+  taskStatuses = [],
+  onAction,
+}: IndexDiagnosticsLayersSectionProps) {
   const layers = layerReadiness?.layers ?? [];
 
   return (
@@ -26,7 +32,7 @@ export function IndexDiagnosticsLayersSection({ layerReadiness, onAction }: Inde
           <span>Action</span>
         </div>
         {layers.length > 0 ? layers.map((layer) => (
-          <LayerReadinessRow layer={layer} key={layer.layer} onAction={onAction} />
+          <LayerReadinessRow layer={layer} key={layer.layer} taskStatuses={taskStatuses} onAction={onAction} />
         )) : (
           <div className="index-diagnostics__empty">No layer readiness evidence is available.</div>
         )}
@@ -37,13 +43,17 @@ export function IndexDiagnosticsLayersSection({ layerReadiness, onAction }: Inde
 
 function LayerReadinessRow({
   layer,
+  taskStatuses,
   onAction,
 }: {
   layer: WorkspaceIndexLayerReadiness;
+  taskStatuses: WorkspaceIndexTaskStatus[];
   onAction?: (action: string) => void;
 }) {
   const action = layer.recommendedAction;
+  const actionState = getLayerActionState(action, taskStatuses);
   const canRunAction = action != null && action !== "wait" && action !== "none";
+  const actionReason = actionState.reason ?? layer.reason;
 
   return (
     <div className="index-diagnostics__row index-diagnostics__row--layers">
@@ -54,11 +64,17 @@ function LayerReadinessRow({
       <span>{formatLayerImpact(layer.layer)}</span>
       <span>
         {canRunAction ? (
-          <button type="button" className="toolbar__button" onClick={() => onAction?.(action)}>
+          <button
+            type="button"
+            className="toolbar__button"
+            disabled={actionState.disabled}
+            title={actionState.reason ?? undefined}
+            onClick={() => onAction?.(action)}
+          >
             {formatLayerAction(action)}
           </button>
         ) : formatLayerAction(action)}
-        {layer.reason ? <small>{layer.reason}</small> : null}
+        {actionReason ? <small>{actionReason}</small> : null}
       </span>
     </div>
   );
