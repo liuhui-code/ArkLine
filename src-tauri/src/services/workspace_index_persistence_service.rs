@@ -19,6 +19,7 @@ use crate::services::workspace_index_incremental_persistence_service::{
     persist_incremental_sqlite_file_symbol_state,
     persist_incremental_sqlite_index_state_with_priority,
 };
+use crate::services::workspace_index_metadata_restore_service::restore_metadata;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_stub_index_service::replace_all_stub_rows;
@@ -383,13 +384,6 @@ fn restore_structured_sqlite_catalog_cache(
     })
 }
 
-#[derive(Debug)]
-struct RestoredMetadata {
-    status: WorkspaceIndexStatus,
-    indexed_at: Option<u128>,
-    partial_reason: Option<String>,
-}
-
 fn restore_file_paths(connection: &Connection, root_key: &str) -> Result<Vec<String>, String> {
     let mut statement = connection
         .prepare(
@@ -439,41 +433,6 @@ fn restore_symbols(
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
-}
-
-fn restore_metadata(
-    connection: &Connection,
-    root_key: &str,
-) -> Result<Option<RestoredMetadata>, String> {
-    connection
-        .query_row(
-            "select status, indexed_at, partial_reason
-             from workspace_index_metadata
-             where root_path = ?1",
-            params![root_key],
-            |row| {
-                let status: String = row.get(0)?;
-                let indexed_at: Option<i64> = row.get(1)?;
-                Ok(RestoredMetadata {
-                    status: parse_index_status(&status),
-                    indexed_at: indexed_at.and_then(|value| u128::try_from(value).ok()),
-                    partial_reason: row.get(2)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|error| error.to_string())
-}
-
-fn parse_index_status(status: &str) -> WorkspaceIndexStatus {
-    match status {
-        "scanning" => WorkspaceIndexStatus::Scanning,
-        "ready" => WorkspaceIndexStatus::Ready,
-        "partial" => WorkspaceIndexStatus::Partial,
-        "stale" => WorkspaceIndexStatus::Stale,
-        "failed" => WorkspaceIndexStatus::Failed,
-        _ => WorkspaceIndexStatus::Empty,
-    }
 }
 
 fn now_epoch_ms() -> Result<u128, String> {

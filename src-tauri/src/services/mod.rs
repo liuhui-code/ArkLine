@@ -194,6 +194,9 @@ mod workspace_index_lifecycle_service_tests;
 pub mod workspace_index_maintenance_service;
 #[cfg(test)]
 mod workspace_index_maintenance_service_tests;
+pub(crate) mod workspace_index_metadata_restore_service;
+#[cfg(test)]
+mod workspace_index_metadata_restore_service_tests;
 #[cfg(test)]
 mod workspace_index_manager_priority_tests;
 #[cfg(test)]
