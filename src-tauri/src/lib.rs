@@ -134,7 +134,13 @@ mod services {
     pub(crate) mod workspace_discovery_task_service;
     #[cfg(test)]
     mod workspace_discovery_task_service_tests;
+    #[cfg(test)] mod workspace_edit_file_ops_tests;
+    pub(crate) mod workspace_edit_path_service;
+    pub(crate) mod workspace_edit_relationship_service;
+    #[cfg(test)] mod workspace_edit_safety_tests;
     pub mod workspace_edit_service;
+    pub(crate) mod workspace_edit_summary_service;
+    #[cfg(test)] mod workspace_edit_test_fixture_service;
     pub mod workspace_file_fingerprint_service;
     #[cfg(test)]
     mod workspace_file_fingerprint_service_tests;
@@ -231,6 +237,7 @@ mod services {
     pub mod workspace_index_persistence_service;
     #[cfg(test)]
     mod workspace_index_query_scope_service_tests;
+    pub(crate) mod workspace_index_query_path_service;
     pub mod workspace_index_query_service;
     #[cfg(test)]
     mod workspace_index_query_service_tests;
