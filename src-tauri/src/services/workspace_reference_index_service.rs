@@ -149,6 +149,7 @@ pub struct WorkspaceReferenceRefreshProfile {
     pub index_duration: std::time::Duration,
     pub affected_path_count: usize,
     pub content_count: usize,
+    pub skipped_content_count: usize,
     pub member_context_loaded: bool,
 }
 
@@ -211,6 +212,7 @@ pub fn profile_replace_workspace_references_for_paths(
         index_duration,
         affected_path_count: plan.affected_paths.len(),
         content_count: content_plan.contents.len(),
+        skipped_content_count: content_plan.skipped_oversized_paths.len(),
         member_context_loaded: member_context.is_some(),
     })
 }
