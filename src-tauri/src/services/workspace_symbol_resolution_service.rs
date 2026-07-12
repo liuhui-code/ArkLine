@@ -17,6 +17,7 @@ use crate::services::workspace_symbol_resolution_lookup_service::{
 use crate::services::workspace_symbol_resolution_model_service::{
     ExportBindingRow, ImportBindingRow, StubDeclarationRow, UnresolvedImportRow,
 };
+use crate::services::workspace_symbol_resolution_path_plan_service::plan_symbol_resolution_paths;
 use crate::services::workspace_symbol_resolution_refresh_plan_service::{
     plan_symbol_resolution_refresh, SymbolResolutionRefreshPlan,
 };
@@ -63,15 +64,16 @@ pub fn resolve_workspace_symbols_for_paths(
     removed_paths: &[String],
     indexed_generation: u64,
 ) -> Result<WorkspaceSymbolResolutionSummary, String> {
-    let affected_paths = affected_path_set(indexed_paths, removed_paths);
-    delete_symbol_resolution_for_paths(connection, root_key, &affected_paths)?;
+    let path_plan = plan_symbol_resolution_paths(indexed_paths, removed_paths);
+    delete_symbol_resolution_for_paths(connection, root_key, &path_plan.affected_path_set)?;
     let plan = plan_symbol_resolution_refresh(has_import_or_export_bindings_for_paths(
         connection,
         root_key,
-        &affected_paths,
+        &path_plan.affected_path_set,
     )?);
     if plan == SymbolResolutionRefreshPlan::DeclarationsOnly {
-        let declarations = load_stub_declarations_for_paths(connection, root_key, &affected_paths)?;
+        let declarations =
+            load_stub_declarations_for_paths(connection, root_key, &path_plan.affected_path_set)?;
         return resolve_workspace_symbols_from_declarations(
             connection,
             root_key,
@@ -87,7 +89,7 @@ pub fn resolve_workspace_symbols_for_paths(
         root_key,
         indexed_generation,
         &declarations,
-        Some(&affected_paths),
+        Some(&path_plan.affected_path_set),
         true,
     )
 }
@@ -240,14 +242,6 @@ fn resolve_workspace_symbols_from_declarations(
         resolved_count,
         unresolved_count: unresolved_imports.len(),
     })
-}
-
-fn affected_path_set(indexed_paths: &[String], removed_paths: &[String]) -> HashSet<String> {
-    indexed_paths
-        .iter()
-        .chain(removed_paths.iter())
-        .map(|path| path.replace('/', "\\"))
-        .collect()
 }
 
 fn should_resolve_path(affected_paths: Option<&HashSet<String>>, path: &str) -> bool {

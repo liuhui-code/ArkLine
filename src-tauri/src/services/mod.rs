@@ -332,6 +332,9 @@ pub(crate) mod workspace_symbol_resolution_lookup_service;
 #[cfg(test)]
 mod workspace_symbol_resolution_lookup_service_tests;
 pub mod workspace_symbol_resolution_model_service;
+pub(crate) mod workspace_symbol_resolution_path_plan_service;
+#[cfg(test)]
+mod workspace_symbol_resolution_path_plan_service_tests;
 pub mod workspace_symbol_resolution_query_service;
 #[cfg(test)]
 mod workspace_symbol_resolution_query_service_tests;
