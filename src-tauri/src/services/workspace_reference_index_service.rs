@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::fs;
 use std::path::Path;
 
 use rusqlite::{params, Connection};
@@ -15,10 +14,11 @@ use crate::services::workspace_reference_identifier_index_service::{
     load_reference_alias_targets_for_paths, ReferenceAliasTargets,
 };
 use crate::services::workspace_reference_member_index_service::{
-    contains_member_access, index_workspace_member_references_with_context,
-    WorkspaceMemberReferenceContext,
+    index_workspace_member_references_with_context, WorkspaceMemberReferenceContext,
 };
-use crate::services::workspace_reference_refresh_plan_service::plan_reference_refresh_paths;
+use crate::services::workspace_reference_refresh_plan_service::{
+    plan_reference_refresh_content, plan_reference_refresh_paths,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceSymbolReferenceRow {
@@ -128,8 +128,8 @@ pub fn replace_workspace_references_for_paths(
         load_reference_alias_targets_for_paths(connection, root_key, &plan.affected_path_set)?;
     let declarations =
         load_workspace_declarations_for_paths(connection, root_key, &plan.affected_path_set)?;
-    let contents = load_source_contents(indexed_paths);
-    let member_context = if contents_contain_member_access(&contents) {
+    let content_plan = plan_reference_refresh_content(indexed_paths);
+    let member_context = if content_plan.member_context_required {
         Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
     } else {
         None
@@ -142,7 +142,7 @@ pub fn replace_workspace_references_for_paths(
         false,
         &aliases,
         &declarations,
-        &contents,
+        &content_plan.contents,
         member_context.as_ref(),
     )
 }
@@ -186,11 +186,11 @@ pub fn profile_replace_workspace_references_for_paths(
     let declaration_duration = declaration_start.elapsed();
 
     let content_start = std::time::Instant::now();
-    let contents = load_source_contents(indexed_paths);
+    let content_plan = plan_reference_refresh_content(indexed_paths);
     let content_duration = content_start.elapsed();
 
     let member_start = std::time::Instant::now();
-    let member_context = if contents_contain_member_access(&contents) {
+    let member_context = if content_plan.member_context_required {
         Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
     } else {
         None
@@ -206,7 +206,7 @@ pub fn profile_replace_workspace_references_for_paths(
         false,
         &aliases,
         &declarations,
-        &contents,
+        &content_plan.contents,
         member_context.as_ref(),
     )?;
     let index_duration = index_start.elapsed();
@@ -219,7 +219,7 @@ pub fn profile_replace_workspace_references_for_paths(
         member_context_duration,
         index_duration,
         affected_path_count: plan.affected_paths.len(),
-        content_count: contents.len(),
+        content_count: content_plan.contents.len(),
         member_context_loaded: member_context.is_some(),
     })
 }
@@ -260,8 +260,8 @@ fn replace_workspace_references_internal(
         .map_err(|error| error.to_string())?;
     let aliases = load_reference_alias_targets(connection, root_key)?;
     let declarations = load_workspace_declarations(connection, root_key)?;
-    let contents = load_source_contents(file_paths);
-    let member_context = if contents_contain_member_access(&contents) {
+    let content_plan = plan_reference_refresh_content(file_paths);
+    let member_context = if content_plan.member_context_required {
         Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
     } else {
         None
@@ -274,7 +274,7 @@ fn replace_workspace_references_internal(
         include_local_scope,
         &aliases,
         &declarations,
-        &contents,
+        &content_plan.contents,
         member_context.as_ref(),
     )
 }
@@ -345,26 +345,6 @@ fn delete_workspace_references_for_paths(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
-}
-
-fn load_source_contents(file_paths: &[String]) -> HashMap<String, String> {
-    let mut contents = HashMap::new();
-    for path in file_paths.iter().map(|path| normalize_index_path(path)) {
-        if !is_source_file(&path) {
-            continue;
-        }
-        let Ok(content) = fs::read_to_string(filesystem_path(&path)) else {
-            continue;
-        };
-        contents.insert(path, content);
-    }
-    contents
-}
-
-fn contents_contain_member_access(contents: &HashMap<String, String>) -> bool {
-    contents
-        .values()
-        .any(|content| contains_member_access(content))
 }
 
 pub fn query_references_by_symbol_id(
@@ -457,13 +437,6 @@ fn reference_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceSymb
 
 fn is_source_file(path: &str) -> bool {
     path.ends_with(".ets") || path.ends_with(".ts") || path.ends_with(".d.ts")
-}
-
-fn filesystem_path(path: &str) -> String {
-    if Path::new(path).exists() {
-        return path.to_string();
-    }
-    path.replace('\\', "/")
 }
 
 fn normalize_index_path(path: &str) -> String {
