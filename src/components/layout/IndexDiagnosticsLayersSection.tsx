@@ -4,9 +4,10 @@ import { formatLayerCounts } from "@/components/layout/index-diagnostics-model";
 
 type IndexDiagnosticsLayersSectionProps = {
   layerReadiness: WorkspaceIndexLayerReadinessReport | null;
+  onAction?: (action: string) => void;
 };
 
-export function IndexDiagnosticsLayersSection({ layerReadiness }: IndexDiagnosticsLayersSectionProps) {
+export function IndexDiagnosticsLayersSection({ layerReadiness, onAction }: IndexDiagnosticsLayersSectionProps) {
   const layers = layerReadiness?.layers ?? [];
 
   return (
@@ -25,7 +26,7 @@ export function IndexDiagnosticsLayersSection({ layerReadiness }: IndexDiagnosti
           <span>Action</span>
         </div>
         {layers.length > 0 ? layers.map((layer) => (
-          <LayerReadinessRow layer={layer} key={layer.layer} />
+          <LayerReadinessRow layer={layer} key={layer.layer} onAction={onAction} />
         )) : (
           <div className="index-diagnostics__empty">No layer readiness evidence is available.</div>
         )}
@@ -34,7 +35,16 @@ export function IndexDiagnosticsLayersSection({ layerReadiness }: IndexDiagnosti
   );
 }
 
-function LayerReadinessRow({ layer }: { layer: WorkspaceIndexLayerReadiness }) {
+function LayerReadinessRow({
+  layer,
+  onAction,
+}: {
+  layer: WorkspaceIndexLayerReadiness;
+  onAction?: (action: string) => void;
+}) {
+  const action = layer.recommendedAction;
+  const canRunAction = action != null && action !== "wait" && action !== "none";
+
   return (
     <div className="index-diagnostics__row index-diagnostics__row--layers">
       <span>{layer.layer}</span>
@@ -43,7 +53,11 @@ function LayerReadinessRow({ layer }: { layer: WorkspaceIndexLayerReadiness }) {
       <span>{formatLayerCounts(layer)}</span>
       <span>{formatLayerImpact(layer.layer)}</span>
       <span>
-        {layer.recommendedAction ?? "none"}
+        {canRunAction ? (
+          <button type="button" className="toolbar__button" onClick={() => onAction?.(action)}>
+            {formatLayerAction(action)}
+          </button>
+        ) : formatLayerAction(action)}
         {layer.reason ? <small>{layer.reason}</small> : null}
       </span>
     </div>
@@ -52,6 +66,28 @@ function LayerReadinessRow({ layer }: { layer: WorkspaceIndexLayerReadiness }) {
 
 function StatusBadge({ value }: { value: string }) {
   return <span className={`index-diagnostics__status index-diagnostics__status--${value}`}>{value}</span>;
+}
+
+function formatLayerAction(action: string | null) {
+  switch (action) {
+    case "configureSdk":
+      return "Configure SDK";
+    case "indexCurrentFile":
+      return "Index Current File";
+    case "inspectParserFailures":
+      return "Inspect Parser Failures";
+    case "rebuildIndex":
+      return "Rebuild Project Index";
+    case "wait":
+      return "Wait for Index";
+    case "openFile":
+      return "Open File";
+    case null:
+    case "none":
+      return "none";
+    default:
+      return action;
+  }
 }
 
 function formatLayerImpact(layer: string) {

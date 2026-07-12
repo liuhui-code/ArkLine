@@ -207,6 +207,16 @@ export function useIndexDiagnosticsController({
     scheduleDiagnosticsRebuildPoll(workspace.rootPath);
   }
 
+  async function indexCurrentFileFromDiagnostics() {
+    if (!workspace?.rootPath || !activePath || !workspaceApi.scheduleForegroundNavigationIndex) {
+      onStatusChange("Index Current File unavailable");
+      return;
+    }
+    onStatusChange("Index Current File requested");
+    await workspaceApi.scheduleForegroundNavigationIndex(workspace.rootPath, [activePath]);
+    await refreshIndexDiagnostics();
+  }
+
   function clearDiagnosticsRebuildPoll() {
     if (!diagnosticsRebuildPollRef.current) return;
     window.clearTimeout(diagnosticsRebuildPollRef.current);
@@ -346,6 +356,7 @@ export function useIndexDiagnosticsController({
     resumeIndexingFromDiagnostics,
     rebuildProjectIndexFromDiagnostics,
     rebuildSdkIndexFromDiagnostics,
+    indexCurrentFileFromDiagnostics,
     indexSdkSymbolsForSettings,
     explainIndexMiss,
     rebuildIndexFromExplainPanel,

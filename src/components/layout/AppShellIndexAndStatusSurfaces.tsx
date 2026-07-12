@@ -45,6 +45,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   onResumeIndexingFromDiagnostics: () => void;
   onRebuildProjectIndexFromDiagnostics: () => void;
   onRebuildSdkIndexFromDiagnostics: () => void;
+  onIndexCurrentFileFromDiagnostics: () => void;
   onConfigureSdkFromDiagnostics: () => void;
   semanticState: SemanticState;
   semanticCapability: SemanticCapabilityState;
@@ -94,6 +95,7 @@ export function AppShellIndexAndStatusSurfaces({
   onResumeIndexingFromDiagnostics,
   onRebuildProjectIndexFromDiagnostics,
   onRebuildSdkIndexFromDiagnostics,
+  onIndexCurrentFileFromDiagnostics,
   onConfigureSdkFromDiagnostics,
   semanticState,
   semanticCapability,
@@ -159,6 +161,7 @@ export function AppShellIndexAndStatusSurfaces({
         onResumeIndexing={onResumeIndexingFromDiagnostics}
         onRebuildProjectIndex={onRebuildProjectIndexFromDiagnostics}
         onRebuildSdkIndex={onRebuildSdkIndexFromDiagnostics}
+        onIndexCurrentFile={onIndexCurrentFileFromDiagnostics}
         onConfigureSdk={onConfigureSdkFromDiagnostics}
       />
       <ShellStatusBar

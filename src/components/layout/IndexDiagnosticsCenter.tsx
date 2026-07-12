@@ -55,6 +55,7 @@ type IndexDiagnosticsCenterProps = {
   onRebuildProjectIndex: () => void;
   onRebuildSdkIndex: () => void;
   onConfigureSdk: () => void;
+  onIndexCurrentFile?: () => void;
 };
 
 export function IndexDiagnosticsCenter({
@@ -77,6 +78,7 @@ export function IndexDiagnosticsCenter({
   onRebuildProjectIndex,
   onRebuildSdkIndex,
   onConfigureSdk,
+  onIndexCurrentFile,
 }: IndexDiagnosticsCenterProps) {
   useEffect(() => {
     if (!open || !sectionTarget) return;
@@ -109,6 +111,28 @@ export function IndexDiagnosticsCenter({
     ipcLatencyCount: ipcLatencySamples.length,
     renderPressureCount: renderPressureSamples.length,
   });
+
+  function runLayerAction(action: string) {
+    if (action === "configureSdk") {
+      onConfigureSdk();
+      return;
+    }
+    if (action === "rebuildIndex") {
+      onRebuildProjectIndex();
+      return;
+    }
+    if (action === "indexCurrentFile") {
+      onIndexCurrentFile?.();
+      return;
+    }
+    if (action === "inspectParserFailures") {
+      document.getElementById("index-diagnostics-parser-errors")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (action === "rebuildSdkIndex") {
+      onRebuildSdkIndex();
+    }
+  }
 
   return (
     <div className="index-diagnostics-modal" role="presentation" onMouseDown={onClose}>
@@ -154,7 +178,7 @@ export function IndexDiagnosticsCenter({
               fileReadiness={fileReadiness}
             />
 
-            <IndexDiagnosticsLayersSection layerReadiness={layerReadiness} />
+            <IndexDiagnosticsLayersSection layerReadiness={layerReadiness} onAction={runLayerAction} />
 
             <IndexDiagnosticsQueryExplainSection
               queryTimeline={queryTimeline}
