@@ -47,7 +47,14 @@ pub fn store_index_event(root_path: &str, event: &WorkspaceIndexEvent) -> Result
         return Ok(());
     }
     let connection = open_index_store(root_path)?;
-    create_index_event_tables(&connection)?;
+    store_index_event_in_connection(&connection, event)
+}
+
+pub fn store_index_event_in_connection(
+    connection: &Connection,
+    event: &WorkspaceIndexEvent,
+) -> Result<(), String> {
+    create_index_event_tables(connection)?;
     connection
         .execute(
             "insert or replace into workspace_index_events (

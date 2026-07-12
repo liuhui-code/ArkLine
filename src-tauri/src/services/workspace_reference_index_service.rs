@@ -4,6 +4,9 @@ use std::collections::HashMap;
 
 use rusqlite::{params, Connection};
 
+use crate::models::workspace::WorkspaceIndexEvent;
+use crate::services::workspace_index_event_service::store_index_event_in_connection;
+use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_reference_declaration_index_service::{
     load_workspace_declarations, load_workspace_declarations_for_paths, DeclarationReference,
     DeclarationReferenceInserter,
@@ -120,6 +123,7 @@ pub fn replace_workspace_references_for_paths(
     let declarations =
         load_workspace_declarations_for_paths(connection, root_key, &plan.affected_path_set)?;
     let content_plan = plan_reference_refresh_content(indexed_paths);
+    record_reference_budget_skip_event(connection, root_key, indexed_generation, &content_plan)?;
     let member_context = if content_plan.member_context_required {
         Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
     } else {
@@ -254,6 +258,7 @@ fn replace_workspace_references_internal(
     let aliases = load_reference_alias_targets(connection, root_key)?;
     let declarations = load_workspace_declarations(connection, root_key)?;
     let content_plan = plan_reference_refresh_content(file_paths);
+    record_reference_budget_skip_event(connection, root_key, indexed_generation, &content_plan)?;
     let member_context = if content_plan.member_context_required {
         Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
     } else {
@@ -270,6 +275,49 @@ fn replace_workspace_references_internal(
         &content_plan.contents,
         member_context.as_ref(),
     )
+}
+
+fn record_reference_budget_skip_event(
+    connection: &Connection,
+    root_key: &str,
+    indexed_generation: u64,
+    content_plan: &crate::services::workspace_reference_refresh_plan_service::ReferenceRefreshContentPlan,
+) -> Result<(), String> {
+    if content_plan.skipped_oversized_paths.is_empty() {
+        return Ok(());
+    }
+    let created_at = current_time_millis();
+    let skipped_count = content_plan.skipped_oversized_paths.len();
+    let payload_json = serde_json::json!({
+        "skippedContentCount": skipped_count,
+        "indexedContentCount": content_plan.contents.len(),
+        "sampleSkippedPaths": sample_skipped_paths(&content_plan.skipped_oversized_paths),
+    })
+    .to_string();
+    store_index_event_in_connection(
+        connection,
+        &WorkspaceIndexEvent {
+            event_id: format!(
+                "reference-budget-skip:{indexed_generation}:{created_at}:{skipped_count}"
+            ),
+            root_path: root_key.to_string(),
+            scope: "index".to_string(),
+            kind: "reference-refresh".to_string(),
+            phase: "degraded".to_string(),
+            severity: "warning".to_string(),
+            message: format!(
+                "Reference refresh skipped {skipped_count} oversized source file(s); usages may be partial"
+            ),
+            task_id: None,
+            generation: Some(indexed_generation),
+            payload_json,
+            created_at,
+        },
+    )
+}
+
+fn sample_skipped_paths(paths: &[String]) -> Vec<String> {
+    paths.iter().take(5).cloned().collect()
 }
 
 fn index_workspace_references_for_paths(

@@ -2,6 +2,7 @@ use std::fs;
 
 use rusqlite::Connection;
 
+use crate::services::workspace_index_diagnostics_service::inspect_workspace_index;
 use crate::services::workspace_index_schema_service::{
     ensure_workspace_index_schema, load_workspace_index_schema_versions,
 };
@@ -365,6 +366,40 @@ fn deep_reference_refresh_indexes_local_scope_references_on_demand() {
             ("localOnly".to_string(), "localScope".to_string()),
         ]
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn workspace_refresh_reports_oversized_reference_content_as_degraded_event() {
+    let root = create_empty_workspace("reference-index-budget-event");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(source_dir.join("Tiny.ets"), "export class Tiny {}\n").unwrap();
+    fs::write(
+        source_dir.join("Huge.ets"),
+        format!(
+            "export class Huge {{}}\n{}",
+            "service.load();\n".repeat(40_000)
+        ),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+    let event = diagnostics
+        .recent_events
+        .iter()
+        .find(|event| event.kind == "reference-refresh" && event.phase == "degraded")
+        .expect("oversized reference content should be reported");
+
+    assert_eq!(event.scope, "index");
+    assert_eq!(event.severity, "warning");
+    assert!(event.message.contains("skipped 1 oversized source file"));
+    assert!(event.payload_json.contains("\"skippedContentCount\":1"));
+    assert!(event.payload_json.contains("Huge.ets"));
     fs::remove_dir_all(root).unwrap();
 }
 
