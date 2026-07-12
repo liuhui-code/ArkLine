@@ -10,7 +10,7 @@
     "build:semantic-worker": "pnpm --dir semantic-worker build",
     "test:semantic-worker": "pnpm --dir semantic-worker test",
     "test:frontend": "vitest run",
-    "test:frontend:quality": "vitest run tests/frontend/package-scripts.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
+    "test:frontend:quality": "vitest run tests/frontend/package-scripts.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "smoke:semantic": "node scripts/smoke-semantic.mjs --fixture",
     "perf:runtime": "node scripts/perf-runtime-gate.mjs --strict",
