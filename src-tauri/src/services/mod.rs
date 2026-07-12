@@ -129,15 +129,15 @@ mod workspace_file_fingerprint_service_tests;
 pub(crate) mod workspace_incremental_path_plan_service;
 #[cfg(test)]
 mod workspace_incremental_path_plan_service_tests;
+pub(crate) mod workspace_index_cache_path_service;
+#[cfg(test)]
+mod workspace_index_cache_path_service_tests;
 pub mod workspace_index_cancellation_service;
 #[cfg(test)]
 mod workspace_index_cancellation_service_tests;
 pub mod workspace_index_candidate_page_service;
 #[cfg(test)]
 mod workspace_index_candidate_page_service_tests;
-pub(crate) mod workspace_index_cache_path_service;
-#[cfg(test)]
-mod workspace_index_cache_path_service_tests;
 pub mod workspace_index_chunk_service;
 #[cfg(test)]
 mod workspace_index_chunk_service_tests;
@@ -147,16 +147,18 @@ mod workspace_index_continuation_task_service_tests;
 pub mod workspace_index_deep_layer_service;
 #[cfg(test)]
 mod workspace_index_dependency_expansion_service_tests;
-pub mod workspace_index_diagnostics_service;
 #[cfg(test)]
 mod workspace_index_diagnostics_schema_service_tests;
+pub mod workspace_index_diagnostics_service;
 #[cfg(test)]
 mod workspace_index_diagnostics_service_tests;
 pub(crate) mod workspace_index_discovery_result_service;
 pub mod workspace_index_entity_persistence_service;
-#[cfg(test)] mod workspace_index_entity_persistence_service_tests;
+#[cfg(test)]
+mod workspace_index_entity_persistence_service_tests;
 pub mod workspace_index_entity_query_service;
-#[cfg(test)] mod workspace_index_entity_query_service_tests;
+#[cfg(test)]
+mod workspace_index_entity_query_service_tests;
 pub mod workspace_index_event_service;
 #[cfg(test)]
 mod workspace_index_event_service_tests;
@@ -164,17 +166,21 @@ pub mod workspace_index_explain_service;
 #[cfg(test)]
 mod workspace_index_explain_service_tests;
 pub mod workspace_index_facade_completion_service;
-#[cfg(test)] mod workspace_index_facade_completion_tests;
+#[cfg(test)]
+mod workspace_index_facade_completion_tests;
 pub mod workspace_index_facade_envelope_service;
 pub mod workspace_index_facade_event_service;
 pub mod workspace_index_facade_explain_service;
 pub mod workspace_index_facade_navigation_service;
 pub mod workspace_index_facade_readiness_gate_service;
 pub mod workspace_index_facade_search_service;
-#[cfg(test)] mod workspace_index_facade_search_tests;
-#[cfg(test)] mod workspace_index_facade_text_search_tests;
+#[cfg(test)]
+mod workspace_index_facade_search_tests;
 pub mod workspace_index_facade_service;
-#[cfg(test)] mod workspace_index_facade_service_tests;
+#[cfg(test)]
+mod workspace_index_facade_service_tests;
+#[cfg(test)]
+mod workspace_index_facade_text_search_tests;
 pub mod workspace_index_file_layer_service;
 #[cfg(test)]
 mod workspace_index_file_layer_service_tests;
@@ -197,6 +203,7 @@ mod workspace_index_layer_readiness_service_tests;
 pub(crate) mod workspace_index_layer_readiness_store_service;
 #[cfg(test)]
 mod workspace_index_layer_readiness_store_service_tests;
+pub(crate) mod workspace_index_layer_reason_service;
 pub(crate) mod workspace_index_layer_status_service;
 #[cfg(test)]
 mod workspace_index_layer_status_service_tests;
@@ -208,9 +215,6 @@ mod workspace_index_lifecycle_service_tests;
 pub mod workspace_index_maintenance_service;
 #[cfg(test)]
 mod workspace_index_maintenance_service_tests;
-pub(crate) mod workspace_index_metadata_restore_service;
-#[cfg(test)]
-mod workspace_index_metadata_restore_service_tests;
 #[cfg(test)]
 mod workspace_index_manager_priority_tests;
 #[cfg(test)]
@@ -218,6 +222,9 @@ mod workspace_index_manager_resume_tests;
 pub mod workspace_index_manager_service;
 #[cfg(test)]
 mod workspace_index_manager_service_tests;
+pub(crate) mod workspace_index_metadata_restore_service;
+#[cfg(test)]
+mod workspace_index_metadata_restore_service_tests;
 #[cfg(test)]
 mod workspace_index_open_service_tests;
 pub mod workspace_index_parse_pool_service;
@@ -242,6 +249,9 @@ mod workspace_index_readiness_service_tests;
 pub mod workspace_index_rebuild_service;
 #[cfg(test)]
 mod workspace_index_rebuild_service_tests;
+pub(crate) mod workspace_index_refresh_path_plan_service;
+#[cfg(test)]
+mod workspace_index_refresh_path_plan_service_tests;
 pub mod workspace_index_repair_action_service;
 pub mod workspace_index_repair_service;
 #[cfg(test)]
@@ -249,30 +259,27 @@ mod workspace_index_repair_service_tests;
 pub mod workspace_index_resume_service;
 #[cfg(test)]
 mod workspace_index_resume_service_tests;
-pub(crate) mod workspace_index_refresh_path_plan_service;
-#[cfg(test)]
-mod workspace_index_refresh_path_plan_service_tests;
 #[cfg(test)]
 mod workspace_index_running_lifecycle_service_tests;
 pub mod workspace_index_scheduler_service;
 #[cfg(test)]
 mod workspace_index_scheduler_service_tests;
 pub mod workspace_index_schema_service;
+#[cfg(test)]
+mod workspace_index_schema_service_tests;
 pub(crate) mod workspace_index_schema_version_service;
 #[cfg(test)]
 mod workspace_index_schema_version_service_tests;
-#[cfg(test)]
-mod workspace_index_schema_service_tests;
 pub mod workspace_index_service;
 #[cfg(test)]
 mod workspace_index_service_tests;
+pub(crate) mod workspace_index_snapshot_state_service;
+#[cfg(test)]
+mod workspace_index_snapshot_state_service_tests;
 pub(crate) mod workspace_index_state_defaults_service;
 pub mod workspace_index_state_machine_service;
 #[cfg(test)]
 mod workspace_index_state_machine_service_tests;
-pub(crate) mod workspace_index_snapshot_state_service;
-#[cfg(test)]
-mod workspace_index_snapshot_state_service_tests;
 pub mod workspace_index_status_projection_service;
 #[cfg(test)]
 mod workspace_index_status_projection_service_tests;
@@ -329,15 +336,15 @@ pub mod workspace_reference_index_service;
 mod workspace_reference_index_service_tests;
 pub mod workspace_reference_member_access_parser_service;
 pub mod workspace_reference_member_index_service;
-pub(crate) mod workspace_reference_refresh_plan_service;
-#[cfg(test)]
-mod workspace_reference_refresh_plan_service_tests;
-#[cfg(test)]
-mod workspace_reference_receiver_tests;
-pub mod workspace_reference_receiver_type_service;
 pub(crate) mod workspace_reference_query_service;
 #[cfg(test)]
 mod workspace_reference_query_service_tests;
+#[cfg(test)]
+mod workspace_reference_receiver_tests;
+pub mod workspace_reference_receiver_type_service;
+pub(crate) mod workspace_reference_refresh_plan_service;
+#[cfg(test)]
+mod workspace_reference_refresh_plan_service_tests;
 pub mod workspace_sdk_api_cache_service;
 #[cfg(test)]
 mod workspace_sdk_api_cache_service_tests;
@@ -389,12 +396,12 @@ pub(crate) mod workspace_symbol_resolution_refresh_plan_service;
 #[cfg(test)]
 mod workspace_symbol_resolution_refresh_plan_service_tests;
 pub mod workspace_symbol_resolution_schema_service;
-pub(crate) mod workspace_symbol_resolution_unresolved_service;
-#[cfg(test)]
-mod workspace_symbol_resolution_unresolved_service_tests;
 pub mod workspace_symbol_resolution_service;
 #[cfg(test)]
 mod workspace_symbol_resolution_service_tests;
+pub(crate) mod workspace_symbol_resolution_unresolved_service;
+#[cfg(test)]
+mod workspace_symbol_resolution_unresolved_service_tests;
 #[allow(dead_code)]
 pub(crate) mod workspace_text_search_cancellation_service;
 #[cfg(test)]

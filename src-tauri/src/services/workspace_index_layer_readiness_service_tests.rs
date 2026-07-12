@@ -56,6 +56,29 @@ fn readiness_report_exposes_four_index_layers() {
 }
 
 #[test]
+fn missing_layers_explain_user_visible_ide_impact() {
+    let root = create_empty_workspace("layer-readiness-impact-reasons");
+    let root_path = root.to_string_lossy().to_string();
+
+    let report = get_workspace_index_layer_readiness(&root_path, None).unwrap();
+
+    let project_deep = report.layer("projectDeep").unwrap();
+    assert_eq!(
+        project_deep.reason.as_deref(),
+        Some("Deep project indexes are empty; text search, usages, and dependency-aware navigation are not ready.")
+    );
+    assert_eq!(project_deep.recommended_action.as_deref(), Some("wait"));
+    let sdk_api = report.layer("sdkApi").unwrap();
+    assert_eq!(
+        sdk_api.reason.as_deref(),
+        Some("SDK API symbols are not indexed; system API completion and navigation are unavailable.")
+    );
+    assert_eq!(sdk_api.recommended_action.as_deref(), Some("configureSdk"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_ready_current_file_layers_after_indexing() {
     let root = create_empty_workspace("layer-readiness-current-file");
     let source_dir = create_workspace_source_dir(&root);

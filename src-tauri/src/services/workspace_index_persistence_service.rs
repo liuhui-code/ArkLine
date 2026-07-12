@@ -5,14 +5,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-use crate::models::workspace::{
-    WorkspaceIndexState, WorkspaceIndexedSymbol, WorkspaceSnapshot,
+use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexedSymbol, WorkspaceSnapshot};
+use crate::services::workspace_index_cache_path_service::{
+    catalog_cache_path, normalized_root_key, sqlite_catalog_cache_path,
 };
 use crate::services::workspace_index_entity_persistence_service::{
     insert_legacy_symbol, insert_symbol_entity,
-};
-use crate::services::workspace_index_cache_path_service::{
-    catalog_cache_path, normalized_root_key, sqlite_catalog_cache_path,
 };
 use crate::services::workspace_index_incremental_persistence_service::{
     persist_incremental_sqlite_deep_state_with_priority,

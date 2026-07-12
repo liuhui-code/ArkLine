@@ -4,13 +4,14 @@ use crate::models::workspace_index_layer::{
     WorkspaceIndexLayerReadiness, WorkspaceIndexLayerReadinessReport, WorkspaceIndexLayerStatus,
 };
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
-use crate::services::workspace_index_layer_status_service::{
-    aggregate_count_status, file_hot_current_status, status_from_bool, status_from_count,
-    status_from_text, status_with_failures,
-};
 use crate::services::workspace_index_layer_readiness_store_service::{
     count_distinct_paths, count_rows, normalize_layer_index_path as normalize_index_path,
     open_layer_readiness_store as open_index_store, row_exists,
+};
+use crate::services::workspace_index_layer_reason_service::enrich_layer_reason;
+use crate::services::workspace_index_layer_status_service::{
+    aggregate_count_status, file_hot_current_status, status_from_bool, status_from_count,
+    status_from_text, status_with_failures,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
@@ -210,7 +211,7 @@ fn discovery_layer(
         .as_ref()
         .map(|value| !value.trim().is_empty() && value != "[]")
         .unwrap_or(false);
-    Ok(WorkspaceIndexLayerReadiness {
+    Ok(enrich_layer_reason(WorkspaceIndexLayerReadiness {
         layer: "discovery".to_string(),
         workspace_status,
         current_file_status: discovery_current_file_status(
@@ -223,7 +224,7 @@ fn discovery_layer(
         stale_count: 0,
         reason: has_more.then(|| "Discovery has a pending cursor".to_string()),
         recommended_action: (has_more || status == "partial").then(|| "wait".to_string()),
-    })
+    }))
 }
 
 fn counted_layer(
@@ -375,7 +376,7 @@ fn layer_with_current(
     stale: i64,
     action: Option<&str>,
 ) -> WorkspaceIndexLayerReadiness {
-    WorkspaceIndexLayerReadiness {
+    enrich_layer_reason(WorkspaceIndexLayerReadiness {
         layer: name.to_string(),
         workspace_status: status,
         current_file_status: current,
@@ -384,5 +385,5 @@ fn layer_with_current(
         stale_count: stale,
         reason: None,
         recommended_action: action.map(|value| value.to_string()),
-    }
+    })
 }

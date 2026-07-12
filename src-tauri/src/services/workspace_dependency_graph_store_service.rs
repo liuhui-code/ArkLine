@@ -1,8 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::services::workspace_dependency_graph_model_service::{
-    DependencyGraphStatus, ImportRow,
-};
+use crate::services::workspace_dependency_graph_model_service::{DependencyGraphStatus, ImportRow};
 
 pub fn load_dependency_graph_status(
     connection: &Connection,

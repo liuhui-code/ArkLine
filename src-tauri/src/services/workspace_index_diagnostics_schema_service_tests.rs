@@ -51,9 +51,10 @@ fn reports_schema_rebuild_repair_action_for_incompatible_versions() {
 
     let diagnostics = inspect_workspace_index(&root_path).unwrap();
 
-    assert!(diagnostics.schema_version_actions.iter().any(|action| {
-        action.domain == "content" && action.status == "needs-rebuild"
-    }));
+    assert!(diagnostics
+        .schema_version_actions
+        .iter()
+        .any(|action| { action.domain == "content" && action.status == "needs-rebuild" }));
     assert!(diagnostics
         .repair_actions
         .iter()

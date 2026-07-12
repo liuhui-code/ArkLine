@@ -20,9 +20,9 @@ use crate::services::workspace_dependency_graph_resolver_service::{
     is_relative_module, resolve_relative_import,
 };
 use crate::services::workspace_dependency_graph_store_service::{
-    insert_dependency_edge, insert_unresolved_import, load_import_rows, load_re_export_rows,
-    load_dependency_graph_status as load_dependency_graph_status_from_store,
-    record_dependency_graph_status,
+    insert_dependency_edge, insert_unresolved_import,
+    load_dependency_graph_status as load_dependency_graph_status_from_store, load_import_rows,
+    load_re_export_rows, record_dependency_graph_status,
 };
 
 pub fn create_dependency_graph_tables(connection: &Connection) -> Result<(), String> {

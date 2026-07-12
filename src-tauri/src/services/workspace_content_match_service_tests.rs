@@ -8,7 +8,10 @@ fn line_match_respects_case_sensitivity() {
         find_line_match("Text(\"Token\")", "token", false, false),
         Some((6, 11))
     );
-    assert_eq!(find_line_match("Text(\"Token\")", "token", true, false), None);
+    assert_eq!(
+        find_line_match("Text(\"Token\")", "token", true, false),
+        None
+    );
 }
 
 #[test]
@@ -29,7 +32,11 @@ fn summary_keeps_utf8_boundaries() {
 
 #[test]
 fn slice_context_returns_one_based_line_numbers() {
-    let context = slice_context(&["one".to_string(), "two".to_string(), "three".to_string()], 1, 3);
+    let context = slice_context(
+        &["one".to_string(), "two".to_string(), "three".to_string()],
+        1,
+        3,
+    );
 
     assert_eq!(context.len(), 2);
     assert_eq!(context[0].line, 2);

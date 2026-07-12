@@ -99,9 +99,18 @@ fn schema_version_actions_report_missing_and_incompatible_domains() {
 
     assert_eq!(catalog.expected_version, 1);
     assert_eq!(catalog.persisted_version, Some(0));
-    assert_eq!(catalog.status, WorkspaceIndexSchemaVersionStatus::NeedsRebuild);
+    assert_eq!(
+        catalog.status,
+        WorkspaceIndexSchemaVersionStatus::NeedsRebuild
+    );
     assert_eq!(content.persisted_version, Some(99));
-    assert_eq!(content.status, WorkspaceIndexSchemaVersionStatus::NeedsRebuild);
+    assert_eq!(
+        content.status,
+        WorkspaceIndexSchemaVersionStatus::NeedsRebuild
+    );
     assert_eq!(sdk.persisted_version, None);
-    assert_eq!(sdk.status, WorkspaceIndexSchemaVersionStatus::MissingVersion);
+    assert_eq!(
+        sdk.status,
+        WorkspaceIndexSchemaVersionStatus::MissingVersion
+    );
 }

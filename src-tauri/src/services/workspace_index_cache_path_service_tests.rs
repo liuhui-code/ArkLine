@@ -18,5 +18,8 @@ fn workspace_index_cache_paths_use_stable_arkline_index_names() {
 
 #[test]
 fn normalized_root_key_uses_index_path_separator() {
-    assert_eq!(normalized_root_key("/workspace/project"), "\\workspace\\project");
+    assert_eq!(
+        normalized_root_key("/workspace/project"),
+        "\\workspace\\project"
+    );
 }

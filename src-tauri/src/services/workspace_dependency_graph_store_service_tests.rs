@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection};
 
-use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_dependency_graph_model_service::ImportRow;
+use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_dependency_graph_store_service::{
     insert_dependency_edge, insert_unresolved_import, load_dependency_graph_status,
     load_import_rows, load_re_export_rows, record_dependency_graph_status,
@@ -39,12 +39,15 @@ fn loads_import_and_re_export_rows_in_source_order() {
     assert_eq!(imports[0].from_path, "src/A.ets");
     assert_eq!(imports[0].line, 2);
     assert_eq!(imports[1].from_path, "src/B.ets");
-    assert_eq!(exports, vec![ImportRow {
-        from_path: "src/Index.ets".to_string(),
-        source_module: "./A".to_string(),
-        line: 9,
-        column: 3,
-    }]);
+    assert_eq!(
+        exports,
+        vec![ImportRow {
+            from_path: "src/Index.ets".to_string(),
+            source_module: "./A".to_string(),
+            line: 9,
+            column: 3,
+        }]
+    );
 }
 
 #[test]
@@ -62,13 +65,25 @@ fn inserts_dependency_edges_reverse_rows_and_unresolved_imports() {
     insert_unresolved_import(&connection, "/root", &import).unwrap();
 
     let edge_count: i64 = connection
-        .query_row("select count(*) from workspace_dependency_edges", [], |row| row.get(0))
+        .query_row(
+            "select count(*) from workspace_dependency_edges",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     let reverse_count: i64 = connection
-        .query_row("select count(*) from workspace_dependency_reverse", [], |row| row.get(0))
+        .query_row(
+            "select count(*) from workspace_dependency_reverse",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
     let unresolved_count: i64 = connection
-        .query_row("select count(*) from workspace_unresolved_imports", [], |row| row.get(0))
+        .query_row(
+            "select count(*) from workspace_unresolved_imports",
+            [],
+            |row| row.get(0),
+        )
         .unwrap();
 
     assert_eq!(edge_count, 1);
@@ -82,7 +97,9 @@ fn records_and_loads_dependency_graph_status() {
     create_dependency_graph_tables(&connection).unwrap();
 
     record_dependency_graph_status(&connection, "/root", "stale", Some("config")).unwrap();
-    let status = load_dependency_graph_status(&connection, "/root").unwrap().unwrap();
+    let status = load_dependency_graph_status(&connection, "/root")
+        .unwrap()
+        .unwrap();
 
     assert_eq!(status.status, "stale");
     assert_eq!(status.reason.as_deref(), Some("config"));

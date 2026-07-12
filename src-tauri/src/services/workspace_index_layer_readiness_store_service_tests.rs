@@ -32,7 +32,10 @@ fn counts_rows_and_distinct_paths_for_a_root() {
             .unwrap();
     }
 
-    assert_eq!(count_rows(&connection, "workspace_content_lines", "/root").unwrap(), 3);
+    assert_eq!(
+        count_rows(&connection, "workspace_content_lines", "/root").unwrap(),
+        3
+    );
     assert_eq!(
         count_distinct_paths(&connection, "workspace_content_lines", "/root").unwrap(),
         2

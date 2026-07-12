@@ -54,9 +54,15 @@ fn reference_refresh_content_plan_reads_source_files_and_detects_member_access()
     ]);
 
     assert_eq!(plan.contents.len(), 2);
-    assert!(plan.contents.contains_key(&source.to_string_lossy().replace('/', "\\")));
-    assert!(plan.contents.contains_key(&script.to_string_lossy().replace('/', "\\")));
-    assert!(!plan.contents.contains_key(&notes.to_string_lossy().replace('/', "\\")));
+    assert!(plan
+        .contents
+        .contains_key(&source.to_string_lossy().replace('/', "\\")));
+    assert!(plan
+        .contents
+        .contains_key(&script.to_string_lossy().replace('/', "\\")));
+    assert!(!plan
+        .contents
+        .contains_key(&notes.to_string_lossy().replace('/', "\\")));
     assert!(plan.member_context_required);
 
     let _ = fs::remove_dir_all(root);

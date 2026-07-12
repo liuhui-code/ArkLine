@@ -47,10 +47,19 @@ fn file_hot_status_requires_file_symbol_and_parser_readiness() {
 #[test]
 fn textual_status_maps_known_states_and_defaults_to_missing() {
     assert_eq!(status_from_text("ready"), WorkspaceIndexLayerStatus::Ready);
-    assert_eq!(status_from_text("partial"), WorkspaceIndexLayerStatus::Partial);
+    assert_eq!(
+        status_from_text("partial"),
+        WorkspaceIndexLayerStatus::Partial
+    );
     assert_eq!(status_from_text("stale"), WorkspaceIndexLayerStatus::Stale);
-    assert_eq!(status_from_text("failed"), WorkspaceIndexLayerStatus::Failed);
-    assert_eq!(status_from_text("other"), WorkspaceIndexLayerStatus::Missing);
+    assert_eq!(
+        status_from_text("failed"),
+        WorkspaceIndexLayerStatus::Failed
+    );
+    assert_eq!(
+        status_from_text("other"),
+        WorkspaceIndexLayerStatus::Missing
+    );
 }
 
 fn readiness(

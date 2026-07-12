@@ -1,8 +1,6 @@
 use rusqlite::{params, Connection};
 
-use crate::models::workspace::{
-    WorkspaceIndexState, WorkspaceIndexStatus, WorkspaceIndexedSymbol,
-};
+use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus, WorkspaceIndexedSymbol};
 use crate::services::workspace_index_metadata_restore_service::restore_metadata;
 
 pub(crate) fn restore_structured_sqlite_catalog_cache(

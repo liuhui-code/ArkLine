@@ -12,9 +12,7 @@ use crate::models::workspace::{
 use crate::services::diff_service::load_workspace_diff_text;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index_with_queue_pressure as inspect_workspace_index_service;
 use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
-use crate::services::workspace_index_maintenance_service::{
-    clear_workspace_index as clear_workspace_index_service,
-};
+use crate::services::workspace_index_maintenance_service::clear_workspace_index as clear_workspace_index_service;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_rebuild_service::rebuild_workspace_index_through_manager;

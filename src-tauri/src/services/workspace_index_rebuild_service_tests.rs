@@ -22,9 +22,9 @@ fn rebuild_repair_clears_cache_and_queues_manager_refresh() {
     let statuses = index_manager.get_index_task_statuses(&root_path).unwrap();
 
     assert_eq!(diagnostics.file_count, 0);
-    assert!(statuses.iter().any(|status| {
-        status.kind == "refresh-workspace" && status.status == "queued"
-    }));
+    assert!(statuses
+        .iter()
+        .any(|status| { status.kind == "refresh-workspace" && status.status == "queued" }));
 
     fs::remove_dir_all(root).unwrap();
 }
