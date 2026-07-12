@@ -133,19 +133,19 @@ export function IndexDiagnosticsCenter({
 
         <div className="index-diagnostics__body">
           <aside className="index-diagnostics__nav" aria-label="Index Diagnostics Sections">
-            <span>Processes</span>
-            <span>Current File</span>
-            <span>Layers</span>
-            <span>Query Explain</span>
-            <span>Language Queries</span>
-            <span>Health</span>
-            <span>Timeline</span>
+            <a href="#index-diagnostics-processes">Processes</a>
+            <a href="#index-diagnostics-current-file">Current File</a>
+            <a href="#index-diagnostics-layers">Layers</a>
+            <a href="#index-diagnostics-query-explain">Query Explain</a>
+            <a href="#index-diagnostics-language-queries">Language Queries</a>
+            <a href="#index-diagnostics-health">Health</a>
+            <a href="#index-diagnostics-timeline">Timeline</a>
           </aside>
 
           <div className="index-diagnostics__content">
             {loading ? <div className="index-diagnostics__notice">Loading index diagnostics...</div> : null}
 
-            <section className="index-diagnostics__section" aria-label="Processes / Queue">
+            <section className="index-diagnostics__section" id="index-diagnostics-processes" aria-label="Processes / Queue">
               <div className="index-diagnostics__section-title">
                 <h3>Processes / Queue</h3>
                 <span>{queuePressure?.pendingTaskCount ?? taskStatuses.length} pending</span>
@@ -181,7 +181,7 @@ export function IndexDiagnosticsCenter({
               </div>
             </section>
 
-            <section className="index-diagnostics__section" aria-label="Current File Readiness">
+            <section className="index-diagnostics__section" id="index-diagnostics-current-file" aria-label="Current File Readiness">
               <div className="index-diagnostics__section-title">
                 <h3>Current File Readiness</h3>
                 <span>{fileReadiness?.fileName ?? activePath ?? "No file"}</span>
@@ -204,7 +204,7 @@ export function IndexDiagnosticsCenter({
               </div>
             </section>
 
-            <section className="index-diagnostics__section" aria-label="Index Layers">
+            <section className="index-diagnostics__section" id="index-diagnostics-layers" aria-label="Index Layers">
               <div className="index-diagnostics__section-title">
                 <h3>Index Layers</h3>
                 <span>{layerReadiness?.layers.length ?? 0} layers</span>
@@ -225,7 +225,7 @@ export function IndexDiagnosticsCenter({
               </div>
             </section>
 
-            <section className="index-diagnostics__section" aria-label="Query Explain">
+            <section className="index-diagnostics__section" id="index-diagnostics-query-explain" aria-label="Query Explain">
               <div className="index-diagnostics__section-title">
                 <h3>Query Explain</h3>
                 <span>{queryEvents.length + recentQueryExplains.length} recent</span>
@@ -244,9 +244,9 @@ export function IndexDiagnosticsCenter({
               ) : null}
             </section>
 
-            <LanguageQuerySnapshotPanel records={languageQuerySnapshots} />
+            <LanguageQuerySnapshotPanel id="index-diagnostics-language-queries" records={languageQuerySnapshots} />
 
-            <section className="index-diagnostics__section" aria-label="Health / Storage">
+            <section className="index-diagnostics__section" id="index-diagnostics-health" aria-label="Health / Storage">
               <div className="index-diagnostics__section-title">
                 <h3>Health / Storage</h3>
                 <span>{diagnostics?.rootPath ?? "No workspace"}</span>
@@ -315,7 +315,7 @@ export function IndexDiagnosticsCenter({
               </div>
             </section>
 
-            <section className="index-diagnostics__section" aria-label="Top Parser Errors">
+            <section className="index-diagnostics__section" id="index-diagnostics-parser-errors" aria-label="Top Parser Errors">
               <div className="index-diagnostics__section-title">
                 <h3>Top Parser Errors</h3>
                 <span>{diagnostics?.parserFailures.length ?? 0} files</span>
@@ -330,7 +330,7 @@ export function IndexDiagnosticsCenter({
               )}
             </section>
 
-            <section className="index-diagnostics__section" aria-label="Unresolved Imports">
+            <section className="index-diagnostics__section" id="index-diagnostics-unresolved-imports" aria-label="Unresolved Imports">
               <div className="index-diagnostics__section-title">
                 <h3>Unresolved Imports</h3>
                 <span>{diagnostics?.unresolvedImports.length ?? 0} imports</span>
@@ -345,7 +345,7 @@ export function IndexDiagnosticsCenter({
               )}
             </section>
 
-            <section className="index-diagnostics__section" aria-label="Performance Timeline">
+            <section className="index-diagnostics__section" id="index-diagnostics-timeline" aria-label="Performance Timeline">
               <div className="index-diagnostics__section-title">
                 <h3>Performance Timeline</h3>
                 <span>{viewModel.timelineCount} events</span>

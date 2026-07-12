@@ -4,9 +4,9 @@ import {
 } from "@/components/layout/language-query-snapshot-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 
-export function LanguageQuerySnapshotPanel({ records }: { records: LanguageQuerySnapshotRecord[] }) {
+export function LanguageQuerySnapshotPanel({ id, records }: { id?: string; records: LanguageQuerySnapshotRecord[] }) {
   return (
-    <section className="index-diagnostics__section" aria-label="Language Query Snapshots">
+    <section className="index-diagnostics__section" id={id} aria-label="Language Query Snapshots">
       <div className="index-diagnostics__section-title">
         <h3>Language Query Snapshots</h3>
         <span>{records.length} recent</span>
