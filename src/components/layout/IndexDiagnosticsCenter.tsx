@@ -85,6 +85,7 @@ export function IndexDiagnosticsCenter({
   const layerStatusText = getLayerReadinessStatusText(layerReadiness);
   const activeProjectTask = buildActiveProjectTaskSummary(taskStatuses);
   const activeSdkTask = buildActiveSdkTaskSummary(taskStatuses);
+  const activeTask = activeProjectTask ?? activeSdkTask;
   const viewModel = buildIndexDiagnosticsViewModel({
     diagnostics: diagnostics ? {
       status: diagnostics.status,
@@ -118,15 +119,15 @@ export function IndexDiagnosticsCenter({
           </div>
         </header>
 
-        {activeProjectTask ? (
-          <div className={`index-diagnostics__active-task index-diagnostics__active-task--${activeProjectTask.status}`} role="status" aria-label="Active Index Task">
+        {activeTask ? (
+          <div className={`index-diagnostics__active-task index-diagnostics__active-task--${activeTask.status}`} role="status" aria-label="Active Index Task">
             <div>
-              <strong>{activeProjectTask.title}</strong>
-              <span>{activeProjectTask.detail}</span>
+              <strong>{activeTask.title}</strong>
+              <span>{activeTask.detail}</span>
             </div>
-            <span>{activeProjectTask.kind}</span>
-            <span>{activeProjectTask.progress}</span>
-            <span>{activeProjectTask.duration}</span>
+            <span>{activeTask.kind}</span>
+            <span>{activeTask.progress}</span>
+            <span>{activeTask.duration}</span>
           </div>
         ) : null}
 

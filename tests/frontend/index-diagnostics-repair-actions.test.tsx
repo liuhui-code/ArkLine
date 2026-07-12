@@ -89,6 +89,45 @@ describe("IndexDiagnosticsCenter repair actions", () => {
 
     expect(onRebuildSdkIndex).not.toHaveBeenCalled();
   });
+
+  it("surfaces SDK indexing progress in the active task strip when no project task is active", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnosticsWithRepairAction("rebuildSdkIndex")}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[{
+          taskId: "sdk-1",
+          rootPath: "C:/workspace",
+          kind: "sdk",
+          status: "running",
+          reason: "settings apply",
+          generation: 3,
+          progressCurrent: 7,
+          progressTotal: 20,
+          startedAt: 1_000,
+          lastHeartbeatAt: 4_000,
+        }]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const activeTask = screen.getByRole("status", { name: "Active Index Task" });
+    expect(within(activeTask).getByText("SDK index task running")).toBeVisible();
+    expect(within(activeTask).getByText("sdk")).toBeVisible();
+    expect(within(activeTask).getByText("7/20 (35%)")).toBeVisible();
+    expect(within(activeTask).getByText("3.0s active")).toBeVisible();
+  });
 });
 
 function diagnosticsWithRepairAction(action: string): WorkspaceIndexDiagnostics {
