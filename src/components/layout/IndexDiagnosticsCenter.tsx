@@ -10,6 +10,7 @@ import {
 } from "@/components/layout/app-shell-model";
 import {
   buildIndexDiagnosticsViewModel,
+  buildActiveProjectTaskSummary,
   formatClockTime,
   formatLayerCounts,
   formatRepairAction,
@@ -81,6 +82,7 @@ export function IndexDiagnosticsCenter({
   const repairActions = diagnostics?.repairActions ?? [];
   const schemaRebuildActions = diagnostics?.schemaVersionActions.filter((action) => action.status === "needs-rebuild") ?? [];
   const layerStatusText = getLayerReadinessStatusText(layerReadiness);
+  const activeProjectTask = buildActiveProjectTaskSummary(taskStatuses);
   const viewModel = buildIndexDiagnosticsViewModel({
     diagnostics: diagnostics ? {
       status: diagnostics.status,
@@ -113,6 +115,18 @@ export function IndexDiagnosticsCenter({
             <button type="button" className="palette-shell__close" aria-label="Close Index Diagnostics" onClick={onClose}>x</button>
           </div>
         </header>
+
+        {activeProjectTask ? (
+          <div className={`index-diagnostics__active-task index-diagnostics__active-task--${activeProjectTask.status}`} role="status" aria-label="Active Index Task">
+            <div>
+              <strong>{activeProjectTask.title}</strong>
+              <span>{activeProjectTask.detail}</span>
+            </div>
+            <span>{activeProjectTask.kind}</span>
+            <span>{activeProjectTask.progress}</span>
+            <span>{activeProjectTask.duration}</span>
+          </div>
+        ) : null}
 
         <div className="index-diagnostics__body">
           <aside className="index-diagnostics__nav" aria-label="Index Diagnostics Sections">

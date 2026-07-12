@@ -55,7 +55,7 @@ export function formatTaskDuration(task: WorkspaceIndexTaskStatus) {
 }
 
 export function formatTaskDetails(task: WorkspaceIndexTaskStatus) {
-  const detail = task.error ?? task.message ?? task.reason;
+  const detail = firstNonEmpty(task.error, task.message, task.reason);
   if (!task.stalled) {
     return detail;
   }
@@ -63,6 +63,30 @@ export function formatTaskDetails(task: WorkspaceIndexTaskStatus) {
     return "No heartbeat > 60s";
   }
   return detail ? `${detail} · No heartbeat > 60s` : "No heartbeat > 60s";
+}
+
+export type ActiveProjectTaskSummary = {
+  title: string;
+  kind: string;
+  status: string;
+  progress: string;
+  duration: string;
+  detail: string;
+};
+
+export function buildActiveProjectTaskSummary(tasks: WorkspaceIndexTaskStatus[]): ActiveProjectTaskSummary | null {
+  const task = tasks.find((candidate) => candidate.kind !== "sdk" && !isTerminalTaskStatus(candidate.status));
+  if (!task) {
+    return null;
+  }
+  return {
+    title: `Project index task ${task.stalled ? "stalled" : task.status}`,
+    kind: task.kind,
+    status: task.stalled ? "stalled" : task.status,
+    progress: formatTaskProgress(task),
+    duration: formatTaskDuration(task),
+    detail: formatTaskDetails(task),
+  };
 }
 
 export function formatLayerCounts(layer: { indexedCount: number; failedCount: number; staleCount: number }) {
@@ -113,4 +137,12 @@ function formatDurationMs(durationMs: number) {
 
 function performanceTimelineCount(backendCount: number, uiCount: number, ipcCount: number, renderCount: number) {
   return backendCount + uiCount + ipcCount + renderCount;
+}
+
+function isTerminalTaskStatus(status: string) {
+  return status === "ready" || status === "partial" || status === "stale" || status === "failed";
+}
+
+function firstNonEmpty(...values: Array<string | undefined>) {
+  return values.find((value) => value != null && value.trim().length > 0) ?? "";
 }

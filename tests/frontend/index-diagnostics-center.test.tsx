@@ -248,6 +248,45 @@ describe("IndexDiagnosticsCenter", () => {
     expect(onRebuildProjectIndex).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces active project indexing progress near the diagnostics header", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[{
+          taskId: "rebuild-1",
+          rootPath: "C:/workspace",
+          kind: "refresh-workspace",
+          status: "running",
+          reason: "diagnostics rebuild",
+          generation: 3,
+          progressCurrent: 42,
+          progressTotal: 100,
+          startedAt: 1_000,
+          lastHeartbeatAt: 3_500,
+        }]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const activeTask = screen.getByRole("status", { name: "Active Index Task" });
+    expect(within(activeTask).getByText("Project index task running")).toBeVisible();
+    expect(within(activeTask).getByText("refresh-workspace")).toBeVisible();
+    expect(within(activeTask).getByText("42/100 (42%)")).toBeVisible();
+    expect(within(activeTask).getByText("diagnostics rebuild")).toBeVisible();
+  });
+
   it("renders workspace and current-file layer readiness", () => {
     render(
       <IndexDiagnosticsCenter

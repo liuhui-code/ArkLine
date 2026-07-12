@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildIndexDiagnosticsViewModel,
+  buildActiveProjectTaskSummary,
   formatRepairAction,
   formatTaskDuration,
 } from "@/components/layout/index-diagnostics-model";
@@ -44,6 +45,31 @@ describe("index diagnostics model", () => {
     expect(formatTaskDuration(task({ startedAt: 1_000, finishedAt: 2_250 }))).toBe("1.3s total");
     expect(formatTaskDuration(task({ startedAt: 1_000, lastHeartbeatAt: 61_500 }))).toBe("1m 0s active");
     expect(formatRepairAction("inspectParserFailures")).toBe("Inspect Parser Failures");
+  });
+
+  it("summarizes the active project index task and ignores sdk tasks", () => {
+    const summary = buildActiveProjectTaskSummary([
+      task({ taskId: "sdk-1", kind: "sdk", status: "running", progressCurrent: 1, progressTotal: 100 }),
+      task({
+        taskId: "project-1",
+        kind: "refresh-workspace",
+        status: "running",
+        reason: "diagnostics rebuild",
+        progressCurrent: 42,
+        progressTotal: 100,
+        startedAt: 1_000,
+        lastHeartbeatAt: 3_500,
+      }),
+    ]);
+
+    expect(summary).toEqual({
+      title: "Project index task running",
+      kind: "refresh-workspace",
+      status: "running",
+      progress: "42/100 (42%)",
+      duration: "2.5s active",
+      detail: "diagnostics rebuild",
+    });
   });
 });
 
