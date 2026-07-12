@@ -13,12 +13,12 @@ use crate::services::workspace_index_cancellation_service::{
     WorkspaceIndexCancellationRegistry,
 };
 use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
+use crate::services::workspace_index_queue_pressure_service::project_queue_pressure;
 use crate::services::workspace_index_resume_service::{
     clear_completed_resume_tasks, schedule_resume_tasks_from_store,
 };
 use crate::services::workspace_index_scheduler_service::{
-    task_priority_label, WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind,
-    WorkspaceIndexTaskPriority,
+    WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_state_machine_service::{
@@ -32,9 +32,8 @@ use crate::services::workspace_index_task_journal_service::{
 };
 use crate::services::workspace_index_task_lifecycle_service::task_supersedes_result;
 use crate::services::workspace_index_task_status_service::{
-    current_time_millis, superseded_task_result, task_kind_label,
-    task_status_from_publishable_result, task_status_from_state_transition, task_status_from_task,
-    WorkspaceIndexTaskResult,
+    current_time_millis, superseded_task_result, task_status_from_publishable_result,
+    task_status_from_state_transition, task_status_from_task, WorkspaceIndexTaskResult,
 };
 use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity;
 
@@ -204,22 +203,7 @@ impl WorkspaceIndexManagerRuntime {
             .lock()
             .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
             .pending_tasks();
-        let highest = tasks.iter().max_by(|left, right| {
-            left.priority
-                .cmp(&right.priority)
-                .then_with(|| right.generation.cmp(&left.generation))
-        });
-
-        Ok(WorkspaceIndexQueuePressure {
-            root_path: root_path.to_string(),
-            pending_task_count: tasks.len(),
-            workspace_pending_task_count: tasks
-                .iter()
-                .filter(|task| task.root_path == root_path)
-                .count(),
-            highest_priority: highest.map(|task| task_priority_label(task.priority).to_string()),
-            highest_priority_task_kind: highest.map(|task| task_kind_label(&task.kind).to_string()),
-        })
+        Ok(project_queue_pressure(root_path, &tasks))
     }
     fn schedule_workspace_task(
         &self,

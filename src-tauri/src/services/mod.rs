@@ -231,6 +231,9 @@ mod workspace_index_query_scope_service_tests;
 pub mod workspace_index_query_service;
 #[cfg(test)]
 mod workspace_index_query_service_tests;
+pub(crate) mod workspace_index_queue_pressure_service;
+#[cfg(test)]
+mod workspace_index_queue_pressure_service_tests;
 pub mod workspace_index_readiness_service;
 #[cfg(test)]
 mod workspace_index_readiness_service_tests;
