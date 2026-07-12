@@ -8,6 +8,7 @@ import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace
 export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff">;
 
 const RETRY_BACKOFF_DELAYS_MS = [2_000, 5_000, 15_000, 30_000];
+const MAX_RECENT_EVENTS = 64;
 
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
@@ -108,6 +109,19 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         updatedAt: Date.now(),
       });
     },
+    recordRecentEvent(rootPath: string, event: WorkspaceIndexEvent) {
+      const current = snapshot.rootPath === rootPath ? snapshot.recentEvents : [];
+      const recentEvents = mergeRecentEvent(current, event);
+      const healthSummary = healthSummaryFromEvents(recentEvents);
+      commit({
+        ...snapshot,
+        rootPath,
+        recentEvents,
+        healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
+        eventCount: snapshot.eventCount + 1,
+        updatedAt: Date.now(),
+      });
+    },
     recordRefreshResult(rootPath: string, result: WorkspaceIndexRefreshResult) {
       commit({
         ...snapshot,
@@ -131,6 +145,12 @@ function healthSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexH
     retryBackoffCount: backoffEvents.length,
     latestRetryBackoff: latest.message || null,
   };
+}
+
+function mergeRecentEvent(events: WorkspaceIndexEvent[], next: WorkspaceIndexEvent) {
+  const retained = events.filter((event) => event.eventId !== next.eventId);
+  const merged = [...retained, next].sort((left, right) => left.createdAt - right.createdAt);
+  return merged.slice(Math.max(0, merged.length - MAX_RECENT_EVENTS));
 }
 
 function mergeTaskStatus(

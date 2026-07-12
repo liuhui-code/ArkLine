@@ -2,6 +2,8 @@ import type { Event as TauriEvent } from "@tauri-apps/api/event";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import type {
   WorkspaceIndexDiagnostics,
+  WorkspaceIndexEvent,
+  WorkspaceIndexEventWatcher,
   WorkspaceIndexFileReadiness,
   WorkspaceIndexHealth,
   WorkspaceIndexLayerReadiness,
@@ -39,6 +41,7 @@ export type WorkspaceIndexManagementApi = {
   getWorkspaceIndexLayerReadiness(rootPath: string, currentFilePath?: string | null): Promise<WorkspaceIndexLayerReadinessReport>;
   getWorkspaceIndexTaskStatuses(rootPath: string): Promise<WorkspaceIndexTaskStatus[]>;
   watchWorkspaceIndexTaskStatuses(rootPath: string, onChange: WorkspaceIndexTaskStatusWatcher): Promise<() => void>;
+  watchWorkspaceIndexEvents(rootPath: string, onChange: WorkspaceIndexEventWatcher): Promise<() => void>;
   clearWorkspaceIndex(rootPath: string): Promise<void>;
   rebuildWorkspaceIndex(rootPath: string): Promise<void>;
   resumeWorkspaceIndexing(rootPath: string): Promise<void>;
@@ -65,6 +68,7 @@ export function createWorkspaceIndexManagementApi(deps: WorkspaceIndexManagement
     getWorkspaceIndexLayerReadiness: (rootPath, currentFilePath = null) => getWorkspaceIndexLayerReadiness(deps, rootPath, currentFilePath),
     getWorkspaceIndexTaskStatuses: (rootPath) => getWorkspaceIndexTaskStatuses(deps, rootPath),
     watchWorkspaceIndexTaskStatuses: (rootPath, onChange) => watchWorkspaceIndexTaskStatuses(deps, rootPath, onChange),
+    watchWorkspaceIndexEvents: (rootPath, onChange) => watchWorkspaceIndexEvents(deps, rootPath, onChange),
     clearWorkspaceIndex: (rootPath) => invokeVoid(deps, "clear_workspace_index", { rootPath }),
     rebuildWorkspaceIndex: (rootPath) => invokeVoid(deps, "rebuild_workspace_index", { rootPath }),
     resumeWorkspaceIndexing: (rootPath) => invokeVoid(deps, "resume_workspace_indexing", { rootPath }),
@@ -213,6 +217,27 @@ async function watchWorkspaceIndexTaskStatuses(
   }
 
   const unlisten = await deps.listen<WorkspaceIndexTaskStatus>("workspace-index-task-updated", (event) => {
+    if (deps.normalizePath(event.payload.rootPath) !== deps.normalizePath(rootPath)) {
+      return;
+    }
+    onChange(event.payload);
+  });
+
+  return () => {
+    unlisten();
+  };
+}
+
+async function watchWorkspaceIndexEvents(
+  deps: WorkspaceIndexManagementApiDependencies,
+  rootPath: string,
+  onChange: WorkspaceIndexEventWatcher,
+) {
+  if (!deps.hasTauriRuntime()) {
+    return () => undefined;
+  }
+
+  const unlisten = await deps.listen<WorkspaceIndexEvent>("workspace-index-event", (event) => {
     if (deps.normalizePath(event.payload.rootPath) !== deps.normalizePath(rootPath)) {
       return;
     }

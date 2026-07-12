@@ -56,6 +56,8 @@ export type WorkspaceIndexEvent = {
   createdAt: number;
 };
 
+export type WorkspaceIndexEventWatcher = (event: WorkspaceIndexEvent) => void;
+
 export type WorkspaceIndexTimelineItem = {
   scope: string;
   kind: string;

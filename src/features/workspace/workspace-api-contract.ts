@@ -25,6 +25,8 @@ import type {
 } from "@/features/workspace/workspace-device-log-api-types";
 import type {
   WorkspaceIndexDiagnostics,
+  WorkspaceIndexEvent,
+  WorkspaceIndexEventWatcher,
   WorkspaceIndexExplainRequest,
   WorkspaceIndexExplainResult,
   WorkspaceIndexFileReadiness,
@@ -67,6 +69,7 @@ export type {
 export type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexEvent,
+  WorkspaceIndexEventWatcher,
   WorkspaceIndexExplainFact,
   WorkspaceIndexExplainRequest,
   WorkspaceIndexExplainResult,
@@ -326,6 +329,7 @@ export type WorkspaceApi = {
   getWorkspaceIndexLayerReadiness?(rootPath: string, currentFilePath?: string | null): Promise<WorkspaceIndexLayerReadinessReport>;
   getWorkspaceIndexTaskStatuses?(rootPath: string): Promise<WorkspaceIndexTaskStatus[]>;
   watchWorkspaceIndexTaskStatuses?(rootPath: string, onChange: WorkspaceIndexTaskStatusWatcher): Promise<() => void>;
+  watchWorkspaceIndexEvents?(rootPath: string, onChange: WorkspaceIndexEventWatcher): Promise<() => void>;
   clearWorkspaceIndex?(rootPath: string): Promise<void>;
   rebuildWorkspaceIndex?(rootPath: string): Promise<void>;
   resumeWorkspaceIndexing?(rootPath: string): Promise<void>;

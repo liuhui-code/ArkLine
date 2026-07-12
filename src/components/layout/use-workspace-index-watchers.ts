@@ -3,6 +3,7 @@ import { WORKSPACE_INDEX_WATCH_INTERVAL_MS } from "@/components/layout/app-shell
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type {
   WorkspaceApi,
+  WorkspaceIndexEvent,
   WorkspaceIndexRefreshResult,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
@@ -113,6 +114,43 @@ export function useWorkspaceIndexWatchers({
     return () => {
       disposed = true;
       window.clearInterval(intervalId);
+    };
+  }, [rootPath, workspaceApi]);
+
+  useEffect(() => {
+    if (!rootPath || !workspaceApi.watchWorkspaceIndexEvents) {
+      return;
+    }
+
+    let disposed = false;
+    const watchedRootPath = rootPath;
+    let teardownWatcher: (() => void) | null = null;
+    function recordWorkspaceIndexEvent(event: WorkspaceIndexEvent) {
+      if (disposed) {
+        return;
+      }
+
+      workspaceIndexProjectionStore.recordRecentEvent(watchedRootPath, event);
+    }
+
+    void workspaceApi.watchWorkspaceIndexEvents(watchedRootPath, recordWorkspaceIndexEvent)
+      .then((teardown) => {
+        if (disposed) {
+          teardown();
+          return;
+        }
+
+        teardownWatcher = teardown;
+      })
+      .catch((error) => {
+        if (!disposed) {
+          onStatusChange(`Workspace index event watcher failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+
+    return () => {
+      disposed = true;
+      teardownWatcher?.();
     };
   }, [rootPath, workspaceApi]);
 
