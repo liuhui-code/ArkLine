@@ -219,6 +219,7 @@ fn reports_deep_layer_performance_gate_events_in_timeline() {
             duration_ms: 420,
             path_count: 128,
             chunk_index: Some(2),
+            detail: None,
         }],
         WorkspaceIndexPerfGateThresholds {
             foreground_ready_ms: 500,

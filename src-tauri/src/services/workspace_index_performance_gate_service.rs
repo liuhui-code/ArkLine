@@ -11,6 +11,7 @@ pub struct WorkspaceIndexStageSample {
     pub duration_ms: u64,
     pub path_count: usize,
     pub chunk_index: Option<usize>,
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +151,48 @@ pub fn samples_from_stub_profile(
 }
 
 #[cfg(test)]
+pub fn samples_from_reference_refresh_profile(
+    source: &str,
+    chunk_index: usize,
+    profile: &crate::services::workspace_reference_index_service::WorkspaceReferenceRefreshProfile,
+) -> Vec<WorkspaceIndexStageSample> {
+    vec![
+        reference_sample(
+            source,
+            "referenceDelete",
+            profile.delete_duration,
+            profile.affected_path_count,
+            chunk_index,
+            None,
+        ),
+        reference_sample(
+            source,
+            "referenceContent",
+            profile.content_duration,
+            profile.content_count,
+            chunk_index,
+            Some(format!("skippedContent={}", profile.skipped_content_count)),
+        ),
+        reference_sample(
+            source,
+            "referenceMemberContext",
+            profile.member_context_duration,
+            profile.content_count,
+            chunk_index,
+            Some(format!("loaded={}", profile.member_context_loaded)),
+        ),
+        reference_sample(
+            source,
+            "referenceIndex",
+            profile.index_duration,
+            profile.content_count,
+            chunk_index,
+            None,
+        ),
+    ]
+}
+
+#[cfg(test)]
 fn sample(
     source: &str,
     stage: &str,
@@ -163,6 +206,26 @@ fn sample(
         duration_ms: duration.as_millis() as u64,
         path_count,
         chunk_index: Some(chunk_index),
+        detail: None,
+    }
+}
+
+#[cfg(test)]
+fn reference_sample(
+    source: &str,
+    stage: &str,
+    duration: std::time::Duration,
+    path_count: usize,
+    chunk_index: usize,
+    detail: Option<String>,
+) -> WorkspaceIndexStageSample {
+    WorkspaceIndexStageSample {
+        source: source.to_string(),
+        stage: stage.to_string(),
+        duration_ms: duration.as_millis() as u64,
+        path_count,
+        chunk_index: Some(chunk_index),
+        detail,
     }
 }
 
@@ -193,10 +256,15 @@ fn evidence_line(sample: &WorkspaceIndexStageSample) -> String {
         .chunk_index
         .map(|index| index.to_string())
         .unwrap_or_else(|| "none".to_string());
-    format!(
+    let mut line = format!(
         "source={} stage={} durationMs={} pathCount={} chunk={}",
         sample.source, sample.stage, sample.duration_ms, sample.path_count, chunk
-    )
+    );
+    if let Some(detail) = &sample.detail {
+        line.push_str(" detail=");
+        line.push_str(detail);
+    }
+    line
 }
 
 fn performance_event(

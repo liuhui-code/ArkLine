@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use crate::services::workspace_index_performance_gate_service::{
     evaluate_deep_layer_performance, performance_timeline_item,
-    record_deep_layer_performance_report, samples_from_stub_profile,
-    WorkspaceIndexPerfGateThresholds, WorkspaceIndexStageSample,
+    record_deep_layer_performance_report, samples_from_reference_refresh_profile,
+    samples_from_stub_profile, WorkspaceIndexPerfGateThresholds, WorkspaceIndexStageSample,
 };
+use crate::services::workspace_reference_index_service::WorkspaceReferenceRefreshProfile;
 use crate::services::workspace_stub_index_service::WorkspaceStubIndexProfile;
 
 #[test]
@@ -83,6 +84,38 @@ fn keeps_fixture_source_in_evidence_for_generated_and_project_comparison() {
 }
 
 #[test]
+fn reference_refresh_profile_evidence_includes_budget_skips() {
+    let profile = WorkspaceReferenceRefreshProfile {
+        delete_duration: Duration::from_millis(4),
+        alias_duration: Duration::from_millis(3),
+        declaration_duration: Duration::from_millis(5),
+        content_duration: Duration::from_millis(30),
+        member_context_duration: Duration::from_millis(0),
+        index_duration: Duration::from_millis(20),
+        affected_path_count: 8,
+        content_count: 6,
+        skipped_content_count: 2,
+        member_context_loaded: false,
+    };
+
+    let report = evaluate_deep_layer_performance(
+        samples_from_reference_refresh_profile("project", 2, &profile),
+        WorkspaceIndexPerfGateThresholds::default(),
+    );
+
+    assert!(report
+        .evidence
+        .iter()
+        .any(|line| line.contains("stage=referenceContent")
+            && line.contains("detail=skippedContent=2")));
+    assert!(report
+        .evidence
+        .iter()
+        .any(|line| line.contains("stage=referenceMemberContext")
+            && line.contains("detail=loaded=false")));
+}
+
+#[test]
 fn records_performance_gate_report_as_unified_index_event() {
     let root = crate::services::workspace_index_test_fixture_service::unique_temp_dir(
         "performance-gate-event",
@@ -123,5 +156,6 @@ fn sample(
         duration_ms,
         path_count,
         chunk_index,
+        detail: None,
     }
 }

@@ -327,6 +327,7 @@ fn sample(
         duration_ms: duration.as_millis() as u64,
         path_count,
         chunk_index: Some(chunk_index),
+        detail: None,
     }
 }
 
