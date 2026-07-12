@@ -77,7 +77,8 @@ export function useIndexDiagnosticsController({
     indexProjection.rootPath === workspace?.rootPath ? indexProjection : null,
   );
   const workspaceIndexStatusSummary = {
-    workspaceIndexText: getIndexHealthStatusText(indexHealthSummary ?? effectiveIndexDiagnostics)
+    workspaceIndexText: getIndexHealthStatusText(effectiveIndexDiagnostics)
+      ?? getIndexHealthStatusText(indexHealthSummary ? { ...indexHealthSummary, lastError: null } : null)
       ?? getLayerReadinessStatusText(layerReadiness)
       ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
     sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),

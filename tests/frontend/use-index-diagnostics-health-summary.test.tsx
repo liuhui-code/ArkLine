@@ -142,7 +142,12 @@ describe("useIndexDiagnosticsController health summary", () => {
   });
 
   it("merges live error events into diagnostics health evidence", async () => {
-    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const inspectWorkspaceIndex = vi.fn(async () => ({
+      ...diagnostics(),
+      retryBackoffCount: 0,
+      latestRetryBackoff: null,
+      recentEvents: [],
+    }));
     const { result } = renderHook(() => useIndexDiagnosticsController(options({
       workspaceApi: workspaceApi({
         inspectWorkspaceIndex,
@@ -165,6 +170,8 @@ describe("useIndexDiagnosticsController health summary", () => {
     });
 
     expect(result.current.indexDiagnostics?.lastError).toBe("Workspace index worker crashed");
+    expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
+      .toBe("Index: Error, Workspace index worker crashed");
   });
 });
 

@@ -137,20 +137,20 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
 }
 
 export function getIndexHealthStatusText(
-  diagnostics: Pick<WorkspaceIndexDiagnostics, "retryBackoffCount" | "latestRetryBackoff"> | null,
+  diagnostics: Pick<WorkspaceIndexDiagnostics, "retryBackoffCount" | "latestRetryBackoff" | "lastError"> | null,
 ) {
   const backoffCount = diagnostics?.retryBackoffCount ?? 0;
-  if (backoffCount <= 0) {
-    return null;
+  if (backoffCount > 0) {
+    const suffix = backoffCount === 1 ? "retry delayed" : "retries delayed";
+    return diagnostics?.latestRetryBackoff
+      ? `Index: Backoff, ${diagnostics.latestRetryBackoff}`
+      : `Index: Backoff, ${backoffCount.toLocaleString()} ${suffix}`;
   }
-  const suffix = backoffCount === 1 ? "retry delayed" : "retries delayed";
-  return diagnostics?.latestRetryBackoff
-    ? `Index: Backoff, ${diagnostics.latestRetryBackoff}`
-    : `Index: Backoff, ${backoffCount.toLocaleString()} ${suffix}`;
+  return diagnostics?.lastError ? `Index: Error, ${diagnostics.lastError}` : null;
 }
 
 export function getIndexDiagnosticsStatusTarget(workspaceIndexText: string) {
-  return workspaceIndexText.startsWith("Index: Backoff")
+  return workspaceIndexText.startsWith("Index: Backoff") || workspaceIndexText.startsWith("Index: Error")
     ? "index-diagnostics-health"
     : "index-diagnostics-processes";
 }
