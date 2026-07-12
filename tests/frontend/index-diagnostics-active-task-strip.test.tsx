@@ -1,0 +1,25 @@
+import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { IndexDiagnosticsActiveTaskStrip } from "@/components/layout/IndexDiagnosticsActiveTaskStrip";
+
+describe("IndexDiagnosticsActiveTaskStrip", () => {
+  it("shows target path summaries when the active task has file targets", () => {
+    render(
+      <IndexDiagnosticsActiveTaskStrip
+        task={{
+          title: "Project index task queued",
+          kind: "changed-paths",
+          status: "queued",
+          progress: "0/1 (0%)",
+          duration: "not started",
+          detail: "foreground-navigation",
+          targetSummary: "src/Entry.ets +2 more",
+        }}
+      />,
+    );
+
+    const strip = screen.getByRole("status", { name: "Active Index Task" });
+    expect(within(strip).getByText("Project index task queued")).toBeVisible();
+    expect(within(strip).getByText("src/Entry.ets +2 more")).toBeVisible();
+  });
+});

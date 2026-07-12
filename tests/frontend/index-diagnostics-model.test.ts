@@ -84,7 +84,23 @@ describe("index diagnostics model", () => {
       progress: "42/100 (42%)",
       duration: "2.5s active",
       detail: "diagnostics rebuild",
+      targetSummary: null,
     });
+  });
+
+  it("includes compact targets in active project task summaries", () => {
+    const summary = buildActiveProjectTaskSummary([
+      task({
+        taskId: "project-1",
+        kind: "changed-paths",
+        status: "queued",
+        reason: "foreground-navigation",
+        targetPaths: ["/workspace/src/Entry.ets", "/workspace/features/Search.ets"],
+        targetPathCount: 3,
+      }),
+    ]);
+
+    expect(summary?.targetSummary).toBe("src/Entry.ets, features/Search.ets +1 more");
   });
 });
 

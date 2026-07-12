@@ -83,6 +83,7 @@ export type ActiveProjectTaskSummary = {
   progress: string;
   duration: string;
   detail: string;
+  targetSummary: string | null;
 };
 
 export function buildActiveProjectTaskSummary(tasks: WorkspaceIndexTaskStatus[]): ActiveProjectTaskSummary | null {
@@ -194,6 +195,7 @@ function isTerminalTaskStatus(status: string) {
 }
 
 function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: string): ActiveProjectTaskSummary {
+  const targets = formatTaskTargets(task);
   return {
     title: `${titlePrefix} ${task.stalled ? "stalled" : task.status}`,
     kind: task.kind,
@@ -201,6 +203,7 @@ function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: str
     progress: formatTaskProgress(task),
     duration: formatTaskDuration(task),
     detail: formatTaskDetails(task),
+    targetSummary: targets === "-" ? null : targets,
   };
 }
 

@@ -17,6 +17,7 @@ export function IndexDiagnosticsActiveTaskStrip({ task }: { task: ActiveProjectT
       </div>
       <span>{task.kind}</span>
       <span>{task.progress}</span>
+      <span>{task.targetSummary ?? ""}</span>
       <span>{task.duration}</span>
     </div>
   );
