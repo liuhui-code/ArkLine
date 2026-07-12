@@ -1,0 +1,39 @@
+{
+  "gates": {
+    "fast": {
+      "command": "pnpm check:fast",
+      "description": "Default local and CI quality gate for incremental changes.",
+      "steps": [
+        "pnpm check:whitespace",
+        "pnpm check:line-count",
+        "pnpm test:semantic-worker",
+        "pnpm test:frontend:quality",
+        "pnpm test:rust",
+        "pnpm build",
+        "pnpm perf:runtime"
+      ]
+    },
+    "full": {
+      "command": "pnpm check",
+      "description": "Merge-ready quality gate that includes the full frontend suite.",
+      "steps": [
+        "pnpm check:whitespace",
+        "pnpm check:line-count",
+        "pnpm test",
+        "pnpm test:rust",
+        "pnpm build",
+        "pnpm perf:runtime"
+      ]
+    }
+  },
+  "frontendQualityTests": [
+    "tests/frontend/package-scripts.test.ts",
+    "tests/frontend/quality-gate-manifest.test.ts",
+    "tests/frontend/ci-workflow-gates.test.ts",
+    "tests/frontend/readme-quality-gates.test.ts",
+    "tests/frontend/check-line-count.test.mjs",
+    "tests/frontend/app-crash-boundary.test.tsx",
+    "tests/frontend/editor-crash-boundary.test.tsx",
+    "tests/frontend/ui-latency-monitor.test.ts"
+  ]
+}
