@@ -256,6 +256,9 @@ mod workspace_index_snapshot_state_service_tests;
 pub mod workspace_index_status_projection_service;
 #[cfg(test)]
 mod workspace_index_status_projection_service_tests;
+pub(crate) mod workspace_index_structured_restore_service;
+#[cfg(test)]
+mod workspace_index_structured_restore_service_tests;
 pub mod workspace_index_task_journal_service;
 #[cfg(test)]
 mod workspace_index_task_journal_service_tests;
