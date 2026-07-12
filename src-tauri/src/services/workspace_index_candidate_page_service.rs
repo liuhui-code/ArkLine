@@ -5,6 +5,8 @@ use crate::services::workspace_index_query_service::{
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
+const MAX_CANDIDATE_PAGE_LIMIT: usize = 100;
+
 pub fn query_workspace_candidate_page(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
@@ -13,6 +15,7 @@ pub fn query_workspace_candidate_page(
     limit: usize,
     cursor: Option<usize>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
+    let limit = normalize_candidate_page_limit(limit);
     let offset = cursor.unwrap_or_default();
     let fetch_limit = offset.saturating_add(limit).saturating_add(1);
     let candidates =
@@ -36,6 +39,7 @@ pub fn query_workspace_file_symbol_page(
     limit: usize,
     cursor: Option<usize>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
+    let limit = normalize_candidate_page_limit(limit);
     let offset = cursor.unwrap_or_default();
     let fetch_limit = offset.saturating_add(limit).saturating_add(1);
     let candidates = query_workspace_file_symbols(root_path, file_path, query, fetch_limit)?;
@@ -48,4 +52,8 @@ pub fn query_workspace_file_symbol_page(
         explain: Vec::new(),
         next_cursor: has_more.then_some(offset.saturating_add(limit)),
     })
+}
+
+pub(crate) fn normalize_candidate_page_limit(limit: usize) -> usize {
+    limit.clamp(1, MAX_CANDIDATE_PAGE_LIMIT)
 }
