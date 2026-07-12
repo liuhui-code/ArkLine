@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
 import {
-  closeSearchOverlayForNavigationAction,
   handleSearchOverlayQueryChangeAction,
   openSearchOverlayAction,
   resetSearchOverlayStateAction,
@@ -40,6 +39,7 @@ import {
 import { createSearchMissReporters } from "@/components/layout/search-miss-reporters";
 import { createSearchOpenActions } from "@/components/layout/search-open-actions";
 import { runSearchFallbackText } from "@/components/layout/search-fallback-runner";
+import { createSearchSessionLifecycle } from "@/components/layout/search-session-lifecycle";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -111,6 +111,13 @@ export function useSearchEverywhereController({
     getWorkspaceApi: () => workspaceApiRef.current,
   }));
   const navigationCloseHandledRef = useRef(false);
+  const searchLifecycle = createSearchSessionLifecycle({
+    interactionRuntime: interactionRuntimeRef.current,
+    sessionStore: searchSessionStoreRef.current,
+    navigationCloseHandledRef,
+    setActiveOverlay,
+  });
+  const { invalidateSearchSession, closeSearchOverlayForNavigation } = searchLifecycle;
   const { debouncedSearchQuery, resetDebouncedSearchQuery } = useSearchOverlayDebouncedQuery({
     activeOverlay,
     quickOpenQuery,
@@ -321,19 +328,6 @@ export function useSearchEverywhereController({
       canUseNativeTextSearch: canUseNativeTextSearchRuntime(),
       searchNative: workspaceApi.searchWorkspaceText,
       readFile: readSearchFile,
-    });
-  }
-
-  function invalidateSearchSession(cancelRunning = true) {
-    interactionRuntimeRef.current.invalidateForeground({ cancelActive: cancelRunning });
-    searchSessionStoreRef.current.patch({ previewContent: null, textPageLoading: false });
-  }
-
-  function closeSearchOverlayForNavigation() {
-    closeSearchOverlayForNavigationAction({
-      navigationCloseHandledRef,
-      invalidateSearchSession,
-      setActiveOverlay,
     });
   }
 
