@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildIndexDiagnosticsViewModel,
   buildActiveProjectTaskSummary,
+  buildActiveSdkTaskSummary,
   formatRepairAction,
   formatTaskDuration,
   formatTaskTargets,
+  getLayerActionState,
 } from "@/components/layout/index-diagnostics-model";
 import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 
@@ -89,6 +91,20 @@ describe("index diagnostics model", () => {
     });
   });
 
+  it("ignores terminal project and sdk task statuses in active summaries", () => {
+    const projectSummary = buildActiveProjectTaskSummary([
+      task({ taskId: "cancelled-1", kind: "changed-paths", status: "cancelled" }),
+      task({ taskId: "superseded-1", kind: "refresh-workspace", status: "superseded" }),
+      task({ taskId: "skipped-1", kind: "changed-paths", status: "skipped" }),
+    ]);
+    const sdkSummary = buildActiveSdkTaskSummary([
+      task({ taskId: "sdk-1", kind: "sdk", status: "superseded" }),
+    ]);
+
+    expect(projectSummary).toBeNull();
+    expect(sdkSummary).toBeNull();
+  });
+
   it("includes compact targets in active project task summaries", () => {
     const summary = buildActiveProjectTaskSummary([
       task({
@@ -116,6 +132,24 @@ describe("index diagnostics model", () => {
 
     expect(summary?.targetCurrentFile).toBe(true);
     expect(summary?.targetSummary).toBe("src/Entry.ets");
+  });
+
+  it("does not disable layer actions for terminal task statuses", () => {
+    expect(getLayerActionState("rebuildIndex", [
+      task({ taskId: "superseded-1", kind: "refresh-workspace", status: "superseded" }),
+    ])).toEqual({ disabled: false, reason: null });
+    expect(getLayerActionState("rebuildSdkIndex", [
+      task({ taskId: "sdk-1", kind: "sdk", status: "cancelled" }),
+    ])).toEqual({ disabled: false, reason: null });
+    expect(getLayerActionState("indexCurrentFile", [
+      task({
+        taskId: "skipped-1",
+        kind: "changed-paths",
+        status: "skipped",
+        reason: "foreground-navigation",
+        targetPaths: ["/workspace/src/Entry.ets"],
+      }),
+    ], "/workspace/src/Entry.ets")).toEqual({ disabled: false, reason: null });
   });
 });
 

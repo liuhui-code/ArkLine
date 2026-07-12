@@ -149,7 +149,7 @@ export type WorkspaceIndexTaskStatus = {
   taskId: string;
   rootPath: string;
   kind: string;
-  status: "queued" | "running" | "ready" | "partial" | "stale" | "failed" | string;
+  status: "queued" | "running" | "ready" | "partial" | "stale" | "failed" | "cancelled" | "superseded" | "skipped" | string;
   reason: string;
   generation: number;
   progressCurrent: number;

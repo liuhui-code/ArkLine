@@ -198,8 +198,18 @@ function performanceTimelineCount(backendCount: number, uiCount: number, ipcCoun
 }
 
 function isTerminalTaskStatus(status: string) {
-  return status === "ready" || status === "partial" || status === "stale" || status === "failed";
+  return TERMINAL_TASK_STATUSES.has(status);
 }
+
+const TERMINAL_TASK_STATUSES = new Set([
+  "ready",
+  "partial",
+  "stale",
+  "failed",
+  "cancelled",
+  "superseded",
+  "skipped",
+]);
 
 function buildActiveTaskSummary(
   task: WorkspaceIndexTaskStatus,
