@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -10,6 +10,9 @@ use crate::models::workspace::{
 };
 use crate::services::workspace_index_entity_persistence_service::{
     insert_legacy_symbol, insert_symbol_entity,
+};
+use crate::services::workspace_index_cache_path_service::{
+    catalog_cache_path, normalized_root_key, sqlite_catalog_cache_path,
 };
 use crate::services::workspace_index_incremental_persistence_service::{
     persist_incremental_sqlite_deep_state_with_priority,
@@ -197,7 +200,7 @@ fn persist_sqlite_index_state_with_mode(
     let root_key = state
         .root_path
         .clone()
-        .unwrap_or_else(|| normalize_index_path(root_path));
+        .unwrap_or_else(|| normalized_root_key(root_path));
     let state_json = serde_json::to_string(state).map_err(|error| error.to_string())?;
     let updated_at = now_epoch_ms()? as i64;
 
@@ -242,7 +245,7 @@ fn restore_sqlite_catalog_cache(root_path: &str) -> Result<WorkspaceIndexState, 
 
     let connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
     ensure_schema(&connection)?;
-    let root_key = normalize_index_path(root_path);
+    let root_key = normalized_root_key(root_path);
     if let Ok(state) = restore_structured_sqlite_catalog_cache(&connection, &root_key) {
         return Ok(state);
     }
@@ -473,27 +476,9 @@ fn parse_index_status(status: &str) -> WorkspaceIndexStatus {
     }
 }
 
-fn catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.json")
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
-}
-
 fn now_epoch_ms() -> Result<u128, String> {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .map_err(|error| error.to_string())
-}
-
-fn normalize_index_path(path: &str) -> String {
-    path.replace('/', "\\")
 }

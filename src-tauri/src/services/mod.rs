@@ -126,6 +126,9 @@ mod workspace_index_cancellation_service_tests;
 pub mod workspace_index_candidate_page_service;
 #[cfg(test)]
 mod workspace_index_candidate_page_service_tests;
+pub(crate) mod workspace_index_cache_path_service;
+#[cfg(test)]
+mod workspace_index_cache_path_service_tests;
 pub mod workspace_index_chunk_service;
 #[cfg(test)]
 mod workspace_index_chunk_service_tests;
