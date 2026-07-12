@@ -173,6 +173,7 @@ describe("workspace api", () => {
       rootPath: "C:/samples/DemoWorkspace",
       status: "ready",
       schemaVersions: { event: 1 },
+      schemaVersionActions: [],
       fileCount: 1,
       symbolCount: 1,
       contentLineCount: 1,

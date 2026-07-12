@@ -286,6 +286,7 @@ function diagnostics(): WorkspaceIndexDiagnostics {
     rootPath: "/workspace",
     status: "ready",
     schemaVersions: {},
+    schemaVersionActions: [],
     fileCount: 12,
     symbolCount: 30,
     contentLineCount: 100,

@@ -316,10 +316,20 @@ pub struct WorkspaceIndexQueuePressure {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexSchemaVersionAction {
+    pub domain: String,
+    pub expected_version: i64,
+    pub persisted_version: Option<i64>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexDiagnostics {
     pub root_path: String,
     pub status: String,
     pub schema_versions: std::collections::HashMap<String, i64>,
+    pub schema_version_actions: Vec<WorkspaceIndexSchemaVersionAction>,
     pub file_count: i64,
     pub symbol_count: i64,
     pub content_line_count: i64,

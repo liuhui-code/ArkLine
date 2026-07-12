@@ -350,6 +350,7 @@ function diagnosticsWithBackendQueryEvent(createdAt = 1): WorkspaceIndexDiagnost
     rootPath: "C:/workspace",
     status: "partial",
     schemaVersions: {},
+    schemaVersionActions: [],
     fileCount: 10,
     symbolCount: 20,
     contentLineCount: 30,

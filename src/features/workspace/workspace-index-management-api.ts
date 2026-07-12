@@ -99,6 +99,7 @@ async function inspectWorkspaceIndex(deps: WorkspaceIndexManagementApiDependenci
     rootPath,
     status: "empty",
     schemaVersions: {},
+    schemaVersionActions: [],
     fileCount: 0,
     symbolCount: 0,
     contentLineCount: 0,

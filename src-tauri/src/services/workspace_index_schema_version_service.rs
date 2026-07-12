@@ -22,6 +22,21 @@ const SCHEMA_DOMAINS: &[(&str, i64)] = &[
 #[cfg(test)]
 pub(crate) const WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT: usize = SCHEMA_DOMAINS.len();
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkspaceIndexSchemaVersionStatus {
+    Compatible,
+    MissingVersion,
+    NeedsRebuild,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WorkspaceIndexSchemaVersionAction {
+    pub domain: String,
+    pub expected_version: i64,
+    pub persisted_version: Option<i64>,
+    pub status: WorkspaceIndexSchemaVersionStatus,
+}
+
 pub(crate) fn create_workspace_index_schema_version_table(
     connection: &Connection,
 ) -> Result<(), String> {
@@ -55,6 +70,30 @@ pub(crate) fn record_workspace_index_schema_versions(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+pub(crate) fn plan_workspace_index_schema_version_actions(
+    persisted_versions: &HashMap<String, i64>,
+) -> Vec<WorkspaceIndexSchemaVersionAction> {
+    SCHEMA_DOMAINS
+        .iter()
+        .map(|(domain, expected_version)| {
+            let persisted_version = persisted_versions.get(*domain).copied();
+            let status = match persisted_version {
+                None => WorkspaceIndexSchemaVersionStatus::MissingVersion,
+                Some(version) if version == *expected_version => {
+                    WorkspaceIndexSchemaVersionStatus::Compatible
+                }
+                Some(_) => WorkspaceIndexSchemaVersionStatus::NeedsRebuild,
+            };
+            WorkspaceIndexSchemaVersionAction {
+                domain: (*domain).to_string(),
+                expected_version: *expected_version,
+                persisted_version,
+                status,
+            }
+        })
+        .collect()
 }
 
 #[allow(dead_code)]

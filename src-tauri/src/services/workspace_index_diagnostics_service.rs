@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::models::workspace::{
     WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexQueuePressure,
-    WorkspaceIndexTimelineItem,
+    WorkspaceIndexSchemaVersionAction, WorkspaceIndexTimelineItem,
 };
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_repair_action_service::{
@@ -19,6 +19,9 @@ use crate::services::workspace_index_repair_service::{
 use crate::services::workspace_index_resume_service::load_resume_tasks;
 use crate::services::workspace_index_schema_service::{
     ensure_workspace_index_schema, load_workspace_index_schema_versions,
+};
+use crate::services::workspace_index_schema_version_service::{
+    plan_workspace_index_schema_version_actions, WorkspaceIndexSchemaVersionStatus,
 };
 
 const DIAGNOSTICS_PARSER_FAILURE_LIMIT: usize = 5;
@@ -50,10 +53,12 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         has_resume_tasks: !load_resume_tasks(root_path)?.is_empty(),
     });
 
+    let schema_versions = load_workspace_index_schema_versions(&connection)?;
     Ok(WorkspaceIndexDiagnostics {
         root_path: root_key.clone(),
         status: index_status,
-        schema_versions: load_workspace_index_schema_versions(&connection)?,
+        schema_version_actions: diagnostics_schema_version_actions(&schema_versions),
+        schema_versions,
         file_count: count_rows(&connection, "workspace_files", &root_key)?,
         symbol_count: count_rows(&connection, "workspace_symbols", &root_key)?,
         content_line_count: count_rows(&connection, "workspace_content_lines", &root_key)?,
@@ -86,6 +91,28 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         recent_events,
         timeline,
     })
+}
+
+fn diagnostics_schema_version_actions(
+    schema_versions: &HashMap<String, i64>,
+) -> Vec<WorkspaceIndexSchemaVersionAction> {
+    plan_workspace_index_schema_version_actions(schema_versions)
+        .into_iter()
+        .map(|action| WorkspaceIndexSchemaVersionAction {
+            domain: action.domain,
+            expected_version: action.expected_version,
+            persisted_version: action.persisted_version,
+            status: schema_version_status_label(action.status).to_string(),
+        })
+        .collect()
+}
+
+fn schema_version_status_label(status: WorkspaceIndexSchemaVersionStatus) -> &'static str {
+    match status {
+        WorkspaceIndexSchemaVersionStatus::Compatible => "compatible",
+        WorkspaceIndexSchemaVersionStatus::MissingVersion => "missing-version",
+        WorkspaceIndexSchemaVersionStatus::NeedsRebuild => "needs-rebuild",
+    }
 }
 
 pub fn inspect_workspace_index_with_queue_pressure(

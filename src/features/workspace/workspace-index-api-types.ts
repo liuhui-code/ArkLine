@@ -4,6 +4,7 @@ export type WorkspaceIndexDiagnostics = {
   rootPath: string;
   status: string;
   schemaVersions: Record<string, number>;
+  schemaVersionActions: WorkspaceIndexSchemaVersionAction[];
   fileCount: number;
   symbolCount: number;
   contentLineCount: number;
@@ -30,6 +31,13 @@ export type WorkspaceIndexDiagnostics = {
   unresolvedImports: WorkspaceIndexUnresolvedImport[];
   recentEvents: WorkspaceIndexEvent[];
   timeline: WorkspaceIndexTimelineItem[];
+};
+
+export type WorkspaceIndexSchemaVersionAction = {
+  domain: string;
+  expectedVersion: number;
+  persistedVersion: number | null;
+  status: "compatible" | "missing-version" | "needs-rebuild" | string;
 };
 
 export type WorkspaceIndexEvent = {

@@ -58,6 +58,14 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     assert_eq!(diagnostics.schema_versions.get("dependency"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("fingerprint"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("sdk"), Some(&1));
+    assert!(diagnostics
+        .schema_version_actions
+        .iter()
+        .all(|action| action.status == "compatible"));
+    assert!(diagnostics
+        .schema_version_actions
+        .iter()
+        .any(|action| action.domain == "sdk" && action.expected_version == 1));
     assert_eq!(diagnostics.file_count, 2);
     assert_eq!(diagnostics.symbol_count, 3);
     assert_eq!(diagnostics.content_line_count, 5);
