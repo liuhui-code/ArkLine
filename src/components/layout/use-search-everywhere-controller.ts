@@ -25,7 +25,6 @@ import {
 import { dispatchSearchOverlayQueryEffect } from "@/components/layout/search-query-effect-dispatcher";
 import {
   createSearchFileReader,
-  scheduleSelectedSearchPreviewWithReader,
 } from "@/components/layout/search-file-reader";
 import { toggleSearchTextOption } from "@/components/layout/search-text-options-state";
 import { createWorkspaceSearchInteractionRuntime } from "@/components/layout/search-workspace-runtime";
@@ -39,6 +38,7 @@ import { runSearchFallbackText } from "@/components/layout/search-fallback-runne
 import { createSearchSessionLifecycle } from "@/components/layout/search-session-lifecycle";
 import { createSearchNextPageAction } from "@/components/layout/search-next-page-action";
 import { createSearchRunActions } from "@/components/layout/search-run-actions";
+import { createSearchPreviewAction } from "@/components/layout/search-preview-action";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -131,6 +131,14 @@ export function useSearchEverywhereController({
     getActiveContent,
     openFile: workspaceApi.openFile,
   });
+  const scheduleSelectedPreview = createSearchPreviewAction({
+    getActiveOverlay: () => activeOverlay,
+    getMode: () => searchEverywhereMode,
+    delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
+    sessionStore: searchSessionStoreRef.current,
+    interactionRuntime: interactionRuntimeRef.current,
+    readFile: readSearchFile,
+  });
   const searchMissReporters = createSearchMissReporters({
     isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
     explainIndexMiss,
@@ -222,18 +230,6 @@ export function useSearchEverywhereController({
       selectedIndex,
       sessionStore: searchSessionStoreRef.current,
       scheduleSelectedPreview,
-    });
-  }
-
-  function scheduleSelectedPreview(selectedIndex: number) {
-    scheduleSelectedSearchPreviewWithReader({
-      activeOverlay,
-      mode: searchEverywhereMode,
-      selectedIndex,
-      delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
-      sessionStore: searchSessionStoreRef.current,
-      interactionRuntime: interactionRuntimeRef.current,
-      readFile: readSearchFile,
     });
   }
 
