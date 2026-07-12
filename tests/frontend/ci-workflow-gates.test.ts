@@ -21,4 +21,15 @@ describe("CI quality gates", () => {
     );
     expect(workflow).not.toContain("run: pnpm perf:runtime");
   });
+
+  it("runs the shared fast quality gate before publishing the portable exe", async () => {
+    const workflow = await readWorkflow("macos-windows-exe.yml");
+    const installIndex = workflow.indexOf("run: pnpm install --frozen-lockfile");
+    const gateIndex = workflow.indexOf("run: pnpm check:fast");
+    const packageIndex = workflow.indexOf("run: pnpm package:windows:portable");
+
+    expect(workflow).toContain("version: 10.12.1");
+    expect(gateIndex).toBeGreaterThan(installIndex);
+    expect(packageIndex).toBeGreaterThan(gateIndex);
+  });
 });
