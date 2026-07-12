@@ -13,7 +13,6 @@ import {
   buildIndexDiagnosticsViewModel,
   buildActiveProjectTaskSummary,
   buildActiveSdkTaskSummary,
-  formatClockTime,
   formatLayerCounts,
 } from "@/components/layout/index-diagnostics-model";
 import {
@@ -27,6 +26,7 @@ import { LanguageQuerySnapshotPanel } from "@/components/layout/LanguageQuerySna
 import { IndexDiagnosticsActiveTaskStrip } from "@/components/layout/IndexDiagnosticsActiveTaskStrip";
 import { IndexDiagnosticsCurrentFileSection } from "@/components/layout/IndexDiagnosticsCurrentFileSection";
 import { IndexDiagnosticsHealthSection } from "@/components/layout/IndexDiagnosticsHealthSection";
+import { IndexDiagnosticsPerformanceTimelineSection } from "@/components/layout/IndexDiagnosticsPerformanceTimelineSection";
 import { IndexDiagnosticsProcessesSection } from "@/components/layout/IndexDiagnosticsProcessesSection";
 import { IndexDiagnosticsQueryExplainSection } from "@/components/layout/IndexDiagnosticsQueryExplainSection";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
@@ -222,57 +222,13 @@ export function IndexDiagnosticsCenter({
               )}
             </section>
 
-            <section className="index-diagnostics__section" id="index-diagnostics-timeline" aria-label="Performance Timeline">
-              <div className="index-diagnostics__section-title">
-                <h3>Performance Timeline</h3>
-                <span>{viewModel.timelineCount} events</span>
-              </div>
-              <div className="index-diagnostics__timeline">
-                {renderPressureSamples.map((item) => (
-                  <div className="index-diagnostics__timeline-item" key={`render:${item.label}`}>
-                    <span className="index-diagnostics__severity index-diagnostics__severity--info">render</span>
-                    <div>
-                      <strong>{item.label}</strong>
-                      <span>{item.count.toLocaleString()} renders</span>
-                    </div>
-                    <span>{formatClockTime(item.lastRenderedAt)}</span>
-                  </div>
-                ))}
-                {ipcLatencySamples.map((item, index) => (
-                  <div className="index-diagnostics__timeline-item" key={`ipc:${item.command}:${item.startedAt}:${index}`}>
-                    <span className={`index-diagnostics__severity index-diagnostics__severity--${item.status === "error" ? "error" : "info"}`}>ipc</span>
-                    <div>
-                      <strong>{item.command}</strong>
-                      <span>{item.status}</span>
-                    </div>
-                    <span>{item.durationMs}ms</span>
-                  </div>
-                ))}
-                {uiLatencySamples.map((item, index) => (
-                  <div className="index-diagnostics__timeline-item" key={`${item.kind}:${item.startedAt}:${index}`}>
-                    <span className="index-diagnostics__severity index-diagnostics__severity--warning">ui</span>
-                    <div>
-                      <strong>UI responsiveness</strong>
-                      <span>{item.kind} · {item.label}</span>
-                    </div>
-                    <span>{item.durationMs}ms</span>
-                  </div>
-                ))}
-                {(diagnostics?.timeline ?? []).length > 0 ? diagnostics?.timeline.map((item, index) => (
-                  <div className="index-diagnostics__timeline-item" key={`${item.taskId ?? item.title}:${item.occurredAt}:${index}`}>
-                    <span className={`index-diagnostics__severity index-diagnostics__severity--${item.severity}`}>{item.severity}</span>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <span>{item.message}</span>
-                    </div>
-                    <span>{item.durationMs == null ? "start" : `${item.durationMs}ms`}</span>
-                  </div>
-                )) : null}
-                {viewModel.timelineCount === 0 ? (
-                  <div className="index-diagnostics__empty">No timeline events yet.</div>
-                ) : null}
-              </div>
-            </section>
+            <IndexDiagnosticsPerformanceTimelineSection
+              timelineCount={viewModel.timelineCount}
+              diagnosticsTimeline={diagnostics?.timeline ?? []}
+              uiLatencySamples={uiLatencySamples}
+              ipcLatencySamples={ipcLatencySamples}
+              renderPressureSamples={renderPressureSamples}
+            />
           </div>
         </div>
       </section>
