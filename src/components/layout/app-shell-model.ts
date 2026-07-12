@@ -8,6 +8,7 @@ import {
 import {
   buildActiveProjectTaskSummary,
   buildActiveSdkTaskSummary,
+  formatRepairAction,
 } from "@/components/layout/index-diagnostics-model";
 import type { CodeAction } from "@/features/code-actions/code-action-model";
 import type {
@@ -137,7 +138,7 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
 }
 
 export function getIndexHealthStatusText(
-  diagnostics: Pick<WorkspaceIndexDiagnostics, "retryBackoffCount" | "latestRetryBackoff" | "lastError"> | null,
+  diagnostics: Pick<WorkspaceIndexDiagnostics, "retryBackoffCount" | "latestRetryBackoff" | "lastError" | "repairActions"> | null,
 ) {
   const backoffCount = diagnostics?.retryBackoffCount ?? 0;
   if (backoffCount > 0) {
@@ -146,11 +147,17 @@ export function getIndexHealthStatusText(
       ? `Index: Backoff, ${diagnostics.latestRetryBackoff}`
       : `Index: Backoff, ${backoffCount.toLocaleString()} ${suffix}`;
   }
-  return diagnostics?.lastError ? `Index: Error, ${diagnostics.lastError}` : null;
+  if (diagnostics?.lastError) {
+    return `Index: Error, ${diagnostics.lastError}`;
+  }
+  const action = diagnostics?.repairActions[0];
+  return action ? `Index: Needs ${formatRepairAction(action)}` : null;
 }
 
 export function getIndexDiagnosticsStatusTarget(workspaceIndexText: string) {
-  return workspaceIndexText.startsWith("Index: Backoff") || workspaceIndexText.startsWith("Index: Error")
+  return workspaceIndexText.startsWith("Index: Backoff")
+    || workspaceIndexText.startsWith("Index: Error")
+    || workspaceIndexText.startsWith("Index: Needs")
     ? "index-diagnostics-health"
     : "index-diagnostics-processes";
 }

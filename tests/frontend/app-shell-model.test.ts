@@ -102,16 +102,20 @@ describe("app shell model", () => {
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "refresh-workspace", stalled: true }),
     ])).toBe("Index: Stalled, 1 task > 60s");
-    expect(getIndexHealthStatusText({ retryBackoffCount: 1, latestRetryBackoff: null, lastError: null }))
+    expect(getIndexHealthStatusText({ retryBackoffCount: 1, latestRetryBackoff: null, lastError: null, repairActions: [] }))
       .toBe("Index: Backoff, 1 retry delayed");
-    expect(getIndexHealthStatusText({ retryBackoffCount: 2, latestRetryBackoff: "recommended retry delay 2000ms", lastError: "ignored" }))
+    expect(getIndexHealthStatusText({ retryBackoffCount: 2, latestRetryBackoff: "recommended retry delay 2000ms", lastError: "ignored", repairActions: ["rebuildProjectIndex"] }))
       .toBe("Index: Backoff, recommended retry delay 2000ms");
-    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: "worker crashed" }))
+    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: "worker crashed", repairActions: ["rebuildProjectIndex"] }))
       .toBe("Index: Error, worker crashed");
-    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: null })).toBeNull();
+    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: null, repairActions: ["rebuildProjectIndex"] }))
+      .toBe("Index: Needs Rebuild Project Index");
+    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: null, repairActions: [] })).toBeNull();
     expect(getIndexDiagnosticsStatusTarget("Index: Backoff, recommended retry delay 2000ms"))
       .toBe("index-diagnostics-health");
     expect(getIndexDiagnosticsStatusTarget("Index: Error, worker crashed"))
+      .toBe("index-diagnostics-health");
+    expect(getIndexDiagnosticsStatusTarget("Index: Needs Rebuild Project Index"))
       .toBe("index-diagnostics-health");
     expect(getIndexDiagnosticsStatusTarget("Index: ready (2 files)"))
       .toBe("index-diagnostics-processes");

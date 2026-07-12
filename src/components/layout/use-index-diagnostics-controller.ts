@@ -78,7 +78,7 @@ export function useIndexDiagnosticsController({
   );
   const workspaceIndexStatusSummary = {
     workspaceIndexText: getIndexHealthStatusText(effectiveIndexDiagnostics)
-      ?? getIndexHealthStatusText(indexHealthSummary ? { ...indexHealthSummary, lastError: null } : null)
+      ?? getIndexHealthStatusText(indexHealthSummary ? { ...indexHealthSummary, lastError: null, repairActions: [] } : null)
       ?? getLayerReadinessStatusText(layerReadiness)
       ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
     sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),

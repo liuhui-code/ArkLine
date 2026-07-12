@@ -173,6 +173,32 @@ describe("useIndexDiagnosticsController health summary", () => {
     expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
       .toBe("Index: Error, Workspace index worker crashed");
   });
+
+  it("surfaces repair actions in status when no higher priority health exists", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => ({
+      ...diagnostics(),
+      retryBackoffCount: 0,
+      latestRetryBackoff: null,
+      lastError: null,
+      repairActions: ["rebuildProjectIndex"],
+      recentEvents: [],
+    }));
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses: vi.fn(async () => []),
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
+      .toBe("Index: Needs Rebuild Project Index");
+  });
 });
 
 function waitForProjectionFlush() {
