@@ -125,6 +125,19 @@ describe("workspace index projection store", () => {
       { phase: "ready", durationMs: 15 },
     ]);
   });
+
+  it("derives last error from backend error events", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvents("/workspace", [
+      indexEvent({ eventId: "warning", severity: "warning", message: "slow indexing" }),
+      indexEvent({ eventId: "error", severity: "error", message: "parser crashed", createdAt: 2 }),
+    ]);
+
+    expect(store.snapshot().errorSummary).toEqual({
+      lastError: "parser crashed",
+    });
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

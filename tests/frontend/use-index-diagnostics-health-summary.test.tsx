@@ -140,6 +140,32 @@ describe("useIndexDiagnosticsController health summary", () => {
       expect.objectContaining({ phase: "ready", durationMs: 30 }),
     ]));
   });
+
+  it("merges live error events into diagnostics health evidence", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses: vi.fn(async () => []),
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      workspaceIndexProjectionStore.recordRecentEvent("/workspace", indexEvent({
+        eventId: "task-error",
+        scope: "task",
+        kind: "refresh-workspace",
+        phase: "failed",
+        severity: "error",
+        message: "Workspace index worker crashed",
+      }));
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.indexDiagnostics?.lastError).toBe("Workspace index worker crashed");
+  });
 });
 
 function waitForProjectionFlush() {

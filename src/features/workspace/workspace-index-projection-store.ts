@@ -15,12 +15,17 @@ export type WorkspaceIndexExplainSummary = {
   lastExplainStatus: string | null;
 };
 
+export type WorkspaceIndexErrorSummary = {
+  lastError: string | null;
+};
+
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
   refreshResult: WorkspaceIndexRefreshResult | null;
   refreshEventCount: number;
   healthSummary: WorkspaceIndexHealthSummary | null;
   explainSummary: WorkspaceIndexExplainSummary | null;
+  errorSummary: WorkspaceIndexErrorSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
   recentEvents: WorkspaceIndexEvent[];
   timeline: WorkspaceIndexTimelineItem[];
@@ -37,6 +42,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     refreshEventCount: 0,
     healthSummary: null,
     explainSummary: null,
+    errorSummary: null,
     taskStatuses: [],
     recentEvents: [],
     timeline: [],
@@ -112,6 +118,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const recentEvents = mergeRecentEvents(current, events);
       const healthSummary = healthSummaryFromEvents(recentEvents);
       const explainSummary = explainSummaryFromEvents(recentEvents);
+      const errorSummary = errorSummaryFromEvents(recentEvents);
       const timeline = timelineFromEvents(recentEvents);
       commit({
         ...snapshot,
@@ -120,6 +127,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         timeline,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
+        errorSummary: errorSummary === undefined ? snapshot.errorSummary : errorSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -129,6 +137,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const recentEvents = mergeRecentEvent(current, event);
       const healthSummary = healthSummaryFromEvents(recentEvents);
       const explainSummary = explainSummaryFromEvents(recentEvents);
+      const errorSummary = errorSummaryFromEvents(recentEvents);
       const timeline = timelineFromEvents(recentEvents);
       commit({
         ...snapshot,
@@ -137,6 +146,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         timeline,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
+        errorSummary: errorSummary === undefined ? snapshot.errorSummary : errorSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -173,6 +183,16 @@ function explainSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndex
   }
   return {
     lastExplainStatus: latest.phase || null,
+  };
+}
+
+function errorSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexErrorSummary | undefined {
+  const latest = [...events].reverse().find((event) => event.severity === "error");
+  if (!latest) {
+    return undefined;
+  }
+  return {
+    lastError: latest.message || null,
   };
 }
 

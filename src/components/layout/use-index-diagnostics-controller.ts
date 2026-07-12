@@ -399,6 +399,7 @@ function mergeIndexDiagnosticsProjection(
   }
   return {
     ...diagnostics,
+    lastError: projection.errorSummary?.lastError ?? diagnostics.lastError,
     lastExplainStatus: projection.explainSummary?.lastExplainStatus ?? diagnostics.lastExplainStatus,
     retryBackoffCount: projection.healthSummary?.retryBackoffCount ?? diagnostics.retryBackoffCount,
     latestRetryBackoff: projection.healthSummary?.latestRetryBackoff ?? diagnostics.latestRetryBackoff,
