@@ -21,7 +21,6 @@ import {
   type WorkspaceTextSearchOptions,
   type WorkspaceTextSearchCursor,
 } from "@/features/search/workspace-text-search";
-import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import type { WorkspaceApi, WorkspaceIndexQueryScope, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -46,6 +45,7 @@ import {
   scheduleSelectedSearchPreviewWithReader,
 } from "@/components/layout/search-file-reader";
 import { toggleSearchTextOption } from "@/components/layout/search-text-options-state";
+import { createWorkspaceSearchInteractionRuntime } from "@/components/layout/search-workspace-runtime";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -112,11 +112,10 @@ export function useSearchEverywhereController({
   const workspaceRootRef = useRef<string | null>(workspace?.rootPath ?? null);
   workspaceApiRef.current = workspaceApi;
   workspaceRootRef.current = workspace?.rootPath ?? null;
-  const interactionRuntimeRef = useRef(createSearchInteractionRuntime({ cancel: (kind, generation) => {
-    const rootPath = workspaceRootRef.current;
-    if (!rootPath || !workspaceApiRef.current.cancelWorkspaceSearch) return;
-    void workspaceApiRef.current.cancelWorkspaceSearch(rootPath, kind, generation).catch(() => undefined);
-  } }));
+  const interactionRuntimeRef = useRef(createWorkspaceSearchInteractionRuntime({
+    getRootPath: () => workspaceRootRef.current,
+    getWorkspaceApi: () => workspaceApiRef.current,
+  }));
   const navigationCloseHandledRef = useRef(false);
   const { debouncedSearchQuery, resetDebouncedSearchQuery } = useSearchOverlayDebouncedQuery({
     activeOverlay,
