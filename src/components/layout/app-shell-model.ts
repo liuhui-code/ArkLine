@@ -175,6 +175,9 @@ export function getSdkIndexStatusText(statuses: WorkspaceIndexTaskStatus[]) {
   }
 
   const summary = buildActiveSdkTaskSummary([sdkStatus]);
+  if (summary && sdkStatus.stalled) {
+    return `SDK API: ${summary.status} · ${summary.detail}`;
+  }
   if (summary && sdkStatus.progressTotal > 0) {
     return `SDK API: ${summary.status} · ${summary.progress}`;
   }
