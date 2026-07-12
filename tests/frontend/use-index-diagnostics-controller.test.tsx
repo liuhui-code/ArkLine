@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useIndexDiagnosticsController } from "@/components/layout/use-index-diagnostics-controller";
 import type { AppSettings } from "@/features/settings/settings-store";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
@@ -15,6 +15,10 @@ import type {
 describe("useIndexDiagnosticsController", () => {
   beforeEach(() => {
     workspaceIndexProjectionStore.reset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("opens diagnostics and loads health, task status, and current file readiness", async () => {
@@ -162,6 +166,50 @@ describe("useIndexDiagnosticsController", () => {
     expect(result.current.indexDiagnostics?.fileCount).toBe(12);
     expect(result.current.workspaceIndexTaskStatuses[0]?.taskId).toBe("rebuild-1");
     expect(onStatusChange).toHaveBeenCalledWith("Rebuild Project Index requested");
+  });
+
+  it("polls task statuses while diagnostics rebuild is active until terminal status", async () => {
+    vi.useFakeTimers();
+    const rebuildWorkspaceIndex = vi.fn(async () => undefined);
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const getWorkspaceIndexTaskStatuses = vi
+      .fn()
+      .mockResolvedValueOnce([
+        taskStatus({ taskId: "rebuild-1", kind: "refresh-workspace", status: "running" }),
+      ])
+      .mockResolvedValueOnce([
+        taskStatus({ taskId: "rebuild-1", kind: "refresh-workspace", status: "ready" }),
+      ])
+      .mockResolvedValue([
+        taskStatus({ taskId: "rebuild-1", kind: "refresh-workspace", status: "ready" }),
+      ]);
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        rebuildWorkspaceIndex,
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses,
+        getWorkspaceIndexLayerReadiness,
+      }),
+    })));
+
+    await act(async () => {
+      await result.current.rebuildProjectIndexFromDiagnostics();
+    });
+    expect(result.current.workspaceIndexTaskStatuses[0]?.status).toBe("running");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(getWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
+    expect(result.current.workspaceIndexTaskStatuses[0]?.status).toBe("ready");
+    expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Entry.ets");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(getWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
   });
 
   it("refreshes existing layer readiness when the active file changes", async () => {

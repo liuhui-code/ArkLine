@@ -24,6 +24,8 @@ import type {
 } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
+const DIAGNOSTICS_REBUILD_POLL_INTERVAL_MS = 1_000;
+
 export type UseIndexDiagnosticsControllerOptions = {
   workspaceApi: WorkspaceApi;
   workspace: WorkspaceViewModel | null;
@@ -56,6 +58,7 @@ export function useIndexDiagnosticsController({
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
   const fileReadinessRequestIdRef = useRef(0);
+  const diagnosticsRebuildPollRef = useRef<number | null>(null);
   const indexProjection = useSyncExternalStore(
     workspaceIndexProjectionStore.subscribe,
     workspaceIndexProjectionStore.snapshot,
@@ -76,6 +79,7 @@ export function useIndexDiagnosticsController({
       setCurrentFileReadiness(null);
       setLayerReadiness(null);
       workspaceIndexProjectionStore.reset();
+      clearDiagnosticsRebuildPoll();
       return;
     }
     if (!layerReadiness) return;
@@ -87,13 +91,20 @@ export function useIndexDiagnosticsController({
     void refreshCurrentFileReadiness();
   }, [indexDiagnosticsVisible, workspace?.rootPath, activePath]);
 
+  useEffect(() => () => clearDiagnosticsRebuildPoll(), []);
+
   async function refreshWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
-    if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return;
+    await loadWorkspaceIndexTaskStatuses(rootPath);
+  }
+
+  async function loadWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
+    if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return [];
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
     workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses);
     if (statuses.some(isTerminalProjectIndexTaskStatus)) {
       await refreshLayerReadiness(rootPath);
     }
+    return statuses;
   }
 
   function recordWorkspaceIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
@@ -191,6 +202,29 @@ export function useIndexDiagnosticsController({
     onStatusChange("Rebuild Project Index requested");
     await workspaceApi.rebuildWorkspaceIndex(workspace.rootPath);
     await refreshIndexDiagnostics();
+    scheduleDiagnosticsRebuildPoll(workspace.rootPath);
+  }
+
+  function clearDiagnosticsRebuildPoll() {
+    if (!diagnosticsRebuildPollRef.current) return;
+    window.clearTimeout(diagnosticsRebuildPollRef.current);
+    diagnosticsRebuildPollRef.current = null;
+  }
+
+  function scheduleDiagnosticsRebuildPoll(rootPath: string) {
+    clearDiagnosticsRebuildPoll();
+    diagnosticsRebuildPollRef.current = window.setTimeout(() => {
+      diagnosticsRebuildPollRef.current = null;
+      void pollDiagnosticsRebuildStatus(rootPath);
+    }, DIAGNOSTICS_REBUILD_POLL_INTERVAL_MS);
+  }
+
+  async function pollDiagnosticsRebuildStatus(rootPath: string) {
+    const statuses = await loadWorkspaceIndexTaskStatuses(rootPath);
+    const active = statuses.some((status) => status.kind !== "sdk" && !isTerminalIndexTaskStatus(status));
+    if (active) {
+      scheduleDiagnosticsRebuildPoll(rootPath);
+    }
   }
 
   async function waitForWorkspaceIndexTaskReady(rootPath: string, taskId: string) {
