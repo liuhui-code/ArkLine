@@ -5,7 +5,7 @@ use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_task_journal_service::{
-    load_recent_task_statuses, store_task_status,
+    load_recent_task_statuses, store_task_status, store_task_status_with_events,
 };
 use crate::services::workspace_index_test_fixture_service::create_empty_workspace;
 
@@ -97,6 +97,26 @@ fn repeated_failed_task_statuses_write_retry_backoff_event() {
     assert_eq!(backoff.severity, "warning");
     assert!(backoff.message.contains("failed 2 consecutive"));
     assert!(backoff.payload_json.contains("\"retryAfterMs\":2000"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn repeated_failed_task_status_returns_retry_backoff_event_for_live_emit() {
+    let root = create_empty_workspace("task-journal-live-backoff");
+    let root_path = root.to_string_lossy().to_string();
+
+    store_task_status(&root_path, &failed_status(&root_path, 11)).unwrap();
+    let events = store_task_status_with_events(&root_path, &failed_status(&root_path, 12)).unwrap();
+
+    assert!(events
+        .iter()
+        .any(|event| event.scope == "task" && event.phase == "failed"));
+    let backoff = events
+        .iter()
+        .find(|event| event.scope == "scheduler" && event.phase == "backoff")
+        .expect("returned events should include live backoff event");
+    assert!(backoff.message.contains("recommended retry delay 2000ms"));
 
     fs::remove_dir_all(root).unwrap();
 }

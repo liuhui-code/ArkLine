@@ -11,6 +11,7 @@ mod commands {
     pub mod windowing;
     pub mod workspace;
     pub mod workspace_definition;
+    pub(crate) mod workspace_emit;
     pub mod workspace_index;
     pub mod workspace_index_schedule;
     #[cfg(test)]

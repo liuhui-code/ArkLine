@@ -6,7 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 use crate::models::workspace::{
-    WorkspaceIndexQueuePressure, WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus,
+    WorkspaceIndexEvent, WorkspaceIndexQueuePressure, WorkspaceIndexRefreshResult,
+    WorkspaceIndexTaskStatus,
 };
 use crate::services::workspace_index_cancellation_service::{
     cancel_active_tasks_superseded_by_latest, finish_cancellable_tasks, start_cancellable_tasks,
@@ -28,7 +29,7 @@ use crate::services::workspace_index_status_projection_service::{
     is_terminal_task_status, project_task_statuses,
 };
 use crate::services::workspace_index_task_journal_service::{
-    load_recent_task_statuses, store_task_status,
+    load_recent_task_statuses, store_task_status, store_task_status_with_events,
 };
 use crate::services::workspace_index_task_lifecycle_service::task_supersedes_result;
 use crate::services::workspace_index_task_status_service::{
@@ -260,22 +261,33 @@ impl WorkspaceIndexManagerRuntime {
     pub fn run_index_worker_once<F>(
         &self,
         index_runtime: &WorkspaceIndexRuntime,
-        on_status: F,
+        mut on_status: F,
     ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
     where
         F: FnMut(WorkspaceIndexTaskStatus),
     {
-        self.run_index_worker_once_with_ui_activity(index_runtime, on_status, || false)
+        self.run_index_worker_once_with_events(index_runtime, |status, _events| on_status(status))
     }
 
-    pub fn run_index_worker_once_with_ui_activity<F, G>(
+    pub fn run_index_worker_once_with_events<F>(
+        &self,
+        index_runtime: &WorkspaceIndexRuntime,
+        on_status: F,
+    ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
+    where
+        F: FnMut(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>),
+    {
+        self.run_index_worker_once_with_events_and_ui_activity(index_runtime, on_status, || false)
+    }
+
+    pub fn run_index_worker_once_with_events_and_ui_activity<F, G>(
         &self,
         index_runtime: &WorkspaceIndexRuntime,
         mut on_status: F,
         is_ui_latency_sensitive: G,
     ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
     where
-        F: FnMut(WorkspaceIndexTaskStatus),
+        F: FnMut(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>),
         G: FnMut() -> bool,
     {
         let tasks = self
@@ -288,8 +300,8 @@ impl WorkspaceIndexManagerRuntime {
             index_runtime,
             guarded_tasks,
             |running_status| {
-                self.store_recent_status(running_status.clone())?;
-                on_status(running_status);
+                let events = self.store_recent_status(running_status.clone())?;
+                on_status(running_status, events);
                 Ok::<(), String>(())
             },
             is_ui_latency_sensitive,
@@ -306,32 +318,32 @@ impl WorkspaceIndexManagerRuntime {
 
         for result in &results {
             let ready_status = task_status_from_publishable_result(result)?;
-            self.store_recent_status(ready_status.clone())?;
-            on_status(ready_status);
+            let events = self.store_recent_status(ready_status.clone())?;
+            on_status(ready_status, events);
         }
 
         Ok(results)
     }
 
-    pub fn start_background_worker<F>(
+    pub fn start_background_worker_with_events<F>(
         &self,
         index_runtime: WorkspaceIndexRuntime,
         on_status: F,
     ) -> Result<bool, String>
     where
-        F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
+        F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
     {
-        self.start_background_worker_with_ui_activity(index_runtime, on_status, || false)
+        self.start_background_worker_with_events_and_ui_activity(index_runtime, on_status, || false)
     }
 
-    pub fn start_background_worker_with_ui_activity<F, G>(
+    pub fn start_background_worker_with_events_and_ui_activity<F, G>(
         &self,
         index_runtime: WorkspaceIndexRuntime,
         on_status: F,
         mut is_ui_latency_sensitive: G,
     ) -> Result<bool, String>
     where
-        F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
+        F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
         G: FnMut() -> bool + Send + 'static,
     {
         if self.worker_running.swap(true, Ordering::SeqCst) {
@@ -341,9 +353,9 @@ impl WorkspaceIndexManagerRuntime {
         let manager = self.clone();
         thread::spawn(move || {
             loop {
-                let _ = manager.run_index_worker_once_with_ui_activity(
+                let _ = manager.run_index_worker_once_with_events_and_ui_activity(
                     &index_runtime,
-                    |status| on_status(status),
+                    |status, events| on_status(status, events),
                     &mut is_ui_latency_sensitive,
                 );
                 if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
@@ -388,7 +400,10 @@ impl WorkspaceIndexManagerRuntime {
             .unwrap_or(true)
     }
 
-    fn store_recent_status(&self, status: WorkspaceIndexTaskStatus) -> Result<(), String> {
+    fn store_recent_status(
+        &self,
+        status: WorkspaceIndexTaskStatus,
+    ) -> Result<Vec<WorkspaceIndexEvent>, String> {
         {
             let mut statuses = self
                 .recent_statuses
@@ -402,7 +417,7 @@ impl WorkspaceIndexManagerRuntime {
                 statuses.drain(0..overflow);
             }
         }
-        store_task_status(&status.root_path, &status)
+        store_task_status_with_events(&status.root_path, &status)
     }
 
     fn store_pending_statuses_for_root(&self, root_path: &str) -> Result<(), String> {

@@ -410,7 +410,7 @@ fn background_worker_drains_tasks_and_reports_statuses() {
         .schedule_sdk_index(&root_path, &sdk_path, "test-sdk")
         .unwrap();
     let started = manager
-        .start_background_worker(index_runtime.clone(), move |status| {
+        .start_background_worker_with_events(index_runtime.clone(), move |status, _events| {
             observed_for_worker
                 .lock()
                 .unwrap()
@@ -463,7 +463,7 @@ fn background_worker_processes_task_scheduled_before_start() {
         .any(|status| status.kind == "sdk" && status.status == "queued"));
 
     let started = manager
-        .start_background_worker(index_runtime.clone(), |_| {})
+        .start_background_worker_with_events(index_runtime.clone(), |_, _| {})
         .unwrap();
     assert!(started);
 

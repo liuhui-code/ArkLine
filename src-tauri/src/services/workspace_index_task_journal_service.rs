@@ -11,8 +11,15 @@ use crate::services::workspace_index_retry_policy_service::retry_backoff_for_fai
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
 pub fn store_task_status(root_path: &str, status: &WorkspaceIndexTaskStatus) -> Result<(), String> {
+    store_task_status_with_events(root_path, status).map(|_| ())
+}
+
+pub fn store_task_status_with_events(
+    root_path: &str,
+    status: &WorkspaceIndexTaskStatus,
+) -> Result<Vec<WorkspaceIndexEvent>, String> {
     if !Path::new(root_path).is_dir() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let connection = open_index_store(root_path)?;
     ensure_workspace_index_schema(&connection)?;
@@ -60,8 +67,11 @@ pub fn store_task_status(root_path: &str, status: &WorkspaceIndexTaskStatus) -> 
         .map_err(|error| error.to_string())?;
     let event = event_from_task_status(root_path, status);
     store_index_event(root_path, &event)?;
-    store_retry_backoff_event(&connection, &root_key, status)?;
-    Ok(())
+    let mut events = vec![event];
+    if let Some(backoff_event) = store_retry_backoff_event(&connection, &root_key, status)? {
+        events.push(backoff_event);
+    }
+    Ok(events)
 }
 
 pub fn load_recent_task_statuses(
@@ -99,40 +109,39 @@ fn store_retry_backoff_event(
     connection: &Connection,
     root_key: &str,
     status: &WorkspaceIndexTaskStatus,
-) -> Result<(), String> {
+) -> Result<Option<WorkspaceIndexEvent>, String> {
     let recent = load_recent_task_statuses_from_connection(connection, root_key, 16)?;
     let Some(backoff) = retry_backoff_for_failed_statuses(status, &recent) else {
-        return Ok(());
+        return Ok(None);
     };
     let created_at = status.finished_at.or(status.last_heartbeat_at).unwrap_or(0);
-    store_index_event_in_connection(
-        connection,
-        &WorkspaceIndexEvent {
-            event_id: format!(
-                "retry-backoff:{}:{}:{}",
-                status.task_id, backoff.failure_count, created_at
-            ),
-            root_path: root_key.to_string(),
-            scope: "scheduler".to_string(),
-            kind: status.kind.to_string(),
-            phase: "backoff".to_string(),
-            severity: "warning".to_string(),
-            message: format!(
-                "{}; recommended retry delay {}ms",
-                backoff.reason, backoff.retry_after_ms
-            ),
-            task_id: Some(status.task_id.to_string()),
-            generation: Some(status.generation),
-            payload_json: serde_json::json!({
-                "failureCount": backoff.failure_count,
-                "retryAfterMs": backoff.retry_after_ms,
-                "exhausted": backoff.exhausted,
-                "reason": status.reason,
-            })
-            .to_string(),
-            created_at,
-        },
-    )
+    let event = WorkspaceIndexEvent {
+        event_id: format!(
+            "retry-backoff:{}:{}:{}",
+            status.task_id, backoff.failure_count, created_at
+        ),
+        root_path: root_key.to_string(),
+        scope: "scheduler".to_string(),
+        kind: status.kind.to_string(),
+        phase: "backoff".to_string(),
+        severity: "warning".to_string(),
+        message: format!(
+            "{}; recommended retry delay {}ms",
+            backoff.reason, backoff.retry_after_ms
+        ),
+        task_id: Some(status.task_id.to_string()),
+        generation: Some(status.generation),
+        payload_json: serde_json::json!({
+            "failureCount": backoff.failure_count,
+            "retryAfterMs": backoff.retry_after_ms,
+            "exhausted": backoff.exhausted,
+            "reason": status.reason,
+        })
+        .to_string(),
+        created_at,
+    };
+    store_index_event_in_connection(connection, &event)?;
+    Ok(Some(event))
 }
 
 fn load_recent_task_statuses_from_connection(

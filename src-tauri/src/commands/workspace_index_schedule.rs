@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Emitter, State};
 
+use crate::commands::workspace_emit::emit_workspace_index_events;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -114,10 +115,11 @@ fn start_index_worker(
 ) -> Result<(), String> {
     let app_handle = app_handle.clone();
     let ui_activity = ui_activity.inner().clone();
-    index_manager.start_background_worker_with_ui_activity(
+    index_manager.start_background_worker_with_events_and_ui_activity(
         index_runtime.inner().clone(),
-        move |status| {
+        move |status, events| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_events(&app_handle, &events);
         },
         move || {
             ui_activity

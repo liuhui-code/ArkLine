@@ -35,7 +35,7 @@ fn open_workspace_command_returns_snapshot_and_queues_background_index() {
             index_manager.clone(),
             crate::services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default(),
             &root_path,
-            |_| {},
+            |_, _| {},
         )
             .unwrap();
     let statuses = index_manager.get_index_task_statuses(&root_path).unwrap();
@@ -77,7 +77,7 @@ fn sdk_index_command_uses_manager_task_result_summary() {
     let index_runtime = WorkspaceIndexRuntime::default();
     let index_manager = WorkspaceIndexManagerRuntime::default();
 
-    let (summary, _) = index_workspace_sdk_symbols_through_manager_with_status(
+    let (summary, _, events) = index_workspace_sdk_symbols_through_manager_with_status(
         &index_runtime,
         &index_manager,
         &root_path,
@@ -88,6 +88,9 @@ fn sdk_index_command_uses_manager_task_result_summary() {
     let matches = query_workspace_sdk_symbols(&root_path, "Text width", 8).unwrap();
 
     assert_eq!(summary.symbol_count, 2);
+    assert!(events
+        .iter()
+        .any(|event| event.scope == "task" && event.kind == "sdk"));
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].title, "width");
 
@@ -109,7 +112,7 @@ fn sdk_index_command_collects_worker_statuses() {
     let index_runtime = WorkspaceIndexRuntime::default();
     let index_manager = WorkspaceIndexManagerRuntime::default();
 
-    let (_, statuses) = index_workspace_sdk_symbols_through_manager_with_status(
+    let (_, statuses, _) = index_workspace_sdk_symbols_through_manager_with_status(
         &index_runtime,
         &index_manager,
         &root_path,
@@ -151,7 +154,7 @@ fn submit_sdk_index_command_returns_queued_status_and_finishes_in_background() {
         &root_path,
         &sdk_path,
         "test-sdk",
-        move |status| observed_for_worker.lock().unwrap().push(status.status),
+        move |status, _| observed_for_worker.lock().unwrap().push(status.status),
     )
     .unwrap();
 

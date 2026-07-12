@@ -2,8 +2,11 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::commands::workspace_emit::{
+    emit_workspace_index_events, emit_workspace_index_task_statuses,
+};
 use crate::models::workspace::{
-    WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexHealth,
+    WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexHealth,
     WorkspaceIndexParserFailure, WorkspaceIndexQueryEnvelope, WorkspaceIndexRefreshResult,
     WorkspaceIndexState, WorkspaceIndexTaskStatus, WorkspaceIndexUnresolvedImport,
     WorkspaceSearchCandidate, WorkspaceSnapshot, WorkspaceTextSearchRequest,
@@ -57,8 +60,9 @@ pub async fn open_workspace(
         index_manager.inner().clone(),
         ui_activity.inner().clone(),
         root_path,
-        move |status| {
+        move |status, events| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_events(&app_handle, &events);
         },
     )
     .await
@@ -146,8 +150,9 @@ pub fn rebuild_workspace_sdk_index(
         &root_path,
         &target.sdk_path,
         &target.sdk_version,
-        move |status| {
+        move |status, events| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_events(&app_handle, &events);
         },
     )
 }
@@ -177,7 +182,7 @@ pub fn index_workspace_sdk_symbols(
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<WorkspaceSdkIndexSummary, String> {
-    let (summary, statuses) = index_workspace_sdk_symbols_through_manager_with_status(
+    let (summary, statuses, events) = index_workspace_sdk_symbols_through_manager_with_status(
         &index_runtime,
         &index_manager,
         &root_path,
@@ -185,6 +190,7 @@ pub fn index_workspace_sdk_symbols(
         &sdk_version,
     )?;
     emit_workspace_index_task_statuses(&app_handle, &statuses);
+    emit_workspace_index_events(&app_handle, &events);
     Ok(summary)
 }
 
@@ -204,8 +210,9 @@ pub fn submit_workspace_sdk_index(
         &root_path,
         &sdk_path,
         &sdk_version,
-        move |status| {
+        move |status, events| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_events(&app_handle, &events);
         },
     )
 }
@@ -431,11 +438,22 @@ pub(super) fn index_workspace_sdk_symbols_through_manager_with_status(
     root_path: &str,
     sdk_path: &str,
     sdk_version: &str,
-) -> Result<(WorkspaceSdkIndexSummary, Vec<WorkspaceIndexTaskStatus>), String> {
+) -> Result<
+    (
+        WorkspaceSdkIndexSummary,
+        Vec<WorkspaceIndexTaskStatus>,
+        Vec<WorkspaceIndexEvent>,
+    ),
+    String,
+> {
     index_manager.schedule_sdk_index(root_path, sdk_path, sdk_version)?;
     let mut statuses = Vec::new();
+    let mut events = Vec::new();
     let sdk_result = index_manager
-        .run_index_worker_once(index_runtime, |status| statuses.push(status))?
+        .run_index_worker_once_with_events(index_runtime, |status, next_events| {
+            statuses.push(status);
+            events.extend(next_events);
+        })?
         .into_iter()
         .find(|result| result.kind == "sdk" && result.root_path == root_path)
         .ok_or_else(|| "SDK index task did not produce a result".to_string())?;
@@ -452,6 +470,7 @@ pub(super) fn index_workspace_sdk_symbols_through_manager_with_status(
             symbol_count: sdk_result.sdk_symbol_count.unwrap_or_default(),
         },
         statuses,
+        events,
     ))
 }
 
@@ -464,7 +483,7 @@ pub(super) fn submit_workspace_sdk_index_through_manager<F>(
     on_status: F,
 ) -> Result<WorkspaceIndexTaskStatus, String>
 where
-    F: Fn(WorkspaceIndexTaskStatus) + Send + 'static,
+    F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
 {
     index_manager.schedule_sdk_index(root_path, sdk_path, sdk_version)?;
     let queued = index_manager
@@ -473,15 +492,6 @@ where
         .rev()
         .find(|status| status.kind == "sdk" && status.status == "queued")
         .ok_or_else(|| "SDK index task was not queued".to_string())?;
-    index_manager.start_background_worker(index_runtime, on_status)?;
+    index_manager.start_background_worker_with_events(index_runtime, on_status)?;
     Ok(queued)
-}
-
-fn emit_workspace_index_task_statuses(
-    app_handle: &AppHandle,
-    statuses: &[WorkspaceIndexTaskStatus],
-) {
-    for status in statuses {
-        let _ = app_handle.emit("workspace-index-task-updated", status);
-    }
 }
