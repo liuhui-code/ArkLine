@@ -27,6 +27,25 @@ fn schema_versions_record_all_known_domains_idempotently() {
 }
 
 #[test]
+fn schema_versions_do_not_overwrite_persisted_domain_versions() {
+    let connection = Connection::open_in_memory().unwrap();
+
+    record_workspace_index_schema_versions(&connection).unwrap();
+    connection
+        .execute(
+            "update workspace_index_schema_versions
+             set version = 0
+             where domain = 'content'",
+            [],
+        )
+        .unwrap();
+    record_workspace_index_schema_versions(&connection).unwrap();
+    let versions = load_workspace_index_schema_versions(&connection).unwrap();
+
+    assert_eq!(versions.get("content"), Some(&0));
+}
+
+#[test]
 fn schema_versions_loader_creates_empty_version_table() {
     let connection = Connection::open_in_memory().unwrap();
 

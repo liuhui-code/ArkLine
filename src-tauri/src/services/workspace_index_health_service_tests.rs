@@ -253,6 +253,45 @@ fn reports_stale_and_failed_workspaces_with_rebuild_action() {
     }
 }
 
+#[test]
+fn reports_rebuild_action_when_schema_version_needs_rebuild() {
+    let root = unique_temp_dir("workspace-index-health-schema-rebuild");
+    let source_dir = root.join("entry/src/main/ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("Index.ets"), "struct Index {}\n").unwrap();
+    let sdk_dir = root.join("openharmony/ets");
+    fs::create_dir_all(&sdk_dir).unwrap();
+    fs::write(
+        sdk_dir.join("arkui.d.ts"),
+        "declare class Text {\n  width(value: Length): Text;\n}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let sdk_path = root.join("openharmony").to_string_lossy().to_string();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    index_runtime.refresh_workspace_index(&root_path).unwrap();
+    index_workspace_sdk_symbols(&root_path, &sdk_path, "test-sdk").unwrap();
+    open_index_store(&root)
+        .execute(
+            "update workspace_index_schema_versions
+             set version = 0
+             where domain = 'content'",
+            [],
+        )
+        .unwrap();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    let health = get_workspace_index_health(&root_path, &manager).unwrap();
+
+    assert_eq!(health.status, "healthy");
+    assert!(health
+        .repair_actions
+        .iter()
+        .any(|action| action == "rebuildProjectIndex"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn seed_index_metadata(root: &Path, status: &str) {
     let connection = open_index_store(root);
     ensure_workspace_index_schema(&connection).unwrap();

@@ -4,6 +4,7 @@ pub struct WorkspaceIndexRepairActionInput {
     pub parser_error_count: i64,
     pub has_active_sdk: bool,
     pub has_resume_tasks: bool,
+    pub schema_needs_rebuild: bool,
 }
 
 pub fn workspace_index_repair_actions(input: &WorkspaceIndexRepairActionInput) -> Vec<String> {
@@ -13,6 +14,9 @@ pub fn workspace_index_repair_actions(input: &WorkspaceIndexRepairActionInput) -
         "missingSdk" => actions.push("configureSdk".to_string()),
         "failed" | "stale" | "partial" => actions.push("rebuildProjectIndex".to_string()),
         _ => {}
+    }
+    if input.schema_needs_rebuild {
+        actions.push("rebuildProjectIndex".to_string());
     }
     if input.has_resume_tasks {
         actions.push("resumeIndexing".to_string());

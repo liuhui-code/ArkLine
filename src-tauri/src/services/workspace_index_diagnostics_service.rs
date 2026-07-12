@@ -45,19 +45,24 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let parser_error_count = count_rows(&connection, "workspace_stub_parse_errors", &root_key)?;
     let sdk_symbol_count = count_sdk_symbols(&connection, &root_key, active_sdk.as_ref())?;
     let health_status = workspace_index_health_status(&index_status, sdk_symbol_count);
+    let schema_versions = load_workspace_index_schema_versions(&connection)?;
+    let schema_version_actions = diagnostics_schema_version_actions(&schema_versions);
+    let schema_needs_rebuild = schema_version_actions
+        .iter()
+        .any(|action| action.status == "needs-rebuild");
     let repair_actions = workspace_index_repair_actions(&WorkspaceIndexRepairActionInput {
         status: health_status.to_string(),
         unresolved_import_count,
         parser_error_count,
         has_active_sdk: active_sdk.is_some(),
         has_resume_tasks: !load_resume_tasks(root_path)?.is_empty(),
+        schema_needs_rebuild,
     });
 
-    let schema_versions = load_workspace_index_schema_versions(&connection)?;
     Ok(WorkspaceIndexDiagnostics {
         root_path: root_key.clone(),
         status: index_status,
-        schema_version_actions: diagnostics_schema_version_actions(&schema_versions),
+        schema_version_actions,
         schema_versions,
         file_count: count_rows(&connection, "workspace_files", &root_key)?,
         symbol_count: count_rows(&connection, "workspace_symbols", &root_key)?,
@@ -142,6 +147,10 @@ fn apply_queue_health_projection(diagnostics: &mut WorkspaceIndexDiagnostics) {
             .repair_actions
             .iter()
             .any(|action| action == "resumeIndexing"),
+        schema_needs_rebuild: diagnostics
+            .schema_version_actions
+            .iter()
+            .any(|action| action.status == "needs-rebuild"),
     });
 }
 

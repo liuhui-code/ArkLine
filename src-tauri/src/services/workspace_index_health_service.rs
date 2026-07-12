@@ -15,12 +15,17 @@ pub fn get_workspace_index_health(
     let status = workspace_index_health_status(&diagnostics.status, diagnostics.sdk_symbol_count);
     let status = workspace_index_health_status_with_queue(status, &queue_pressure);
     let has_resume_tasks = !load_resume_tasks(root_path)?.is_empty();
+    let schema_needs_rebuild = diagnostics
+        .schema_version_actions
+        .iter()
+        .any(|action| action.status == "needs-rebuild");
     let repair_actions = workspace_index_repair_actions(&WorkspaceIndexRepairActionInput {
         status: status.to_string(),
         unresolved_import_count: diagnostics.unresolved_import_count,
         parser_error_count: diagnostics.parser_error_count,
         has_active_sdk: diagnostics.active_sdk_path.is_some(),
         has_resume_tasks,
+        schema_needs_rebuild,
     });
 
     Ok(WorkspaceIndexHealth {

@@ -149,6 +149,8 @@ pub mod workspace_index_deep_layer_service;
 mod workspace_index_dependency_expansion_service_tests;
 pub mod workspace_index_diagnostics_service;
 #[cfg(test)]
+mod workspace_index_diagnostics_schema_service_tests;
+#[cfg(test)]
 mod workspace_index_diagnostics_service_tests;
 pub(crate) mod workspace_index_discovery_result_service;
 pub mod workspace_index_entity_persistence_service;

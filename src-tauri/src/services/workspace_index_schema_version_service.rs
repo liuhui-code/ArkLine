@@ -62,9 +62,7 @@ pub(crate) fn record_workspace_index_schema_versions(
             .execute(
                 "insert into workspace_index_schema_versions (domain, version, migrated_at)
                  values (?1, ?2, strftime('%s','now') * 1000)
-                 on conflict(domain) do update set
-                    version = excluded.version,
-                    migrated_at = excluded.migrated_at",
+                 on conflict(domain) do nothing",
                 params![domain, version],
             )
             .map_err(|error| error.to_string())?;
