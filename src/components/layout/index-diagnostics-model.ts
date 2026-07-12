@@ -94,13 +94,17 @@ export function formatLayerCounts(layer: { indexedCount: number; failedCount: nu
   return `${layer.indexedCount.toLocaleString()} indexed · ${layer.failedCount.toLocaleString()} failed · ${layer.staleCount.toLocaleString()} stale`;
 }
 
-export function getLayerActionState(action: string | null, tasks: WorkspaceIndexTaskStatus[]) {
+export function getLayerActionState(
+  action: string | null,
+  tasks: WorkspaceIndexTaskStatus[],
+  currentFilePath: string | null = null,
+) {
   if (action == null || action === "none" || action === "wait") {
     return { disabled: false, reason: null };
   }
   if (action === "indexCurrentFile") {
     return actionStateFromTask(
-      tasks.find((task) => task.kind === "foreground-navigation" && !isTerminalTaskStatus(task.status)),
+      tasks.find((task) => isActiveForegroundNavigationForPath(task, currentFilePath)),
       "Foreground navigation indexing is already active",
     );
   }
@@ -182,6 +186,16 @@ function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: str
 
 function firstNonEmpty(...values: Array<string | undefined>) {
   return values.find((value) => value != null && value.trim().length > 0) ?? "";
+}
+
+function isActiveForegroundNavigationForPath(task: WorkspaceIndexTaskStatus, currentFilePath: string | null) {
+  if (task.kind !== "foreground-navigation" || isTerminalTaskStatus(task.status)) {
+    return false;
+  }
+  if (!currentFilePath || !task.targetPaths || task.targetPaths.length === 0) {
+    return true;
+  }
+  return task.targetPaths.includes(currentFilePath);
 }
 
 function actionStateFromTask(task: WorkspaceIndexTaskStatus | undefined, label: string) {

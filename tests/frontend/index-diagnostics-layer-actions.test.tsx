@@ -76,6 +76,43 @@ describe("IndexDiagnosticsCenter layer actions", () => {
 
     expect(onIndexCurrentFile).not.toHaveBeenCalled();
   });
+
+  it("keeps current file indexing enabled when foreground navigation targets another file", () => {
+    const onIndexCurrentFile = vi.fn();
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="/workspace/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={null}
+        layerReadiness={layerReadiness()}
+        recentQueryExplains={[]}
+        taskStatuses={[{
+          ...taskStatus("foreground-navigation", "running"),
+          targetPaths: ["/workspace/Other.ets"],
+          targetPathCount: 1,
+        }]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+        onIndexCurrentFile={onIndexCurrentFile}
+      />,
+    );
+
+    const layers = screen.getByRole("region", { name: "Index Layers" });
+    const action = within(layers).getByRole("button", { name: "Index Current File" });
+    expect(action).toBeEnabled();
+
+    fireEvent.click(action);
+
+    expect(onIndexCurrentFile).toHaveBeenCalledTimes(1);
+  });
 });
 
 function layerReadiness(): WorkspaceIndexLayerReadinessReport {

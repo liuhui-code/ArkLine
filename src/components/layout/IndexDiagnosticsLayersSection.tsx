@@ -32,7 +32,13 @@ export function IndexDiagnosticsLayersSection({
           <span>Action</span>
         </div>
         {layers.length > 0 ? layers.map((layer) => (
-          <LayerReadinessRow layer={layer} key={layer.layer} taskStatuses={taskStatuses} onAction={onAction} />
+          <LayerReadinessRow
+            currentFilePath={layerReadiness?.currentFilePath ?? null}
+            layer={layer}
+            key={layer.layer}
+            taskStatuses={taskStatuses}
+            onAction={onAction}
+          />
         )) : (
           <div className="index-diagnostics__empty">No layer readiness evidence is available.</div>
         )}
@@ -42,16 +48,18 @@ export function IndexDiagnosticsLayersSection({
 }
 
 function LayerReadinessRow({
+  currentFilePath,
   layer,
   taskStatuses,
   onAction,
 }: {
+  currentFilePath: string | null;
   layer: WorkspaceIndexLayerReadiness;
   taskStatuses: WorkspaceIndexTaskStatus[];
   onAction?: (action: string) => void;
 }) {
   const action = layer.recommendedAction;
-  const actionState = getLayerActionState(action, taskStatuses);
+  const actionState = getLayerActionState(action, taskStatuses, currentFilePath);
   const canRunAction = action != null && action !== "wait" && action !== "none";
   const actionReason = actionState.reason ?? layer.reason;
 

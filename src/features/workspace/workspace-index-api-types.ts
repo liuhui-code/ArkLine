@@ -154,6 +154,8 @@ export type WorkspaceIndexTaskStatus = {
   generation: number;
   progressCurrent: number;
   progressTotal: number;
+  targetPaths?: string[];
+  targetPathCount?: number;
   startedAt?: number;
   lastHeartbeatAt?: number;
   stalled?: boolean;
