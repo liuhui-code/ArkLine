@@ -4,6 +4,7 @@ import { AppShellOverlays } from "@/components/layout/AppShellOverlays";
 import { AppShellMainLayout } from "@/components/layout/AppShellMainLayout";
 import { AppShellToolWindows } from "@/components/layout/AppShellToolWindows";
 import { useAppShellCommands } from "@/components/layout/use-app-shell-commands";
+import { useAppShellActionRefs } from "@/components/layout/use-app-shell-action-refs";
 import { useActiveDocumentActions } from "@/components/layout/use-active-document-actions";
 import { useActiveDocumentProjection } from "@/components/layout/use-active-document-projection";
 import { useActiveWorkspaceSessionPersistence } from "@/components/layout/use-active-workspace-session-persistence";
@@ -31,7 +32,7 @@ import { useWorkspaceSession } from "@/components/layout/use-workspace-session";
 import { useWorkspaceIndexWatchers } from "@/components/layout/use-workspace-index-watchers";
 import { useWorkspaceOpeningController } from "@/components/layout/use-workspace-opening-controller";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
-import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
+import { createSettingsStore } from "@/features/settings/settings-store";
 import { useDefinitionController } from "@/components/layout/use-definition-controller";
 import { idleUsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, type WorkspaceApi } from "@/features/workspace/workspace-api";
@@ -59,28 +60,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const workspaceIndexRef = useRef(createWorkspaceIndexStore());
   const [workspaceIndexState, setWorkspaceIndexState] = useState<WorkspaceIndexState>(() => ({ ...workspaceIndexRef.current.state }));
   const editorSurfaceRef = useRef<HTMLElement | null>(null);
-  const completionActionsRef = useRef<{ clearCompletionSession: () => void; clearTypingCompletionTimer: () => void }>({
-    clearCompletionSession: () => undefined,
-    clearTypingCompletionTimer: () => undefined,
-  });
-  const searchActionsRef = useRef<{ resetSearchOverlayState: () => void }>({ resetSearchOverlayState: () => undefined });
-  const settingsActionsRef = useRef<{ indexSdkSymbolsForSettings: (settings: AppSettings) => Promise<void> }>({
-    indexSdkSymbolsForSettings: async () => undefined,
-  });
-  const gitActionsRef = useRef<{ refreshGitBlame: () => void }>({ refreshGitBlame: () => undefined });
-  const editorActionsRef = useRef<{ openFile: (path: string) => Promise<void> }>({
-    openFile: async () => undefined,
-  });
-  const workspaceOpeningActionsRef = useRef<{ openWorkspace: (rootPath: string) => Promise<void> }>({
-    openWorkspace: async () => undefined,
-  });
-  const projectOpeningActionsRef = useRef<{
-    setProjectPathInput: (rootPath: string) => void;
-    setProjectOpenError: (message: string | null) => void;
-  }>({
-    setProjectPathInput: () => undefined,
-    setProjectOpenError: () => undefined,
-  });
+  const { completionActionsRef, searchActionsRef, settingsActionsRef, gitActionsRef, editorActionsRef, workspaceOpeningActionsRef, projectOpeningActionsRef } = useAppShellActionRefs();
   const { documentsRef, tabsRef, openTabs, activePath, syncTabs, setActiveDocument, resetTabs } = useEditorDocuments();
   const activeContentReader = createActiveDocumentRuntime(documentsRef, () => activePath);
   const { getActiveContent } = activeContentReader;
