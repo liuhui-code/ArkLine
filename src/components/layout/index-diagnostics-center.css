@@ -61,7 +61,7 @@
   grid-template-columns: minmax(160px, 1fr) 120px 120px;
 }
 
-.index-diagnostics__sdk-task {
+.index-diagnostics__health-task {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 110px 110px minmax(170px, 1fr);
   gap: 10px;
@@ -74,19 +74,19 @@
   color: var(--text-secondary);
 }
 
-.index-diagnostics__sdk-task strong,
-.index-diagnostics__sdk-task span {
+.index-diagnostics__health-task strong,
+.index-diagnostics__health-task span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.index-diagnostics__sdk-task strong {
+.index-diagnostics__health-task strong {
   display: block;
   color: var(--text-primary);
 }
 
-.index-diagnostics__sdk-task--stalled {
+.index-diagnostics__health-task--stalled {
   border-color: color-mix(in srgb, var(--warning) 44%, var(--border-subtle));
   background: color-mix(in srgb, var(--warning) 9%, transparent);
 }
