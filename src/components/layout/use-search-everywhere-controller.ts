@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
-import {
-  handleSearchOverlayQueryChangeAction,
-  openSearchOverlayAction,
-  resetSearchOverlayStateAction,
-} from "@/components/layout/search-overlay-actions";
 import { buildSearchEverywhereControllerResult } from "@/components/layout/search-controller-result";
 import { SEARCH_EVERYWHERE_DISPLAY_LIMIT } from "@/components/layout/app-shell-constants";
 import {
@@ -26,7 +21,6 @@ import { dispatchSearchOverlayQueryEffect } from "@/components/layout/search-que
 import {
   createSearchFileReader,
 } from "@/components/layout/search-file-reader";
-import { toggleSearchTextOption } from "@/components/layout/search-text-options-state";
 import { createWorkspaceSearchInteractionRuntime } from "@/components/layout/search-workspace-runtime";
 import {
   moveSearchSelection,
@@ -40,6 +34,7 @@ import { createSearchNextPageAction } from "@/components/layout/search-next-page
 import { createSearchRunActions } from "@/components/layout/search-run-actions";
 import { createSearchPreviewAction } from "@/components/layout/search-preview-action";
 import { createSearchControllerContext } from "@/components/layout/search-controller-context";
+import { createSearchOverlayCommandActions } from "@/components/layout/search-overlay-command-actions";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -197,30 +192,30 @@ export function useSearchEverywhereController({
     reportTextMiss: searchMissReporters.reportTextMiss,
     runFallback: fallbackTextSearch,
   });
+  const searchOverlayCommands = createSearchOverlayCommandActions({
+    mode: searchEverywhereMode,
+    editorSelectedText,
+    invalidateSearchSession,
+    resetDebouncedSearchQuery,
+    patchSearchSession: searchSessionStoreRef.current.patch,
+    recordUiInteraction,
+    setSearchEverywhereMode,
+    setSearchEverywhereScope,
+    setQuickOpenQuery,
+    setActiveOverlay,
+    setSearchEverywhereOptions,
+  });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
-    openSearchOverlayAction({
-      mode,
-      editorSelectedText,
-      setSearchEverywhereMode,
-      setSearchEverywhereScope,
-      setQuickOpenQuery,
-      setActiveOverlay,
-    });
+    searchOverlayCommands.openSearchOverlay(mode);
   }
 
   function handleOverlayQueryChange(value: string) {
-    handleSearchOverlayQueryChangeAction({ value, invalidateSearchSession, setQuickOpenQuery });
+    searchOverlayCommands.handleOverlayQueryChange(value);
   }
 
   function resetSearchOverlayState() {
-    resetSearchOverlayStateAction({
-      mode: searchEverywhereMode,
-      invalidateSearchSession,
-      resetDebouncedSearchQuery,
-      patchSearchSession: searchSessionStoreRef.current.patch,
-      recordUiInteraction,
-    });
+    searchOverlayCommands.resetSearchOverlayState();
   }
 
   function moveSearchEverywhereSelection(direction: 1 | -1) {
@@ -254,11 +249,11 @@ export function useSearchEverywhereController({
   }
 
   function toggleSearchEverywhereCaseSensitive() {
-    setSearchEverywhereOptions((current) => toggleSearchTextOption(current, "caseSensitive"));
+    searchOverlayCommands.toggleSearchEverywhereCaseSensitive();
   }
 
   function toggleSearchEverywhereWholeWord() {
-    setSearchEverywhereOptions((current) => toggleSearchTextOption(current, "wholeWord"));
+    searchOverlayCommands.toggleSearchEverywhereWholeWord();
   }
 
   useEffect(() => {
