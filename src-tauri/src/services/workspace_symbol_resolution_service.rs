@@ -1,16 +1,19 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use rusqlite::{params, Connection};
 
 use crate::services::workspace_symbol_identity_service::project_symbol_id;
 use crate::services::workspace_symbol_resolution_alias_service::{
-    insert_export_alias_symbol, insert_import_alias_symbol, AliasTarget, ExportAliasTarget,
+    insert_export_alias_symbol, insert_import_alias_symbol, ExportAliasTarget,
 };
 use crate::services::workspace_symbol_resolution_declaration_service::{
     has_import_or_export_bindings_for_paths, load_stub_declarations,
     load_stub_declarations_for_paths,
 };
 use crate::services::workspace_symbol_resolution_insert_service::ResolvedSymbolInserter;
+use crate::services::workspace_symbol_resolution_lookup_service::{
+    declaration_lookup, export_alias_lookup, import_alias_target,
+};
 use crate::services::workspace_symbol_resolution_model_service::{
     ExportBindingRow, ImportBindingRow, StubDeclarationRow, UnresolvedImportRow,
 };
@@ -135,7 +138,7 @@ fn resolve_workspace_symbols_from_declarations(
     let mut export_aliases = if needs_export_aliases {
         export_alias_lookup(load_existing_export_aliases(connection, root_key)?)
     } else {
-        HashMap::new()
+        export_alias_lookup(Vec::new())
     };
     for export in re_exports {
         let Some(target) = declaration_lookup
@@ -236,51 +239,6 @@ fn resolve_workspace_symbols_from_declarations(
     Ok(WorkspaceSymbolResolutionSummary {
         resolved_count,
         unresolved_count: unresolved_imports.len(),
-    })
-}
-
-fn declaration_lookup(
-    declarations: &[StubDeclarationRow],
-) -> HashMap<(String, String), &StubDeclarationRow> {
-    declarations
-        .iter()
-        .map(|declaration| {
-            (
-                (declaration.path.clone(), declaration.name.clone()),
-                declaration,
-            )
-        })
-        .collect()
-}
-
-fn export_alias_lookup(
-    aliases: Vec<ExportAliasTarget>,
-) -> HashMap<(String, String), ExportAliasTarget> {
-    aliases
-        .into_iter()
-        .map(|alias| ((alias.path.clone(), alias.exported_name.clone()), alias))
-        .collect()
-}
-
-fn import_alias_target(
-    declaration: Option<&StubDeclarationRow>,
-    export_alias: Option<&ExportAliasTarget>,
-) -> Option<AliasTarget> {
-    if let Some(declaration) = declaration {
-        return Some(AliasTarget {
-            symbol_id: symbol_id(declaration),
-            kind: declaration.kind.clone(),
-            container: declaration.container.clone(),
-            signature: Some(declaration.signature.clone()),
-            visibility: declaration.visibility.clone(),
-        });
-    }
-    export_alias.map(|alias| AliasTarget {
-        symbol_id: alias.target_symbol_id.clone(),
-        kind: alias.kind.clone(),
-        container: alias.container.clone(),
-        signature: alias.signature.clone(),
-        visibility: alias.visibility.clone(),
     })
 }
 
