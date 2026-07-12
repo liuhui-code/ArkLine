@@ -5,6 +5,7 @@ import type {
   WorkspaceIndexExplainResult,
   WorkspaceIndexQueryEnvelope,
   WorkspaceIndexQueryScope,
+  WorkspaceSearchRankingContext,
 } from "@/features/workspace/workspace-index-api-types";
 import type {
   DefinitionCandidate,
@@ -22,8 +23,8 @@ type WorkspaceIndexQueryApiDependencies = {
 export type WorkspaceIndexQueryApi = {
   queryWorkspaceQuickOpen(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceSearchEverywhere(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidates(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceCandidates(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<SearchCandidate[]>;
+  queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbols(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
@@ -57,28 +58,33 @@ export function createWorkspaceIndexQueryApi({
       void limit;
       return [];
     },
-    async queryWorkspaceCandidates(rootPath, query, scope, limit, cursor = null) {
+    async queryWorkspaceCandidates(rootPath, query, scope, limit, cursor = null, context) {
       if (hasTauriRuntime()) {
-        return invoke<SearchCandidate[]>("query_workspace_candidates", { rootPath, query, scope, limit, cursor });
+        return invoke<SearchCandidate[]>(
+          "query_workspace_candidates",
+          { rootPath, query, scope, limit, cursor, context },
+        );
       }
 
       void rootPath;
       void query;
       void scope;
       void limit;
+      void context;
       return [];
     },
-    async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit, cursor = null) {
+    async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit, cursor = null, context) {
       if (hasTauriRuntime()) {
         return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>(
           "query_workspace_candidates_with_readiness",
-          { rootPath, query, scope, limit, cursor },
+          { rootPath, query, scope, limit, cursor, context },
         );
       }
 
       void query;
       void scope;
       void limit;
+      void context;
       return emptyIndexQueryEnvelope(rootPath);
     },
     async queryWorkspaceFileSymbols(rootPath, filePath, query, limit, cursor = null) {

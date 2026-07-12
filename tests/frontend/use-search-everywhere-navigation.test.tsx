@@ -110,7 +110,14 @@ describe("useSearchEverywhereController navigation isolation", () => {
     await flushSearchDebounce();
 
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith("/workspace", "EntryFinal", "all", 25);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
+      "/workspace",
+      "EntryFinal",
+      "all",
+      25,
+      null,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+    );
   });
 
   it("does not let a stale slow query overwrite newer search results", async () => {

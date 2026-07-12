@@ -41,7 +41,14 @@ describe("search entity runner", () => {
       expect(patchSearchSession).toHaveBeenCalled();
     });
 
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith("/workspace", "Entry", "all", 26);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
+      "/workspace",
+      "Entry",
+      "all",
+      26,
+      null,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+    );
     expect(replaceQueryReadiness).toHaveBeenCalledWith(envelope.readiness);
     expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
       candidates: [expect.objectContaining({ title: "Entry.ets" })],

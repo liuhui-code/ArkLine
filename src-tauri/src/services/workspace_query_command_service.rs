@@ -7,10 +7,10 @@ use crate::models::workspace::{
 use crate::services::workspace_index_facade_envelope_service::search_query_envelope;
 use crate::services::workspace_index_facade_event_service::record_facade_query_event;
 use crate::services::workspace_index_facade_search_service::{
-    query_facade_file_symbols_page, query_facade_search_everywhere_page,
+    query_facade_file_symbols_page, query_facade_search_everywhere_page_with_context,
 };
 use crate::services::workspace_index_facade_service::{
-    query_facade_search_everywhere_with_readiness,
+    query_facade_search_everywhere_with_readiness_context,
     query_facade_text_search_result_with_cancellation,
 };
 use crate::services::workspace_index_query_service::{
@@ -21,6 +21,7 @@ use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_index_ui_activity_service::{
     WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
 };
+use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
 use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
@@ -31,24 +32,27 @@ pub async fn query_workspace_candidates_blocking(
     scope: WorkspaceIndexQueryScope,
     limit: usize,
     cursor: Option<usize>,
+    context: WorkspaceSearchRankingContext,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     spawn_blocking(move || {
         if cursor.is_none() {
-            return query_facade_search_everywhere_with_readiness(
+            return query_facade_search_everywhere_with_readiness_context(
                 &index_runtime,
                 &root_path,
                 &query,
                 scope,
                 limit,
+                &context,
             );
         }
-        let envelope = query_facade_search_everywhere_page(
+        let envelope = query_facade_search_everywhere_page_with_context(
             &index_runtime,
             &root_path,
             &query,
             scope,
             limit,
             cursor,
+            &context,
         )?;
         record_facade_query_event(&root_path, "searchEverywhere", &envelope)?;
         Ok(search_query_envelope(envelope))

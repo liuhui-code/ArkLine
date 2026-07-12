@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
-
 const eventListeners = vi.hoisted(() => [] as Array<(event: { payload: unknown }) => void>);
 const unlisten = vi.hoisted(() => vi.fn());
 const invoke = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));

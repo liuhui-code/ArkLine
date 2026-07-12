@@ -8,7 +8,10 @@ import {
 import type { SearchSessionSnapshot } from "@/features/search/search-session-store";
 import type { WorkspaceTextSearchCursor, WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
-import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
+import type {
+  WorkspaceIndexQueryEnvelope,
+  WorkspaceSearchRankingContext,
+} from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 export type SearchNextPageLoaderInput = {
@@ -17,6 +20,7 @@ export type SearchNextPageLoaderInput = {
   rootPath: string | null;
   query: string;
   scope: WorkspaceIndexQueryScope;
+  rankingContext?: WorkspaceSearchRankingContext;
   displayLimit: number;
   requestId: number;
   selectIndexAfterLoad?: number;
@@ -26,6 +30,7 @@ export type SearchNextPageLoaderInput = {
     scope: WorkspaceIndexQueryScope,
     limit: number,
     cursor: number,
+    context?: WorkspaceSearchRankingContext,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   runTextPage: (
     query: string,
@@ -45,6 +50,7 @@ export async function loadNextSearchPage({
   rootPath,
   query,
   scope,
+  rankingContext,
   displayLimit,
   requestId,
   selectIndexAfterLoad,
@@ -59,7 +65,14 @@ export async function loadNextSearchPage({
   if (mode === "searchEverywhere") {
     if (!session.entityNextCursor || !queryEntityPage) return;
     patchSearchSession({ textPageLoading: true });
-    const envelope = await queryEntityPage(rootPath, query, scope, displayLimit, session.entityNextCursor);
+    const envelope = await queryEntityPage(
+      rootPath,
+      query,
+      scope,
+      displayLimit,
+      session.entityNextCursor,
+      rankingContext,
+    );
     if (!isCurrentQuery(requestId)) return;
     patchSearchSession(buildSearchEntityAppendPatch(
       session.candidates,

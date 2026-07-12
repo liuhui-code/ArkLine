@@ -167,6 +167,11 @@ export type WorkspaceIndexTaskStatus = {
 
 export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" | "api" | "text";
 
+export type WorkspaceSearchRankingContext = {
+  activePath?: string | null;
+  recentPaths?: string[];
+};
+
 export type WorkspaceTextSearchRequest = {
   rootPath: string;
   query: string;

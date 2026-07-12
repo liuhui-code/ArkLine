@@ -162,6 +162,7 @@ export function useSearchEverywhereController({
     getRootPath: searchContext.getRootPath,
     getQuery: searchContext.getQuery,
     getScope: searchContext.getScope,
+    getRankingContext: () => ({ activePath, recentPaths: getRecentPaths() }),
     displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
     interactionRuntime: interactionRuntimeRef.current,
     queryEntityPage: workspaceApi.queryWorkspaceCandidatesWithReadiness,

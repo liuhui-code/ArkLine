@@ -229,7 +229,32 @@ pub fn query_facade_search_everywhere_with_readiness(
     scope: WorkspaceIndexQueryScope,
     limit: usize,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    let envelope = query_facade_search_everywhere(index_runtime, root_path, query, scope, limit)?;
+    query_facade_search_everywhere_with_readiness_context(
+        index_runtime,
+        root_path,
+        query,
+        scope,
+        limit,
+        &WorkspaceSearchRankingContext::default(),
+    )
+}
+
+pub fn query_facade_search_everywhere_with_readiness_context(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+    query: &str,
+    scope: WorkspaceIndexQueryScope,
+    limit: usize,
+    context: &WorkspaceSearchRankingContext,
+) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
+    let envelope = query_facade_search_everywhere_with_context(
+        index_runtime,
+        root_path,
+        query,
+        scope,
+        limit,
+        context,
+    )?;
     record_facade_query_event(root_path, "searchEverywhere", &envelope)?;
     Ok(search_query_envelope(envelope))
 }

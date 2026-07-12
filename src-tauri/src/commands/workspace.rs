@@ -34,6 +34,7 @@ use crate::services::workspace_query_command_service::{
     search_workspace_text_blocking,
 };
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
+use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
 use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 use crate::services::workspace_service::list_workspace_directory as list_workspace_directory_service;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
@@ -243,6 +244,7 @@ pub async fn query_workspace_candidates(
     scope: String,
     limit: usize,
     cursor: Option<usize>,
+    context: Option<WorkspaceSearchRankingContext>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
     Ok(query_workspace_candidates_blocking(
@@ -252,6 +254,7 @@ pub async fn query_workspace_candidates(
         parse_index_query_scope(&scope)?,
         limit,
         cursor,
+        context.unwrap_or_default(),
     )
     .await?
     .items)
@@ -264,6 +267,7 @@ pub async fn query_workspace_candidates_with_readiness(
     scope: String,
     limit: usize,
     cursor: Option<usize>,
+    context: Option<WorkspaceSearchRankingContext>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     query_workspace_candidates_blocking(
@@ -273,6 +277,7 @@ pub async fn query_workspace_candidates_with_readiness(
         parse_index_query_scope(&scope)?,
         limit,
         cursor,
+        context.unwrap_or_default(),
     )
     .await
 }

@@ -4,7 +4,10 @@ import type { SearchInteractionRuntime } from "@/features/search/search-interact
 import type { SearchSessionStore } from "@/features/search/search-session-store";
 import type { WorkspaceTextSearchCursor, WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
-import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
+import type {
+  WorkspaceIndexQueryEnvelope,
+  WorkspaceSearchRankingContext,
+} from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 export type SearchNextPageActionOptions = {
@@ -13,6 +16,7 @@ export type SearchNextPageActionOptions = {
   getRootPath: () => string | null;
   getQuery: () => string;
   getScope: () => WorkspaceIndexQueryScope;
+  getRankingContext: () => WorkspaceSearchRankingContext;
   displayLimit: number;
   interactionRuntime: SearchInteractionRuntime;
   queryEntityPage?: (
@@ -21,6 +25,7 @@ export type SearchNextPageActionOptions = {
     scope: WorkspaceIndexQueryScope,
     limit: number,
     cursor: number,
+    context?: WorkspaceSearchRankingContext,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   runTextPage: (
     query: string,
@@ -38,6 +43,7 @@ export function createSearchNextPageAction({
   getRootPath,
   getQuery,
   getScope,
+  getRankingContext,
   displayLimit,
   interactionRuntime,
   queryEntityPage,
@@ -51,6 +57,7 @@ export function createSearchNextPageAction({
     rootPath: getRootPath(),
     query: getQuery(),
     scope: getScope(),
+    rankingContext: getRankingContext(),
     displayLimit,
     requestId: interactionRuntime.getCurrentQueryGeneration(),
     selectIndexAfterLoad,

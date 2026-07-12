@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::models::workspace::WorkspaceSearchCandidate;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceSearchRankingContext {
     pub active_path: Option<String>,
     pub recent_paths: Vec<String>,

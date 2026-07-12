@@ -18,6 +18,7 @@ describe("search next page loader", () => {
       rootPath: "/workspace",
       query: "Entry",
       scope: "all",
+      rankingContext: { activePath: "/workspace/Current.ets", recentPaths: ["/workspace/Recent.ets"] },
       displayLimit: 24,
       requestId: 7,
       selectIndexAfterLoad: 24,
@@ -29,7 +30,14 @@ describe("search next page loader", () => {
       scheduleSelectedPreview: vi.fn(),
     });
 
-    expect(queryEntityPage).toHaveBeenCalledWith("/workspace", "Entry", "all", 24, 24);
+    expect(queryEntityPage).toHaveBeenCalledWith(
+      "/workspace",
+      "Entry",
+      "all",
+      24,
+      24,
+      { activePath: "/workspace/Current.ets", recentPaths: ["/workspace/Recent.ets"] },
+    );
     expect(patchSearchSession).toHaveBeenNthCalledWith(1, { textPageLoading: true });
     expect(patchSearchSession).toHaveBeenLastCalledWith(expect.objectContaining({
       candidates: [candidate("Current.ets"), candidate("Next.ets")],

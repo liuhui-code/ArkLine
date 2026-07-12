@@ -127,7 +127,14 @@ describe("useSearchEverywhereController pagination", () => {
       await Promise.resolve();
     });
 
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith("/workspace", "Alpha", "all", 24, 24);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "/workspace",
+      "Alpha",
+      "all",
+      24,
+      24,
+      { activePath: "/workspace/a.ets", recentPaths: [] },
+    );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(25);
     expect(result.current.search.searchEverywhereSelectedIndex).toBe(24);
   });

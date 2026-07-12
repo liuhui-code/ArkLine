@@ -44,7 +44,14 @@ describe("search run actions", () => {
       expect(sessionStore.getSnapshot().candidates).toHaveLength(1);
     });
 
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith("/workspace", "Entry", "all", 26);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
+      "/workspace",
+      "Entry",
+      "all",
+      26,
+      null,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+    );
   });
 
   it("runs text search with dirty fallback when live content is required", async () => {

@@ -47,7 +47,14 @@ describe("useSearchEverywhereController", () => {
 
     await flushSearchDebounce();
 
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith("/workspace", "Entry", "all", 25);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
+      "/workspace",
+      "Entry",
+      "all",
+      25,
+      null,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+    );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(1);
 
     await act(async () => {
@@ -83,7 +90,14 @@ describe("useSearchEverywhereController", () => {
 
     await flushSearchDebounce();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(2);
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith("/workspace", "EntryA", "all", 25);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "/workspace",
+      "EntryA",
+      "all",
+      25,
+      null,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+    );
   });
 
   it("does not query the backend for a single-character search", async () => {
@@ -202,6 +216,8 @@ describe("useSearchEverywhereController", () => {
       "EntryAbility",
       "all",
       25,
+      null,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
     );
   });
 

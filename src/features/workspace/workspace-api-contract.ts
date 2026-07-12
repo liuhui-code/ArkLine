@@ -34,6 +34,7 @@ import type {
   WorkspaceIndexParserFailure,
   WorkspaceIndexQueryEnvelope,
   WorkspaceIndexQueryScope,
+  WorkspaceSearchRankingContext,
   WorkspaceIndexTaskStatus,
   WorkspaceIndexTaskStatusWatcher,
   WorkspaceIndexUnresolvedImport,
@@ -79,6 +80,7 @@ export type {
   WorkspaceIndexQueuePressure,
   WorkspaceIndexReadiness,
   WorkspaceIndexReadinessState,
+  WorkspaceSearchRankingContext,
   WorkspaceIndexTaskStatus,
   WorkspaceIndexTaskStatusWatcher,
   WorkspaceIndexTimelineItem,
@@ -334,8 +336,8 @@ export type WorkspaceApi = {
   submitWorkspaceSdkIndex?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceSearchEverywhere?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<SearchCandidate[]>;
+  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbols?(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;

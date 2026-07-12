@@ -13,6 +13,7 @@ import type {
   WorkspaceIndexQueryEnvelope,
   WorkspaceIndexQueryScope,
   WorkspaceIndexReadiness,
+  WorkspaceSearchRankingContext,
 } from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
@@ -25,12 +26,16 @@ export type SearchEntityWorkspaceApi = {
     query: string,
     scope: WorkspaceIndexQueryScope,
     limit: number,
+    cursor?: number | null,
+    context?: WorkspaceSearchRankingContext,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceCandidates?: (
     rootPath: string,
     query: string,
     scope: WorkspaceIndexQueryScope,
     limit: number,
+    cursor?: number | null,
+    context?: WorkspaceSearchRankingContext,
   ) => Promise<SearchCandidate[]>;
   queryWorkspaceSearchEverywhere?: (
     rootPath: string,
@@ -77,6 +82,7 @@ export function runSearchEntityQuery({
   reportMiss,
 }: SearchEntityRunnerInput) {
   if (!rootPath) return;
+  const rankingContext: WorkspaceSearchRankingContext = { activePath, recentPaths };
   runEntitySearchRequest({
     requestId,
     query,
@@ -88,10 +94,24 @@ export function runSearchEntityQuery({
       scope,
       limit: displayLimit + 1,
       runReadiness: workspaceApi.queryWorkspaceCandidatesWithReadiness
-        ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidatesWithReadiness!(rootPath, query, scope, limit)
+        ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidatesWithReadiness!(
+          rootPath,
+          query,
+          scope,
+          limit,
+          null,
+          rankingContext,
+        )
         : undefined,
       runIndexed: workspaceApi.queryWorkspaceCandidates
-        ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidates!(rootPath, query, scope, limit)
+        ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidates!(
+          rootPath,
+          query,
+          scope,
+          limit,
+          null,
+          rankingContext,
+        )
         : undefined,
       runLegacy: workspaceApi.queryWorkspaceSearchEverywhere
         ? (query, limit) => workspaceApi.queryWorkspaceSearchEverywhere!(rootPath, query, limit)

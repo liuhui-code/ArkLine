@@ -24,6 +24,7 @@ describe("search next page action", () => {
       getRootPath: () => "/workspace",
       getQuery: () => "Entry",
       getScope: () => "all",
+      getRankingContext: () => ({ activePath: "/workspace/Entry.ets", recentPaths: [] }),
       displayLimit: 25,
       interactionRuntime,
       queryEntityPage,
@@ -34,7 +35,14 @@ describe("search next page action", () => {
 
     await loadNextPage(1);
 
-    expect(queryEntityPage).toHaveBeenCalledWith("/workspace", "Entry", "all", 25, 1);
+    expect(queryEntityPage).toHaveBeenCalledWith(
+      "/workspace",
+      "Entry",
+      "all",
+      25,
+      1,
+      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+    );
     expect(sessionStore.getSnapshot().candidates.map((item) => item.title)).toEqual(["Entry", "Next"]);
     expect(sessionStore.getSnapshot().selectedIndex).toBe(1);
   });
