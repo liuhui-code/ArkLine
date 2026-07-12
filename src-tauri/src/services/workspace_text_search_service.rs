@@ -11,7 +11,11 @@ use crate::models::workspace::{
 
 enum ParsedTextSearchQuery {
     Text(String),
-    Regex(regex::Regex),
+    Regex {
+        expression: regex::Regex,
+        literal_hint: Option<String>,
+        case_insensitive: bool,
+    },
     Invalid(String),
 }
 
@@ -72,6 +76,9 @@ where
         let Ok(content) = fs::read_to_string(&file_path) else {
             continue;
         };
+        if !content_may_match(&content, &parsed_query) {
+            continue;
+        }
         searched_files += 1;
 
         let lines = content.lines().map(str::to_string).collect::<Vec<_>>();
@@ -156,7 +163,11 @@ fn parse_search_query(query: &str, _options: &WorkspaceTextSearchOptions) -> Par
         .dot_matches_new_line(flags.contains('s'));
 
     match builder.build() {
-        Ok(expression) => ParsedTextSearchQuery::Regex(expression),
+        Ok(expression) => ParsedTextSearchQuery::Regex {
+            expression,
+            literal_hint: regex_literal_hint(&source),
+            case_insensitive: flags.contains('i'),
+        },
         Err(error) => ParsedTextSearchQuery::Invalid(error.to_string()),
     }
 }
@@ -166,7 +177,7 @@ fn to_result_query(query: &str, parsed_query: &ParsedTextSearchQuery) -> Workspa
         ParsedTextSearchQuery::Text(value) => WorkspaceTextSearchQuery::Text {
             query: value.clone(),
         },
-        ParsedTextSearchQuery::Regex(_) => WorkspaceTextSearchQuery::Regex {
+        ParsedTextSearchQuery::Regex { .. } => WorkspaceTextSearchQuery::Regex {
             query: query.trim().to_string(),
         },
         ParsedTextSearchQuery::Invalid(message) => WorkspaceTextSearchQuery::Invalid {
@@ -223,11 +234,82 @@ fn find_line_match(
             }
             None
         }
-        ParsedTextSearchQuery::Regex(expression) => expression
+        ParsedTextSearchQuery::Regex { expression, .. } => expression
             .find(line_text)
             .map(|match_range| (match_range.start(), match_range.end())),
         ParsedTextSearchQuery::Invalid(_) => None,
     }
+}
+
+fn content_may_match(content: &str, query: &ParsedTextSearchQuery) -> bool {
+    let ParsedTextSearchQuery::Regex {
+        literal_hint,
+        case_insensitive,
+        ..
+    } = query
+    else {
+        return true;
+    };
+    let Some(hint) = literal_hint else {
+        return true;
+    };
+    if *case_insensitive {
+        return content.to_lowercase().contains(&hint.to_lowercase());
+    }
+    content.contains(hint)
+}
+
+fn regex_literal_hint(source: &str) -> Option<String> {
+    let mut best = String::new();
+    let mut current = String::new();
+    let mut escaped = false;
+    for character in source.chars() {
+        if escaped {
+            if regex_escape_is_literal(character) {
+                current.push(character);
+            } else {
+                keep_longest_literal(&mut best, &mut current);
+            }
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if regex_character_is_literal(character) {
+            current.push(character);
+        } else {
+            keep_longest_literal(&mut best, &mut current);
+        }
+    }
+    keep_longest_literal(&mut best, &mut current);
+    if best.chars().count() >= 3 {
+        Some(best)
+    } else {
+        None
+    }
+}
+
+fn keep_longest_literal(best: &mut String, current: &mut String) {
+    if current.chars().count() > best.chars().count() {
+        *best = current.clone();
+    }
+    current.clear();
+}
+
+fn regex_escape_is_literal(character: char) -> bool {
+    matches!(
+        character,
+        '\\' | '/' | '.' | '+' | '*' | '?' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '|'
+    )
+}
+
+fn regex_character_is_literal(character: char) -> bool {
+    !matches!(
+        character,
+        '.' | '+' | '*' | '?' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '|'
+    )
 }
 
 fn is_whole_word_boundary(line_text: &str, start: usize, end: usize) -> bool {

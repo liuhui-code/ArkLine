@@ -106,6 +106,43 @@ fn supports_regex_case_sensitive_and_whole_word_matching() {
 }
 
 #[test]
+fn regex_search_prefilters_files_with_literal_hint() {
+    let root = unique_temp_dir("workspace-text-search-regex-prefilter");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    fs::write(
+        root.join("entry").join("src").join("Noise.ets"),
+        "alpha beta gamma",
+    )
+    .unwrap();
+    fs::write(
+        root.join("entry").join("src").join("Match.ets"),
+        "target    42",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let indexed_paths = vec![
+        root.join("entry")
+            .join("src")
+            .join("Noise.ets")
+            .to_string_lossy()
+            .to_string(),
+        root.join("entry")
+            .join("src")
+            .join("Match.ets")
+            .to_string_lossy()
+            .to_string(),
+    ];
+
+    let result = search_workspace_text(&request(&root_path, "/target\\s+\\d+/"), &indexed_paths);
+
+    assert_eq!(result.matches.len(), 1);
+    assert_eq!(result.matches[0].file_name, "Match.ets");
+    assert_eq!(result.searched_files, 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_invalid_regex_without_matches() {
     let root = unique_temp_dir("workspace-text-search-invalid-regex");
     fs::create_dir_all(&root).unwrap();
