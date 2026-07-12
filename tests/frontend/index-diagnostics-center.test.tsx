@@ -460,6 +460,8 @@ function diagnosticsWithBackendQueryEvent(createdAt = 1): WorkspaceIndexDiagnost
     activeSdkVersion: null,
     lastError: null,
     lastExplainStatus: null,
+    retryBackoffCount: 0,
+    latestRetryBackoff: null,
     repairActions: [],
     parserFailures: [],
     unresolvedImports: [],

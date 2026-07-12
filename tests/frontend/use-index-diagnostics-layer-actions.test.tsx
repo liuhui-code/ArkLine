@@ -117,6 +117,8 @@ function diagnostics() {
     activeSdkVersion: null,
     lastError: null,
     lastExplainStatus: null,
+    retryBackoffCount: 0,
+    latestRetryBackoff: null,
     repairActions: [],
     parserFailures: [],
     unresolvedImports: [],

@@ -48,6 +48,10 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
         <IndexDiagnosticsMetric label="DB size" value={dbSize} />
         <IndexDiagnosticsMetric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
+        <IndexDiagnosticsMetric
+          label="Retry backoff"
+          value={diagnostics?.latestRetryBackoff ?? (diagnostics?.retryBackoffCount ? `${diagnostics.retryBackoffCount} active` : "none")}
+        />
         <IndexDiagnosticsMetric label="Last error" value={diagnostics?.lastError ?? "none"} />
       </div>
       <IndexDiagnosticsHealthTaskSummary

@@ -41,6 +41,8 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
         active_sdk_version: None,
         last_error: None,
         last_explain_status: None,
+        retry_backoff_count: 0,
+        latest_retry_backoff: None,
         repair_actions: Vec::new(),
         parser_failures: Vec::new(),
         unresolved_imports: Vec::new(),
@@ -52,6 +54,7 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
 
     assert!(json.contains("\"rootPath\""));
     assert!(json.contains("\"schemaVersionActions\""));
+    assert!(json.contains("\"retryBackoffCount\""));
     assert!(json.contains("\"expectedVersion\""));
     assert!(!json.contains("schema_version_actions"));
 }

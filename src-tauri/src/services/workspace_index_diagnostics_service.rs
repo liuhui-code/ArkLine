@@ -40,6 +40,8 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let timeline = timeline_from_events(&recent_events);
     let last_error = last_error_from_events(&recent_events);
     let last_explain_status = last_explain_status_from_events(&recent_events);
+    let retry_backoff_count = retry_backoff_count_from_events(&recent_events);
+    let latest_retry_backoff = latest_retry_backoff_from_events(&recent_events);
     let unresolved_import_count =
         count_rows(&connection, "workspace_unresolved_imports", &root_key)?;
     let parser_error_count = count_rows(&connection, "workspace_stub_parse_errors", &root_key)?;
@@ -87,6 +89,8 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         active_sdk_version: active_sdk.map(|metadata| metadata.sdk_version),
         last_error,
         last_explain_status,
+        retry_backoff_count,
+        latest_retry_backoff,
         repair_actions,
         parser_failures: inspect_parser_failures(root_path, DIAGNOSTICS_PARSER_FAILURE_LIMIT)?,
         unresolved_imports: inspect_unresolved_imports(
@@ -360,4 +364,19 @@ fn last_explain_status_from_events(events: &[WorkspaceIndexEvent]) -> Option<Str
         .rev()
         .find(|event| event.scope == "query")
         .map(|event| event.phase.to_string())
+}
+
+fn retry_backoff_count_from_events(events: &[WorkspaceIndexEvent]) -> i64 {
+    events
+        .iter()
+        .filter(|event| event.scope == "scheduler" && event.phase == "backoff")
+        .count() as i64
+}
+
+fn latest_retry_backoff_from_events(events: &[WorkspaceIndexEvent]) -> Option<String> {
+    events
+        .iter()
+        .rev()
+        .find(|event| event.scope == "scheduler" && event.phase == "backoff")
+        .map(|event| event.message.to_string())
 }

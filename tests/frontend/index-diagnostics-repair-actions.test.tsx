@@ -163,6 +163,8 @@ function diagnosticsWithRepairAction(action: string): WorkspaceIndexDiagnostics 
     activeSdkVersion: null,
     lastError: null,
     lastExplainStatus: null,
+    retryBackoffCount: 0,
+    latestRetryBackoff: null,
     repairActions: [action],
     parserFailures: [],
     unresolvedImports: [],

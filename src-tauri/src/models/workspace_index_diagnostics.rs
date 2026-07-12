@@ -79,6 +79,8 @@ pub struct WorkspaceIndexDiagnostics {
     pub active_sdk_version: Option<String>,
     pub last_error: Option<String>,
     pub last_explain_status: Option<String>,
+    pub retry_backoff_count: i64,
+    pub latest_retry_backoff: Option<String>,
     pub repair_actions: Vec<String>,
     pub parser_failures: Vec<WorkspaceIndexParserFailure>,
     pub unresolved_imports: Vec<WorkspaceIndexUnresolvedImport>,

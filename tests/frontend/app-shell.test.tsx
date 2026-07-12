@@ -346,6 +346,8 @@ describe("App shell", () => {
         activeSdkVersion: "settings",
         lastError: "Parser exploded",
         lastExplainStatus: "blocked",
+        retryBackoffCount: 0,
+        latestRetryBackoff: null,
         repairActions: ["configureSdk", "rebuildProjectIndex", "rebuildSdkIndex", "resumeIndexing"],
         parserFailures: [{
           path: "C:/samples/DemoWorkspace/src/Broken.ets",

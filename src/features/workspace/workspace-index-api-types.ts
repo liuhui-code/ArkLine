@@ -26,6 +26,8 @@ export type WorkspaceIndexDiagnostics = {
   activeSdkVersion: string | null;
   lastError: string | null;
   lastExplainStatus: string | null;
+  retryBackoffCount: number;
+  latestRetryBackoff: string | null;
   repairActions: string[];
   parserFailures: WorkspaceIndexParserFailure[];
   unresolvedImports: WorkspaceIndexUnresolvedImport[];
