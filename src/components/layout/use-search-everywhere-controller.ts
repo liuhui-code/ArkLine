@@ -2,11 +2,6 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
 import {
-  openSearchCandidateNavigation,
-  openSearchResultNavigation,
-  openSelectedSearchNavigation,
-} from "@/components/layout/search-navigation-action";
-import {
   closeSearchOverlayForNavigationAction,
   handleSearchOverlayQueryChangeAction,
   openSearchOverlayAction,
@@ -44,6 +39,7 @@ import {
   setSearchSelection,
 } from "@/components/layout/search-selection-actions";
 import { createSearchMissReporters } from "@/components/layout/search-miss-reporters";
+import { createSearchOpenActions } from "@/components/layout/search-open-actions";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -135,6 +131,14 @@ export function useSearchEverywhereController({
     recordRecentQueryExplain,
     onStatusChange,
   });
+  const searchOpenActions = createSearchOpenActions({
+    mode: searchEverywhereMode,
+    sessionStore: searchSessionStoreRef.current,
+    rememberCurrentLocation,
+    closeSearchOverlayForNavigation,
+    navigateToLocation,
+    recordUiInteraction,
+  });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
     openSearchOverlayAction({
@@ -192,39 +196,15 @@ export function useSearchEverywhereController({
   }
 
   async function openSearchEverywhereResult(path: string, line: number, column: number) {
-    await openSearchResultNavigation({
-      path,
-      line,
-      column,
-      rememberCurrentLocation,
-      closeSearchOverlayForNavigation,
-      navigateToLocation,
-      recordUiInteraction,
-    });
+    await searchOpenActions.openResult(path, line, column);
   }
 
   async function openSearchEverywhereCandidate(candidate: SearchCandidate) {
-    await openSearchCandidateNavigation({
-      candidate,
-      rememberCurrentLocation,
-      closeSearchOverlayForNavigation,
-      navigateToLocation,
-      recordUiInteraction,
-    });
+    await searchOpenActions.openCandidate(candidate);
   }
 
   async function openSelectedSearchEverywhereResult() {
-    const session = searchSessionStoreRef.current.getSnapshot();
-    await openSelectedSearchNavigation({
-      mode: searchEverywhereMode,
-      selectedIndex: session.selectedIndex,
-      candidates: session.candidates,
-      matches: session.result.matches,
-      rememberCurrentLocation,
-      closeSearchOverlayForNavigation,
-      navigateToLocation,
-      recordUiInteraction,
-    });
+    await searchOpenActions.openSelected();
   }
 
   function toggleSearchEverywhereCaseSensitive() {
