@@ -1,10 +1,13 @@
-import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
+import type { WorkspaceIndexHealth, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace-api-contract";
+
+export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff">;
 
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
   refreshResult: WorkspaceIndexRefreshResult | null;
   refreshEventCount: number;
+  healthSummary: WorkspaceIndexHealthSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
   eventCount: number;
   updatedAt: number | null;
@@ -17,6 +20,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     rootPath: null,
     refreshResult: null,
     refreshEventCount: 0,
+    healthSummary: null,
     taskStatuses: [],
     eventCount: 0,
     updatedAt: null,
@@ -69,6 +73,15 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         ...snapshot,
         rootPath: status.rootPath,
         taskStatuses: mergeTaskStatus(current, status),
+        eventCount: snapshot.eventCount + 1,
+        updatedAt: Date.now(),
+      });
+    },
+    recordHealthSummary(rootPath: string, healthSummary: WorkspaceIndexHealthSummary | null) {
+      commit({
+        ...snapshot,
+        rootPath,
+        healthSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });

@@ -27,6 +27,7 @@ describe("useIndexDiagnosticsController health summary", () => {
       }));
       await Promise.resolve();
       await Promise.resolve();
+      await waitForProjectionFlush();
     });
 
     expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
@@ -34,6 +35,10 @@ describe("useIndexDiagnosticsController health summary", () => {
     expect(getWorkspaceIndexHealth).toHaveBeenCalledWith("/workspace");
   });
 });
+
+function waitForProjectionFlush() {
+  return new Promise((resolve) => window.setTimeout(resolve, 550));
+}
 
 function options(overrides: Partial<Parameters<typeof useIndexDiagnosticsController>[0]> = {}) {
   return {
