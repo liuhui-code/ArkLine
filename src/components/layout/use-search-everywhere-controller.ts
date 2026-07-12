@@ -4,10 +4,6 @@ import {
 } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
-  buildSearchEntityQueryRequest,
-  executeSearchEntityQuery,
-} from "@/components/layout/search-entity-query-session";
-import {
   resolveSearchSelectionMove,
 } from "@/components/layout/search-pagination-session";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
@@ -47,7 +43,6 @@ import {
   reportTextSearchMiss,
 } from "@/components/layout/search-miss-reporting";
 import {
-  runEntitySearchRequest,
   runTextSearchRequest,
 } from "@/components/layout/search-request-runner";
 import {
@@ -56,6 +51,7 @@ import {
   runFallbackTextSearch,
 } from "@/components/layout/search-text-fallback";
 import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
+import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -273,39 +269,20 @@ export function useSearchEverywhereController({
   }
 
   function runEntitySearch(requestId: number) {
-    const query = debouncedSearchQuery;
-    if (!workspace) return;
-    runEntitySearchRequest({
+    runSearchEntityQuery({
       requestId,
-      query,
+      query: debouncedSearchQuery,
+      rootPath: workspace?.rootPath ?? null,
+      scope: searchEverywhereScope,
+      displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
       minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
+      activePath,
+      recentPaths: getRecentPaths(),
+      queryIndexCandidates,
+      workspaceApi,
+      replaceQueryReadiness,
       trackQuery: interactionRuntimeRef.current.trackQuery,
       clearSearchResults,
-      request: () => executeSearchEntityQuery(buildSearchEntityQueryRequest({
-        query,
-        scope: searchEverywhereScope,
-        limit: SEARCH_EVERYWHERE_DISPLAY_LIMIT + 1,
-        runReadiness: workspaceApi.queryWorkspaceCandidatesWithReadiness
-          ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidatesWithReadiness!(workspace.rootPath, query, scope, limit)
-          : undefined,
-        runIndexed: workspaceApi.queryWorkspaceCandidates
-          ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidates!(workspace.rootPath, query, scope, limit)
-          : undefined,
-        runLegacy: workspaceApi.queryWorkspaceSearchEverywhere
-          ? (query, limit) => workspaceApi.queryWorkspaceSearchEverywhere!(workspace.rootPath, query, limit)
-          : undefined,
-        runLocal: queryIndexCandidates,
-        onReadiness: (envelope) => {
-          replaceQueryReadiness(envelope.readiness);
-        },
-      })),
-      application: {
-        scope: searchEverywhereScope,
-        displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
-        activePath,
-        recentPaths: getRecentPaths(),
-        readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
-      },
       patchSearchSession: searchSessionStoreRef.current.patch,
       recordUiInteraction,
       reportMiss: (requestId, missReport) => {
