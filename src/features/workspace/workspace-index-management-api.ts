@@ -146,6 +146,8 @@ async function getWorkspaceIndexHealth(deps: WorkspaceIndexManagementApiDependen
     discoveredFileCount: 0,
     unresolvedImportCount: 0,
     parserFailureCount: 0,
+    retryBackoffCount: 0,
+    latestRetryBackoff: null,
     queuePressure: emptyQueuePressure(rootPath),
     repairActions: ["rebuildProjectIndex"],
   };

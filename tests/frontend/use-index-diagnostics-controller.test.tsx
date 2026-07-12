@@ -98,8 +98,9 @@ describe("useIndexDiagnosticsController", () => {
 
   it("refreshes layer readiness after terminal index task updates", async () => {
     const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const getWorkspaceIndexHealth = vi.fn(async () => ({ retryBackoffCount: 0, latestRetryBackoff: null } as never));
     const { result } = renderHook(() => useIndexDiagnosticsController(options({
-      workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness }),
+      workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness, getWorkspaceIndexHealth }),
     })));
 
     await act(async () => {
@@ -112,6 +113,7 @@ describe("useIndexDiagnosticsController", () => {
     });
 
     expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Entry.ets");
+    expect(getWorkspaceIndexHealth).toHaveBeenCalledWith("/workspace");
     expect(result.current.layerReadiness?.layers).toHaveLength(2);
   });
 

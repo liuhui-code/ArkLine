@@ -88,6 +88,8 @@ export type WorkspaceIndexHealth = {
   discoveredFileCount: number;
   unresolvedImportCount: number;
   parserFailureCount: number;
+  retryBackoffCount: number;
+  latestRetryBackoff: string | null;
   queuePressure: WorkspaceIndexQueuePressure;
   repairActions: string[];
 };

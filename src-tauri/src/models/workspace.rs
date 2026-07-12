@@ -295,6 +295,8 @@ pub struct WorkspaceIndexHealth {
     pub discovered_file_count: i64,
     pub unresolved_import_count: i64,
     pub parser_failure_count: i64,
+    pub retry_backoff_count: i64,
+    pub latest_retry_backoff: Option<String>,
     pub queue_pressure: WorkspaceIndexQueuePressure,
     pub repair_actions: Vec<String>,
 }

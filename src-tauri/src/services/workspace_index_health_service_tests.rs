@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection};
 
+use crate::models::workspace::WorkspaceIndexTaskStatus;
 use crate::services::workspace_discovery_store_service::{
     update_discovery_state, WorkspaceDiscoveryState,
 };
@@ -14,6 +15,7 @@ use crate::services::workspace_index_scheduler_service::{
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_task_journal_service::store_task_status;
 use crate::services::workspace_index_test_fixture_service::unique_temp_dir;
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
 
@@ -185,6 +187,28 @@ fn reports_queued_workspace_when_index_work_is_pending() {
 }
 
 #[test]
+fn reports_retry_backoff_in_health() {
+    let root = unique_temp_dir("workspace-index-health-backoff");
+    fs::create_dir_all(root.join("entry/src/main/ets")).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    store_task_status(&root_path, &failed_task_status(&root_path, 1)).unwrap();
+    store_task_status(&root_path, &failed_task_status(&root_path, 2)).unwrap();
+
+    let health = get_workspace_index_health(&root_path, &manager).unwrap();
+
+    assert_eq!(health.retry_backoff_count, 1);
+    assert!(health
+        .latest_retry_backoff
+        .as_deref()
+        .unwrap_or_default()
+        .contains("recommended retry delay 2000ms"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn keeps_rebuild_repair_idempotent_while_work_is_queued() {
     let root = unique_temp_dir("workspace-index-health-idempotent");
     let source_dir = root.join("entry/src/main/ets");
@@ -331,4 +355,26 @@ fn open_index_store(root: &Path) -> Connection {
         .join("workspace-catalog.sqlite");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     Connection::open(path).unwrap()
+}
+
+fn failed_task_status(root_path: &str, generation: u64) -> WorkspaceIndexTaskStatus {
+    WorkspaceIndexTaskStatus {
+        task_id: format!("failed-{generation}"),
+        root_path: root_path.replace('/', "\\"),
+        kind: "changed-paths".to_string(),
+        status: "failed".to_string(),
+        reason: "changed:file".to_string(),
+        generation,
+        progress_current: 0,
+        progress_total: 1,
+        target_paths: Vec::new(),
+        target_path_count: None,
+        started_at: None,
+        last_heartbeat_at: None,
+        stalled: false,
+        finished_at: Some(1),
+        symbol_count: None,
+        message: None,
+        error: Some("parse failed".to_string()),
+    }
 }

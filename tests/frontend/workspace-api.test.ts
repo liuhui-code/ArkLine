@@ -107,13 +107,7 @@ describe("workspace api", () => {
       discoveryExcludedCount: 0,
       discoveryHasMore: false,
       dbSizeBytes: 0,
-      queuePressure: {
-        rootPath: "C:/samples/DemoWorkspace",
-        pendingTaskCount: 0,
-        workspacePendingTaskCount: 0,
-        highestPriority: null,
-        highestPriorityTaskKind: null,
-      },
+      queuePressure: emptyQueuePressure("C:/samples/DemoWorkspace"),
       lastError: null,
       lastExplainStatus: null,
       retryBackoffCount: 0,
@@ -166,7 +160,7 @@ describe("workspace api", () => {
       request: expect.objectContaining({ streamId: "stream-1", timeRangeMs: 60_000 }),
     });
     expect(invoke).toHaveBeenCalledWith("get_device_log_stats", { streamId: "stream-1" });
-    expect(invoke).toHaveBeenCalledWith("get_device_log_storage_health");
+    expect(invoke).toHaveBeenCalledWith("get_device_log_storage_health", undefined);
     expect(health?.segmentFileCount).toBe(1);
   });
 
@@ -193,7 +187,7 @@ describe("workspace api", () => {
       discoveryHasMore: false,
       dbSizeBytes: 4096,
       queuePressure: {
-        rootPath: "C:/samples/DemoWorkspace",
+        ...emptyQueuePressure("C:/samples/DemoWorkspace"),
         pendingTaskCount: 1,
         workspacePendingTaskCount: 1,
         highestPriority: "foreground",
@@ -335,6 +329,8 @@ describe("workspace api", () => {
         pendingTaskCount: 0,
         workspacePendingTaskCount: 0,
       },
+      retryBackoffCount: 0,
+      latestRetryBackoff: null,
       repairActions: ["rebuildProjectIndex"],
     });
   });
@@ -351,13 +347,9 @@ describe("workspace api", () => {
       discoveredFileCount: 1,
       unresolvedImportCount: 0,
       parserFailureCount: 0,
-      queuePressure: {
-        rootPath: "C:/samples/DemoWorkspace",
-        pendingTaskCount: 0,
-        workspacePendingTaskCount: 0,
-        highestPriority: null,
-        highestPriorityTaskKind: null,
-      },
+      retryBackoffCount: 0,
+      latestRetryBackoff: null,
+      queuePressure: emptyQueuePressure("C:/samples/DemoWorkspace"),
       repairActions: [],
     };
     invoke.mockResolvedValueOnce(health);
@@ -471,9 +463,7 @@ describe("workspace api", () => {
   });
 
   it("schedules foreground completion indexing in the desktop runtime", async () => {
-    await defaultWorkspaceApi.scheduleForegroundCompletionIndex?.("C:/samples/DemoWorkspace", [
-      "C:/samples/DemoWorkspace/src/main.ets",
-    ]);
+    await defaultWorkspaceApi.scheduleForegroundCompletionIndex?.("C:/samples/DemoWorkspace", ["C:/samples/DemoWorkspace/src/main.ets"]);
 
     expect(invoke).toHaveBeenCalledWith("schedule_foreground_completion_index", {
       rootPath: "C:/samples/DemoWorkspace",
@@ -482,9 +472,7 @@ describe("workspace api", () => {
   });
 
   it("schedules foreground navigation indexing in the desktop runtime", async () => {
-    await defaultWorkspaceApi.scheduleForegroundNavigationIndex?.("C:/samples/DemoWorkspace", [
-      "C:/samples/DemoWorkspace/src/main.ets",
-    ]);
+    await defaultWorkspaceApi.scheduleForegroundNavigationIndex?.("C:/samples/DemoWorkspace", ["C:/samples/DemoWorkspace/src/main.ets"]);
 
     expect(invoke).toHaveBeenCalledWith("schedule_foreground_navigation_index", {
       rootPath: "C:/samples/DemoWorkspace",
@@ -493,9 +481,7 @@ describe("workspace api", () => {
   });
 
   it("schedules visible files indexing in the desktop runtime", async () => {
-    await defaultWorkspaceApi.scheduleVisibleFilesIndex?.("C:/samples/DemoWorkspace", [
-      "C:/samples/DemoWorkspace/src/visible.ets",
-    ]);
+    await defaultWorkspaceApi.scheduleVisibleFilesIndex?.("C:/samples/DemoWorkspace", ["C:/samples/DemoWorkspace/src/visible.ets"]);
 
     expect(invoke).toHaveBeenCalledWith("schedule_visible_files_index", {
       rootPath: "C:/samples/DemoWorkspace",
@@ -503,3 +489,12 @@ describe("workspace api", () => {
     });
   });
 });
+
+function emptyQueuePressure(rootPath: string) {
+  return { rootPath,
+    pendingTaskCount: 0,
+    workspacePendingTaskCount: 0,
+    highestPriority: null,
+    highestPriorityTaskKind: null,
+  };
+}

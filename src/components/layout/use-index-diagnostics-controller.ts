@@ -18,6 +18,7 @@ import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexExplainResult,
   WorkspaceIndexFileReadiness,
+  WorkspaceIndexHealth,
   WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexRefreshResult,
   WorkspaceIndexTaskStatus,
@@ -57,6 +58,7 @@ export function useIndexDiagnosticsController({
   const [indexDiagnosticsSectionTarget, setIndexDiagnosticsSectionTarget] = useState<string | null>(null);
   const [indexDiagnosticsLoading, setIndexDiagnosticsLoading] = useState(false);
   const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
+  const [indexHealthSummary, setIndexHealthSummary] = useState<Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff"> | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
   const fileReadinessRequestIdRef = useRef(0);
@@ -70,7 +72,7 @@ export function useIndexDiagnosticsController({
     ? indexProjection.taskStatuses
     : [];
   const workspaceIndexStatusSummary = {
-    workspaceIndexText: getIndexHealthStatusText(indexDiagnostics)
+    workspaceIndexText: getIndexHealthStatusText(indexHealthSummary ?? indexDiagnostics)
       ?? getLayerReadinessStatusText(layerReadiness)
       ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
     sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),
@@ -79,6 +81,7 @@ export function useIndexDiagnosticsController({
   useEffect(() => {
     if (!workspace?.rootPath) {
       setIndexDiagnostics(null);
+      setIndexHealthSummary(null);
       setCurrentFileReadiness(null);
       setLayerReadiness(null);
       workspaceIndexProjectionStore.reset();
@@ -105,7 +108,10 @@ export function useIndexDiagnosticsController({
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
     workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses);
     if (statuses.some(isTerminalProjectIndexTaskStatus)) {
-      await refreshLayerReadiness(rootPath);
+      await Promise.all([
+        refreshLayerReadiness(rootPath),
+        refreshWorkspaceIndexHealth(rootPath),
+      ]);
     }
     return statuses;
   }
@@ -114,6 +120,17 @@ export function useIndexDiagnosticsController({
     workspaceIndexProjectionStore.recordTaskStatus(status);
     if (isTerminalIndexTaskStatus(status)) {
       void refreshLayerReadiness(status.rootPath);
+      void refreshWorkspaceIndexHealth(status.rootPath);
+    }
+  }
+
+  async function refreshWorkspaceIndexHealth(rootPath = workspace?.rootPath) {
+    if (!rootPath || !workspaceApi.getWorkspaceIndexHealth) return;
+    try {
+      const health = await workspaceApi.getWorkspaceIndexHealth(rootPath);
+      setIndexHealthSummary(health);
+    } catch {
+      setIndexHealthSummary(null);
     }
   }
 
@@ -149,6 +166,7 @@ export function useIndexDiagnosticsController({
   async function refreshIndexDiagnostics() {
     if (!workspace?.rootPath) {
       setIndexDiagnostics(null);
+      setIndexHealthSummary(null);
       setCurrentFileReadiness(null);
       setLayerReadiness(null);
       return;
@@ -163,6 +181,7 @@ export function useIndexDiagnosticsController({
           : Promise.resolve(null),
       ]);
       setIndexDiagnostics(diagnostics);
+      setIndexHealthSummary(diagnostics);
       workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses);
       await refreshCurrentFileReadiness(workspace.rootPath, activePath);
       setLayerReadiness(layers);

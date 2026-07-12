@@ -39,6 +39,8 @@ pub fn get_workspace_index_health(
         discovered_file_count: diagnostics.discovered_file_count,
         unresolved_import_count: diagnostics.unresolved_import_count,
         parser_failure_count: diagnostics.parser_error_count,
+        retry_backoff_count: diagnostics.retry_backoff_count,
+        latest_retry_backoff: diagnostics.latest_retry_backoff,
         queue_pressure,
         repair_actions,
     })
