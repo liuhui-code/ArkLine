@@ -16,9 +16,6 @@ import {
   formatClockTime,
   formatLayerCounts,
   formatRepairAction,
-  formatTaskDetails,
-  formatTaskDuration,
-  formatTaskProgress,
 } from "@/components/layout/index-diagnostics-model";
 import {
   buildQueryExplainTimeline,
@@ -33,6 +30,7 @@ import { IndexDiagnosticsActiveTaskStrip } from "@/components/layout/IndexDiagno
 import { IndexDiagnosticsCurrentFileSection } from "@/components/layout/IndexDiagnosticsCurrentFileSection";
 import { IndexDiagnosticsHealthTaskSummary } from "@/components/layout/IndexDiagnosticsHealthTaskSummary";
 import { IndexDiagnosticsMetric } from "@/components/layout/IndexDiagnosticsMetric";
+import { IndexDiagnosticsProcessesSection } from "@/components/layout/IndexDiagnosticsProcessesSection";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import "./index-diagnostics-center.css";
 
@@ -147,41 +145,7 @@ export function IndexDiagnosticsCenter({
           <div className="index-diagnostics__content">
             {loading ? <div className="index-diagnostics__notice">Loading index diagnostics...</div> : null}
 
-            <section className="index-diagnostics__section" id="index-diagnostics-processes" aria-label="Processes / Queue">
-              <div className="index-diagnostics__section-title">
-                <h3>Processes / Queue</h3>
-                <span>{queuePressure?.pendingTaskCount ?? taskStatuses.length} pending</span>
-              </div>
-              <div className="index-diagnostics__grid">
-                <IndexDiagnosticsMetric label="Pending total" value={String(queuePressure?.pendingTaskCount ?? 0)} />
-                <IndexDiagnosticsMetric label="Workspace pending" value={String(queuePressure?.workspacePendingTaskCount ?? 0)} />
-                <IndexDiagnosticsMetric label="Top priority" value={queuePressure?.highestPriority ?? "none"} />
-                <IndexDiagnosticsMetric label="Top task" value={queuePressure?.highestPriorityTaskKind ?? "none"} />
-              </div>
-              <div className="index-diagnostics__table">
-                <div className="index-diagnostics__row index-diagnostics__row--header">
-                  <span>Task kind</span>
-                  <span>Status</span>
-                  <span>Progress</span>
-                  <span>Duration</span>
-                  <span>Details</span>
-                </div>
-                {taskStatuses.length > 0 ? taskStatuses.map((task) => (
-                  <div
-                    className={`index-diagnostics__row${task.stalled ? " index-diagnostics__row--stalled" : ""}`}
-                    key={task.taskId}
-                  >
-                    <span>{task.kind}</span>
-                    <span>{task.stalled ? "stalled" : task.status}</span>
-                    <span>{formatTaskProgress(task)}</span>
-                    <span>{formatTaskDuration(task)}</span>
-                    <span>{formatTaskDetails(task)}</span>
-                  </div>
-                )) : (
-                  <div className="index-diagnostics__empty">No running or queued index tasks.</div>
-                )}
-              </div>
-            </section>
+            <IndexDiagnosticsProcessesSection queuePressure={queuePressure} taskStatuses={taskStatuses} />
 
             <IndexDiagnosticsCurrentFileSection
               activePath={activePath}
