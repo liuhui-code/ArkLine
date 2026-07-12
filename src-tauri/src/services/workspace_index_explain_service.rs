@@ -12,13 +12,20 @@ use crate::services::workspace_index_schema_service::ensure_workspace_index_sche
 use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_service::should_exclude;
 
+#[allow(dead_code)]
 pub fn explain_and_record_workspace_index_query(
     request: &WorkspaceIndexExplainRequest,
 ) -> Result<WorkspaceIndexExplainResult, String> {
+    explain_and_record_workspace_index_query_with_event(request).map(|(result, _)| result)
+}
+
+pub fn explain_and_record_workspace_index_query_with_event(
+    request: &WorkspaceIndexExplainRequest,
+) -> Result<(WorkspaceIndexExplainResult, WorkspaceIndexEvent), String> {
     let result = explain_workspace_index_query(request)?;
     let event = event_from_explain_result(request, &result);
     store_index_event(&request.root_path, &event)?;
-    Ok(result)
+    Ok((result, event))
 }
 
 pub fn explain_workspace_index_query(

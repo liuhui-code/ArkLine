@@ -9,7 +9,8 @@ use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
 use crate::services::workspace_discovery_store_service::replace_discovered_file_chunk;
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_explain_service::{
-    explain_and_record_workspace_index_query, explain_workspace_index_query,
+    explain_and_record_workspace_index_query, explain_and_record_workspace_index_query_with_event,
+    explain_workspace_index_query,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
@@ -81,6 +82,32 @@ fn explains_missing_fingerprint_as_not_indexed() {
 
     assert_eq!(result.status, "notIndexed");
     assert_eq!(result.recommended_action.as_deref(), Some("rebuildIndex"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn records_and_returns_query_event_for_live_emit() {
+    let root = unique_temp_dir("explain-live-event");
+    fs::create_dir_all(root.join("src")).unwrap();
+    index_connection(&root);
+    let path = root.join("src").join("Missing.ets");
+    fs::write(&path, "class Missing {}\n").unwrap();
+
+    let (result, event) = explain_and_record_workspace_index_query_with_event(&request(
+        &root,
+        "definition",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+    let events = load_recent_index_events(&root.to_string_lossy(), 4).unwrap();
+
+    assert_eq!(result.status, "notIndexed");
+    assert_eq!(event.scope, "query");
+    assert_eq!(event.kind, "definition");
+    assert_eq!(event.phase, "miss");
+    assert_eq!(event.severity, "warning");
+    assert!(events.iter().any(|stored| stored.event_id == event.event_id));
 
     fs::remove_dir_all(root).unwrap();
 }
