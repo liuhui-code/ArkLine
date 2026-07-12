@@ -7,6 +7,7 @@ class GitTraceMarker extends GutterMarker {
     private readonly label: string,
     private readonly lineNumber: number,
     private readonly selected: boolean,
+    private readonly onSelectLine?: (line: number) => void,
   ) {
     super();
   }
@@ -21,6 +22,22 @@ class GitTraceMarker extends GutterMarker {
     element.className = `cm-git-trace-marker${this.selected ? " cm-git-trace-marker--active" : ""}`;
     element.textContent = this.label;
     element.setAttribute("aria-label", `Git Trace Line ${this.lineNumber} ${this.label}`);
+    let handledMouseDown = false;
+    element.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handledMouseDown = true;
+      this.onSelectLine?.(this.lineNumber);
+    });
+    element.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (handledMouseDown) {
+        handledMouseDown = false;
+        return;
+      }
+      this.onSelectLine?.(this.lineNumber);
+    });
     return element;
   }
 }
@@ -47,7 +64,7 @@ export function createGitTraceGutter({
         return null;
       }
 
-      return new GitTraceMarker(buildBlameLabel(blame), lineNumber, selectedLine === lineNumber);
+      return new GitTraceMarker(buildBlameLabel(blame), lineNumber, selectedLine === lineNumber, onSelectLine);
     },
     domEventHandlers: {
       mousedown(view, block, event) {
