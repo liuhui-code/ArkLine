@@ -11,6 +11,7 @@
     "test:semantic-worker": "pnpm --dir semantic-worker test",
     "smoke:semantic": "node scripts/smoke-semantic.mjs --fixture",
     "perf:runtime": "node scripts/perf-runtime-gate.mjs --strict",
+    "check:line-count": "node scripts/check-line-count.mjs --limit=500",
     "build": "pnpm build:semantic-worker && tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "check:windows-build": "powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1",
     "package:windows": "node scripts/package-windows.mjs --target=windows-installer",
