@@ -1,4 +1,5 @@
-import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexDiagnostics, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import { repairActionFromPayload } from "@/features/workspace/workspace-index-repair-action-model";
 
 export type IndexDiagnosticsModelInput = {
   diagnostics: {
@@ -87,6 +88,12 @@ export type ActiveProjectTaskSummary = {
   targetCurrentFile: boolean;
 };
 
+export type RepairActionEvidence = {
+  action: string;
+  source: string;
+  detail: string;
+};
+
 export function buildActiveProjectTaskSummary(
   tasks: WorkspaceIndexTaskStatus[],
   currentFilePath: string | null = null,
@@ -161,6 +168,32 @@ export function formatRepairAction(action: string) {
     default:
       return action;
   }
+}
+
+export function buildRepairActionEvidence(
+  diagnostics: Pick<WorkspaceIndexDiagnostics, "recentEvents"> | null,
+): RepairActionEvidence[] {
+  if (!diagnostics) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const evidence: RepairActionEvidence[] = [];
+  for (const event of [...diagnostics.recentEvents].reverse()) {
+    if (event.scope !== "query") {
+      continue;
+    }
+    const action = repairActionFromPayload(event.payloadJson);
+    if (!action || seen.has(action)) {
+      continue;
+    }
+    seen.add(action);
+    evidence.push({
+      action,
+      source: `${event.kind} ${event.phase}`,
+      detail: event.message || "Query explain recommended this repair action.",
+    });
+  }
+  return evidence.slice(0, 3);
 }
 
 function formatBytes(bytes: number) {

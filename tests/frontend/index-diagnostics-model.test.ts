@@ -3,12 +3,14 @@ import {
   buildIndexDiagnosticsViewModel,
   buildActiveProjectTaskSummary,
   buildActiveSdkTaskSummary,
+  buildRepairActionEvidence,
   formatRepairAction,
   formatTaskDuration,
   formatTaskTargets,
   getLayerActionState,
 } from "@/components/layout/index-diagnostics-model";
 import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexEvent } from "@/features/workspace/workspace-index-api-types";
 
 describe("index diagnostics model", () => {
   it("builds header, storage, and timeline summary text", () => {
@@ -151,6 +153,49 @@ describe("index diagnostics model", () => {
       }),
     ], "/workspace/src/Entry.ets")).toEqual({ disabled: false, reason: null });
   });
+
+  it("builds repair action evidence from query event payloads", () => {
+    const evidence = buildRepairActionEvidence({
+      recentEvents: [
+        indexEvent({
+          eventId: "task-event",
+          scope: "task",
+          payloadJson: JSON.stringify({ recommendedAction: "rebuildIndex" }),
+        }),
+        indexEvent({
+          eventId: "query-rebuild",
+          scope: "query",
+          kind: "definition",
+          phase: "miss",
+          message: "No indexed evidence explains this query yet",
+          payloadJson: JSON.stringify({ recommendedAction: "rebuildIndex" }),
+          createdAt: 2,
+        }),
+        indexEvent({
+          eventId: "query-sdk",
+          scope: "query",
+          kind: "completion",
+          phase: "blocked",
+          message: "SDK API index is not ready",
+          payloadJson: JSON.stringify({ recommendedAction: "configureSdk" }),
+          createdAt: 3,
+        }),
+      ],
+    });
+
+    expect(evidence).toEqual([
+      {
+        action: "configureSdk",
+        source: "completion blocked",
+        detail: "SDK API index is not ready",
+      },
+      {
+        action: "rebuildProjectIndex",
+        source: "definition miss",
+        detail: "No indexed evidence explains this query yet",
+      },
+    ]);
+  });
 });
 
 function task(overrides: Partial<WorkspaceIndexTaskStatus>): WorkspaceIndexTaskStatus {
@@ -165,6 +210,23 @@ function task(overrides: Partial<WorkspaceIndexTaskStatus>): WorkspaceIndexTaskS
     progressTotal: 0,
     stalled: false,
     message: "",
+    ...overrides,
+  };
+}
+
+function indexEvent(overrides: Partial<WorkspaceIndexEvent>): WorkspaceIndexEvent {
+  return {
+    eventId: "event",
+    rootPath: "/workspace",
+    scope: "query",
+    kind: "definition",
+    phase: "miss",
+    severity: "warning",
+    message: "",
+    taskId: null,
+    generation: null,
+    payloadJson: "{}",
+    createdAt: 1,
     ...overrides,
   };
 }

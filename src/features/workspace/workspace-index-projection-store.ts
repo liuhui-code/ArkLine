@@ -5,6 +5,7 @@ import type {
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace-api-contract";
+import { repairActionFromPayload } from "@/features/workspace/workspace-index-repair-action-model";
 
 export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff">;
 
@@ -218,24 +219,7 @@ function repairActionFromEvent(event: WorkspaceIndexEvent): string | null {
   if (event.scope !== "query") {
     return null;
   }
-  const payload = parseEventPayload(event.payloadJson);
-  switch (payload?.recommendedAction) {
-    case "rebuildIndex":
-      return "rebuildProjectIndex";
-    case "configureSdk":
-      return "configureSdk";
-    default:
-      return null;
-  }
-}
-
-function parseEventPayload(payloadJson: string): { recommendedAction?: unknown } | null {
-  try {
-    const payload = JSON.parse(payloadJson);
-    return payload && typeof payload === "object" ? payload : null;
-  } catch {
-    return null;
-  }
+  return repairActionFromPayload(event.payloadJson);
 }
 
 function mergeRecentEvent(events: WorkspaceIndexEvent[], next: WorkspaceIndexEvent) {

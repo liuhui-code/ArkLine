@@ -128,6 +128,48 @@ describe("IndexDiagnosticsCenter repair actions", () => {
     expect(within(activeTask).getByText("7/20 (35%)")).toBeVisible();
     expect(within(activeTask).getByText("3.0s active")).toBeVisible();
   });
+
+  it("shows query explain evidence for suggested repair actions", () => {
+    const diagnostics = diagnosticsWithRepairAction("rebuildProjectIndex");
+    diagnostics.recentEvents = [{
+      eventId: "query-miss",
+      rootPath: "C:/workspace",
+      scope: "query",
+      kind: "definition",
+      phase: "miss",
+      severity: "warning",
+      message: "No indexed evidence explains this query yet",
+      taskId: null,
+      generation: 18,
+      payloadJson: JSON.stringify({ recommendedAction: "rebuildIndex" }),
+      createdAt: 4,
+    }];
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnostics}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const evidence = screen.getByLabelText("Repair Evidence");
+    expect(within(evidence).getByText("Rebuild Project Index")).toBeVisible();
+    expect(within(evidence).getByText("definition miss")).toBeVisible();
+    expect(within(evidence).getByText("No indexed evidence explains this query yet")).toBeVisible();
+  });
 });
 
 function diagnosticsWithRepairAction(action: string): WorkspaceIndexDiagnostics {

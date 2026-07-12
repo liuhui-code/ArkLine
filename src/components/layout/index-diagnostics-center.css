@@ -132,6 +132,42 @@
   color: var(--text-muted);
 }
 
+.index-diagnostics__repair-evidence {
+  display: grid;
+  gap: 6px;
+  margin: 0 12px 12px;
+}
+
+.index-diagnostics__repair-evidence div {
+  display: grid;
+  grid-template-columns: 160px minmax(100px, 160px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-subtle));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-size: 12px;
+}
+
+.index-diagnostics__repair-evidence strong,
+.index-diagnostics__repair-evidence span,
+.index-diagnostics__repair-evidence p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index-diagnostics__repair-evidence span {
+  color: var(--text-muted);
+}
+
+.index-diagnostics__repair-evidence p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 .index-diagnostics__status {
   justify-self: start;
   padding: 1px 7px;

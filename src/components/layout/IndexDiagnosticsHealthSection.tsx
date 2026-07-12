@@ -1,6 +1,6 @@
 import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-api";
 import type { ActiveProjectTaskSummary } from "@/components/layout/index-diagnostics-model";
-import { formatRepairAction } from "@/components/layout/index-diagnostics-model";
+import { buildRepairActionEvidence, formatRepairAction } from "@/components/layout/index-diagnostics-model";
 import { IndexDiagnosticsHealthTaskSummary } from "@/components/layout/IndexDiagnosticsHealthTaskSummary";
 import { IndexDiagnosticsMetric } from "@/components/layout/IndexDiagnosticsMetric";
 
@@ -29,6 +29,8 @@ export function IndexDiagnosticsHealthSection({
   onRebuildSdkIndex,
   onConfigureSdk,
 }: IndexDiagnosticsHealthSectionProps) {
+  const repairEvidence = buildRepairActionEvidence(diagnostics);
+
   return (
     <section className="index-diagnostics__section" id="index-diagnostics-health" aria-label="Health / Storage">
       <div className="index-diagnostics__section-title">
@@ -111,6 +113,17 @@ export function IndexDiagnosticsHealthSection({
           <span className="index-diagnostics__empty">No repair action suggested.</span>
         )}
       </div>
+      {repairEvidence.length > 0 ? (
+        <div className="index-diagnostics__repair-evidence" aria-label="Repair Evidence">
+          {repairEvidence.map((item) => (
+            <div key={`${item.action}:${item.source}`}>
+              <strong>{formatRepairAction(item.action)}</strong>
+              <span>{item.source}</span>
+              <p>{item.detail}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
