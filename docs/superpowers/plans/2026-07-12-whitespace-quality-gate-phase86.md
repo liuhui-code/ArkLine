@@ -14,7 +14,8 @@ Add:
 pnpm check:whitespace
 ```
 
-which runs `git diff --check`.
+which runs `git diff --check HEAD --`. Checking against `HEAD` covers staged
+and unstaged local changes instead of only the unstaged diff.
 
 Both `pnpm check:fast` and `pnpm check` now run the whitespace gate first.
 

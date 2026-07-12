@@ -14,7 +14,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "smoke:semantic": "node scripts/smoke-semantic.mjs --fixture",
     "perf:runtime": "node scripts/perf-runtime-gate.mjs --strict",
-    "check:whitespace": "git diff --check",
+    "check:whitespace": "git diff --check HEAD --",
     "check:line-count": "node scripts/check-line-count.mjs --limit=500",
     "check:fast": "pnpm check:whitespace && pnpm check:line-count && pnpm test:semantic-worker && pnpm test:frontend:quality && pnpm test:rust && pnpm build && pnpm perf:runtime",
     "check": "pnpm check:whitespace && pnpm check:line-count && pnpm test && pnpm test:rust && pnpm build && pnpm perf:runtime",

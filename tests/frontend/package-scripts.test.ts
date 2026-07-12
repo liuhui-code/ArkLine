@@ -24,7 +24,7 @@ describe("package scripts", () => {
     expect(scripts["test:rust"]).toBe(
       "cargo test --manifest-path src-tauri/Cargo.toml",
     );
-    expect(scripts["check:whitespace"]).toBe("git diff --check");
+    expect(scripts["check:whitespace"]).toBe("git diff --check HEAD --");
     expect(scripts["check:fast"]).toBe(
       "pnpm check:whitespace && pnpm check:line-count && pnpm test:semantic-worker && pnpm test:frontend:quality && pnpm test:rust && pnpm build && pnpm perf:runtime",
     );
