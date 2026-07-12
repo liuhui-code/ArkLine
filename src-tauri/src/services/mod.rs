@@ -183,6 +183,9 @@ pub mod workspace_index_incremental_persistence_service;
 pub mod workspace_index_layer_readiness_service;
 #[cfg(test)]
 mod workspace_index_layer_readiness_service_tests;
+pub(crate) mod workspace_index_layer_status_service;
+#[cfg(test)]
+mod workspace_index_layer_status_service_tests;
 pub mod workspace_index_layer_strategy_service;
 #[cfg(test)]
 mod workspace_index_layer_strategy_service_tests;

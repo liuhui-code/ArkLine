@@ -7,6 +7,10 @@ use crate::models::workspace_index_layer::{
     WorkspaceIndexLayerReadiness, WorkspaceIndexLayerReadinessReport, WorkspaceIndexLayerStatus,
 };
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
+use crate::services::workspace_index_layer_status_service::{
+    aggregate_count_status, file_hot_current_status, status_from_bool, status_from_count,
+    status_from_text, status_with_failures,
+};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
 pub fn get_workspace_index_layer_readiness(
@@ -379,61 +383,6 @@ fn layer_with_current(
         stale_count: stale,
         reason: None,
         recommended_action: action.map(|value| value.to_string()),
-    }
-}
-
-fn status_from_count(count: i64) -> WorkspaceIndexLayerStatus {
-    status_from_bool(count > 0)
-}
-
-fn aggregate_count_status(counts: &[i64]) -> WorkspaceIndexLayerStatus {
-    if counts.iter().all(|count| *count > 0) {
-        WorkspaceIndexLayerStatus::Ready
-    } else if counts.iter().any(|count| *count > 0) {
-        WorkspaceIndexLayerStatus::Partial
-    } else {
-        WorkspaceIndexLayerStatus::Missing
-    }
-}
-
-fn file_hot_current_status(
-    readiness: &crate::models::workspace::WorkspaceIndexFileReadiness,
-) -> WorkspaceIndexLayerStatus {
-    if readiness.file_index == "ready"
-        && readiness.symbol_index == "ready"
-        && readiness.parser_status == "ready"
-    {
-        WorkspaceIndexLayerStatus::Ready
-    } else if readiness.file_index == "missing" {
-        WorkspaceIndexLayerStatus::Missing
-    } else {
-        WorkspaceIndexLayerStatus::Partial
-    }
-}
-
-fn status_with_failures(count: i64, failures: i64) -> WorkspaceIndexLayerStatus {
-    if failures > 0 {
-        WorkspaceIndexLayerStatus::Failed
-    } else {
-        status_from_count(count)
-    }
-}
-
-fn status_from_bool(value: bool) -> WorkspaceIndexLayerStatus {
-    if value {
-        WorkspaceIndexLayerStatus::Ready
-    } else {
-        WorkspaceIndexLayerStatus::Missing
-    }
-}
-
-fn status_from_text(value: &str) -> WorkspaceIndexLayerStatus {
-    match value {
-        "ready" => WorkspaceIndexLayerStatus::Ready,
-        "partial" => WorkspaceIndexLayerStatus::Partial,
-        "stale" => WorkspaceIndexLayerStatus::Stale,
-        "failed" => WorkspaceIndexLayerStatus::Failed,
-        _ => WorkspaceIndexLayerStatus::Missing,
     }
 }
 
