@@ -1,10 +1,9 @@
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
-import { groupSearchCandidates, groupSearchMatches, searchModePresentation } from "@/components/layout/search-everywhere-panel-model";
+import { buildSearchEverywherePanelViewModel } from "@/components/layout/search-everywhere-panel-model";
 import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
 import { createSearchPreviewWindowFromContent } from "@/features/search/search-preview-window";
-import { createSearchResultWindow } from "@/features/search/search-result-window";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -78,15 +77,8 @@ export function SearchEverywherePanel({
   onCloseOverlay,
 }: SearchEverywherePanelProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const selected = result.matches[selectedIndex] ?? null;
-  const regexMode = result.query.kind === "regex" || result.query.kind === "invalid";
-  const presentation = searchModePresentation(mode, regexMode);
-  const textWindow = createSearchResultWindow(result.matches, selectedIndex);
-  const candidateWindow = createSearchResultWindow(candidates, selectedIndex);
-  const groups = groupSearchMatches(textWindow.items);
-  const candidateGroups = groupSearchCandidates(candidateWindow.items);
-  const resultsLabel = `${presentation.title} Results`;
-  const resultCount = mode === "searchEverywhere" ? candidates.length : result.matches.length;
+  const viewModel = buildSearchEverywherePanelViewModel({ mode, result, candidates, selectedIndex });
+  const { regexMode, presentation, textGroups, candidateGroups, resultsLabel, resultCount, selectedTextMatch } = viewModel;
   const pointerOpenRef = useRef(0);
   const resultRefs = useRef(new Map<number, HTMLButtonElement>());
   const { draftQuery, setDraftQuery } = useSearchSessionInput(query, mode, onChangeQuery);
@@ -315,7 +307,7 @@ export function SearchEverywherePanel({
       ) : (
       <div className="search-everywhere__body search-everywhere__body--text">
         <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel} onWheel={handleResultsWheel}>
-          {groups.map((group) => (
+          {textGroups.map((group) => (
             <section key={group.path} className="search-result-group" aria-label={`${group.relativePath} ${group.matches.length} matches`}>
               <div className="search-result-group__header">
                 <div>
@@ -359,7 +351,7 @@ export function SearchEverywherePanel({
           ) : null}
         </div>
         <div className="search-everywhere__preview" aria-label="Search Everywhere Preview">
-          {selected ? <SearchPreview match={selected} content={selectedPreviewContent} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
+          {selectedTextMatch ? <SearchPreview match={selectedTextMatch} content={selectedPreviewContent} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
         </div>
       </div>
       )}

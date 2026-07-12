@@ -1,7 +1,43 @@
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
-import type { SearchResultWindowItem } from "@/features/search/search-result-window";
-import type { WorkspaceTextSearchMatch } from "@/features/search/workspace-text-search";
+import { createSearchResultWindow, type SearchResultWindowItem } from "@/features/search/search-result-window";
+import type { WorkspaceTextSearchMatch, WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
+
+export type SearchEverywherePanelViewModel = {
+  regexMode: boolean;
+  presentation: ReturnType<typeof searchModePresentation>;
+  textGroups: ReturnType<typeof groupSearchMatches>;
+  candidateGroups: ReturnType<typeof groupSearchCandidates>;
+  resultsLabel: string;
+  resultCount: number;
+  selectedTextMatch: WorkspaceTextSearchMatch | null;
+};
+
+export function buildSearchEverywherePanelViewModel({
+  mode,
+  result,
+  candidates,
+  selectedIndex,
+}: {
+  mode: SearchEverywhereMode;
+  result: WorkspaceTextSearchResult;
+  candidates: SearchCandidate[];
+  selectedIndex: number;
+}): SearchEverywherePanelViewModel {
+  const regexMode = result.query.kind === "regex" || result.query.kind === "invalid";
+  const presentation = searchModePresentation(mode, regexMode);
+  const textWindow = createSearchResultWindow(result.matches, selectedIndex);
+  const candidateWindow = createSearchResultWindow(candidates, selectedIndex);
+  return {
+    regexMode,
+    presentation,
+    textGroups: groupSearchMatches(textWindow.items),
+    candidateGroups: groupSearchCandidates(candidateWindow.items),
+    resultsLabel: `${presentation.title} Results`,
+    resultCount: mode === "searchEverywhere" ? candidates.length : result.matches.length,
+    selectedTextMatch: result.matches[selectedIndex] ?? null,
+  };
+}
 
 export function searchModePresentation(mode: SearchEverywhereMode, regexMode: boolean) {
   const searchKind = regexMode ? "Regular expression" : "Text";
