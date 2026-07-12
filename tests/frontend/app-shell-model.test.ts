@@ -100,6 +100,9 @@ describe("app shell model", () => {
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "refresh-workspace", stalled: true }),
     ])).toBe("Index: Stalled, 1 task > 60s");
+    expect(getSdkIndexStatusText([
+      taskStatus({ kind: "sdk", status: "running", progressCurrent: 7, progressTotal: 20 }),
+    ])).toBe("SDK API: running · 7/20 (35%)");
     expect(getSdkIndexStatusText([taskStatus({ kind: "sdk", status: "ready", symbolCount: 42 })]))
       .toBe("SDK API: ready (42 symbols)");
   });

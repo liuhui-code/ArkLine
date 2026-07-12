@@ -5,7 +5,10 @@ import {
   COMPLETION_POPUP_MARGIN,
   COMPLETION_POPUP_WIDTH,
 } from "@/components/layout/app-shell-constants";
-import { buildActiveProjectTaskSummary } from "@/components/layout/index-diagnostics-model";
+import {
+  buildActiveProjectTaskSummary,
+  buildActiveSdkTaskSummary,
+} from "@/components/layout/index-diagnostics-model";
 import type { CodeAction } from "@/features/code-actions/code-action-model";
 import type {
   WorkspaceIndexLayerReadinessReport,
@@ -169,6 +172,11 @@ export function getSdkIndexStatusText(statuses: WorkspaceIndexTaskStatus[]) {
   const sdkStatus = [...statuses].reverse().find((status) => status.kind === "sdk");
   if (!sdkStatus) {
     return null;
+  }
+
+  const summary = buildActiveSdkTaskSummary([sdkStatus]);
+  if (summary && sdkStatus.progressTotal > 0) {
+    return `SDK API: ${summary.status} · ${summary.progress}`;
   }
 
   const symbolText = sdkStatus.symbolCount == null
