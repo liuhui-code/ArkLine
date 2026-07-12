@@ -25,6 +25,10 @@ import type { RenderPressureSample } from "@/features/performance/render-pressur
 import { LanguageQuerySnapshotPanel } from "@/components/layout/LanguageQuerySnapshotPanel";
 import { IndexDiagnosticsActiveTaskStrip } from "@/components/layout/IndexDiagnosticsActiveTaskStrip";
 import { IndexDiagnosticsCurrentFileSection } from "@/components/layout/IndexDiagnosticsCurrentFileSection";
+import {
+  IndexDiagnosticsParserErrorsSection,
+  IndexDiagnosticsUnresolvedImportsSection,
+} from "@/components/layout/IndexDiagnosticsEvidenceSections";
 import { IndexDiagnosticsHealthSection } from "@/components/layout/IndexDiagnosticsHealthSection";
 import { IndexDiagnosticsPerformanceTimelineSection } from "@/components/layout/IndexDiagnosticsPerformanceTimelineSection";
 import { IndexDiagnosticsProcessesSection } from "@/components/layout/IndexDiagnosticsProcessesSection";
@@ -192,35 +196,9 @@ export function IndexDiagnosticsCenter({
               onConfigureSdk={onConfigureSdk}
             />
 
-            <section className="index-diagnostics__section" id="index-diagnostics-parser-errors" aria-label="Top Parser Errors">
-              <div className="index-diagnostics__section-title">
-                <h3>Top Parser Errors</h3>
-                <span>{diagnostics?.parserFailures.length ?? 0} files</span>
-              </div>
-              {(diagnostics?.parserFailures ?? []).length > 0 ? diagnostics?.parserFailures.map((failure) => (
-                <div className="index-diagnostics__event" key={`${failure.path}:${failure.line}:${failure.column}`}>
-                  <span>{failure.path}:{failure.line}:{failure.column}</span>
-                  <strong>{failure.message}</strong>
-                </div>
-              )) : (
-                <div className="index-diagnostics__empty">No parser errors recorded.</div>
-              )}
-            </section>
+            <IndexDiagnosticsParserErrorsSection parserFailures={diagnostics?.parserFailures ?? []} />
 
-            <section className="index-diagnostics__section" id="index-diagnostics-unresolved-imports" aria-label="Unresolved Imports">
-              <div className="index-diagnostics__section-title">
-                <h3>Unresolved Imports</h3>
-                <span>{diagnostics?.unresolvedImports.length ?? 0} imports</span>
-              </div>
-              {(diagnostics?.unresolvedImports ?? []).length > 0 ? diagnostics?.unresolvedImports.map((item) => (
-                <div className="index-diagnostics__event" key={`${item.fromPath}:${item.sourceModule}:${item.line}:${item.column}`}>
-                  <span>{item.fromPath}:{item.line}:{item.column}</span>
-                  <strong>{item.sourceModule}</strong>
-                </div>
-              )) : (
-                <div className="index-diagnostics__empty">No unresolved imports recorded.</div>
-              )}
-            </section>
+            <IndexDiagnosticsUnresolvedImportsSection unresolvedImports={diagnostics?.unresolvedImports ?? []} />
 
             <IndexDiagnosticsPerformanceTimelineSection
               timelineCount={viewModel.timelineCount}
