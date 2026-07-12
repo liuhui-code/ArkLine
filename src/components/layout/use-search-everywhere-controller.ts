@@ -26,10 +26,6 @@ import type { OverlayKey } from "@/components/layout/shell-state";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 import {
-  reportSearchEverywhereMiss,
-  reportTextSearchMiss,
-} from "@/components/layout/search-miss-reporting";
-import {
   canUseNativeTextSearchRuntime,
   runFallbackTextSearch,
 } from "@/components/layout/search-text-fallback";
@@ -47,6 +43,7 @@ import {
   moveSearchSelection,
   setSearchSelection,
 } from "@/components/layout/search-selection-actions";
+import { createSearchMissReporters } from "@/components/layout/search-miss-reporters";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -131,6 +128,12 @@ export function useSearchEverywhereController({
     getOpenDocumentContent,
     getActiveContent,
     openFile: workspaceApi.openFile,
+  });
+  const searchMissReporters = createSearchMissReporters({
+    isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
+    explainIndexMiss,
+    recordRecentQueryExplain,
+    onStatusChange,
   });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
@@ -276,17 +279,7 @@ export function useSearchEverywhereController({
       clearSearchResults,
       patchSearchSession: searchSessionStoreRef.current.patch,
       recordUiInteraction,
-      reportMiss: (requestId, missReport) => {
-        void reportSearchEverywhereMiss({
-          requestId,
-          query: missReport.query,
-          explain: missReport.explain,
-          isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
-          explainIndexMiss,
-          recordRecentQueryExplain,
-          onStatusChange,
-        });
-      },
+      reportMiss: searchMissReporters.reportEntityMiss,
     });
   }
 
@@ -307,15 +300,7 @@ export function useSearchEverywhereController({
       patchSearchSession: searchSessionStoreRef.current.patch,
       recordUiInteraction,
       scheduleSelectedPreview,
-      reportMiss: (requestId, missReport) => {
-        void reportTextSearchMiss({
-          requestId,
-          ...missReport,
-          isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
-          explainIndexMiss,
-          onStatusChange,
-        });
-      },
+      reportMiss: searchMissReporters.reportTextMiss,
     });
   }
 
