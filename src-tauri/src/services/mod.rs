@@ -342,6 +342,9 @@ pub(crate) mod workspace_symbol_resolution_refresh_plan_service;
 #[cfg(test)]
 mod workspace_symbol_resolution_refresh_plan_service_tests;
 pub mod workspace_symbol_resolution_schema_service;
+pub(crate) mod workspace_symbol_resolution_unresolved_service;
+#[cfg(test)]
+mod workspace_symbol_resolution_unresolved_service_tests;
 pub mod workspace_symbol_resolution_service;
 #[cfg(test)]
 mod workspace_symbol_resolution_service_tests;

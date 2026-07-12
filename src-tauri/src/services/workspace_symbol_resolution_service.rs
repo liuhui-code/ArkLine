@@ -21,6 +21,7 @@ use crate::services::workspace_symbol_resolution_path_plan_service::plan_symbol_
 use crate::services::workspace_symbol_resolution_refresh_plan_service::{
     plan_symbol_resolution_refresh, SymbolResolutionRefreshPlan,
 };
+use crate::services::workspace_symbol_resolution_unresolved_service::insert_unresolved_symbol;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceSymbolResolutionSummary {
@@ -267,35 +268,6 @@ fn delete_symbol_resolution_for_paths(
             .execute(params![root_key, path])
             .map_err(|error| error.to_string())?;
     }
-    Ok(())
-}
-
-fn insert_unresolved_symbol(
-    connection: &Connection,
-    root_key: &str,
-    path: &str,
-    name: &str,
-    reason: &str,
-    line: i64,
-    column: i64,
-    indexed_generation: u64,
-) -> Result<(), String> {
-    connection
-        .execute(
-            "insert into workspace_unresolved_symbols (
-                root_path, path, name, reason, line, column, indexed_generation
-             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                root_key,
-                path,
-                name,
-                reason,
-                line,
-                column,
-                indexed_generation as i64,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
     Ok(())
 }
 
