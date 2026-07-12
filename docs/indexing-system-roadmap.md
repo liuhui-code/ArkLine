@@ -73,18 +73,27 @@ Implemented foundations:
 - Search Everywhere over files/classes/symbols with source-aware ranking.
 - UTF-8-safe global text search summary handling.
 - Basic ArkTS keyword completion additions.
+- Central scheduler and task state machine for priority, generation, cancellation,
+  superseding, resumable chunks, and task-status publication.
+- Durable file fingerprint table and service for unchanged/changed/deleted path
+  classification across refreshes.
+- Readiness-aware query facade for Search Everywhere, global text search,
+  definition, usages, file symbols, and completion envelopes.
+- SDK/API symbols are persisted as active-SDK-scoped search, completion, and
+  navigation candidates.
+- Index diagnostics, health, repair, and explain services expose queue state,
+  layer readiness, parser failures, unresolved imports, SDK counts, and recent
+  unified index events.
 
-Known architectural weakness:
+Known remaining architectural weakness:
 
-- Calls are still mostly direct: command/watcher/runtime call scan, content
-  index, symbol index, persistence, and query functions directly.
-- There is no central scheduler or task state machine.
-- There is no file fingerprint table, so unchanged files cannot be skipped
-  reliably across restarts.
-- There is no query facade that owns fallback decisions across memory,
-  structured SQLite, FTS, language service, and SDK index.
-- SDK symbols are not indexed as first-class workspace/search entities.
-- Index diagnostics are not visible enough to explain missing results.
+- Some older compatibility wrappers still call lower-level services directly.
+- Search scaling still needs regex literal prefiltering, streaming delivery, and
+  richer large-result ranking policy.
+- SDK indexing captures useful API declarations and members, but still needs
+  deeper ArkUI signature/overload metadata and versioned invalidation polish.
+- Diagnostics are available, but the roadmap needs to keep closing gaps between
+  backend explain data and the most actionable UI affordances.
 
 ## Gap Analysis
 
@@ -92,33 +101,35 @@ Known architectural weakness:
 
 Current:
 
-- Watcher immediately calls `refresh_workspace_index_for_changed_paths`.
-- Refresh/open paths execute synchronously through runtime methods.
-- There is no task queue, coalescing window, cancellation, or priority model.
+- `workspace_index_scheduler_service` owns task priority, coalescing, path
+  dedupe, and bounded draining.
+- `workspace_index_state_machine_service` owns task lifecycle transitions,
+  terminal-state protection, cancellation, superseding, and stale-generation
+  rejection.
+- Manager and worker services publish running, queued, terminal, and stalled
+  status projections.
 
 Missing:
 
-- Task model: open, refresh, changed paths, SDK indexing, content indexing,
-  symbol indexing, query warmup.
-- Debounce/coalesce of file events.
-- Priority order: user-blocking open/query, active file, visible editor,
-  watcher changes, background full scan.
-- Cancellation/generation checks when workspace changes or tasks are superseded.
-- Indexing status events suitable for UI.
+- More mature retry/backoff policy for repeated failures.
+- More user-facing explanation for paused/deferred background work.
+- Longer-running real-project scheduler telemetry beyond the current gates.
 
 ### 2. File Fingerprints
 
 Current:
 
-- Paths are tracked, but there is no durable per-file fingerprint.
-- Modified-file indexing depends on watcher paths.
+- `workspace_file_fingerprint_service` persists file metadata and classifies
+  unchanged, changed, and deleted paths.
+- Manager refresh paths use fingerprints to skip unchanged watcher updates.
+- Current file readiness and explain services use fingerprint rows when
+  describing missing or stale index state.
 
 Missing:
 
-- SQLite fingerprint table with path, mtime, size, optional hash, indexed
-  generation, and content/symbol versions.
-- Startup validation that reuses unchanged index rows.
-- Detection of stale/missing rows after crashes or schema changes.
+- Optional content hashes for metadata-collision hardening on selected files.
+- More explicit stale-row repair reporting after interrupted writes.
+- Version-by-layer freshness metadata for future index format upgrades.
 
 ### 3. Index Schema and Migrations
 
@@ -142,18 +153,15 @@ Current:
   scoped file/class/symbol/API lookup, and content search entry points.
 - Search Everywhere now includes indexed SDK/API candidates through the query
   facade.
+- `workspace_index_facade_service` and focused facade services route definition,
+  usages, completion, file-symbol, Search Everywhere, and text-search queries
+  through readiness and explain envelopes.
 
 Missing:
 
-- Remaining query facade coverage:
-  - definition candidates
-  - UI wiring for Double Shift category tabs
-- Unified fallback rules:
-  - memory first when fresh
-  - SQLite structured tables when restored
-  - FTS for content
-  - language service/SDK for semantic lookup
-  - same-file fallback only as a last resort
+- Remaining UI polish for Double Shift category tabs and result grouping.
+- Stronger policy documentation for when each facade may fall back to legacy
+  language-service or same-file behavior.
 
 ### 5. Semantic and SDK Indexing
 
@@ -163,13 +171,17 @@ Current:
 - SDK symbols are persisted as indexed search entities.
 - SDK Apply triggers SDK symbol indexing and Search Everywhere can return
   SDK/API candidates.
+- SDK API cache, scan-plan, persistence, active-SDK scoping, and diagnostics are
+  covered by dedicated services and tests.
+- Definition and completion facades can resolve active SDK API and member
+  candidates.
 
 Missing:
 
 - ArkUI component/property/method signature index.
-- System API declaration targets for jump-to-definition.
-- SDK version and path in index metadata.
-- Scheduler-owned SDK rebuild instead of direct Settings Apply call.
+- Deeper overload/signature metadata and documentation text extraction.
+- More complete declaration targets for every SDK source layout variant.
+- More visible SDK invalidation and rebuild explanation in UI.
 
 ### 6. Content Search Scaling
 
@@ -192,19 +204,16 @@ Missing:
 Current:
 
 - Tests prove behavior, but runtime diagnostics are limited.
+- Diagnostics, health, repair, file readiness, and query explain services are
+  implemented and surfaced through command/UI paths.
+- Recent unified index events, task timeline, queue pressure, parser failures,
+  unresolved imports, SDK metadata, and schema counts are inspectable.
 
 Missing:
 
-- Index status panel or command.
-- Counts for files, content rows, symbols, SDK symbols.
-- Last indexed generation and last failure.
-- Explain-missing-result diagnostics:
-  - excluded path
-  - stale file
-  - SDK not ready
-  - partial index
-  - parser failure
-- Rebuild index and clear cache operations.
+- Tighter visual hierarchy for diagnostics when multiple repair actions exist.
+- One-click collection/export of index health evidence for bug reports.
+- More timeline sampling for slow files and repeated retries.
 
 ## Target Architecture
 

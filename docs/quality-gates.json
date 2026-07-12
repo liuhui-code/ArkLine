@@ -29,6 +29,7 @@
   "frontendQualityTests": [
     "tests/frontend/package-scripts.test.ts",
     "tests/frontend/quality-gate-manifest.test.ts",
+    "tests/frontend/indexing-roadmap-status.test.ts",
     "tests/frontend/ci-workflow-gates.test.ts",
     "tests/frontend/readme-quality-gates.test.ts",
     "tests/frontend/check-line-count.test.mjs",
