@@ -9,6 +9,15 @@ import {
   getLayerReadinessStatusText,
 } from "@/components/layout/app-shell-model";
 import {
+  buildIndexDiagnosticsViewModel,
+  formatClockTime,
+  formatLayerCounts,
+  formatRepairAction,
+  formatTaskDetails,
+  formatTaskDuration,
+  formatTaskProgress,
+} from "@/components/layout/index-diagnostics-model";
+import {
   buildQueryExplainTimeline,
   type QueryEnvelopeExplainSummary,
   type RecentQueryExplain,
@@ -68,12 +77,21 @@ export function IndexDiagnosticsCenter({
   const queryEvents = diagnostics?.recentEvents.filter((event) => event.scope === "query") ?? [];
   const queryTimeline = buildQueryExplainTimeline({ frontend: recentQueryExplains, backend: queryEvents });
   const languageQuerySnapshots = languageQuerySnapshotStore.snapshot();
-  const dbSize = formatBytes(diagnostics?.dbSizeBytes ?? 0);
   const queuePressure = diagnostics?.queuePressure;
   const repairActions = diagnostics?.repairActions ?? [];
   const layerStatusText = getLayerReadinessStatusText(layerReadiness);
-  const headerStatusText = layerStatusText
-    ?? (diagnostics ? `${diagnostics.status} · ${diagnostics.fileCount.toLocaleString()} files` : "Workspace index evidence");
+  const viewModel = buildIndexDiagnosticsViewModel({
+    diagnostics: diagnostics ? {
+      status: diagnostics.status,
+      fileCount: diagnostics.fileCount,
+      dbSizeBytes: diagnostics.dbSizeBytes,
+      timelineCount: diagnostics.timeline.length,
+    } : null,
+    layerStatusText,
+    uiLatencyCount: uiLatencySamples.length,
+    ipcLatencyCount: ipcLatencySamples.length,
+    renderPressureCount: renderPressureSamples.length,
+  });
 
   return (
     <div className="index-diagnostics-modal" role="presentation" onMouseDown={onClose}>
@@ -87,7 +105,7 @@ export function IndexDiagnosticsCenter({
         <header className="index-diagnostics__header">
           <div>
             <h2>Index Diagnostics Center</h2>
-            <p>{headerStatusText}</p>
+            <p>{viewModel.headerStatusText}</p>
           </div>
           <div className="index-diagnostics__actions">
             <button type="button" className="toolbar__button" onClick={onRefresh}>Refresh</button>
@@ -226,7 +244,7 @@ export function IndexDiagnosticsCenter({
                 <Metric label="Discovery cursor" value={diagnostics?.discoveryHasMore ? "has more" : "complete"} />
                 <Metric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
                 <Metric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
-                <Metric label="DB size" value={dbSize} />
+                <Metric label="DB size" value={viewModel.dbSize} />
                 <Metric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
                 <Metric label="Last error" value={diagnostics?.lastError ?? "none"} />
               </div>
@@ -290,7 +308,7 @@ export function IndexDiagnosticsCenter({
             <section className="index-diagnostics__section" aria-label="Performance Timeline">
               <div className="index-diagnostics__section-title">
                 <h3>Performance Timeline</h3>
-                <span>{performanceTimelineCount(diagnostics?.timeline.length ?? 0, uiLatencySamples, ipcLatencySamples, renderPressureSamples)} events</span>
+                <span>{viewModel.timelineCount} events</span>
               </div>
               <div className="index-diagnostics__timeline">
                 {renderPressureSamples.map((item) => (
@@ -333,7 +351,7 @@ export function IndexDiagnosticsCenter({
                     <span>{item.durationMs == null ? "start" : `${item.durationMs}ms`}</span>
                   </div>
                 )) : null}
-                {performanceTimelineCount(diagnostics?.timeline.length ?? 0, uiLatencySamples, ipcLatencySamples, renderPressureSamples) === 0 ? (
+                {viewModel.timelineCount === 0 ? (
                   <div className="index-diagnostics__empty">No timeline events yet.</div>
                 ) : null}
               </div>
@@ -394,10 +412,6 @@ function QueryExplainSummary({ summary }: { summary: QueryEnvelopeExplainSummary
   );
 }
 
-function formatLayerCounts(layer: WorkspaceIndexLayerReadiness) {
-  return `${layer.indexedCount.toLocaleString()} indexed · ${layer.failedCount.toLocaleString()} failed · ${layer.staleCount.toLocaleString()} stale`;
-}
-
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="index-diagnostics__metric">
@@ -405,90 +419,4 @@ function Metric({ label, value }: { label: string; value: string }) {
       <strong>{value}</strong>
     </div>
   );
-}
-
-function formatBytes(bytes: number) {
-  if (bytes <= 0) {
-    return "0 KB";
-  }
-  if (bytes < 1024 * 1024) {
-    return `${Math.ceil(bytes / 1024).toLocaleString()} KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatTaskProgress(task: WorkspaceIndexTaskStatus) {
-  const total = task.progressTotal;
-  const current = task.progressCurrent;
-  if (total <= 0) {
-    return `${current}/${total}`;
-  }
-  const percentage = Math.max(0, Math.min(100, Math.round((current / total) * 100)));
-  return `${current}/${total} (${percentage}%)`;
-}
-
-function formatTaskDuration(task: WorkspaceIndexTaskStatus) {
-  const startedAt = task.startedAt;
-  if (startedAt == null) {
-    return "not started";
-  }
-  if (task.finishedAt != null) {
-    return `${formatDurationMs(task.finishedAt - startedAt)} total`;
-  }
-  if (task.lastHeartbeatAt != null) {
-    return `${formatDurationMs(task.lastHeartbeatAt - startedAt)} active`;
-  }
-  return "started";
-}
-
-function formatTaskDetails(task: WorkspaceIndexTaskStatus) {
-  const detail = task.error ?? task.message ?? task.reason;
-  if (!task.stalled) {
-    return detail;
-  }
-  if (detail.toLowerCase().includes("no heartbeat")) {
-    return "No heartbeat > 60s";
-  }
-  return detail ? `${detail} · No heartbeat > 60s` : "No heartbeat > 60s";
-}
-
-function formatDurationMs(durationMs: number) {
-  const clampedMs = Math.max(0, durationMs);
-  if (clampedMs < 1000) {
-    return `${clampedMs}ms`;
-  }
-  if (clampedMs < 60_000) {
-    return `${(clampedMs / 1000).toFixed(1)}s`;
-  }
-  return `${Math.floor(clampedMs / 60_000)}m ${Math.floor((clampedMs % 60_000) / 1000)}s`;
-}
-
-function formatClockTime(timestamp: number) {
-  return new Date(timestamp).toLocaleTimeString();
-}
-
-function performanceTimelineCount(
-  backendCount: number,
-  ui: UiLatencySample[],
-  ipc: IpcLatencySample[],
-  renders: RenderPressureSample[],
-) {
-  return backendCount + ui.length + ipc.length + renders.length;
-}
-
-function formatRepairAction(action: string) {
-  switch (action) {
-    case "rebuildProjectIndex":
-      return "Rebuild Project Index";
-    case "rebuildSdkIndex":
-      return "Rebuild SDK Index";
-    case "configureSdk":
-      return "Configure SDK";
-    case "inspectUnresolvedImports":
-      return "Inspect Unresolved Imports";
-    case "inspectParserFailures":
-      return "Inspect Parser Failures";
-    default:
-      return action;
-  }
 }
