@@ -45,6 +45,7 @@ import {
   createSearchFileReader,
   scheduleSelectedSearchPreviewWithReader,
 } from "@/components/layout/search-file-reader";
+import { toggleSearchTextOption } from "@/components/layout/search-text-options-state";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -230,11 +231,11 @@ export function useSearchEverywhereController({
   }
 
   function toggleSearchEverywhereCaseSensitive() {
-    setSearchEverywhereOptions((current) => ({ ...current, caseSensitive: !current.caseSensitive }));
+    setSearchEverywhereOptions((current) => toggleSearchTextOption(current, "caseSensitive"));
   }
 
   function toggleSearchEverywhereWholeWord() {
-    setSearchEverywhereOptions((current) => ({ ...current, wholeWord: !current.wholeWord }));
+    setSearchEverywhereOptions((current) => toggleSearchTextOption(current, "wholeWord"));
   }
 
   useEffect(() => {
