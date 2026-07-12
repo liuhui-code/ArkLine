@@ -239,6 +239,9 @@ mod workspace_index_queue_pressure_service_tests;
 pub mod workspace_index_readiness_service;
 #[cfg(test)]
 mod workspace_index_readiness_service_tests;
+pub mod workspace_index_rebuild_service;
+#[cfg(test)]
+mod workspace_index_rebuild_service_tests;
 pub mod workspace_index_repair_action_service;
 pub mod workspace_index_repair_service;
 #[cfg(test)]

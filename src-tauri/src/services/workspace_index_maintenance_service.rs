@@ -21,15 +21,6 @@ pub fn clear_workspace_index(
     migrate_workspace_index_schema(root_path)
 }
 
-pub fn rebuild_workspace_index(
-    index_runtime: &WorkspaceIndexRuntime,
-    root_path: &str,
-) -> Result<(), String> {
-    clear_workspace_index(index_runtime, root_path)?;
-    index_runtime.refresh_workspace_index(root_path)?;
-    Ok(())
-}
-
 fn workspace_index_dir(root_path: &str) -> PathBuf {
     Path::new(root_path).join(".arkline").join("index")
 }

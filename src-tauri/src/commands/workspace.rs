@@ -14,10 +14,10 @@ use crate::services::workspace_index_diagnostics_service::inspect_workspace_inde
 use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
 use crate::services::workspace_index_maintenance_service::{
     clear_workspace_index as clear_workspace_index_service,
-    rebuild_workspace_index as rebuild_workspace_index_service,
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
+use crate::services::workspace_index_rebuild_service::rebuild_workspace_index_through_manager;
 use crate::services::workspace_index_repair_service::{
     inspect_parser_failures as inspect_parser_failures_service,
     inspect_unresolved_imports as inspect_unresolved_imports_service,
@@ -118,8 +118,9 @@ pub fn clear_workspace_index(
 pub fn rebuild_workspace_index(
     root_path: String,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<(), String> {
-    rebuild_workspace_index_service(&index_runtime, &root_path)
+    rebuild_workspace_index_through_manager(&index_runtime, &index_manager, &root_path)
 }
 
 #[tauri::command]
