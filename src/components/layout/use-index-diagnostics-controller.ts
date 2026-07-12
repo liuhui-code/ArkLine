@@ -183,6 +183,16 @@ export function useIndexDiagnosticsController({
     onStatusChange("Rebuild SDK Index requested");
   }
 
+  async function rebuildProjectIndexFromDiagnostics() {
+    if (!workspace?.rootPath || !workspaceApi.rebuildWorkspaceIndex) {
+      onStatusChange("Rebuild Project Index unavailable");
+      return;
+    }
+    onStatusChange("Rebuild Project Index requested");
+    await workspaceApi.rebuildWorkspaceIndex(workspace.rootPath);
+    await refreshIndexDiagnostics();
+  }
+
   async function waitForWorkspaceIndexTaskReady(rootPath: string, taskId: string) {
     if (!workspaceApi.getWorkspaceIndexTaskStatuses) return;
     for (let attempt = 0; attempt < SDK_INDEX_READY_WAIT_ATTEMPTS; attempt += 1) {
@@ -297,6 +307,7 @@ export function useIndexDiagnosticsController({
     refreshIndexDiagnostics,
     openIndexDiagnostics,
     resumeIndexingFromDiagnostics,
+    rebuildProjectIndexFromDiagnostics,
     rebuildSdkIndexFromDiagnostics,
     indexSdkSymbolsForSettings,
     explainIndexMiss,

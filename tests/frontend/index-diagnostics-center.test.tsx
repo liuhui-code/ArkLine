@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IndexDiagnosticsCenter } from "@/components/layout/IndexDiagnosticsCenter";
 import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
@@ -205,6 +205,47 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(health).getByText("12")).toBeVisible();
     expect(within(health).getByText("Discovery cursor")).toBeVisible();
     expect(within(health).getByText("has more")).toBeVisible();
+  });
+
+  it("renders schema version rebuild evidence and triggers project rebuild", () => {
+    const diagnostics = diagnosticsWithBackendQueryEvent();
+    diagnostics.repairActions = ["rebuildProjectIndex"];
+    diagnostics.schemaVersionActions = [{
+      domain: "content",
+      expectedVersion: 1,
+      persistedVersion: 0,
+      status: "needs-rebuild",
+    }];
+    const onRebuildProjectIndex = vi.fn();
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnostics}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={onRebuildProjectIndex}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const health = screen.getByRole("region", { name: "Health / Storage" });
+    expect(within(health).getByText("Schema Rebuild Required")).toBeVisible();
+    expect(within(health).getByText("content")).toBeVisible();
+    expect(within(health).getByText("0 -> 1")).toBeVisible();
+
+    fireEvent.click(within(health).getByRole("button", { name: "Rebuild Project Index" }));
+
+    expect(onRebuildProjectIndex).toHaveBeenCalledTimes(1);
   });
 
   it("renders workspace and current-file layer readiness", () => {

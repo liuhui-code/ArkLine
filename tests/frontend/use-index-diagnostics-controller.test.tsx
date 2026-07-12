@@ -133,6 +133,37 @@ describe("useIndexDiagnosticsController", () => {
     expect(result.current.layerReadiness?.layers).toHaveLength(2);
   });
 
+  it("rebuilds project index from diagnostics and refreshes diagnostic evidence", async () => {
+    const onStatusChange = vi.fn();
+    const rebuildWorkspaceIndex = vi.fn(async () => undefined);
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const getWorkspaceIndexTaskStatuses = vi.fn(async () => [
+      taskStatus({ taskId: "rebuild-1", kind: "refresh-workspace", status: "running" }),
+    ]);
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        rebuildWorkspaceIndex,
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses,
+        getWorkspaceIndexLayerReadiness,
+      }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.rebuildProjectIndexFromDiagnostics();
+      await Promise.resolve();
+    });
+
+    expect(rebuildWorkspaceIndex).toHaveBeenCalledWith("/workspace");
+    expect(inspectWorkspaceIndex).toHaveBeenCalledWith("/workspace");
+    expect(getWorkspaceIndexTaskStatuses).toHaveBeenCalledWith("/workspace");
+    expect(result.current.indexDiagnostics?.fileCount).toBe(12);
+    expect(result.current.workspaceIndexTaskStatuses[0]?.taskId).toBe("rebuild-1");
+    expect(onStatusChange).toHaveBeenCalledWith("Rebuild Project Index requested");
+  });
+
   it("refreshes existing layer readiness when the active file changes", async () => {
     const getWorkspaceIndexLayerReadiness = vi.fn(async (_rootPath: string, currentFilePath?: string | null) => (
       layerReadiness(currentFilePath)

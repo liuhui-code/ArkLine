@@ -79,6 +79,7 @@ export function IndexDiagnosticsCenter({
   const languageQuerySnapshots = languageQuerySnapshotStore.snapshot();
   const queuePressure = diagnostics?.queuePressure;
   const repairActions = diagnostics?.repairActions ?? [];
+  const schemaRebuildActions = diagnostics?.schemaVersionActions.filter((action) => action.status === "needs-rebuild") ?? [];
   const layerStatusText = getLayerReadinessStatusText(layerReadiness);
   const viewModel = buildIndexDiagnosticsViewModel({
     diagnostics: diagnostics ? {
@@ -248,6 +249,22 @@ export function IndexDiagnosticsCenter({
                 <Metric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
                 <Metric label="Last error" value={diagnostics?.lastError ?? "none"} />
               </div>
+              {schemaRebuildActions.length > 0 ? (
+                <div className="index-diagnostics__table" aria-label="Schema Rebuild Required">
+                  <div className="index-diagnostics__row index-diagnostics__row--header index-diagnostics__row--schema">
+                    <span>Schema Rebuild Required</span>
+                    <span>Persisted</span>
+                    <span>Expected</span>
+                  </div>
+                  {schemaRebuildActions.map((action) => (
+                    <div className="index-diagnostics__row index-diagnostics__row--schema" key={action.domain}>
+                      <span>{action.domain}</span>
+                      <span>{action.persistedVersion ?? "missing"}</span>
+                      <span>{`${action.persistedVersion ?? "missing"} -> ${action.expectedVersion}`}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <div className="index-diagnostics__repair-actions" aria-label="Repair Actions">
                 {repairActions.length > 0 ? repairActions.map((action) => (
                   action === "resumeIndexing" ? (

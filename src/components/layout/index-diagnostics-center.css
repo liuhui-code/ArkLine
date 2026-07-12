@@ -39,6 +39,10 @@
   white-space: nowrap;
 }
 
+.index-diagnostics__row--schema {
+  grid-template-columns: minmax(160px, 1fr) 120px 120px;
+}
+
 .index-diagnostics__status {
   justify-self: start;
   padding: 1px 7px;

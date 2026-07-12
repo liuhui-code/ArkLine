@@ -42,6 +42,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   onCloseIndexDiagnostics: () => void;
   onRefreshIndexDiagnostics: () => void;
   onResumeIndexingFromDiagnostics: () => void;
+  onRebuildProjectIndexFromDiagnostics: () => void;
   onRebuildSdkIndexFromDiagnostics: () => void;
   onConfigureSdkFromDiagnostics: () => void;
   semanticState: SemanticState;
@@ -89,6 +90,7 @@ export function AppShellIndexAndStatusSurfaces({
   onCloseIndexDiagnostics,
   onRefreshIndexDiagnostics,
   onResumeIndexingFromDiagnostics,
+  onRebuildProjectIndexFromDiagnostics,
   onRebuildSdkIndexFromDiagnostics,
   onConfigureSdkFromDiagnostics,
   semanticState,
@@ -152,7 +154,7 @@ export function AppShellIndexAndStatusSurfaces({
         onClose={onCloseIndexDiagnostics}
         onRefresh={onRefreshIndexDiagnostics}
         onResumeIndexing={onResumeIndexingFromDiagnostics}
-        onRebuildProjectIndex={onRebuildIndexFromExplainPanel}
+        onRebuildProjectIndex={onRebuildProjectIndexFromDiagnostics}
         onRebuildSdkIndex={onRebuildSdkIndexFromDiagnostics}
         onConfigureSdk={onConfigureSdkFromDiagnostics}
       />
