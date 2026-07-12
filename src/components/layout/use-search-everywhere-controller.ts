@@ -22,7 +22,6 @@ import type { QueryExplainRecordInput } from "@/features/workspace/workspace-que
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 import {
   canUseNativeTextSearchRuntime,
-  runFallbackTextSearch,
 } from "@/components/layout/search-text-fallback";
 import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
 import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
@@ -40,6 +39,7 @@ import {
 } from "@/components/layout/search-selection-actions";
 import { createSearchMissReporters } from "@/components/layout/search-miss-reporters";
 import { createSearchOpenActions } from "@/components/layout/search-open-actions";
+import { runSearchFallbackText } from "@/components/layout/search-fallback-runner";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -310,7 +310,7 @@ export function useSearchEverywhereController({
     generation: number,
     cursor: WorkspaceTextSearchCursor | null = null,
   ) {
-    return runFallbackTextSearch({
+    return runSearchFallbackText({
       query,
       dirty,
       generation,
