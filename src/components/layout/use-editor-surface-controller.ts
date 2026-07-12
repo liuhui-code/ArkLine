@@ -40,6 +40,11 @@ export type UseEditorSurfaceControllerOptions = {
   onStatusChange: (message: string) => void;
 };
 
+export type RestoreFileResult = {
+  ok: boolean;
+  errorMessage?: string;
+};
+
 export function useEditorSurfaceController({
   workspaceApi,
   activePath,
@@ -67,31 +72,40 @@ export function useEditorSurfaceController({
   const navigationRuntimeRef = useRef(createNavigationTransactionRuntime());
 
   async function openFile(path: string) {
+    await openFileInternal(path);
+  }
+
+  async function restoreFile(path: string): Promise<RestoreFileResult> {
+    return openFileInternal(path);
+  }
+
+  async function openFileInternal(path: string): Promise<RestoreFileResult> {
     const title = getPathBasename(path);
     if (documentsRef.current.getDocument(path)) {
       activateLoadedDocument(path);
       onStatusChange(`Opened ${title}`);
-      return;
+      return { ok: true };
     }
     const transaction = navigationRuntimeRef.current.start(path);
     onStatusChange(`Opening ${title}...`);
     let content: string;
     try {
       content = await workspaceApi.openFile(path);
-    } catch {
+    } catch (error) {
       if (navigationRuntimeRef.current.isCurrent(transaction.id)) {
         navigationRuntimeRef.current.finish(transaction.id);
         onStatusChange(`Open failed ${title}`);
       }
-      return;
+      return { ok: false, errorMessage: error instanceof Error ? error.message : String(error) };
     }
     if (!navigationRuntimeRef.current.isCurrent(transaction.id)) {
-      return;
+      return { ok: false, errorMessage: "superseded" };
     }
     documentsRef.current.openDocument(path, content);
     activateLoadedDocument(path);
     navigationRuntimeRef.current.finish(transaction.id);
     onStatusChange(`Opened ${title}`);
+    return { ok: true };
   }
 
   function activateLoadedDocument(path: string) {
@@ -150,6 +164,7 @@ export function useEditorSurfaceController({
 
   return {
     openFile,
+    restoreFile,
     submitGoToLine,
     handleEditorChange,
     handleEditorSelectionChange,

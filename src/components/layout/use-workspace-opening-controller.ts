@@ -11,7 +11,7 @@ export type UseWorkspaceOpeningControllerOptions = {
   recentProjects: string[];
   getWorkspaceSessions: () => AppSettings["workspaceSessions"];
   applyWorkspaceSessionSnapshot: (snapshot: WorkspaceViewModel) => void;
-  openFile: (path: string) => Promise<void>;
+  restoreFile: (path: string) => Promise<{ ok: boolean; errorMessage?: string }>;
   resetProjectTree: () => void;
   loadProjectDirectory: (rootPath: string, directoryPath: string) => Promise<void>;
   loadProjectDirectoryForWorkspace: (workspace: WorkspaceViewModel | null, path: string) => void;
@@ -30,7 +30,7 @@ export function useWorkspaceOpeningController({
   recentProjects,
   getWorkspaceSessions,
   applyWorkspaceSessionSnapshot,
-  openFile,
+  restoreFile,
   resetProjectTree,
   loadProjectDirectory,
   loadProjectDirectoryForWorkspace,
@@ -57,12 +57,13 @@ export function useWorkspaceOpeningController({
 
   async function openWorkspace(rootPath: string) {
     try {
+      const activeFilePath = getWorkspaceSessions()[rootPath]?.activeFilePath;
       const snapshot = await workspaceApi.openWorkspace(rootPath);
       applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot));
       resetWorkspaceUi(snapshot.rootName);
       await loadBuildConfigurationsForRoot(snapshot.rootPath);
       await refreshSemanticState();
-      await restoreLastActiveFile(snapshot.rootPath);
+      await restoreLastActiveFile(activeFilePath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setProjectPathInput(rootPath);
@@ -75,18 +76,18 @@ export function useWorkspaceOpeningController({
     const snapshot = await workspaceApi.openDemoWorkspace();
     applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot));
     resetWorkspaceUi(snapshot.rootName);
-    await restoreLastActiveFile(snapshot.rootPath);
+    await restoreLastActiveFile(getWorkspaceSessions()[snapshot.rootPath]?.activeFilePath);
   }
 
-  async function restoreLastActiveFile(rootPath: string) {
-    const workspaceSessions = getWorkspaceSessions();
-    const activeFilePath = workspaceSessions[rootPath]?.activeFilePath;
+  async function restoreLastActiveFile(activeFilePath: string | undefined) {
     if (!activeFilePath) return;
     try {
-      await openFile(activeFilePath);
+      const result = await restoreFile(activeFilePath);
+      if (!result.ok) {
+        onStatusChange(`Last file unavailable: ${result.errorMessage ?? "open failed"}`);
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      onStatusChange(`Last file unavailable: ${message}`);
+      onStatusChange(`Last file unavailable: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

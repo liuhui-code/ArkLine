@@ -6,6 +6,7 @@ import { AppShellToolWindows } from "@/components/layout/AppShellToolWindows";
 import { useAppShellCommands } from "@/components/layout/use-app-shell-commands";
 import { useActiveDocumentActions } from "@/components/layout/use-active-document-actions";
 import { useActiveDocumentProjection } from "@/components/layout/use-active-document-projection";
+import { useActiveWorkspaceSessionPersistence } from "@/components/layout/use-active-workspace-session-persistence";
 import { useBuildControllerState } from "@/components/layout/use-build-controller-state";
 import { useCodeActionsWorkspaceEditController } from "@/components/layout/use-code-actions-workspace-edit-controller";
 import { useProjectOpening } from "@/components/layout/use-project-opening";
@@ -271,7 +272,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     focusEditorSoon,
     onStatusChange: setStatusText,
   });
-  const { openFile, submitGoToLine, handleEditorChange, handleEditorSelectionChange } = useEditorSurfaceController({
+  const { openFile, restoreFile, submitGoToLine, handleEditorChange, handleEditorSelectionChange } = useEditorSurfaceController({
     workspaceApi,
     activePath,
     quickOpenQuery,
@@ -402,7 +403,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     recentProjects,
     getWorkspaceSessions: () => settingsRef.current.state.settings.workspaceSessions,
     applyWorkspaceSessionSnapshot,
-    openFile,
+    restoreFile,
     resetProjectTree,
     loadProjectDirectory,
     loadProjectDirectoryForWorkspace,
@@ -415,18 +416,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   });
   workspaceOpeningActionsRef.current.openWorkspace = openWorkspace;
 
-  useEffect(() => {
-    if (!settingsHydrated || !workspace?.rootPath || !activePath) return;
-    const current = settingsRef.current.state.settings;
-    const currentSession = current.workspaceSessions[workspace.rootPath] ?? {};
-    if (currentSession.activeFilePath === activePath) return;
-    const nextWorkspaceSessions = {
-      ...current.workspaceSessions,
-      [workspace.rootPath]: { ...currentSession, activeFilePath: activePath },
-    };
-    settingsRef.current.update({ workspaceSessions: nextWorkspaceSessions });
-    void workspaceApi.saveSettings(settingsRef.current.state.settings);
-  }, [activePath, settingsHydrated, workspace?.rootPath, workspaceApi]);
+  useActiveWorkspaceSessionPersistence({ activePath, rootPath: workspace?.rootPath, settingsHydrated, settingsRef, workspaceApi });
 
   useEffect(() => () => {
     clearTypingCompletionTimer();
