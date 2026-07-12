@@ -78,6 +78,8 @@ mod services {
     pub mod language_client_runtime_service;
     pub mod language_command_service;
     pub mod language_service;
+    #[cfg(test)]
+    mod language_service_tests;
     pub mod process_command_service;
     pub mod semantic;
     pub mod semantic_host;
