@@ -45,14 +45,17 @@ fn load_fts_candidate_lines(
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![root_key, fts_query, limit as i64, offset as i64], |row| {
-            let line_number: i64 = row.get(1)?;
-            Ok(IndexedLine {
-                path: row.get(0)?,
-                line_number: usize::try_from(line_number).unwrap_or_default(),
-                text: row.get(2)?,
-            })
-        })
+        .query_map(
+            params![root_key, fts_query, limit as i64, offset as i64],
+            |row| {
+                let line_number: i64 = row.get(1)?;
+                Ok(IndexedLine {
+                    path: row.get(0)?,
+                    line_number: usize::try_from(line_number).unwrap_or_default(),
+                    text: row.get(2)?,
+                })
+            },
+        )
         .map_err(|error| error.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
@@ -79,19 +82,25 @@ fn load_like_candidate_lines(
         .map_err(|error| error.to_string())?;
     let query_offset = if case_sensitive { 0 } else { offset };
     let query_limit = if case_sensitive {
-        offset.saturating_add(limit).saturating_mul(8).max(offset + limit)
+        offset
+            .saturating_add(limit)
+            .saturating_mul(8)
+            .max(offset + limit)
     } else {
         limit
     };
     let rows = statement
-        .query_map(params![root_key, pattern, query_limit as i64, query_offset as i64], |row| {
-            let line_number: i64 = row.get(1)?;
-            Ok(IndexedLine {
-                path: row.get(0)?,
-                line_number: usize::try_from(line_number).unwrap_or_default(),
-                text: row.get(2)?,
-            })
-        })
+        .query_map(
+            params![root_key, pattern, query_limit as i64, query_offset as i64],
+            |row| {
+                let line_number: i64 = row.get(1)?;
+                Ok(IndexedLine {
+                    path: row.get(0)?,
+                    line_number: usize::try_from(line_number).unwrap_or_default(),
+                    text: row.get(2)?,
+                })
+            },
+        )
         .map_err(|error| error.to_string())?;
 
     let mut lines = rows

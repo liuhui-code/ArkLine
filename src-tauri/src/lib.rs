@@ -75,8 +75,8 @@ mod services {
     pub mod environment_doctor;
     pub mod git_command_service;
     pub mod git_trace_service;
-    pub mod language_command_service;
     pub mod language_client_runtime_service;
+    pub mod language_command_service;
     pub mod language_service;
     pub mod process_command_service;
     pub mod semantic;
@@ -245,6 +245,8 @@ mod services {
     #[cfg(test)]
     mod workspace_index_running_lifecycle_service_tests;
     pub mod workspace_index_scheduler_service;
+    #[cfg(test)]
+    mod workspace_index_scheduler_service_tests;
     pub mod workspace_index_schema_service;
     #[cfg(test)]
     mod workspace_index_schema_service_tests;

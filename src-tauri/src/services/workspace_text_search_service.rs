@@ -4,8 +4,8 @@ use std::path::Path;
 use regex::RegexBuilder;
 
 use crate::models::workspace::{
-    WorkspaceTextSearchContextLine, WorkspaceTextSearchMatch, WorkspaceTextSearchOptions,
-    WorkspaceTextSearchCursor, WorkspaceTextSearchQuery, WorkspaceTextSearchRequest,
+    WorkspaceTextSearchContextLine, WorkspaceTextSearchCursor, WorkspaceTextSearchMatch,
+    WorkspaceTextSearchOptions, WorkspaceTextSearchQuery, WorkspaceTextSearchRequest,
     WorkspaceTextSearchResult,
 };
 

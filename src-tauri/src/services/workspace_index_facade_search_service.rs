@@ -4,17 +4,15 @@ use crate::models::workspace::{
 };
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_content_index_service::search_indexed_workspace_content;
+use crate::services::workspace_index_candidate_page_service::{
+    query_workspace_candidate_page, query_workspace_file_symbol_page,
+};
 use crate::services::workspace_index_facade_explain_service::explain_facade_query;
 use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
-use crate::services::workspace_index_candidate_page_service::{
-    query_workspace_candidate_page, query_workspace_file_symbol_page,
-};
-use crate::services::workspace_index_query_service::{
-    WorkspaceIndexQueryScope,
-};
+use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
 
@@ -39,7 +37,8 @@ pub fn query_facade_search_everywhere_page(
     if scope == WorkspaceIndexQueryScope::Text {
         return query_facade_search_text_scope(index_runtime, root_path, query, limit);
     }
-    let envelope = query_workspace_candidate_page(index_runtime, root_path, query, scope, limit, cursor)?;
+    let envelope =
+        query_workspace_candidate_page(index_runtime, root_path, query, scope, limit, cursor)?;
     let explain = explain_facade_query(
         "searchEverywhere",
         &envelope.readiness,
@@ -79,7 +78,14 @@ pub fn query_facade_file_symbols_page(
     limit: usize,
     cursor: Option<usize>,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
-    let envelope = query_workspace_file_symbol_page(index_runtime, root_path, file_path, query, limit, cursor)?;
+    let envelope = query_workspace_file_symbol_page(
+        index_runtime,
+        root_path,
+        file_path,
+        query,
+        limit,
+        cursor,
+    )?;
     let explain = explain_facade_query(
         "fileSymbols",
         &envelope.readiness,

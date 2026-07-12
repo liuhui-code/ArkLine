@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{
-    WorkspaceTextSearchContextLine, WorkspaceTextSearchMatch, WorkspaceTextSearchQuery,
-    WorkspaceTextSearchCursor, WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
+    WorkspaceTextSearchContextLine, WorkspaceTextSearchCursor, WorkspaceTextSearchMatch,
+    WorkspaceTextSearchQuery, WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::workspace_content_query_service::{load_candidate_lines, IndexedLine};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
@@ -88,7 +88,10 @@ pub fn search_indexed_workspace_content(
     let connection = open_content_index(&request.root_path)?;
     ensure_schema(&connection)?;
     let root_key = normalize_index_path(&request.root_path);
-    let offset = request.cursor.as_ref().map_or(0, |cursor| cursor.path_index);
+    let offset = request
+        .cursor
+        .as_ref()
+        .map_or(0, |cursor| cursor.path_index);
     let lines = load_candidate_lines(
         &connection,
         &root_key,

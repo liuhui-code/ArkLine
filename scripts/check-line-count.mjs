@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +26,19 @@ export async function collectProjectFiles(cwd, roots = DEFAULT_ROOTS) {
 }
 
 async function collectFilesFromPath(absolutePath, cwd, files) {
+  let pathStats;
+  try {
+    pathStats = await stat(absolutePath);
+  } catch {
+    return;
+  }
+
+  if (pathStats.isFile()) {
+    await collectFile(absolutePath, cwd, files);
+    return;
+  }
+  if (!pathStats.isDirectory()) return;
+
   let entries;
   try {
     entries = await readdir(absolutePath, { withFileTypes: true });
@@ -41,10 +54,14 @@ async function collectFilesFromPath(absolutePath, cwd, files) {
       continue;
     }
     if (!entry.isFile()) continue;
-    const relativePath = toPosix(path.relative(cwd, nextPath));
-    if (!isTargetPath(relativePath)) continue;
-    files.push({ path: relativePath, text: await readFile(nextPath, "utf8") });
+    await collectFile(nextPath, cwd, files);
   }
+}
+
+async function collectFile(absolutePath, cwd, files) {
+  const relativePath = toPosix(path.relative(cwd, absolutePath));
+  if (!isTargetPath(relativePath)) return;
+  files.push({ path: relativePath, text: await readFile(absolutePath, "utf8") });
 }
 
 function countLines(text) {
@@ -77,7 +94,8 @@ async function main() {
   const cwd = process.cwd();
   const limit = Number.parseInt(process.argv.find((arg) => arg.startsWith("--limit="))?.slice("--limit=".length) ?? "", 10)
     || DEFAULT_LIMIT;
-  const files = await collectProjectFiles(cwd);
+  const roots = parseRoots(process.argv);
+  const files = await collectProjectFiles(cwd, roots);
   const violations = collectLineCountViolations(files, { limit });
 
   if (violations.length === 0) {
@@ -90,6 +108,16 @@ async function main() {
     console.error(`${violation.lineCount.toString().padStart(5, " ")} ${violation.path}`);
   }
   process.exitCode = 1;
+}
+
+function parseRoots(argv) {
+  const rootsArg = argv.find((arg) => arg.startsWith("--roots="));
+  if (!rootsArg) return DEFAULT_ROOTS;
+  return rootsArg
+    .slice("--roots=".length)
+    .split(",")
+    .map((root) => root.trim())
+    .filter(Boolean);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

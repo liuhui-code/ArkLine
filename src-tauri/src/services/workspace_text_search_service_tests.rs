@@ -37,7 +37,14 @@ fn finds_text_matches_with_context_from_indexed_paths() {
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
     fs::write(
         root.join("entry").join("src").join("Index.ets"),
-        ["@Entry", "@Component", "struct Index {", "  build() {}", "}"].join("\n"),
+        [
+            "@Entry",
+            "@Component",
+            "struct Index {",
+            "  build() {}",
+            "}",
+        ]
+        .join("\n"),
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
@@ -62,11 +69,22 @@ fn supports_regex_case_sensitive_and_whole_word_matching() {
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
     fs::write(
         root.join("entry").join("src").join("Index.ets"),
-        ["struct Index {", "  indexBuilder() {}", "  Text(\"ArkLine\")", "}"].join("\n"),
+        [
+            "struct Index {",
+            "  indexBuilder() {}",
+            "  Text(\"ArkLine\")",
+            "}",
+        ]
+        .join("\n"),
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
-    let indexed_paths = vec![root.join("entry").join("src").join("Index.ets").to_string_lossy().to_string()];
+    let indexed_paths = vec![root
+        .join("entry")
+        .join("src")
+        .join("Index.ets")
+        .to_string_lossy()
+        .to_string()];
 
     let regex_result =
         search_workspace_text(&request(&root_path, "/Text\\(\".+\"\\)/"), &indexed_paths);
@@ -113,7 +131,12 @@ fn builds_summaries_without_slicing_inside_utf8_characters() {
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
-    let indexed_paths = vec![root.join("entry").join("src").join("Index.ets").to_string_lossy().to_string()];
+    let indexed_paths = vec![root
+        .join("entry")
+        .join("src")
+        .join("Index.ets")
+        .to_string_lossy()
+        .to_string()];
 
     let result = search_workspace_text(&request(&root_path, "target"), &indexed_paths);
 
@@ -127,20 +150,39 @@ fn builds_summaries_without_slicing_inside_utf8_characters() {
 fn stops_between_files_when_cancelled() {
     let root = unique_temp_dir("workspace-text-search-cancelled");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
-    fs::write(root.join("entry").join("src").join("First.ets"), "target one").unwrap();
-    fs::write(root.join("entry").join("src").join("Second.ets"), "target two").unwrap();
+    fs::write(
+        root.join("entry").join("src").join("First.ets"),
+        "target one",
+    )
+    .unwrap();
+    fs::write(
+        root.join("entry").join("src").join("Second.ets"),
+        "target two",
+    )
+    .unwrap();
     let root_path = root.to_string_lossy().to_string();
     let indexed_paths = vec![
-        root.join("entry").join("src").join("First.ets").to_string_lossy().to_string(),
-        root.join("entry").join("src").join("Second.ets").to_string_lossy().to_string(),
+        root.join("entry")
+            .join("src")
+            .join("First.ets")
+            .to_string_lossy()
+            .to_string(),
+        root.join("entry")
+            .join("src")
+            .join("Second.ets")
+            .to_string_lossy()
+            .to_string(),
     ];
     let mut checks = 0;
 
-    let result =
-        search_workspace_text_with_cancellation(&request(&root_path, "target"), &indexed_paths, || {
+    let result = search_workspace_text_with_cancellation(
+        &request(&root_path, "target"),
+        &indexed_paths,
+        || {
             checks += 1;
             checks > 1
-        });
+        },
+    );
 
     assert_eq!(result.matches.len(), 1);
     assert_eq!(result.matches[0].file_name, "First.ets");
@@ -159,11 +201,23 @@ fn returns_cursor_for_next_page_without_repeating_matches() {
         ["target one", "target two", "target three"].join("\n"),
     )
     .unwrap();
-    fs::write(root.join("entry").join("src").join("Second.ets"), "target four").unwrap();
+    fs::write(
+        root.join("entry").join("src").join("Second.ets"),
+        "target four",
+    )
+    .unwrap();
     let root_path = root.to_string_lossy().to_string();
     let indexed_paths = vec![
-        root.join("entry").join("src").join("First.ets").to_string_lossy().to_string(),
-        root.join("entry").join("src").join("Second.ets").to_string_lossy().to_string(),
+        root.join("entry")
+            .join("src")
+            .join("First.ets")
+            .to_string_lossy()
+            .to_string(),
+        root.join("entry")
+            .join("src")
+            .join("Second.ets")
+            .to_string_lossy()
+            .to_string(),
     ];
     let mut first_request = request(&root_path, "target");
     first_request.limit = 2;
@@ -173,7 +227,14 @@ fn returns_cursor_for_next_page_without_repeating_matches() {
     second_request.cursor = first.next_cursor.clone();
     let second = search_workspace_text(&second_request, &indexed_paths);
 
-    assert_eq!(first.matches.iter().map(|matched| matched.line).collect::<Vec<_>>(), vec![1, 2]);
+    assert_eq!(
+        first
+            .matches
+            .iter()
+            .map(|matched| matched.line)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
     assert_eq!(
         first.next_cursor,
         Some(WorkspaceTextSearchCursor {

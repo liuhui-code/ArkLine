@@ -6,13 +6,13 @@ use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, UsageResult,
 };
+use crate::services::language_client_runtime_service::{
+    run_language_request, LanguageClientRequest, LanguageClientSource,
+};
 use crate::services::language_command_service::{
     complete_symbol_blocking, document_symbols_blocking, find_usages_blocking,
     goto_definition_blocking, goto_definition_candidates_blocking, hover_symbol_blocking,
     inspect_language_service_blocking,
-};
-use crate::services::language_client_runtime_service::{
-    run_language_request, LanguageClientRequest, LanguageClientSource,
 };
 use crate::services::language_service::LanguageRuntime;
 

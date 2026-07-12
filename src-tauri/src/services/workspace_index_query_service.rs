@@ -95,7 +95,8 @@ pub fn query_workspace_candidates(
     Ok(candidates)
 }
 
-#[allow(dead_code)] pub fn query_workspace_candidates_with_readiness(
+#[allow(dead_code)]
+pub fn query_workspace_candidates_with_readiness(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,
@@ -107,11 +108,13 @@ pub fn query_workspace_candidates(
     Ok(WorkspaceIndexQueryEnvelope {
         items,
         readiness,
-        explain: Vec::new(), next_cursor: None,
+        explain: Vec::new(),
+        next_cursor: None,
     })
 }
 
-#[allow(dead_code)] pub fn query_workspace_file_symbols_with_readiness(
+#[allow(dead_code)]
+pub fn query_workspace_file_symbols_with_readiness(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     file_path: &str,
@@ -124,7 +127,8 @@ pub fn query_workspace_candidates(
     Ok(WorkspaceIndexQueryEnvelope {
         items,
         readiness,
-        explain: Vec::new(), next_cursor: None,
+        explain: Vec::new(),
+        next_cursor: None,
     })
 }
 
@@ -147,7 +151,8 @@ pub fn query_definition_candidates_with_readiness(
     Ok(WorkspaceIndexQueryEnvelope {
         items,
         readiness,
-        explain: Vec::new(), next_cursor: None,
+        explain: Vec::new(),
+        next_cursor: None,
     })
 }
 

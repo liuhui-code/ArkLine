@@ -23,7 +23,9 @@ impl WorkspaceSearchSessionRuntime {
             .latest_generations
             .lock()
             .map_err(|_| "Workspace search session lock poisoned".to_string())?;
-        let latest = generations.entry(session_key(root_path, kind)).or_insert(generation);
+        let latest = generations
+            .entry(session_key(root_path, kind))
+            .or_insert(generation);
         *latest = (*latest).max(generation);
         Ok(())
     }

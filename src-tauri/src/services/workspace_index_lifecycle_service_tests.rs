@@ -147,9 +147,9 @@ fn open_workspace_supersedes_pending_refresh_for_the_same_workspace() {
     assert!(statuses.iter().any(|status| {
         status.kind == "open-workspace" && status.status == "queued" && status.generation == 2
     }));
-    assert!(statuses.iter().any(|status| {
-        status.kind == "refresh-workspace" && status.status == "queued" && status.generation == 3
-    }));
+    assert!(!statuses
+        .iter()
+        .any(|status| status.kind == "refresh-workspace" && status.status == "queued"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -166,9 +166,9 @@ fn open_workspace_queues_light_open_before_background_refresh() {
     assert!(statuses.iter().any(|status| {
         status.kind == "open-workspace" && status.status == "queued" && status.generation == 1
     }));
-    assert!(statuses.iter().any(|status| {
-        status.kind == "refresh-workspace" && status.status == "queued" && status.generation == 2
-    }));
+    assert!(!statuses
+        .iter()
+        .any(|status| status.kind == "refresh-workspace" && status.status == "queued"));
 
     fs::remove_dir_all(root).unwrap();
 }

@@ -197,7 +197,12 @@ fn indexed_content_search_returns_cursor_for_next_page() {
     let file_path = root.join("entry").join("src").join("Index.ets");
     fs::write(
         &file_path,
-        ["Text(\"CursorOne\")", "Text(\"CursorTwo\")", "Text(\"CursorThree\")"].join("\n"),
+        [
+            "Text(\"CursorOne\")",
+            "Text(\"CursorTwo\")",
+            "Text(\"CursorThree\")",
+        ]
+        .join("\n"),
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();

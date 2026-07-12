@@ -35,8 +35,18 @@ pub struct LanguageClientRequest {
 }
 
 impl LanguageClientRequest {
-    pub fn new(source: LanguageClientSource, request_id: u64, generation: u64, timeout_ms: u64) -> Self {
-        Self { source, request_id, generation, timeout_ms }
+    pub fn new(
+        source: LanguageClientSource,
+        request_id: u64,
+        generation: u64,
+        timeout_ms: u64,
+    ) -> Self {
+        Self {
+            source,
+            request_id,
+            generation,
+            timeout_ms,
+        }
     }
 }
 
@@ -92,6 +102,9 @@ mod tests {
         }))
         .expect_err("slow language request should time out");
 
-        assert_eq!(error, "Language usages request 3 generation 3 timed out after 5ms");
+        assert_eq!(
+            error,
+            "Language usages request 3 generation 3 timed out after 5ms"
+        );
     }
 }

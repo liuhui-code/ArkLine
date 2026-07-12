@@ -294,7 +294,7 @@ fn refresh_workspace_index_records_schema_domain_versions() {
         )
         .unwrap();
 
-    assert_eq!(version_count, 13);
+    assert_eq!(version_count, 14);
     assert_eq!(symbol_resolution_version, 1);
     assert_eq!(reference_version, 1);
     assert_eq!(event_version, 1);

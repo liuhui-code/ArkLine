@@ -26,9 +26,7 @@ fn cancellation_advances_generation_for_the_matching_kind() {
     runtime
         .register_generation("/workspace", "text", 3)
         .unwrap();
-    runtime
-        .cancel_generation("/workspace", "text", 3)
-        .unwrap();
+    runtime.cancel_generation("/workspace", "text", 3).unwrap();
 
     assert!(runtime
         .is_generation_stale("/workspace", "text", 3)
