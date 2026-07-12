@@ -12,6 +12,7 @@ use crate::services::workspace_dependency_graph_model_service::ImportRow;
 pub use crate::services::workspace_dependency_graph_model_service::{
     DependencyExpansion, DependencyGraphStatus,
 };
+use crate::services::workspace_dependency_graph_path_plan_service::plan_dependency_graph_paths;
 use crate::services::workspace_dependency_graph_refresh_plan_service::{
     load_dependency_fact_paths, plan_dependency_refresh_paths,
 };
@@ -93,31 +94,23 @@ pub fn update_dependency_graph_for_paths(
     indexed_paths: &[String],
     removed_paths: &[String],
 ) -> Result<(), String> {
-    let affected_paths = indexed_paths
-        .iter()
-        .chain(removed_paths.iter())
-        .map(|path| normalize_index_path(path))
-        .collect::<Vec<_>>();
-    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
-    let removed_path_set = removed_paths
-        .iter()
-        .map(|path| normalize_index_path(path))
-        .collect::<HashSet<_>>();
+    let path_plan = plan_dependency_graph_paths(indexed_paths, removed_paths);
     let import_rows = load_import_rows(connection, root_key)?
         .into_iter()
-        .filter(|row| affected_path_set.contains(&row.from_path))
+        .filter(|row| path_plan.affected_path_set.contains(&row.from_path))
         .collect::<Vec<_>>();
     let export_rows = load_re_export_rows(connection, root_key)?
         .into_iter()
-        .filter(|row| affected_path_set.contains(&row.from_path))
+        .filter(|row| path_plan.affected_path_set.contains(&row.from_path))
         .collect::<Vec<_>>();
-    let existing_paths = load_dependency_fact_paths(connection, root_key, &affected_path_set)?;
+    let existing_paths =
+        load_dependency_fact_paths(connection, root_key, &path_plan.affected_path_set)?;
     let refresh_paths = plan_dependency_refresh_paths(
-        &affected_paths,
+        &path_plan.affected_paths,
         &import_rows,
         &export_rows,
         &existing_paths,
-        &removed_path_set,
+        &path_plan.removed_path_set,
     );
     for path in &refresh_paths {
         clear_dependency_graph_for_path(connection, root_key, path)?;

@@ -76,6 +76,9 @@ mod workspace_definition_query_service_tests;
 pub mod workspace_definition_reference_service;
 pub mod workspace_dependency_graph_cleanup_service;
 pub mod workspace_dependency_graph_model_service;
+pub(crate) mod workspace_dependency_graph_path_plan_service;
+#[cfg(test)]
+mod workspace_dependency_graph_path_plan_service_tests;
 pub(crate) mod workspace_dependency_graph_refresh_plan_service;
 #[cfg(test)]
 mod workspace_dependency_graph_refresh_plan_service_tests;
