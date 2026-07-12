@@ -9,11 +9,20 @@ async function readWorkflow(name: string) {
   );
 }
 
+function expectPnpmBeforeNodeCache(workflow: string) {
+  const pnpmIndex = workflow.indexOf("name: Setup pnpm");
+  const nodeIndex = workflow.indexOf("name: Setup Node.js");
+
+  expect(pnpmIndex).toBeGreaterThanOrEqual(0);
+  expect(nodeIndex).toBeGreaterThan(pnpmIndex);
+}
+
 describe("CI quality gates", () => {
   it("runs the shared fast quality gate on Windows with the package pnpm version", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
 
     expect(workflow).toContain("version: 10.12.1");
+    expectPnpmBeforeNodeCache(workflow);
     expect(workflow).toContain("run: pnpm check:fast");
     expect(workflow).not.toContain("run: pnpm test\n");
     expect(workflow).not.toContain(
@@ -29,6 +38,7 @@ describe("CI quality gates", () => {
     const packageIndex = workflow.indexOf("run: pnpm package:windows:portable");
 
     expect(workflow).toContain("version: 10.12.1");
+    expectPnpmBeforeNodeCache(workflow);
     expect(gateIndex).toBeGreaterThan(installIndex);
     expect(packageIndex).toBeGreaterThan(gateIndex);
   });
