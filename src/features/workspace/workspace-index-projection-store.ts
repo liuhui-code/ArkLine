@@ -1,6 +1,7 @@
 import type {
   WorkspaceIndexEvent,
   WorkspaceIndexHealth,
+  WorkspaceIndexTimelineItem,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace-api-contract";
@@ -22,6 +23,7 @@ export type WorkspaceIndexProjectionSnapshot = {
   explainSummary: WorkspaceIndexExplainSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
   recentEvents: WorkspaceIndexEvent[];
+  timeline: WorkspaceIndexTimelineItem[];
   eventCount: number;
   updatedAt: number | null;
 };
@@ -37,6 +39,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     explainSummary: null,
     taskStatuses: [],
     recentEvents: [],
+    timeline: [],
     eventCount: 0,
     updatedAt: null,
   };
@@ -109,10 +112,12 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const recentEvents = mergeRecentEvents(current, events);
       const healthSummary = healthSummaryFromEvents(recentEvents);
       const explainSummary = explainSummaryFromEvents(recentEvents);
+      const timeline = timelineFromEvents(recentEvents);
       commit({
         ...snapshot,
         rootPath,
         recentEvents,
+        timeline,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
         eventCount: snapshot.eventCount + 1,
@@ -124,10 +129,12 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const recentEvents = mergeRecentEvent(current, event);
       const healthSummary = healthSummaryFromEvents(recentEvents);
       const explainSummary = explainSummaryFromEvents(recentEvents);
+      const timeline = timelineFromEvents(recentEvents);
       commit({
         ...snapshot,
         rootPath,
         recentEvents,
+        timeline,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
         eventCount: snapshot.eventCount + 1,
@@ -177,6 +184,28 @@ function mergeRecentEvent(events: WorkspaceIndexEvent[], next: WorkspaceIndexEve
 
 function mergeRecentEvents(current: WorkspaceIndexEvent[], next: WorkspaceIndexEvent[]) {
   return next.reduce((events, event) => mergeRecentEvent(events, event), current);
+}
+
+function timelineFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexTimelineItem[] {
+  const lastByTaskId = new Map<string, number>();
+  return events.map((event) => {
+    const previousAt = event.taskId == null ? undefined : lastByTaskId.get(event.taskId);
+    if (event.taskId != null) {
+      lastByTaskId.set(event.taskId, event.createdAt);
+    }
+    return {
+      scope: event.scope,
+      kind: event.kind,
+      phase: event.phase,
+      title: `${event.kind} ${event.phase}`,
+      severity: event.severity,
+      message: event.message,
+      taskId: event.taskId,
+      generation: event.generation,
+      occurredAt: event.createdAt,
+      durationMs: previousAt == null ? null : Math.max(0, event.createdAt - previousAt),
+    };
+  });
 }
 
 function mergeTaskStatus(

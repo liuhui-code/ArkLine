@@ -403,6 +403,7 @@ function mergeIndexDiagnosticsProjection(
     retryBackoffCount: projection.healthSummary?.retryBackoffCount ?? diagnostics.retryBackoffCount,
     latestRetryBackoff: projection.healthSummary?.latestRetryBackoff ?? diagnostics.latestRetryBackoff,
     recentEvents: projection.recentEvents.length > 0 ? projection.recentEvents : diagnostics.recentEvents,
+    timeline: projection.timeline.length > 0 ? projection.timeline : diagnostics.timeline,
   };
 }
 

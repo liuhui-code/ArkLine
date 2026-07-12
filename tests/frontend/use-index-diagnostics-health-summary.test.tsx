@@ -103,6 +103,43 @@ describe("useIndexDiagnosticsController health summary", () => {
       expect.objectContaining({ eventId: "query-miss", scope: "query" }),
     ]));
   });
+
+  it("merges live index events into diagnostics timeline", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses: vi.fn(async () => []),
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      workspaceIndexProjectionStore.recordRecentEvent("/workspace", indexEvent({
+        eventId: "running",
+        scope: "task",
+        kind: "refresh-workspace",
+        phase: "running",
+        taskId: "live-task",
+        createdAt: 10,
+      }));
+      workspaceIndexProjectionStore.recordRecentEvent("/workspace", indexEvent({
+        eventId: "ready",
+        scope: "task",
+        kind: "refresh-workspace",
+        phase: "ready",
+        taskId: "live-task",
+        createdAt: 40,
+      }));
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.indexDiagnostics?.timeline).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "running", durationMs: null }),
+      expect.objectContaining({ phase: "ready", durationMs: 30 }),
+    ]));
+  });
 });
 
 function waitForProjectionFlush() {

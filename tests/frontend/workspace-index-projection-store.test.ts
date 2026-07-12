@@ -106,6 +106,25 @@ describe("workspace index projection store", () => {
       lastExplainStatus: "miss",
     });
   });
+
+  it("projects recent events into a task timeline with durations", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvents("/workspace", [
+      indexEvent({ eventId: "queued", scope: "task", phase: "queued", taskId: "task", createdAt: 10 }),
+      indexEvent({ eventId: "running", scope: "task", phase: "running", taskId: "task", createdAt: 25 }),
+      indexEvent({ eventId: "ready", scope: "task", phase: "ready", taskId: "task", createdAt: 40 }),
+    ]);
+
+    expect(store.snapshot().timeline.map((item) => ({
+      phase: item.phase,
+      durationMs: item.durationMs,
+    }))).toEqual([
+      { phase: "queued", durationMs: null },
+      { phase: "running", durationMs: 15 },
+      { phase: "ready", durationMs: 15 },
+    ]);
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {
