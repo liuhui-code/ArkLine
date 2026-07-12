@@ -68,6 +68,9 @@ mod workspace_completion_semantic_service_tests;
 pub mod workspace_content_index_service;
 #[cfg(test)]
 mod workspace_content_index_service_tests;
+pub(crate) mod workspace_content_match_service;
+#[cfg(test)]
+mod workspace_content_match_service_tests;
 pub mod workspace_content_query_service;
 #[cfg(test)]
 mod workspace_definition_member_query_tests;
