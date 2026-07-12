@@ -45,7 +45,7 @@
 }
 
 .index-diagnostics__row--layers {
-  grid-template-columns: minmax(120px, 1.1fr) 92px 104px minmax(170px, 1.2fr) minmax(190px, 1.4fr);
+  grid-template-columns: minmax(104px, 1fr) 82px 96px minmax(150px, 1.1fr) minmax(144px, 1.1fr) minmax(190px, 1.4fr);
 }
 
 .index-diagnostics__row--layers small {

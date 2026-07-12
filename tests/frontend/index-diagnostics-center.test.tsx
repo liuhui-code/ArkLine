@@ -340,6 +340,8 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(layers).getByText("partial")).toBeVisible();
     expect(within(layers).getByText("missing")).toBeVisible();
     expect(within(layers).getByText("42 indexed · 2 failed · 7 stale")).toBeVisible();
+    expect(within(layers).getByText("Files · Quick open")).toBeVisible();
+    expect(within(layers).getByText("Symbols · Navigation")).toBeVisible();
     expect(within(layers).getByText("indexCurrentFile")).toBeVisible();
     expect(within(layers).getByText("Current file symbols are not ready.")).toBeVisible();
   });

@@ -21,6 +21,7 @@ export function IndexDiagnosticsLayersSection({ layerReadiness }: IndexDiagnosti
           <span>Workspace</span>
           <span>Current file</span>
           <span>Counts</span>
+          <span>Impact</span>
           <span>Action</span>
         </div>
         {layers.length > 0 ? layers.map((layer) => (
@@ -40,6 +41,7 @@ function LayerReadinessRow({ layer }: { layer: WorkspaceIndexLayerReadiness }) {
       <StatusBadge value={layer.workspaceStatus} />
       <StatusBadge value={layer.currentFileStatus ?? "none"} />
       <span>{formatLayerCounts(layer)}</span>
+      <span>{formatLayerImpact(layer.layer)}</span>
       <span>
         {layer.recommendedAction ?? "none"}
         {layer.reason ? <small>{layer.reason}</small> : null}
@@ -50,4 +52,35 @@ function LayerReadinessRow({ layer }: { layer: WorkspaceIndexLayerReadiness }) {
 
 function StatusBadge({ value }: { value: string }) {
   return <span className={`index-diagnostics__status index-diagnostics__status--${value}`}>{value}</span>;
+}
+
+function formatLayerImpact(layer: string) {
+  switch (layer) {
+    case "fileHot":
+      return "Navigation · Completion";
+    case "projectFile":
+    case "fileCatalog":
+      return "Files · Quick open";
+    case "projectDeep":
+      return "Search · Usages · Dependencies";
+    case "content":
+      return "Text search";
+    case "stub":
+      return "Parser · Members";
+    case "symbols":
+      return "Symbols · Navigation";
+    case "references":
+      return "Find usages";
+    case "dependencyGraph":
+      return "Imports · Refresh";
+    case "sdk":
+    case "sdkApi":
+      return "SDK API · Completion";
+    case "discovery":
+      return "Workspace files";
+    case "fingerprint":
+      return "Incremental refresh";
+    default:
+      return "IDE features";
+  }
 }
