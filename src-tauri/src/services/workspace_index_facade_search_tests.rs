@@ -11,6 +11,7 @@ use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir,
 };
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
+use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
 
 #[test]
 fn facade_routes_search_everywhere_queries_with_readiness_and_explain() {
@@ -171,12 +172,139 @@ fn search_everywhere_explain_names_project_and_sdk_layers() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn facade_search_everywhere_context_prioritizes_active_and_recent_paths() {
+    let root = create_empty_workspace("facade-search-context");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(
+        source_dir.join("SettingsOther.ets"),
+        "class SettingsOther {}\n",
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("SettingsActive.ets"),
+        "class SettingsActive {}\n",
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("SettingsRecent.ets"),
+        "class SettingsRecent {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let active_path = source_dir
+        .join("SettingsActive.ets")
+        .to_string_lossy()
+        .to_string();
+    let recent_path = source_dir
+        .join("SettingsRecent.ets")
+        .to_string_lossy()
+        .to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhereWithContext {
+            root_path: root_path.clone(),
+            query: "settings".to_string(),
+            scope: WorkspaceIndexQueryScope::Files,
+            limit: 8,
+            context: WorkspaceSearchRankingContext {
+                active_path: Some(active_path),
+                recent_paths: vec![recent_path],
+            },
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        search_titles(&envelope),
+        vec![
+            "SettingsActive.ets",
+            "SettingsRecent.ets",
+            "SettingsOther.ets"
+        ]
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn facade_search_everywhere_context_uses_project_proximity_tie_break() {
+    let root = create_empty_workspace("facade-search-proximity");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::create_dir_all(source_dir.join("features/settings")).unwrap();
+    fs::create_dir_all(source_dir.join("pages/settings")).unwrap();
+    fs::write(
+        source_dir.join("features/settings/Settings.ets"),
+        "class FeatureSettings {}\n",
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("pages/settings/Settings.ets"),
+        "class PageSettings {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let active_path = source_dir
+        .join("pages/Home.ets")
+        .to_string_lossy()
+        .to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhereWithContext {
+            root_path: root_path.clone(),
+            query: "settings".to_string(),
+            scope: WorkspaceIndexQueryScope::Files,
+            limit: 8,
+            context: WorkspaceSearchRankingContext {
+                active_path: Some(active_path),
+                recent_paths: Vec::new(),
+            },
+        },
+    )
+    .unwrap();
+
+    assert_eq!(search_titles(&envelope)[0], "Settings.ets");
+    assert!(
+        search_paths(&envelope)[0].contains("/pages/settings/"),
+        "expected nearby settings file first, got {:?}",
+        search_paths(&envelope)
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn search_sources(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
     envelope
         .items
         .iter()
         .filter_map(|item| match item {
             WorkspaceIndexFacadeItem::Search(candidate) => Some(candidate.source.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn search_titles(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
+    envelope
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            WorkspaceIndexFacadeItem::Search(candidate) => Some(candidate.title.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn search_paths(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
+    envelope
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            WorkspaceIndexFacadeItem::Search(candidate) => candidate.path.as_deref(),
             _ => None,
         })
         .collect()

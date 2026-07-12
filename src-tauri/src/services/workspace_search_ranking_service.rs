@@ -58,8 +58,9 @@ pub fn sort_search_everywhere_candidates_with_context(
         source_priority(&left.source)
             .cmp(&source_priority(&right.source))
             .then_with(|| {
-                context_priority(left, active_path.as_deref(), &recent_paths)
-                    .cmp(&context_priority(right, active_path.as_deref(), &recent_paths))
+                context_priority(left, active_path.as_deref(), &recent_paths).cmp(
+                    &context_priority(right, active_path.as_deref(), &recent_paths),
+                )
             })
             .then_with(|| {
                 right

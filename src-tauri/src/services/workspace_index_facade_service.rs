@@ -17,11 +17,13 @@ use crate::services::workspace_index_facade_navigation_service::{
     query_facade_definition, query_facade_usages,
 };
 use crate::services::workspace_index_facade_search_service::{
-    query_facade_file_symbols, query_facade_search_everywhere, query_facade_text_search,
+    query_facade_file_symbols, query_facade_search_everywhere,
+    query_facade_search_everywhere_with_context, query_facade_text_search,
     query_facade_text_search_with_cancellation,
 };
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceIndexFacadeKind {
@@ -63,6 +65,13 @@ pub enum WorkspaceIndexFacadeRequest {
         query: String,
         scope: WorkspaceIndexQueryScope,
         limit: usize,
+    },
+    SearchEverywhereWithContext {
+        root_path: String,
+        query: String,
+        scope: WorkspaceIndexQueryScope,
+        limit: usize,
+        context: WorkspaceSearchRankingContext,
     },
     FileSymbols {
         root_path: String,
@@ -132,6 +141,20 @@ pub fn query_workspace_index_facade(
             scope,
             limit,
         } => query_facade_search_everywhere(index_runtime, &root_path, &query, scope, limit),
+        WorkspaceIndexFacadeRequest::SearchEverywhereWithContext {
+            root_path,
+            query,
+            scope,
+            limit,
+            context,
+        } => query_facade_search_everywhere_with_context(
+            index_runtime,
+            &root_path,
+            &query,
+            scope,
+            limit,
+            &context,
+        ),
         WorkspaceIndexFacadeRequest::FileSymbols {
             root_path,
             file_path,
@@ -255,7 +278,8 @@ fn facade_request_kind(request: &WorkspaceIndexFacadeRequest) -> &'static str {
     match request {
         WorkspaceIndexFacadeRequest::Definition { .. } => "definition",
         WorkspaceIndexFacadeRequest::Usages { .. } => "usages",
-        WorkspaceIndexFacadeRequest::SearchEverywhere { .. } => "searchEverywhere",
+        WorkspaceIndexFacadeRequest::SearchEverywhere { .. }
+        | WorkspaceIndexFacadeRequest::SearchEverywhereWithContext { .. } => "searchEverywhere",
         WorkspaceIndexFacadeRequest::FileSymbols { .. } => "fileSymbols",
         WorkspaceIndexFacadeRequest::Completion { .. } => "completion",
         WorkspaceIndexFacadeRequest::TextSearch { .. } => "textSearch",
@@ -268,6 +292,7 @@ fn facade_request_root_path(request: &WorkspaceIndexFacadeRequest) -> &str {
         WorkspaceIndexFacadeRequest::Definition { root_path, .. }
         | WorkspaceIndexFacadeRequest::Usages { root_path, .. }
         | WorkspaceIndexFacadeRequest::SearchEverywhere { root_path, .. }
+        | WorkspaceIndexFacadeRequest::SearchEverywhereWithContext { root_path, .. }
         | WorkspaceIndexFacadeRequest::FileSymbols { root_path, .. }
         | WorkspaceIndexFacadeRequest::Completion { root_path, .. }
         | WorkspaceIndexFacadeRequest::Unsupported { root_path, .. } => root_path,

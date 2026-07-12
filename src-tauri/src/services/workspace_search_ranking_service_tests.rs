@@ -60,7 +60,12 @@ fn search_ranking_context_prefers_active_and_recent_paths_within_source_group() 
     let mut candidates = vec![
         candidate("symbol", "Other symbol", "/workspace/src/Other.ets", 120.0),
         candidate("symbol", "Active symbol", "/workspace/src/Active.ets", 90.0),
-        candidate("symbol", "Recent symbol", "C:\\workspace\\src\\Recent.ets", 110.0),
+        candidate(
+            "symbol",
+            "Recent symbol",
+            "C:\\workspace\\src\\Recent.ets",
+            110.0,
+        ),
     ];
 
     sort_search_everywhere_candidates_with_context(
@@ -104,7 +109,10 @@ fn search_ranking_context_uses_project_proximity_when_scores_tie() {
         },
     );
 
-    assert_eq!(titles(&candidates), vec!["Local Settings", "Remote Settings"]);
+    assert_eq!(
+        titles(&candidates),
+        vec!["Local Settings", "Remote Settings"]
+    );
 }
 
 fn text_candidate(path: &str, title: &str, subtitle: &str) -> WorkspaceSearchCandidate {

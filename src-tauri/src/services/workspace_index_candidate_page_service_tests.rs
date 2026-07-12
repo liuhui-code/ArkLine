@@ -4,7 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceScanSummary, WorkspaceSnapshot};
 use crate::services::workspace_index_candidate_page_service::{
-    normalize_candidate_page_limit, query_workspace_candidate_page, query_workspace_file_symbol_page,
+    normalize_candidate_page_limit, query_workspace_candidate_page,
+    query_workspace_file_symbol_page,
 };
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;

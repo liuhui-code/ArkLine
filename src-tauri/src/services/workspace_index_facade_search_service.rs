@@ -14,6 +14,9 @@ use crate::services::workspace_index_facade_service::{
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_search_ranking_service::{
+    sort_search_everywhere_candidates_with_context, WorkspaceSearchRankingContext,
+};
 use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
 
 pub fn query_facade_search_everywhere(
@@ -26,6 +29,25 @@ pub fn query_facade_search_everywhere(
     query_facade_search_everywhere_page(index_runtime, root_path, query, scope, limit, None)
 }
 
+pub fn query_facade_search_everywhere_with_context(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+    query: &str,
+    scope: WorkspaceIndexQueryScope,
+    limit: usize,
+    context: &WorkspaceSearchRankingContext,
+) -> Result<WorkspaceIndexFacadeEnvelope, String> {
+    query_facade_search_everywhere_page_with_context(
+        index_runtime,
+        root_path,
+        query,
+        scope,
+        limit,
+        None,
+        context,
+    )
+}
+
 pub fn query_facade_search_everywhere_page(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
@@ -34,22 +56,43 @@ pub fn query_facade_search_everywhere_page(
     limit: usize,
     cursor: Option<usize>,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
+    query_facade_search_everywhere_page_with_context(
+        index_runtime,
+        root_path,
+        query,
+        scope,
+        limit,
+        cursor,
+        &WorkspaceSearchRankingContext::default(),
+    )
+}
+
+pub fn query_facade_search_everywhere_page_with_context(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+    query: &str,
+    scope: WorkspaceIndexQueryScope,
+    limit: usize,
+    cursor: Option<usize>,
+    context: &WorkspaceSearchRankingContext,
+) -> Result<WorkspaceIndexFacadeEnvelope, String> {
     if scope == WorkspaceIndexQueryScope::Text {
         return query_facade_search_text_scope(index_runtime, root_path, query, limit);
     }
     let envelope =
         query_workspace_candidate_page(index_runtime, root_path, query, scope, limit, cursor)?;
+    let mut items = envelope.items;
+    sort_search_everywhere_candidates_with_context(&mut items, limit, context);
     let explain = explain_facade_query(
         "searchEverywhere",
         &envelope.readiness,
-        envelope.items.len(),
+        items.len(),
         Some("indexed"),
     );
     let mut explain = explain;
     append_layer_explain(root_path, &mut explain)?;
     Ok(WorkspaceIndexFacadeEnvelope {
-        items: envelope
-            .items
+        items: items
             .into_iter()
             .map(WorkspaceIndexFacadeItem::Search)
             .collect(),
