@@ -1,6 +1,3 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::workspace_index_layer::{
@@ -10,6 +7,10 @@ use crate::services::workspace_index_file_readiness_service::get_workspace_index
 use crate::services::workspace_index_layer_status_service::{
     aggregate_count_status, file_hot_current_status, status_from_bool, status_from_count,
     status_from_text, status_with_failures,
+};
+use crate::services::workspace_index_layer_readiness_store_service::{
+    count_distinct_paths, count_rows, normalize_layer_index_path as normalize_index_path,
+    open_layer_readiness_store as open_index_store, row_exists,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
@@ -384,60 +385,4 @@ fn layer_with_current(
         reason: None,
         recommended_action: action.map(|value| value.to_string()),
     }
-}
-
-fn row_exists(
-    connection: &Connection,
-    table_name: &str,
-    root_key: &str,
-    path_key: &str,
-) -> Result<bool, String> {
-    let sql =
-        format!("select exists(select 1 from {table_name} where root_path = ?1 and path = ?2)");
-    connection
-        .query_row(&sql, params![root_key, path_key], |row| {
-            row.get::<_, bool>(0)
-        })
-        .map_err(|error| error.to_string())
-}
-
-fn count_rows(connection: &Connection, table_name: &str, root_key: &str) -> Result<i64, String> {
-    let sql = format!("select count(*) from {table_name} where root_path = ?1");
-    connection
-        .query_row(&sql, params![root_key], |row| row.get(0))
-        .map_err(|error| error.to_string())
-}
-
-fn count_distinct_paths(
-    connection: &Connection,
-    table_name: &str,
-    root_key: &str,
-) -> Result<i64, String> {
-    let sql = format!("select count(distinct path) from {table_name} where root_path = ?1");
-    connection
-        .query_row(&sql, params![root_key], |row| row.get(0))
-        .map_err(|error| error.to_string())
-}
-
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace SQLite index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
-}
-
-fn normalize_index_path(path: &str) -> String {
-    path.replace('/', "\\")
 }
