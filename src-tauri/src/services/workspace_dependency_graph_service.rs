@@ -3,7 +3,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use crate::services::workspace_dependency_graph_cleanup_service::{
     clear_dependency_graph, clear_dependency_graph_for_path,
@@ -18,6 +18,11 @@ use crate::services::workspace_dependency_graph_refresh_plan_service::{
 };
 use crate::services::workspace_dependency_graph_resolver_service::{
     is_relative_module, resolve_relative_import,
+};
+use crate::services::workspace_dependency_graph_store_service::{
+    insert_dependency_edge, insert_unresolved_import, load_import_rows, load_re_export_rows,
+    load_dependency_graph_status as load_dependency_graph_status_from_store,
+    record_dependency_graph_status,
 };
 
 pub fn create_dependency_graph_tables(connection: &Connection) -> Result<(), String> {
@@ -172,19 +177,7 @@ pub fn load_dependency_graph_status(
     connection: &Connection,
     root_key: &str,
 ) -> Result<Option<DependencyGraphStatus>, String> {
-    connection
-        .query_row(
-            "select status, reason from workspace_dependency_graph_metadata where root_path = ?1",
-            params![root_key],
-            |row| {
-                Ok(DependencyGraphStatus {
-                    status: row.get(0)?,
-                    reason: row.get(1)?,
-                })
-            },
-        )
-        .optional()
-        .map_err(|error| error.to_string())
+    load_dependency_graph_status_from_store(connection, root_key)
 }
 
 pub fn has_graph_affecting_config_change(paths: &[String]) -> bool {
@@ -292,132 +285,6 @@ pub fn expand_changed_paths(
         .collect::<Vec<_>>();
     paths.sort();
     Ok(DependencyExpansion::Expanded(paths))
-}
-
-fn record_dependency_graph_status(
-    connection: &Connection,
-    root_key: &str,
-    status: &str,
-    reason: Option<&str>,
-) -> Result<(), String> {
-    connection
-        .execute(
-            "insert into workspace_dependency_graph_metadata (
-                root_path, status, reason, updated_at
-             ) values (?1, ?2, ?3, strftime('%s','now') * 1000)
-             on conflict(root_path) do update set
-                status = excluded.status,
-                reason = excluded.reason,
-                updated_at = excluded.updated_at",
-            params![root_key, status, reason],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn load_import_rows(connection: &Connection, root_key: &str) -> Result<Vec<ImportRow>, String> {
-    let mut statement = connection
-        .prepare(
-            "select path, source_module, line, column
-             from workspace_stub_imports
-             where root_path = ?1
-             order by path, line, column",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params![root_key], |row| {
-            let line: i64 = row.get(2)?;
-            let column: i64 = row.get(3)?;
-            Ok(ImportRow {
-                from_path: row.get(0)?,
-                source_module: row.get(1)?,
-                line: usize::try_from(line).unwrap_or_default(),
-                column: usize::try_from(column).unwrap_or_default(),
-            })
-        })
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
-}
-
-fn load_re_export_rows(connection: &Connection, root_key: &str) -> Result<Vec<ImportRow>, String> {
-    let mut statement = connection
-        .prepare(
-            "select path, source_module, line, column
-             from workspace_stub_exports
-             where root_path = ?1 and source_module is not null
-             order by path, line, column",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params![root_key], |row| {
-            let line: i64 = row.get(2)?;
-            let column: i64 = row.get(3)?;
-            Ok(ImportRow {
-                from_path: row.get(0)?,
-                source_module: row.get(1)?,
-                line: usize::try_from(line).unwrap_or_default(),
-                column: usize::try_from(column).unwrap_or_default(),
-            })
-        })
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
-}
-
-fn insert_dependency_edge(
-    connection: &Connection,
-    root_key: &str,
-    import: &ImportRow,
-    to_path: &str,
-    kind: &str,
-) -> Result<(), String> {
-    connection
-        .execute(
-            "insert or ignore into workspace_dependency_edges (
-                root_path, from_path, to_path, source_module, kind, line, column
-             ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![
-                root_key,
-                import.from_path,
-                to_path,
-                import.source_module,
-                kind,
-                import.line as i64,
-                import.column as i64,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "insert or ignore into workspace_dependency_reverse (root_path, to_path, from_path)
-             values (?1, ?2, ?3)",
-            params![root_key, to_path, import.from_path],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn insert_unresolved_import(
-    connection: &Connection,
-    root_key: &str,
-    import: &ImportRow,
-) -> Result<(), String> {
-    connection
-        .execute(
-            "insert into workspace_unresolved_imports (
-                root_path, from_path, source_module, line, column
-             ) values (?1, ?2, ?3, ?4, ?5)",
-            params![
-                root_key,
-                import.from_path,
-                import.source_module,
-                import.line as i64,
-                import.column as i64,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
 }
 
 fn normalize_index_path(path: &str) -> String {

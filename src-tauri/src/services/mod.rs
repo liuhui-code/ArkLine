@@ -91,6 +91,9 @@ mod workspace_dependency_graph_resolver_service_tests;
 pub mod workspace_dependency_graph_service;
 #[cfg(test)]
 mod workspace_dependency_graph_service_tests;
+pub(crate) mod workspace_dependency_graph_store_service;
+#[cfg(test)]
+mod workspace_dependency_graph_store_service_tests;
 #[cfg(test)]
 mod workspace_discovery_continuation_service_tests;
 #[allow(dead_code)]
