@@ -2,8 +2,8 @@ import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextM
 import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
 import { buildSearchEverywherePanelViewModel } from "@/components/layout/search-everywhere-panel-model";
+import { SearchPreviewPane } from "@/components/layout/SearchPreviewPane";
 import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
-import { createSearchPreviewWindowFromContent } from "@/features/search/search-preview-window";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -351,72 +351,12 @@ export function SearchEverywherePanel({
           ) : null}
         </div>
         <div className="search-everywhere__preview" aria-label="Search Everywhere Preview">
-          {selectedTextMatch ? <SearchPreview match={selectedTextMatch} content={selectedPreviewContent} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
+          {selectedTextMatch ? <SearchPreviewPane match={selectedTextMatch} content={selectedPreviewContent} /> : <div className="search-everywhere__empty">Select a result to preview</div>}
         </div>
       </div>
       )}
     </div>
     <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
-    </>
-  );
-}
-
-function SearchPreview({ match, content }: { match: WorkspaceTextSearchMatch; content: string | null }) {
-  const hitLine = highlightPreview(match.preview, match.previewStart, match.previewEnd);
-  const previewWindow = content != null ? createSearchPreviewWindowFromContent(content, match.line) : null;
-
-  return (
-    <>
-      <div className="search-everywhere__preview-header">
-        <div>
-          <strong>{match.fileName}</strong>
-          <span>{match.relativePath}:{match.line}:{match.column}</span>
-        </div>
-        <span>{previewWindow ? `${previewWindow.totalLines.toLocaleString()} lines` : "Loading file preview"}</span>
-      </div>
-      <pre className="search-everywhere__preview-code">
-        {previewWindow ? previewWindow.lines.map((line) => {
-          const lineNumber = line.lineNumber;
-          return (
-            <div
-              key={`file:${lineNumber}`}
-              className={`search-everywhere__preview-line${lineNumber === match.line ? " search-everywhere__preview-line--hit" : ""}`}
-            >
-              <span className="search-everywhere__preview-number">{lineNumber}</span>
-              <span>{lineNumber === match.line ? hitLine : line.text}</span>
-            </div>
-          );
-        }) : (
-          <>
-            {match.contextBefore.map((line) => (
-              <div key={`before:${line.line}`} className="search-everywhere__preview-line">
-                <span className="search-everywhere__preview-number">{line.line}</span>
-                <span>{line.text}</span>
-              </div>
-            ))}
-            <div className="search-everywhere__preview-line search-everywhere__preview-line--hit">
-              <span className="search-everywhere__preview-number">{match.line}</span>
-              <span>{hitLine}</span>
-            </div>
-            {match.contextAfter.map((line) => (
-              <div key={`after:${line.line}`} className="search-everywhere__preview-line">
-                <span className="search-everywhere__preview-number">{line.line}</span>
-                <span>{line.text}</span>
-              </div>
-            ))}
-          </>
-        )}
-      </pre>
-    </>
-  );
-}
-
-function highlightPreview(line: string, start: number, end: number) {
-  return (
-    <>
-      {line.slice(0, start)}
-      <mark className="search-everywhere__preview-hit">{line.slice(start, end)}</mark>
-      {line.slice(end)}
     </>
   );
 }
