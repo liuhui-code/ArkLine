@@ -285,6 +285,9 @@ pub mod workspace_reference_index_service;
 mod workspace_reference_index_service_tests;
 pub mod workspace_reference_member_access_parser_service;
 pub mod workspace_reference_member_index_service;
+pub(crate) mod workspace_reference_refresh_plan_service;
+#[cfg(test)]
+mod workspace_reference_refresh_plan_service_tests;
 #[cfg(test)]
 mod workspace_reference_receiver_tests;
 pub mod workspace_reference_receiver_type_service;

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -18,6 +18,7 @@ use crate::services::workspace_reference_member_index_service::{
     contains_member_access, index_workspace_member_references_with_context,
     WorkspaceMemberReferenceContext,
 };
+use crate::services::workspace_reference_refresh_plan_service::plan_reference_refresh_paths;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceSymbolReferenceRow {
@@ -121,18 +122,12 @@ pub fn replace_workspace_references_for_paths(
     removed_paths: &[String],
     indexed_generation: u64,
 ) -> Result<(), String> {
-    let mut affected_paths = indexed_paths
-        .iter()
-        .chain(removed_paths.iter())
-        .map(|path| normalize_index_path(path))
-        .collect::<Vec<_>>();
-    affected_paths.sort();
-    affected_paths.dedup();
-    delete_workspace_references_for_paths(connection, root_key, &affected_paths)?;
-    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
-    let aliases = load_reference_alias_targets_for_paths(connection, root_key, &affected_path_set)?;
+    let plan = plan_reference_refresh_paths(indexed_paths, removed_paths);
+    delete_workspace_references_for_paths(connection, root_key, &plan.affected_paths)?;
+    let aliases =
+        load_reference_alias_targets_for_paths(connection, root_key, &plan.affected_path_set)?;
     let declarations =
-        load_workspace_declarations_for_paths(connection, root_key, &affected_path_set)?;
+        load_workspace_declarations_for_paths(connection, root_key, &plan.affected_path_set)?;
     let contents = load_source_contents(indexed_paths);
     let member_context = if contents_contain_member_access(&contents) {
         Some(WorkspaceMemberReferenceContext::load(connection, root_key)?)
@@ -174,26 +169,20 @@ pub fn profile_replace_workspace_references_for_paths(
     removed_paths: &[String],
     indexed_generation: u64,
 ) -> Result<WorkspaceReferenceRefreshProfile, String> {
-    let mut affected_paths = indexed_paths
-        .iter()
-        .chain(removed_paths.iter())
-        .map(|path| normalize_index_path(path))
-        .collect::<Vec<_>>();
-    affected_paths.sort();
-    affected_paths.dedup();
-    let affected_path_set = affected_paths.iter().cloned().collect::<HashSet<_>>();
+    let plan = plan_reference_refresh_paths(indexed_paths, removed_paths);
 
     let delete_start = std::time::Instant::now();
-    delete_workspace_references_for_paths(connection, root_key, &affected_paths)?;
+    delete_workspace_references_for_paths(connection, root_key, &plan.affected_paths)?;
     let delete_duration = delete_start.elapsed();
 
     let alias_start = std::time::Instant::now();
-    let aliases = load_reference_alias_targets_for_paths(connection, root_key, &affected_path_set)?;
+    let aliases =
+        load_reference_alias_targets_for_paths(connection, root_key, &plan.affected_path_set)?;
     let alias_duration = alias_start.elapsed();
 
     let declaration_start = std::time::Instant::now();
     let declarations =
-        load_workspace_declarations_for_paths(connection, root_key, &affected_path_set)?;
+        load_workspace_declarations_for_paths(connection, root_key, &plan.affected_path_set)?;
     let declaration_duration = declaration_start.elapsed();
 
     let content_start = std::time::Instant::now();
@@ -229,7 +218,7 @@ pub fn profile_replace_workspace_references_for_paths(
         content_duration,
         member_context_duration,
         index_duration,
-        affected_path_count: affected_paths.len(),
+        affected_path_count: plan.affected_paths.len(),
         content_count: contents.len(),
         member_context_loaded: member_context.is_some(),
     })
