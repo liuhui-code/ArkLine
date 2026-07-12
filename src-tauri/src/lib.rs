@@ -134,13 +134,16 @@ mod services {
     pub(crate) mod workspace_discovery_task_service;
     #[cfg(test)]
     mod workspace_discovery_task_service_tests;
-    #[cfg(test)] mod workspace_edit_file_ops_tests;
+    #[cfg(test)]
+    mod workspace_edit_file_ops_tests;
     pub(crate) mod workspace_edit_path_service;
     pub(crate) mod workspace_edit_relationship_service;
-    #[cfg(test)] mod workspace_edit_safety_tests;
+    #[cfg(test)]
+    mod workspace_edit_safety_tests;
     pub mod workspace_edit_service;
     pub(crate) mod workspace_edit_summary_service;
-    #[cfg(test)] mod workspace_edit_test_fixture_service;
+    #[cfg(test)]
+    mod workspace_edit_test_fixture_service;
     pub mod workspace_file_fingerprint_service;
     #[cfg(test)]
     mod workspace_file_fingerprint_service_tests;
@@ -167,11 +170,9 @@ mod services {
     mod workspace_index_diagnostics_service_tests;
     pub(crate) mod workspace_index_discovery_result_service;
     pub mod workspace_index_entity_persistence_service;
-    #[cfg(test)]
-    mod workspace_index_entity_persistence_service_tests;
+    #[cfg(test)] mod workspace_index_entity_persistence_service_tests;
     pub mod workspace_index_entity_query_service;
-    #[cfg(test)]
-    mod workspace_index_entity_query_service_tests;
+    #[cfg(test)] mod workspace_index_entity_query_service_tests;
     pub mod workspace_index_event_service;
     #[cfg(test)]
     mod workspace_index_event_service_tests;
@@ -179,19 +180,17 @@ mod services {
     #[cfg(test)]
     mod workspace_index_explain_service_tests;
     pub mod workspace_index_facade_completion_service;
-    #[cfg(test)]
-    mod workspace_index_facade_completion_tests;
+    #[cfg(test)] mod workspace_index_facade_completion_tests;
     pub mod workspace_index_facade_envelope_service;
     pub mod workspace_index_facade_event_service;
     pub mod workspace_index_facade_explain_service;
     pub mod workspace_index_facade_navigation_service;
     pub mod workspace_index_facade_readiness_gate_service;
     pub mod workspace_index_facade_search_service;
-    #[cfg(test)]
-    mod workspace_index_facade_search_tests;
+    #[cfg(test)] mod workspace_index_facade_search_tests;
+    #[cfg(test)] mod workspace_index_facade_text_search_tests;
     pub mod workspace_index_facade_service;
-    #[cfg(test)]
-    mod workspace_index_facade_service_tests;
+    #[cfg(test)] mod workspace_index_facade_service_tests;
     pub mod workspace_index_file_layer_service;
     #[cfg(test)]
     mod workspace_index_file_layer_service_tests;
@@ -235,9 +234,9 @@ mod services {
     #[cfg(test)]
     mod workspace_index_performance_gate_service_tests;
     pub mod workspace_index_persistence_service;
+    pub(crate) mod workspace_index_query_path_service;
     #[cfg(test)]
     mod workspace_index_query_scope_service_tests;
-    pub(crate) mod workspace_index_query_path_service;
     pub mod workspace_index_query_service;
     #[cfg(test)]
     mod workspace_index_query_service_tests;
