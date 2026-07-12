@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_LIMIT = 500;
-const DEFAULT_ROOTS = ["src", "semantic-worker/src", "scripts"];
+const DEFAULT_ROOTS = ["src", "semantic-worker/src", "scripts", "src-tauri/src"];
 const TARGET_EXTENSIONS = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx", ".rs"]);
 const IGNORED_DIRS = new Set([".git", "__tests__", "dist", "node_modules", "target"]);
 

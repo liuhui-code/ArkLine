@@ -32,4 +32,14 @@ describe("check-line-count", () => {
       { path: "src-tauri/src/services/example.rs", text: "one\ntwo\nthree\n" },
     ]);
   });
+
+  it("includes backend Rust sources in the default project roots", async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), "arkline-line-count-"));
+    await mkdir(path.join(cwd, "src-tauri", "src"), { recursive: true });
+    await writeFile(path.join(cwd, "src-tauri", "src", "main.rs"), "fn main() {}\n");
+
+    const files = await collectProjectFiles(cwd);
+
+    expect(files).toEqual([{ path: "src-tauri/src/main.rs", text: "fn main() {}\n" }]);
+  });
 });
