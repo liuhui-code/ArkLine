@@ -22,7 +22,6 @@ import {
   type WorkspaceTextSearchCursor,
 } from "@/features/search/workspace-text-search";
 import { createSearchInteractionRuntime } from "@/features/search/search-interaction-runtime";
-import { scheduleSelectedSearchPreview as schedulePreviewSession } from "@/features/search/search-preview-session";
 import { createSearchSessionStore } from "@/features/search/search-session-store";
 import type { WorkspaceApi, WorkspaceIndexQueryScope, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -36,13 +35,16 @@ import {
 } from "@/components/layout/search-miss-reporting";
 import {
   canUseNativeTextSearchRuntime,
-  readSearchFileForSearch,
   runFallbackTextSearch,
 } from "@/components/layout/search-text-fallback";
 import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
 import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
 import { runSearchTextQuery } from "@/components/layout/search-text-runner";
 import { dispatchSearchOverlayQueryEffect } from "@/components/layout/search-query-effect-dispatcher";
+import {
+  createSearchFileReader,
+  scheduleSelectedSearchPreviewWithReader,
+} from "@/components/layout/search-file-reader";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -123,6 +125,12 @@ export function useSearchEverywhereController({
     navigationCloseHandledRef,
     invalidateSearchSession,
   });
+  const readSearchFile = createSearchFileReader({
+    activePath,
+    getOpenDocumentContent,
+    getActiveContent,
+    openFile: workspaceApi.openFile,
+  });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
     openSearchOverlayAction({
@@ -174,14 +182,14 @@ export function useSearchEverywhereController({
   }
 
   function scheduleSelectedPreview(selectedIndex: number) {
-    schedulePreviewSession({
+    scheduleSelectedSearchPreviewWithReader({
       activeOverlay,
       mode: searchEverywhereMode,
       selectedIndex,
       delayMs: SEARCH_PREVIEW_DEBOUNCE_MS,
       sessionStore: searchSessionStoreRef.current,
       interactionRuntime: interactionRuntimeRef.current,
-      readFile: (path) => readSearchFile(path, false),
+      readFile: readSearchFile,
     });
   }
 
@@ -352,7 +360,7 @@ export function useSearchEverywhereController({
       paths: getTextSearchPaths(),
       canUseNativeTextSearch: canUseNativeTextSearchRuntime(),
       searchNative: workspaceApi.searchWorkspaceText,
-      readFile: (path) => readSearchFile(path),
+      readFile: readSearchFile,
     });
   }
 
@@ -366,17 +374,6 @@ export function useSearchEverywhereController({
       navigationCloseHandledRef,
       invalidateSearchSession,
       setActiveOverlay,
-    });
-  }
-
-  async function readSearchFile(path: string, allowBackendRead = true) {
-    return await readSearchFileForSearch({
-      path,
-      activePath,
-      getOpenDocumentContent,
-      getActiveContent,
-      openFile: workspaceApi.openFile,
-      allowBackendRead,
     });
   }
 
