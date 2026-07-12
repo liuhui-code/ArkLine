@@ -1,4 +1,8 @@
-import type { WorkspaceIndexHealth, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
+import type {
+  WorkspaceIndexEvent,
+  WorkspaceIndexHealth,
+  WorkspaceIndexTaskStatus,
+} from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace-api-contract";
 
 export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff">;
@@ -11,6 +15,7 @@ export type WorkspaceIndexProjectionSnapshot = {
   refreshEventCount: number;
   healthSummary: WorkspaceIndexHealthSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
+  recentEvents: WorkspaceIndexEvent[];
   eventCount: number;
   updatedAt: number | null;
 };
@@ -24,6 +29,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     refreshEventCount: 0,
     healthSummary: null,
     taskStatuses: [],
+    recentEvents: [],
     eventCount: 0,
     updatedAt: null,
   };
@@ -91,6 +97,17 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         updatedAt: Date.now(),
       });
     },
+    recordRecentEvents(rootPath: string, events: WorkspaceIndexEvent[]) {
+      const healthSummary = healthSummaryFromEvents(events);
+      commit({
+        ...snapshot,
+        rootPath,
+        recentEvents: [...events],
+        healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
+        eventCount: snapshot.eventCount + 1,
+        updatedAt: Date.now(),
+      });
+    },
     recordRefreshResult(rootPath: string, result: WorkspaceIndexRefreshResult) {
       commit({
         ...snapshot,
@@ -101,6 +118,18 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         updatedAt: Date.now(),
       });
     },
+  };
+}
+
+function healthSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexHealthSummary | undefined {
+  const backoffEvents = events.filter((event) => event.scope === "scheduler" && event.phase === "backoff");
+  const latest = backoffEvents.at(-1);
+  if (!latest) {
+    return undefined;
+  }
+  return {
+    retryBackoffCount: backoffEvents.length,
+    latestRetryBackoff: latest.message || null,
   };
 }
 

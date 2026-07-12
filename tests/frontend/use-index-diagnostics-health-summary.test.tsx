@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useIndexDiagnosticsController } from "@/components/layout/use-index-diagnostics-controller";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
-import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type { WorkspaceApi, WorkspaceIndexDiagnostics, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexHealth, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
@@ -56,6 +56,25 @@ describe("useIndexDiagnosticsController health summary", () => {
 
     expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
       .toBe("Index: Backoff, refresh-workspace failed 2 consecutive time(s); recommended retry delay 2000ms");
+  });
+
+  it("projects backend scheduler backoff events from diagnostics refresh", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses: vi.fn(async () => []),
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
+      .toBe("Index: Backoff, recommended retry delay 5000ms");
   });
 });
 
@@ -143,6 +162,61 @@ function health(overrides: Partial<WorkspaceIndexHealth> = {}): WorkspaceIndexHe
     },
     repairActions: [],
     ...overrides,
+  };
+}
+
+function diagnostics(): WorkspaceIndexDiagnostics {
+  return {
+    rootPath: "/workspace",
+    status: "partial",
+    schemaVersions: {},
+    schemaVersionActions: [],
+    fileCount: 0,
+    symbolCount: 0,
+    contentLineCount: 0,
+    fingerprintCount: 0,
+    stubFileCount: 0,
+    stubDeclarationCount: 0,
+    dependencyEdgeCount: 0,
+    unresolvedImportCount: 0,
+    parserErrorCount: 0,
+    staleGenerationCount: 0,
+    sdkSymbolCount: 0,
+    discoveryStatus: null,
+    discoveredFileCount: 0,
+    discoveryExcludedCount: 0,
+    discoveryHasMore: false,
+    dbSizeBytes: 0,
+    queuePressure: {
+      rootPath: "/workspace",
+      pendingTaskCount: 0,
+      workspacePendingTaskCount: 0,
+      highestPriority: null,
+      highestPriorityTaskKind: null,
+    },
+    activeSdkPath: null,
+    activeSdkVersion: null,
+    lastError: null,
+    lastExplainStatus: null,
+    retryBackoffCount: 0,
+    latestRetryBackoff: null,
+    repairActions: [],
+    parserFailures: [],
+    unresolvedImports: [],
+    recentEvents: [{
+      eventId: "backoff",
+      rootPath: "/workspace",
+      scope: "scheduler",
+      kind: "refresh-workspace",
+      phase: "backoff",
+      severity: "warning",
+      message: "recommended retry delay 5000ms",
+      taskId: "task",
+      generation: 2,
+      payloadJson: "{}",
+      createdAt: 2,
+    }],
+    timeline: [],
   };
 }
 

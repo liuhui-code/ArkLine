@@ -181,6 +181,7 @@ export function useIndexDiagnosticsController({
       ]);
       setIndexDiagnostics(diagnostics);
       workspaceIndexProjectionStore.recordHealthSummary(workspace.rootPath, diagnostics);
+      workspaceIndexProjectionStore.recordRecentEvents(workspace.rootPath, diagnostics?.recentEvents ?? []);
       workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses);
       await refreshCurrentFileReadiness(workspace.rootPath, activePath);
       setLayerReadiness(layers);

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createWorkspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
-import type { WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexEvent, WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 
 describe("workspace index projection store", () => {
   it("keeps health summary while task and refresh projections update", () => {
@@ -48,6 +48,21 @@ describe("workspace index projection store", () => {
       latestRetryBackoff: null,
     });
   });
+
+  it("derives retry backoff health from backend scheduler events", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvents("/workspace", [
+      indexEvent({ eventId: "info", scope: "task", phase: "failed", message: "failed" }),
+      indexEvent({ eventId: "backoff", message: "recommended retry delay 5000ms" }),
+    ]);
+
+    expect(store.snapshot().recentEvents).toHaveLength(2);
+    expect(store.snapshot().healthSummary).toEqual({
+      retryBackoffCount: 1,
+      latestRetryBackoff: "recommended retry delay 5000ms",
+    });
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {
@@ -78,5 +93,22 @@ function refreshResult(): WorkspaceIndexRefreshResult {
     changed: true,
     addedPaths: ["/workspace/Entry.ets"],
     removedPaths: [],
+  };
+}
+
+function indexEvent(overrides: Partial<WorkspaceIndexEvent> = {}): WorkspaceIndexEvent {
+  return {
+    eventId: "event",
+    rootPath: "/workspace",
+    scope: "scheduler",
+    kind: "refresh-workspace",
+    phase: "backoff",
+    severity: "warning",
+    message: "recommended retry delay 2000ms",
+    taskId: "task",
+    generation: 1,
+    payloadJson: "{}",
+    createdAt: 1,
+    ...overrides,
   };
 }
