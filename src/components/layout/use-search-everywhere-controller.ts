@@ -22,7 +22,6 @@ import type { UiInteractionKind } from "@/features/performance/ui-latency-monito
 import {
   canUseNativeTextSearchRuntime,
 } from "@/components/layout/search-text-fallback";
-import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
 import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
 import { runSearchTextQuery } from "@/components/layout/search-text-runner";
 import { dispatchSearchOverlayQueryEffect } from "@/components/layout/search-query-effect-dispatcher";
@@ -40,6 +39,7 @@ import { createSearchMissReporters } from "@/components/layout/search-miss-repor
 import { createSearchOpenActions } from "@/components/layout/search-open-actions";
 import { runSearchFallbackText } from "@/components/layout/search-fallback-runner";
 import { createSearchSessionLifecycle } from "@/components/layout/search-session-lifecycle";
+import { createSearchNextPageAction } from "@/components/layout/search-next-page-action";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -145,6 +145,19 @@ export function useSearchEverywhereController({
     closeSearchOverlayForNavigation,
     navigateToLocation,
     recordUiInteraction,
+  });
+  const loadNextSearchPageAction = createSearchNextPageAction({
+    getMode: () => searchEverywhereMode,
+    sessionStore: searchSessionStoreRef.current,
+    getRootPath: () => workspace?.rootPath ?? null,
+    getQuery: () => debouncedSearchQuery,
+    getScope: () => searchEverywhereScope,
+    displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
+    interactionRuntime: interactionRuntimeRef.current,
+    queryEntityPage: workspaceApi.queryWorkspaceCandidatesWithReadiness,
+    runTextPage: fallbackTextSearch,
+    hasDirtyDocuments,
+    scheduleSelectedPreview,
   });
 
   function openSearchOverlay(mode: SearchEverywhereMode) {
@@ -292,23 +305,7 @@ export function useSearchEverywhereController({
   }
 
   async function loadNextSearchEverywherePage(selectIndexAfterLoad?: number) {
-    const session = searchSessionStoreRef.current.getSnapshot();
-    await loadNextSearchPage({
-      mode: searchEverywhereMode,
-      session,
-      rootPath: workspace?.rootPath ?? null,
-      query: debouncedSearchQuery,
-      scope: searchEverywhereScope,
-      displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
-      requestId: interactionRuntimeRef.current.getCurrentQueryGeneration(),
-      selectIndexAfterLoad,
-      queryEntityPage: workspaceApi.queryWorkspaceCandidatesWithReadiness,
-      runTextPage: fallbackTextSearch,
-      hasDirtyDocuments,
-      isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
-      patchSearchSession: searchSessionStoreRef.current.patch,
-      scheduleSelectedPreview,
-    });
+    await loadNextSearchPageAction(selectIndexAfterLoad);
   }
 
   function fallbackTextSearch(
