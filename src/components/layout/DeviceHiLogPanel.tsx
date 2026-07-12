@@ -5,6 +5,11 @@ import { DeviceLogFilterBar } from "@/components/layout/DeviceLogFilterBar";
 import { DeviceLogInspector } from "@/components/layout/DeviceLogEntryDetails";
 import { DeviceLogQueryDiagnostics } from "@/components/layout/DeviceLogQueryDiagnostics";
 import { DeviceLogStreamToolbar } from "@/components/layout/DeviceLogStreamToolbar";
+import {
+  buildDeviceLogLiveWindowText,
+  buildDeviceLogRenderWindow,
+  createStatsPollingErrorStats,
+} from "@/components/layout/device-log-panel-model";
 import { applyDeviceLogFilter, compileDeviceLogFilter, hasActiveDeviceLogFilter } from "@/features/device-log/device-log-filter";
 import type { DeviceLogEntry, DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
 import { createDeviceLogStore } from "@/features/device-log/device-log-store";
@@ -32,28 +37,6 @@ const initialFilter: DeviceLogFilterState = {
   domain: "",
   tag: "",
 };
-
-function createStatsPollingErrorStats(
-  streamId: string,
-  deviceId: string,
-  error: unknown,
-): DeviceLogRuntimeStats {
-  const message = error instanceof Error ? error.message : "Device log stats unavailable";
-  return {
-    streamId,
-    deviceId,
-    streamStatus: "error",
-    ingestedLines: 0,
-    persistedLines: 0,
-    droppedLines: 0,
-    pendingBatches: 0,
-    bufferBytes: 0,
-    lastWriteMs: 0,
-    slowWriteBatches: 0,
-    backpressureState: "idle",
-    lastError: message,
-  };
-}
 
 type DeviceHiLogPanelProps = {
   active: boolean;
@@ -109,13 +92,14 @@ export function DeviceHiLogPanel({
   const queryEntries = query.entries;
   const sourceEntries = queryEntries ?? (queryActive ? store.getRecentEntries(QUERY_RECENT_WINDOW_MS) : stateEntries);
   const visibleEntries = queryEntries ?? sourceEntries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
-  const visibleCount = Math.ceil(viewportHeight / LOG_ROW_HEIGHT) + LOG_ROW_OVERSCAN * 2;
-  const scrollStartIndex = Math.max(0, Math.floor(scrollTop / LOG_ROW_HEIGHT) - LOG_ROW_OVERSCAN);
-  const tailStartIndex = Math.max(0, visibleEntries.length - visibleCount);
-  const visibleStartIndex = followingTail ? tailStartIndex : scrollStartIndex;
-  const renderedEntries = visibleEntries.slice(visibleStartIndex, visibleStartIndex + visibleCount);
-  const virtualTop = visibleStartIndex * LOG_ROW_HEIGHT;
-  const virtualHeight = visibleEntries.length * LOG_ROW_HEIGHT;
+  const renderWindow = buildDeviceLogRenderWindow({
+    entries: visibleEntries,
+    followingTail,
+    overscan: LOG_ROW_OVERSCAN,
+    rowHeight: LOG_ROW_HEIGHT,
+    scrollTop,
+    viewportHeight,
+  });
   const {
     canExport,
     exportCurrentLogs,
@@ -387,9 +371,13 @@ export function DeviceHiLogPanel({
     onStatusChange("HiLog live view resumed");
   }
 
-  const liveWindowText = storeState.trimmedEntries > 0 && queryEntries == null
-    ? `${stateEntries.length.toLocaleString()} live · ${storeState.trimmedEntries.toLocaleString()} older persisted`
-    : `${sourceEntries.length.toLocaleString()} total · ${visibleEntries.length.toLocaleString()} matched`;
+  const liveWindowText = buildDeviceLogLiveWindowText({
+    liveEntryCount: stateEntries.length,
+    sourceEntryCount: sourceEntries.length,
+    trimmedEntries: storeState.trimmedEntries,
+    visibleEntryCount: visibleEntries.length,
+    queryActive: queryEntries != null,
+  });
 
   return (
     <div className="device-log-tool-window__body">
@@ -436,10 +424,10 @@ export function DeviceHiLogPanel({
         followingTail={followingTail}
         liveWindowText={liveWindowText}
         querySummary={query.summary}
-        renderedEntries={renderedEntries}
+        renderedEntries={renderWindow.renderedEntries}
         selectedEntry={selectedEntry}
-        virtualHeight={virtualHeight}
-        virtualTop={virtualTop}
+        virtualHeight={renderWindow.virtualHeight}
+        virtualTop={renderWindow.virtualTop}
         visibleEntries={visibleEntries}
         canLoadOlder={query.canLoadOlder}
         loadingOlder={query.loadingOlder}
