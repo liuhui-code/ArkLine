@@ -5,11 +5,9 @@ import {
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import {
   buildSearchEntityQueryRequest,
-  buildSearchEntityAppendPatch,
   executeSearchEntityQuery,
 } from "@/components/layout/search-entity-query-session";
 import {
-  buildTextSearchAppendPatch,
   resolveSearchSelectionMove,
 } from "@/components/layout/search-pagination-session";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
@@ -57,6 +55,7 @@ import {
   readSearchFileForSearch,
   runFallbackTextSearch,
 } from "@/components/layout/search-text-fallback";
+import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -375,28 +374,22 @@ export function useSearchEverywhereController({
 
   async function loadNextSearchEverywherePage(selectIndexAfterLoad?: number) {
     const session = searchSessionStoreRef.current.getSnapshot();
-    if (!workspace || session.textPageLoading) return;
-    const query = debouncedSearchQuery;
-    const requestId = interactionRuntimeRef.current.getCurrentQueryGeneration();
-    if (searchEverywhereMode === "searchEverywhere") {
-      if (!session.entityNextCursor || !workspaceApi.queryWorkspaceCandidatesWithReadiness) return;
-      searchSessionStoreRef.current.patch({ textPageLoading: true });
-      const envelope = await workspaceApi.queryWorkspaceCandidatesWithReadiness(workspace.rootPath, query, searchEverywhereScope, SEARCH_EVERYWHERE_DISPLAY_LIMIT, session.entityNextCursor);
-      if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
-      searchSessionStoreRef.current.patch(buildSearchEntityAppendPatch(
-        session.candidates,
-        envelope.items,
-        envelope.nextCursor,
-        selectIndexAfterLoad ?? session.selectedIndex,
-      ));
-      return;
-    }
-    if (!session.textNextCursor) return;
-    searchSessionStoreRef.current.patch({ textPageLoading: true });
-    const result = await fallbackTextSearch(query, hasDirtyDocuments(), requestId, session.textNextCursor);
-    if (!interactionRuntimeRef.current.isCurrentQuery(requestId)) return;
-    searchSessionStoreRef.current.patch(buildTextSearchAppendPatch(session, result, selectIndexAfterLoad));
-    if (selectIndexAfterLoad != null) scheduleSelectedPreview(selectIndexAfterLoad);
+    await loadNextSearchPage({
+      mode: searchEverywhereMode,
+      session,
+      rootPath: workspace?.rootPath ?? null,
+      query: debouncedSearchQuery,
+      scope: searchEverywhereScope,
+      displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
+      requestId: interactionRuntimeRef.current.getCurrentQueryGeneration(),
+      selectIndexAfterLoad,
+      queryEntityPage: workspaceApi.queryWorkspaceCandidatesWithReadiness,
+      runTextPage: fallbackTextSearch,
+      hasDirtyDocuments,
+      isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
+      patchSearchSession: searchSessionStoreRef.current.patch,
+      scheduleSelectedPreview,
+    });
   }
 
   function fallbackTextSearch(
