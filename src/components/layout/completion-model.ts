@@ -1,3 +1,4 @@
+import { extractCompletionPrefix } from "@/components/layout/app-shell-helpers";
 import type { CompletionImportPreviewEdit, LanguageCompletionItem } from "@/features/workspace/workspace-api";
 
 export type CompletionSurface = "suggestionList" | "inlineGhostText";
@@ -49,6 +50,25 @@ export type CompletionPresentation = {
   replacementPrefix: string;
   original: LanguageCompletionItem;
 };
+
+export type CompletionInsertTargetInput = {
+  item: CompletionPresentation;
+  selection: { line: number; column: number };
+  content: string;
+  fallbackPrefix: string;
+};
+
+export function buildCompletionInsertTarget({
+  item,
+  selection,
+  content,
+  fallbackPrefix,
+}: CompletionInsertTargetInput) {
+  return {
+    text: completionInsertTextToPlainText(item.insertText),
+    replaceBefore: completionReplacementLength(item, selection, content, fallbackPrefix),
+  };
+}
 
 const kindLabels: Record<CompletionItemKind, string> = {
   method: "Method",
@@ -115,6 +135,33 @@ function isImportPreviewEdit(value: unknown): value is CompletionImportPreviewEd
     && typeof edit.targetPath === "string"
     && edit.targetPath.length > 0
     && edit.applyMode === "explicit";
+}
+
+function completionInsertTextToPlainText(insertText: string) {
+  return insertText
+    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
+    .replace(/\$\d+/g, "");
+}
+
+function completionReplacementLength(
+  item: CompletionPresentation,
+  selection: { line: number; column: number },
+  content: string,
+  fallbackPrefix: string,
+) {
+  const range = item.replacementRange;
+  if (
+    range
+    && range.startLine === selection.line
+    && range.endLine === selection.line
+    && range.endColumn === selection.column
+    && range.startColumn >= 1
+    && range.startColumn <= range.endColumn
+  ) {
+    return Math.max(0, selection.column - range.startColumn);
+  }
+
+  return extractCompletionPrefix(content, selection.line, selection.column).length || fallbackPrefix.length;
 }
 
 export function rankCompletionItems(

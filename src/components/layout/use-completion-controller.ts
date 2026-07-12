@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { collectCompletionCandidateResult } from "@/components/layout/completion-candidate-provider";
 import { createCompletionHistoryStore } from "@/components/layout/completion-history-store";
-import { normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
+import { buildCompletionInsertTarget, normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
 import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app-shell-model";
 import { extractCompletionPrefix, getLineTextBeforeCursor } from "@/components/layout/app-shell-helpers";
@@ -226,18 +226,17 @@ export function useCompletionController({
   }
 
   function insertCompletionItem(item: CompletionPresentation) {
-    const text = completionInsertTextToPlainText(item.insertText);
-    const replaceBefore = completionReplacementLength(
+    const insertTarget = buildCompletionInsertTarget({
       item,
-      editorSelection,
-      getActiveContent(),
-      completionReplacePrefix,
-    );
+      selection: editorSelection,
+      content: getActiveContent(),
+      fallbackPrefix: completionReplacePrefix,
+    });
     completionRequestRef.current += 1;
     languageSessionStore.cancel("completion");
     completionHistoryStore.recordAccepted(item.label);
     setCompletionHistoryVersion((version) => version + 1);
-    setInsertTextTarget({ text, replaceBefore, nonce: Date.now() });
+    setInsertTextTarget({ ...insertTarget, nonce: Date.now() });
     setCompletionItems([]);
     setCompletionReplacePrefix("");
     setCompletionSelectedIndex(0);
@@ -402,31 +401,4 @@ export function useCompletionController({
     insertCompletionItem,
     syncCompletionForEditorSelection,
   };
-}
-
-function completionInsertTextToPlainText(insertText: string) {
-  return insertText
-    .replace(/\$\{\d+:([^}]*)\}/g, "$1")
-    .replace(/\$\d+/g, "");
-}
-
-function completionReplacementLength(
-  item: CompletionPresentation,
-  selection: { line: number; column: number },
-  content: string,
-  fallbackPrefix: string,
-) {
-  const range = item.replacementRange;
-  if (
-    range
-    && range.startLine === selection.line
-    && range.endLine === selection.line
-    && range.endColumn === selection.column
-    && range.startColumn >= 1
-    && range.startColumn <= range.endColumn
-  ) {
-    return Math.max(0, selection.column - range.startColumn);
-  }
-
-  return extractCompletionPrefix(content, selection.line, selection.column).length || fallbackPrefix.length;
 }

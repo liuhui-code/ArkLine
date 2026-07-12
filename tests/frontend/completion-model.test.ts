@@ -1,4 +1,5 @@
 import {
+  buildCompletionInsertTarget,
   normalizeCompletionItems,
   rankCompletionItems,
   type CompletionContext,
@@ -176,5 +177,51 @@ describe("completion presentation model", () => {
       targetPath: "/project/src/UserService.ets",
       applyMode: "explicit",
     });
+  });
+
+  it("builds insertion text and replacement length from snippet completions", () => {
+    const [item] = normalizeCompletionItems([
+      {
+        label: "width",
+        detail: "ArkUI modifier",
+        kind: "property",
+        insertText: "width(${1:value})",
+        replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
+      },
+    ], {
+      prefix: "wi",
+      lineTextBeforeCursor: ".wi",
+      trigger: "typing",
+    });
+
+    expect(buildCompletionInsertTarget({
+      item,
+      selection: { line: 8, column: 8 },
+      content: "Column().wi",
+      fallbackPrefix: "wi",
+    })).toEqual({ text: "width(value)", replaceBefore: 2 });
+  });
+
+  it("falls back to the current prefix when replacement range is not aligned", () => {
+    const [item] = normalizeCompletionItems([
+      {
+        label: "width",
+        detail: "ArkUI modifier",
+        kind: "property",
+        insertText: "width(${1:value})",
+        replacementRange: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 7 },
+      },
+    ], {
+      prefix: "wi",
+      lineTextBeforeCursor: ".wi",
+      trigger: "typing",
+    });
+
+    expect(buildCompletionInsertTarget({
+      item,
+      selection: { line: 5, column: 4 },
+      content: ".wi",
+      fallbackPrefix: "wi",
+    })).toEqual({ text: "width(value)", replaceBefore: 2 });
   });
 });
