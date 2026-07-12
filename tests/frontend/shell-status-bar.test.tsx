@@ -1,8 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
 
-function renderStatusBar(capability: SemanticCapabilityState) {
+function renderStatusBar(capability: SemanticCapabilityState, overrides: {
+  sdkIndexText?: string | null;
+  onOpenIndexDiagnostics?: () => void;
+} = {}) {
   return render(
     <ShellStatusBar
       activeBottomTool="terminal"
@@ -17,7 +20,7 @@ function renderStatusBar(capability: SemanticCapabilityState) {
       workspaceName="Demo"
       workspaceScanText={null}
       workspaceIndexText="Index: ready (2 files)"
-      sdkIndexText={null}
+      sdkIndexText={overrides.sdkIndexText ?? null}
       terminalRunning={false}
       buildMessage="Build idle"
       gitBlameVisible={false}
@@ -27,7 +30,7 @@ function renderStatusBar(capability: SemanticCapabilityState) {
       onRefreshGitBlame={() => undefined}
       onShowCurrentLineBlame={() => undefined}
       onCloseGitBlame={() => undefined}
-      onOpenIndexDiagnostics={() => undefined}
+      onOpenIndexDiagnostics={overrides.onOpenIndexDiagnostics ?? (() => undefined)}
     />,
   );
 }
@@ -45,5 +48,25 @@ describe("ShellStatusBar", () => {
     expect(screen.getByRole("button", { name: "Open Index Diagnostics: Index: ready (2 files)" })).toBeVisible();
     expect(screen.getByText("SDK: applying")).toBeVisible();
     expect(screen.getByLabelText("SDK Capability")).toHaveAttribute("title", "SDK settings are still applying");
+  });
+
+  it("opens index diagnostics from the SDK index status", () => {
+    const onOpenIndexDiagnostics = vi.fn();
+    renderStatusBar({
+      status: "semantic",
+      semanticNavigation: true,
+      semanticCompletion: true,
+      localFallback: true,
+      message: "SDK ready",
+    }, {
+      sdkIndexText: "SDK API: stalled · No heartbeat > 60s",
+      onOpenIndexDiagnostics,
+    });
+
+    fireEvent.click(screen.getByRole("button", {
+      name: "Open Index Diagnostics: SDK API: stalled · No heartbeat > 60s",
+    }));
+
+    expect(onOpenIndexDiagnostics).toHaveBeenCalledTimes(1);
   });
 });

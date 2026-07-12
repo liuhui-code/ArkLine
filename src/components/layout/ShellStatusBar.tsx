@@ -63,7 +63,16 @@ export function ShellStatusBar({
         >
           {workspaceIndexText}
         </button>
-        {sdkIndexText ? <span className="status-pill">{sdkIndexText}</span> : null}
+        {sdkIndexText ? (
+          <button
+            type="button"
+            className="status-pill status-pill--button"
+            aria-label={`Open Index Diagnostics: ${sdkIndexText}`}
+            onClick={onOpenIndexDiagnostics}
+          >
+            {sdkIndexText}
+          </button>
+        ) : null}
         <span className="status-pill">{activePath ? getPathBasename(activePath) : "No file selected"}</span>
         <SemanticCapabilityBadge capability={semanticCapability} />
         <SemanticModeBadge semanticState={semanticState} />
