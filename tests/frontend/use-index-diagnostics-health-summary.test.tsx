@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useIndexDiagnosticsController } from "@/components/layout/use-index-diagnostics-controller";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type { WorkspaceApi, WorkspaceIndexDiagnostics, WorkspaceViewModel } from "@/features/workspace/workspace-api";
-import type { WorkspaceIndexHealth, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
+import type { WorkspaceIndexEvent, WorkspaceIndexHealth, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
 describe("useIndexDiagnosticsController health summary", () => {
@@ -75,6 +75,33 @@ describe("useIndexDiagnosticsController health summary", () => {
 
     expect(result.current.workspaceIndexStatusSummary.workspaceIndexText)
       .toBe("Index: Backoff, recommended retry delay 5000ms");
+  });
+
+  it("merges live query explain events into diagnostics", async () => {
+    const inspectWorkspaceIndex = vi.fn(async () => diagnostics());
+    const { result } = renderHook(() => useIndexDiagnosticsController(options({
+      workspaceApi: workspaceApi({
+        inspectWorkspaceIndex,
+        getWorkspaceIndexTaskStatuses: vi.fn(async () => []),
+      }),
+    })));
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      workspaceIndexProjectionStore.recordRecentEvent("/workspace", indexEvent({
+        eventId: "query-miss",
+        scope: "query",
+        kind: "definition",
+        phase: "miss",
+      }));
+      await waitForProjectionFlush();
+    });
+
+    expect(result.current.indexDiagnostics?.lastExplainStatus).toBe("miss");
+    expect(result.current.indexDiagnostics?.recentEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ eventId: "query-miss", scope: "query" }),
+    ]));
   });
 });
 
@@ -230,6 +257,23 @@ function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): Workspac
     generation: 1,
     progressCurrent: 1,
     progressTotal: 1,
+    ...overrides,
+  };
+}
+
+function indexEvent(overrides: Partial<WorkspaceIndexEvent> = {}): WorkspaceIndexEvent {
+  return {
+    eventId: "event",
+    rootPath: "/workspace",
+    scope: "query",
+    kind: "definition",
+    phase: "miss",
+    severity: "warning",
+    message: "No indexed evidence explains this query yet",
+    taskId: null,
+    generation: null,
+    payloadJson: "{}",
+    createdAt: 3,
     ...overrides,
   };
 }

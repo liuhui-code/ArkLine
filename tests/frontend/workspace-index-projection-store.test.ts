@@ -63,6 +63,49 @@ describe("workspace index projection store", () => {
       latestRetryBackoff: "recommended retry delay 5000ms",
     });
   });
+
+  it("derives last explain status from backend query events", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvents("/workspace", [
+      indexEvent({ eventId: "query-miss", scope: "query", kind: "definition", phase: "miss" }),
+      indexEvent({ eventId: "query-blocked", scope: "query", kind: "completion", phase: "blocked", createdAt: 2 }),
+    ]);
+
+    expect(store.snapshot().explainSummary).toEqual({
+      lastExplainStatus: "blocked",
+    });
+  });
+
+  it("updates last explain status from live query events", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvent(
+      "/workspace",
+      indexEvent({ eventId: "query-hit", scope: "query", kind: "search", phase: "hit" }),
+    );
+
+    expect(store.snapshot().explainSummary).toEqual({
+      lastExplainStatus: "hit",
+    });
+  });
+
+  it("keeps live query events when diagnostics refresh records older events", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvent(
+      "/workspace",
+      indexEvent({ eventId: "query-miss", scope: "query", kind: "definition", phase: "miss", createdAt: 3 }),
+    );
+    store.recordRecentEvents("/workspace", [
+      indexEvent({ eventId: "backoff", scope: "scheduler", phase: "backoff", createdAt: 2 }),
+    ]);
+
+    expect(store.snapshot().recentEvents.map((event) => event.eventId)).toEqual(["backoff", "query-miss"]);
+    expect(store.snapshot().explainSummary).toEqual({
+      lastExplainStatus: "miss",
+    });
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

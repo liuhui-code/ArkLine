@@ -10,11 +10,16 @@ export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBacko
 const RETRY_BACKOFF_DELAYS_MS = [2_000, 5_000, 15_000, 30_000];
 const MAX_RECENT_EVENTS = 64;
 
+export type WorkspaceIndexExplainSummary = {
+  lastExplainStatus: string | null;
+};
+
 export type WorkspaceIndexProjectionSnapshot = {
   rootPath: string | null;
   refreshResult: WorkspaceIndexRefreshResult | null;
   refreshEventCount: number;
   healthSummary: WorkspaceIndexHealthSummary | null;
+  explainSummary: WorkspaceIndexExplainSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
   recentEvents: WorkspaceIndexEvent[];
   eventCount: number;
@@ -29,6 +34,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     refreshResult: null,
     refreshEventCount: 0,
     healthSummary: null,
+    explainSummary: null,
     taskStatuses: [],
     recentEvents: [],
     eventCount: 0,
@@ -99,12 +105,16 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       });
     },
     recordRecentEvents(rootPath: string, events: WorkspaceIndexEvent[]) {
-      const healthSummary = healthSummaryFromEvents(events);
+      const current = snapshot.rootPath === rootPath ? snapshot.recentEvents : [];
+      const recentEvents = mergeRecentEvents(current, events);
+      const healthSummary = healthSummaryFromEvents(recentEvents);
+      const explainSummary = explainSummaryFromEvents(recentEvents);
       commit({
         ...snapshot,
         rootPath,
-        recentEvents: [...events],
+        recentEvents,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
+        explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -113,11 +123,13 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       const current = snapshot.rootPath === rootPath ? snapshot.recentEvents : [];
       const recentEvents = mergeRecentEvent(current, event);
       const healthSummary = healthSummaryFromEvents(recentEvents);
+      const explainSummary = explainSummaryFromEvents(recentEvents);
       commit({
         ...snapshot,
         rootPath,
         recentEvents,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
+        explainSummary: explainSummary === undefined ? snapshot.explainSummary : explainSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       });
@@ -147,10 +159,24 @@ function healthSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexH
   };
 }
 
+function explainSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexExplainSummary | undefined {
+  const latest = [...events].reverse().find((event) => event.scope === "query");
+  if (!latest) {
+    return undefined;
+  }
+  return {
+    lastExplainStatus: latest.phase || null,
+  };
+}
+
 function mergeRecentEvent(events: WorkspaceIndexEvent[], next: WorkspaceIndexEvent) {
   const retained = events.filter((event) => event.eventId !== next.eventId);
   const merged = [...retained, next].sort((left, right) => left.createdAt - right.createdAt);
   return merged.slice(Math.max(0, merged.length - MAX_RECENT_EVENTS));
+}
+
+function mergeRecentEvents(current: WorkspaceIndexEvent[], next: WorkspaceIndexEvent[]) {
+  return next.reduce((events, event) => mergeRecentEvent(events, event), current);
 }
 
 function mergeTaskStatus(

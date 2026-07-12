@@ -72,8 +72,12 @@ export function useIndexDiagnosticsController({
   const indexHealthSummary = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.healthSummary
     : null;
+  const effectiveIndexDiagnostics = mergeIndexDiagnosticsProjection(
+    indexDiagnostics,
+    indexProjection.rootPath === workspace?.rootPath ? indexProjection : null,
+  );
   const workspaceIndexStatusSummary = {
-    workspaceIndexText: getIndexHealthStatusText(indexHealthSummary ?? indexDiagnostics)
+    workspaceIndexText: getIndexHealthStatusText(indexHealthSummary ?? effectiveIndexDiagnostics)
       ?? getLayerReadinessStatusText(layerReadiness)
       ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
     sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),
@@ -365,7 +369,7 @@ export function useIndexDiagnosticsController({
     setIndexDiagnosticsVisible,
     indexDiagnosticsSectionTarget,
     indexDiagnosticsLoading,
-    indexDiagnostics,
+    indexDiagnostics: effectiveIndexDiagnostics,
     currentFileReadiness,
     layerReadiness,
     workspaceIndexTaskStatuses,
@@ -383,6 +387,22 @@ export function useIndexDiagnosticsController({
     rebuildIndexFromExplainPanel,
     openSettingsFromExplainPanel,
     retryLatestExplainQuery,
+  };
+}
+
+function mergeIndexDiagnosticsProjection(
+  diagnostics: WorkspaceIndexDiagnostics | null,
+  projection: ReturnType<typeof workspaceIndexProjectionStore.snapshot> | null,
+): WorkspaceIndexDiagnostics | null {
+  if (!diagnostics || !projection) {
+    return diagnostics;
+  }
+  return {
+    ...diagnostics,
+    lastExplainStatus: projection.explainSummary?.lastExplainStatus ?? diagnostics.lastExplainStatus,
+    retryBackoffCount: projection.healthSummary?.retryBackoffCount ?? diagnostics.retryBackoffCount,
+    latestRetryBackoff: projection.healthSummary?.latestRetryBackoff ?? diagnostics.latestRetryBackoff,
+    recentEvents: projection.recentEvents.length > 0 ? projection.recentEvents : diagnostics.recentEvents,
   };
 }
 
