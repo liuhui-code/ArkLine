@@ -46,6 +46,49 @@ describe("IndexDiagnosticsCenter repair actions", () => {
 
     expect(onRebuildProjectIndex).not.toHaveBeenCalled();
   });
+
+  it("disables SDK rebuild while an SDK index task is active", () => {
+    const diagnostics = diagnosticsWithRepairAction("rebuildSdkIndex");
+    const onRebuildSdkIndex = vi.fn();
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnostics}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[{
+          taskId: "sdk-1",
+          rootPath: "C:/workspace",
+          kind: "sdk",
+          status: "running",
+          reason: "settings apply",
+          generation: 3,
+          progressCurrent: 7,
+          progressTotal: 20,
+        }]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={onRebuildSdkIndex}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const repairActions = screen.getByLabelText("Repair Actions");
+    const button = within(repairActions).getByRole("button", { name: "Running SDK Index" });
+    expect(button).toBeDisabled();
+    expect(within(repairActions).getByText("7/20 (35%)")).toBeVisible();
+
+    fireEvent.click(button);
+
+    expect(onRebuildSdkIndex).not.toHaveBeenCalled();
+  });
 });
 
 function diagnosticsWithRepairAction(action: string): WorkspaceIndexDiagnostics {

@@ -11,6 +11,7 @@ import {
 import {
   buildIndexDiagnosticsViewModel,
   buildActiveProjectTaskSummary,
+  buildActiveSdkTaskSummary,
   formatClockTime,
   formatLayerCounts,
   formatRepairAction,
@@ -83,6 +84,7 @@ export function IndexDiagnosticsCenter({
   const schemaRebuildActions = diagnostics?.schemaVersionActions.filter((action) => action.status === "needs-rebuild") ?? [];
   const layerStatusText = getLayerReadinessStatusText(layerReadiness);
   const activeProjectTask = buildActiveProjectTaskSummary(taskStatuses);
+  const activeSdkTask = buildActiveSdkTaskSummary(taskStatuses);
   const viewModel = buildIndexDiagnosticsViewModel({
     diagnostics: diagnostics ? {
       status: diagnostics.status,
@@ -293,9 +295,12 @@ export function IndexDiagnosticsCenter({
                       {activeProjectTask ? <span>{activeProjectTask.progress}</span> : null}
                     </span>
                   ) : action === "rebuildSdkIndex" ? (
-                    <button type="button" className="toolbar__button" key={action} onClick={onRebuildSdkIndex}>
-                      Rebuild SDK Index
-                    </button>
+                    <span className="index-diagnostics__repair-running" key={action}>
+                      <button type="button" className="toolbar__button" disabled={Boolean(activeSdkTask)} onClick={onRebuildSdkIndex}>
+                        {activeSdkTask ? "Running SDK Index" : "Rebuild SDK Index"}
+                      </button>
+                      {activeSdkTask ? <span>{activeSdkTask.progress}</span> : null}
+                    </span>
                   ) : action === "configureSdk" ? (
                     <button type="button" className="toolbar__button" key={action} onClick={onConfigureSdk}>
                       Configure SDK

@@ -79,14 +79,15 @@ export function buildActiveProjectTaskSummary(tasks: WorkspaceIndexTaskStatus[])
   if (!task) {
     return null;
   }
-  return {
-    title: `Project index task ${task.stalled ? "stalled" : task.status}`,
-    kind: task.kind,
-    status: task.stalled ? "stalled" : task.status,
-    progress: formatTaskProgress(task),
-    duration: formatTaskDuration(task),
-    detail: formatTaskDetails(task),
-  };
+  return buildActiveTaskSummary(task, "Project index task");
+}
+
+export function buildActiveSdkTaskSummary(tasks: WorkspaceIndexTaskStatus[]): ActiveProjectTaskSummary | null {
+  const task = tasks.find((candidate) => candidate.kind === "sdk" && !isTerminalTaskStatus(candidate.status));
+  if (!task) {
+    return null;
+  }
+  return buildActiveTaskSummary(task, "SDK index task");
 }
 
 export function formatLayerCounts(layer: { indexedCount: number; failedCount: number; staleCount: number }) {
@@ -141,6 +142,17 @@ function performanceTimelineCount(backendCount: number, uiCount: number, ipcCoun
 
 function isTerminalTaskStatus(status: string) {
   return status === "ready" || status === "partial" || status === "stale" || status === "failed";
+}
+
+function buildActiveTaskSummary(task: WorkspaceIndexTaskStatus, titlePrefix: string): ActiveProjectTaskSummary {
+  return {
+    title: `${titlePrefix} ${task.stalled ? "stalled" : task.status}`,
+    kind: task.kind,
+    status: task.stalled ? "stalled" : task.status,
+    progress: formatTaskProgress(task),
+    duration: formatTaskDuration(task),
+    detail: formatTaskDetails(task),
+  };
 }
 
 function firstNonEmpty(...values: Array<string | undefined>) {
