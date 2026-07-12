@@ -42,6 +42,7 @@ import {
 import { loadNextSearchPage } from "@/components/layout/search-next-page-loader";
 import { runSearchEntityQuery } from "@/components/layout/search-entity-runner";
 import { runSearchTextQuery } from "@/components/layout/search-text-runner";
+import { dispatchSearchOverlayQueryEffect } from "@/components/layout/search-query-effect-dispatcher";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
@@ -229,19 +230,16 @@ export function useSearchEverywhereController({
   }
 
   useEffect(() => {
-    if (activeOverlay !== "searchEverywhere") return;
-    const requestId = interactionRuntimeRef.current.startQuery(
-      searchEverywhereMode === "searchEverywhere" ? "searchEverywhere" : "text",
-    );
-    if (!workspace) {
-      clearSearchResults(debouncedSearchQuery.trim());
-      return;
-    }
-    if (searchEverywhereMode === "searchEverywhere") {
-      runEntitySearch(requestId);
-      return;
-    }
-    runTextSearch(requestId);
+    dispatchSearchOverlayQueryEffect({
+      activeOverlay,
+      mode: searchEverywhereMode,
+      query: debouncedSearchQuery,
+      hasWorkspace: Boolean(workspace),
+      startQuery: interactionRuntimeRef.current.startQuery,
+      clearSearchResults,
+      runEntitySearch,
+      runTextSearch,
+    });
   }, [
     activeOverlay,
     activePath,
