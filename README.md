@@ -208,10 +208,11 @@ pnpm tauri dev
 Run verification:
 
 ```bash
-pnpm test
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm build
+pnpm check:fast
 ```
+
+Use `pnpm check` before merge-ready changes when the full frontend suite is
+needed.
 
 Notes:
 
@@ -335,9 +336,7 @@ Important constraints in the current codebase:
 corepack enable
 corepack prepare pnpm@10.12.1 --activate
 pnpm install
-pnpm test
-cargo test --manifest-path src-tauri/Cargo.toml
-pnpm build
+pnpm check:fast
 pnpm tauri dev
 pnpm package:windows
 pnpm package:windows:portable

@@ -19,7 +19,7 @@ describe("package scripts", () => {
 
     expect(scripts["test:frontend"]).toBe("vitest run");
     expect(scripts["test:frontend:quality"]).toBe(
-      "vitest run tests/frontend/package-scripts.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
+      "vitest run tests/frontend/package-scripts.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
     );
     expect(scripts["test:rust"]).toBe(
       "cargo test --manifest-path src-tauri/Cargo.toml",
