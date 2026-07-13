@@ -47,6 +47,7 @@ pub fn query_workspace_quick_open(
     Ok(candidates)
 }
 
+#[allow(dead_code)]
 pub fn query_workspace_search_everywhere(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,

@@ -326,6 +326,8 @@ pub mod workspace_performance_config_service;
 mod workspace_performance_config_service_tests;
 pub(crate) mod workspace_query_command_service;
 #[cfg(test)]
+mod workspace_query_command_service_tests;
+#[cfg(test)]
 mod workspace_reference_branch_flow_tests;
 #[cfg(test)]
 mod workspace_reference_chain_receiver_tests;

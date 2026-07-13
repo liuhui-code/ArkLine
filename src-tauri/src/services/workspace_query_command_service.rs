@@ -14,7 +14,7 @@ use crate::services::workspace_index_facade_service::{
     query_facade_text_search_result_with_cancellation,
 };
 use crate::services::workspace_index_query_service::{
-    query_workspace_quick_open, query_workspace_search_everywhere, WorkspaceIndexQueryScope,
+    query_workspace_quick_open, WorkspaceIndexQueryScope,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_task_status_service::current_time_millis;
@@ -79,7 +79,15 @@ pub async fn query_workspace_search_everywhere_blocking(
     limit: usize,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
     spawn_blocking(move || {
-        query_workspace_search_everywhere(&index_runtime, &root_path, &query, limit)
+        query_facade_search_everywhere_with_readiness_context(
+            &index_runtime,
+            &root_path,
+            &query,
+            WorkspaceIndexQueryScope::All,
+            limit,
+            &WorkspaceSearchRankingContext::default(),
+        )
+        .map(|envelope| envelope.items)
     })
     .await
     .map_err(|error| error.to_string())?
