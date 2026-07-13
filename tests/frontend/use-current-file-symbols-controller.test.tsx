@@ -88,10 +88,14 @@ describe("useCurrentFileSymbolsController", () => {
         freshness: "ready",
       },
     ];
-    const queryWorkspaceFileSymbols = vi.fn(async () => indexedSymbols);
+    const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => ({
+      items: indexedSymbols,
+      readiness: readiness(),
+      nextCursor: null,
+    }));
     const { result } = renderHook(() => useCurrentFileSymbolsController(options({
       rootPath: "/workspace",
-      workspaceApi: workspaceApi({ queryWorkspaceFileSymbols }),
+      workspaceApi: workspaceApi({ queryWorkspaceFileSymbolsWithReadiness }),
     })));
 
     act(() => result.current.showCurrentClassMethods());
@@ -102,7 +106,7 @@ describe("useCurrentFileSymbolsController", () => {
         "count: number",
       ]);
     });
-    expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith("/workspace", "/workspace/A.ets", "", 200);
+    expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalledWith("/workspace", "/workspace/A.ets", "", 80, null);
   });
 
   it("loads the next indexed symbol page when selection reaches the end", async () => {

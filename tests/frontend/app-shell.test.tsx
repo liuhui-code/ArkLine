@@ -113,6 +113,21 @@ function searchEnvelope(items: SearchCandidate[]) {
   };
 }
 
+function fileSymbolEnvelope(items: SearchCandidate[]) {
+  return {
+    items,
+    readiness: {
+      rootPath: "C:/samples/DemoWorkspace",
+      requestedGeneration: 1,
+      servedGeneration: 1,
+      state: "ready" as const,
+      retryable: false,
+    },
+    explain: ["query:fileSymbols", `resultCount:${items.length}`, "readiness:Ready"],
+    nextCursor: null,
+  };
+}
+
 function mockEditorCaretRect(rect: { top: number; left: number; bottom: number; right: number } | null) {
   return vi.spyOn(EditorView.prototype, "coordsAtPos").mockReturnValue(rect);
 }
@@ -2432,7 +2447,7 @@ describe("App shell", () => {
 
   it("uses indexed file symbols for Ctrl+F12 when available", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceFileSymbols = vi.fn(async () => [
+    const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => fileSymbolEnvelope([
       {
         id: "symbol:C:/samples/DemoWorkspace/src/main.ets:4:3",
         source: "symbol" as const,
@@ -2445,7 +2460,7 @@ describe("App shell", () => {
         score: 0,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
@@ -2464,7 +2479,7 @@ describe("App shell", () => {
         "  indexedBuild() {}",
         "}",
       ].join("\n"),
-      queryWorkspaceFileSymbols,
+      queryWorkspaceFileSymbolsWithReadiness,
     });
 
     render(<AppShell workspaceApi={workspaceApi} />);
@@ -2474,11 +2489,12 @@ describe("App shell", () => {
     await user.click(await screen.findByLabelText("Editor Content"));
     await user.keyboard("{Control>}{F12}{/Control}");
 
-    expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith(
+    expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
       "C:\\samples\\DemoWorkspace\\src\\main.ets",
       "",
-      200,
+      80,
+      null,
     );
     expect(await screen.findByRole("option", { name: /indexedBuild\(\).*line 4/ })).toBeVisible();
   });
@@ -3528,7 +3544,7 @@ describe("App shell", () => {
 
   it("adds indexed file symbols to completion when language completions are empty", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceFileSymbols = vi.fn(async () => [
+    const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => fileSymbolEnvelope([
       {
         id: "symbol:C:/samples/DemoWorkspace/src/main.ets:4:3",
         source: "symbol" as const,
@@ -3541,7 +3557,7 @@ describe("App shell", () => {
         score: 0,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
@@ -3559,7 +3575,7 @@ describe("App shell", () => {
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
-      queryWorkspaceFileSymbols,
+      queryWorkspaceFileSymbolsWithReadiness,
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
     });
@@ -3572,7 +3588,7 @@ describe("App shell", () => {
     await user.click(editor);
     await user.keyboard("{Control>} {/Control}");
 
-    await waitFor(() => expect(queryWorkspaceFileSymbols).toHaveBeenCalledWith(
+    await waitFor(() => expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
       "C:\\samples\\DemoWorkspace\\src\\main.ets",
       "",
@@ -3584,7 +3600,7 @@ describe("App shell", () => {
 
   it("opens indexed completion when language service completion is unavailable", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceFileSymbols = vi.fn(async () => [
+    const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => fileSymbolEnvelope([
       {
         id: "symbol:C:/samples/DemoWorkspace/src/main.ets:4:3",
         source: "symbol" as const,
@@ -3597,7 +3613,7 @@ describe("App shell", () => {
         score: 0,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
@@ -3614,7 +3630,7 @@ describe("App shell", () => {
       runValidation: async () => [],
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
-      queryWorkspaceFileSymbols,
+      queryWorkspaceFileSymbolsWithReadiness,
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
     });

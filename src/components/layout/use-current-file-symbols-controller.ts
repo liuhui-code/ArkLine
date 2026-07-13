@@ -67,7 +67,7 @@ export function useCurrentFileSymbolsController({
   }
 
   async function loadIndexedCurrentClassMethodPage(path: string, cursor: number | null, append: boolean) {
-    if (!rootPath || (!workspaceApi.queryWorkspaceFileSymbolsWithReadiness && !workspaceApi.queryWorkspaceFileSymbols)) {
+    if (!rootPath || !workspaceApi.queryWorkspaceFileSymbolsWithReadiness) {
       return;
     }
     if (currentMethodsLoading) return;
@@ -76,9 +76,10 @@ export function useCurrentFileSymbolsController({
     const isStaleRequest = () => currentMethodsRequestRef.current !== languageSession.requestId || !languageSessionStore.isCurrent(languageSession);
     setCurrentMethodsLoading(true);
     try {
-      const envelope = workspaceApi.queryWorkspaceFileSymbolsWithReadiness
-        ? await languageRequestTimeout(workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, "", FILE_SYMBOL_PAGE_SIZE, cursor), languageSession.timeoutMs)
-        : { items: await languageRequestTimeout(workspaceApi.queryWorkspaceFileSymbols!(rootPath, path, "", 200), languageSession.timeoutMs), nextCursor: null };
+      const envelope = await languageRequestTimeout(
+        workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, "", FILE_SYMBOL_PAGE_SIZE, cursor),
+        languageSession.timeoutMs,
+      );
       if (isStaleRequest()) return;
       const methods = fileSymbolMethods(envelope.items);
       setIndexedCurrentMethods((current) => ({

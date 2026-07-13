@@ -25,7 +25,6 @@ export type WorkspaceIndexQueryApi = {
   queryWorkspaceSearchEverywhere(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
   queryWorkspaceCandidates(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<SearchCandidate[]>;
   queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
-  queryWorkspaceFileSymbols(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<SearchCandidate[]>;
   queryWorkspaceFileSymbolsWithReadiness(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
   queryUsagesWithReadiness(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<UsageResult>>;
@@ -86,17 +85,6 @@ export function createWorkspaceIndexQueryApi({
       void limit;
       void context;
       return emptyIndexQueryEnvelope(rootPath);
-    },
-    async queryWorkspaceFileSymbols(rootPath, filePath, query, limit, cursor = null) {
-      if (hasTauriRuntime()) {
-        return invoke<SearchCandidate[]>("query_workspace_file_symbols", { rootPath, filePath, query, limit, cursor });
-      }
-
-      void rootPath;
-      void filePath;
-      void query;
-      void limit;
-      return [];
     },
     async queryWorkspaceFileSymbolsWithReadiness(rootPath, filePath, query, limit, cursor = null) {
       if (hasTauriRuntime()) {

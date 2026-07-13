@@ -80,14 +80,12 @@ describe("completion candidate provider", () => {
   });
 
   it("uses readiness-envelope APIs when available", async () => {
-    const queryWorkspaceFileSymbols = vi.fn(async () => [candidate({ title: "legacyLocal" })]);
     const queryWorkspaceCandidates = vi.fn(async () => [candidate({ title: "LegacyWorkspace" })]);
     const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => envelope([candidate({ title: "localBuild" })]));
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => envelope([
       candidate({ source: "class", kind: "class", title: "PrivateProfile" }),
     ]));
     const api = workspaceApi({
-      queryWorkspaceFileSymbols,
       queryWorkspaceCandidates,
       queryWorkspaceFileSymbolsWithReadiness,
       queryWorkspaceCandidatesWithReadiness,
@@ -102,7 +100,6 @@ describe("completion candidate provider", () => {
 
     expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalled();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalled();
-    expect(queryWorkspaceFileSymbols).not.toHaveBeenCalled();
     expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual([
       "semanticBuild()",
@@ -275,11 +272,9 @@ describe("completion candidate provider", () => {
     expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
   });
 
-  it("does not use legacy indexed query APIs for completion candidates", async () => {
-    const queryWorkspaceFileSymbols = vi.fn(async () => [candidate({ title: "legacyLocal" })]);
+  it("does not use legacy workspace candidate APIs for completion candidates", async () => {
     const queryWorkspaceCandidates = vi.fn(async () => [candidate({ source: "class", kind: "class", title: "LegacyProfile" })]);
     const api = workspaceApi({
-      queryWorkspaceFileSymbols,
       queryWorkspaceCandidates,
     });
 
@@ -290,7 +285,6 @@ describe("completion candidate provider", () => {
       replacePrefix: "leg",
     });
 
-    expect(queryWorkspaceFileSymbols).not.toHaveBeenCalled();
     expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
   });
