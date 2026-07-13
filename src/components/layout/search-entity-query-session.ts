@@ -2,7 +2,7 @@ import {
   capSearchEverywhereCandidates,
   orderSearchEverywhereCandidates,
 } from "@/components/layout/search-overlay-model";
-import { filterSearchCandidatesByScope, searchEverywhereEntityCandidates as filterEntityCandidates } from "@/components/layout/app-shell-model";
+import { searchEverywhereEntityCandidates as filterEntityCandidates } from "@/components/layout/app-shell-model";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -25,10 +25,7 @@ export type SearchEntityPatchInput = SearchEntityQueryResult & {
 
 export type SearchEntityQueryExecutionInput = {
   runReadiness?: () => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
-  runIndexed?: () => Promise<SearchCandidate[]>;
-  runLegacy?: () => Promise<SearchCandidate[]>;
   runLocal: () => SearchCandidate[];
-  scope: WorkspaceIndexQueryScope;
   onReadiness: (envelope: WorkspaceIndexQueryEnvelope<SearchCandidate>) => void;
 };
 
@@ -37,8 +34,6 @@ export type SearchEntityQueryRequestInput = {
   scope: WorkspaceIndexQueryScope;
   limit: number;
   runReadiness?: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
-  runIndexed?: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => Promise<SearchCandidate[]>;
-  runLegacy?: (query: string, limit: number) => Promise<SearchCandidate[]>;
   runLocal: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
   onReadiness: (envelope: WorkspaceIndexQueryEnvelope<SearchCandidate>) => void;
 };
@@ -48,46 +43,25 @@ export function buildSearchEntityQueryRequest({
   scope,
   limit,
   runReadiness,
-  runIndexed,
-  runLegacy,
   runLocal,
   onReadiness,
 }: SearchEntityQueryRequestInput): SearchEntityQueryExecutionInput {
   return {
     runReadiness: runReadiness ? () => runReadiness(query, scope, limit) : undefined,
-    runIndexed: runIndexed ? () => runIndexed(query, scope, limit) : undefined,
-    runLegacy: runLegacy ? () => runLegacy(query, limit) : undefined,
     runLocal: () => runLocal(query, scope, limit),
-    scope,
     onReadiness,
   };
 }
 
-export function filterLegacySearchEntityCandidates(
-  candidates: SearchCandidate[],
-  scope: WorkspaceIndexQueryScope,
-): SearchEntityQueryResult {
-  return { candidates: filterSearchCandidatesByScope(candidates, scope) };
-}
-
 export async function executeSearchEntityQuery({
   runReadiness,
-  runIndexed,
-  runLegacy,
   runLocal,
-  scope,
   onReadiness,
 }: SearchEntityQueryExecutionInput): Promise<SearchEntityQueryResult> {
   if (runReadiness) {
     const envelope = await runReadiness();
     onReadiness(envelope);
     return { candidates: envelope.items, explain: envelope.explain, nextCursor: envelope.nextCursor ?? null };
-  }
-  if (runIndexed) {
-    return { candidates: await runIndexed() };
-  }
-  if (runLegacy) {
-    return filterLegacySearchEntityCandidates(await runLegacy(), scope);
   }
   return { candidates: runLocal() };
 }

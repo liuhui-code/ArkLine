@@ -4,6 +4,7 @@ import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
 import type { LanguageCompletionItem, WorkspaceApi, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 import type { WorkspaceEditPlan } from "@/features/code-actions/workspace-edit-model";
+import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import { defaultSettings } from "@/features/settings/settings-store";
 import { EditorView } from "@codemirror/view";
 import { act } from "react";
@@ -95,6 +96,20 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     }),
     startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
     stopDeviceLogStream: async () => undefined,
+  };
+}
+
+function searchEnvelope(items: SearchCandidate[]) {
+  return {
+    items,
+    readiness: {
+      rootPath: "C:/samples/DemoWorkspace",
+      requestedGeneration: 1,
+      servedGeneration: 1,
+      state: "ready" as const,
+      retryable: false,
+    },
+    explain: ["query:searchEverywhere", `resultCount:${items.length}`, "readiness:Ready"],
   };
 }
 
@@ -1000,7 +1015,7 @@ describe("App shell", () => {
 
   it("opens Search Everywhere with class symbol and file index results", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "class:login",
         source: "class" as const,
@@ -1037,18 +1052,21 @@ describe("App shell", () => {
         score: 70,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
     await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
 
-    await waitFor(() => expect(queryWorkspaceSearchEverywhere).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
       "login",
+      "all",
       25,
+      null,
+      expect.any(Object),
     ));
     const results = screen.getByRole("list", { name: "Search Everywhere Results" });
     await waitFor(() => expect(within(results).getByText("Classes")).toBeVisible());
@@ -1073,7 +1091,7 @@ describe("App shell", () => {
       configurable: true,
       value: { writeText },
     });
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "class:login",
         source: "class" as const,
@@ -1086,9 +1104,9 @@ describe("App shell", () => {
         score: 120,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
@@ -1113,7 +1131,7 @@ describe("App shell", () => {
     const openFile = vi.fn(async (path: string) => path.endsWith("LoginPage.ets")
       ? "struct LoginPage {}"
       : "@Entry\n@Component\nstruct Index {}");
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "class:login",
         source: "class" as const,
@@ -1138,9 +1156,9 @@ describe("App shell", () => {
         score: 70,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
@@ -1177,7 +1195,7 @@ describe("App shell", () => {
   it("jumps to the clicked Search Everywhere candidate location", async () => {
     const user = userEvent.setup();
     const openFile = vi.fn(async () => "line one\nline two\nstruct LoginController {}");
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "class:login",
         source: "class" as const,
@@ -1190,9 +1208,9 @@ describe("App shell", () => {
         score: 120,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
@@ -1211,7 +1229,7 @@ describe("App shell", () => {
   it("opens the hovered Search Everywhere candidate on primary mouse down", async () => {
     const user = userEvent.setup();
     const openFile = vi.fn(async () => "line one\nline two\nstruct LoginController {}");
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "class:login",
         source: "class" as const,
@@ -1224,9 +1242,9 @@ describe("App shell", () => {
         score: 120,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
@@ -1244,7 +1262,7 @@ describe("App shell", () => {
   it("prefills Double Shift Search Everywhere from the current editor selection", async () => {
     const user = userEvent.setup();
     const openFile = vi.fn(async () => "line one\nline two\nstruct LoginController {}");
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "class:login",
         source: "class" as const,
@@ -1257,9 +1275,9 @@ describe("App shell", () => {
         score: 120,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
@@ -1277,10 +1295,13 @@ describe("App shell", () => {
     await user.keyboard("{Shift}{Shift}");
 
     expect(await screen.findByLabelText("Search Everywhere Query")).toHaveValue("LoginController");
-    await waitFor(() => expect(queryWorkspaceSearchEverywhere).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       expect.stringMatching(/DemoWorkspace$/),
       "LoginController",
+      "all",
       expect.any(Number),
+      null,
+      expect.any(Object),
     ));
   });
 
@@ -1289,7 +1310,7 @@ describe("App shell", () => {
     const openFile = vi.fn(async (path: string) => path.endsWith("LoginPage.ets")
       ? "struct LoginPage {}"
       : "line one\nline two\nstruct LoginController {}");
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => searchEnvelope([
       {
         id: "file:login",
         source: "file" as const,
@@ -1314,9 +1335,9 @@ describe("App shell", () => {
         score: 120,
         freshness: "ready" as const,
       },
-    ]);
+    ]));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceSearchEverywhere })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ openFile, queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
@@ -1417,6 +1438,8 @@ describe("App shell", () => {
       "login",
       "all",
       25,
+      null,
+      expect.any(Object),
     ));
   });
 
@@ -1483,15 +1506,17 @@ describe("App shell", () => {
       "login",
       "all",
       25,
+      null,
+      expect.any(Object),
     ));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
   });
 
   it("filters Search Everywhere through scoped index categories", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceCandidates = vi.fn(async (_rootPath: string, _query: string, scope: string) => {
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async (_rootPath: string, _query: string, scope: string) => {
       if (scope === "classes") {
-        return [{
+        return searchEnvelope([{
           id: "class:login",
           source: "class" as const,
           kind: "class",
@@ -1502,10 +1527,10 @@ describe("App shell", () => {
           column: 7,
           score: 120,
           freshness: "ready" as const,
-        }];
+        }]);
       }
 
-      return [
+      return searchEnvelope([
         {
           id: "class:login",
           source: "class" as const,
@@ -1530,30 +1555,34 @@ describe("App shell", () => {
           score: 80,
           freshness: "ready" as const,
         },
-      ];
+      ]);
     });
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidates })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
     await user.type(await screen.findByLabelText("Search Everywhere Query"), "login");
 
-    await waitFor(() => expect(queryWorkspaceCandidates).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
       "login",
       "all",
       25,
+      null,
+      expect.any(Object),
     ));
     expect(await screen.findByRole("button", { name: /api loginAction/ })).toBeVisible();
 
     await user.click(screen.getByRole("tab", { name: "Classes" }));
 
-    await waitFor(() => expect(queryWorkspaceCandidates).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
       "login",
       "classes",
       25,
+      null,
+      expect.any(Object),
     ));
     expect(screen.getByRole("tab", { name: "Classes", selected: true })).toBeVisible();
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
@@ -1623,6 +1652,8 @@ describe("App shell", () => {
       "login",
       "all",
       25,
+      null,
+      expect.any(Object),
     ));
     expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: /class LoginController/ })).toBeVisible();
@@ -1634,6 +1665,8 @@ describe("App shell", () => {
       "login",
       "classes",
       25,
+      null,
+      expect.any(Object),
     ));
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
   });
@@ -1686,10 +1719,10 @@ describe("App shell", () => {
     expect(screen.queryByRole("button", { name: /text Text\("Login"\)/ })).not.toBeInTheDocument();
   });
 
-  it("filters Search Everywhere categories when only the mixed query api is available", async () => {
+  it("filters Search Everywhere categories through the readiness query api", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceSearchEverywhere = vi.fn(async () => [
-      {
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async (_rootPath: string, _query: string, scope: string) => {
+      const classCandidate = {
         id: "class:login",
         source: "class" as const,
         kind: "class",
@@ -1700,8 +1733,8 @@ describe("App shell", () => {
         column: 7,
         score: 120,
         freshness: "ready" as const,
-      },
-      {
+      };
+      const apiCandidate = {
         id: "api:login",
         source: "api" as const,
         kind: "method",
@@ -1712,10 +1745,10 @@ describe("App shell", () => {
         column: 3,
         score: 80,
         freshness: "ready" as const,
-      },
-    ]);
-    const workspaceApi = createWorkspaceApi({ queryWorkspaceSearchEverywhere });
-    workspaceApi.queryWorkspaceCandidates = undefined;
+      };
+      return searchEnvelope(scope === "classes" ? [classCandidate] : [classCandidate, apiCandidate]);
+    });
+    const workspaceApi = createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness });
 
     render(<AppShell workspaceApi={workspaceApi} />);
 

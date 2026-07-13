@@ -29,19 +29,6 @@ export type SearchEntityWorkspaceApi = {
     cursor?: number | null,
     context?: WorkspaceSearchRankingContext,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
-  queryWorkspaceCandidates?: (
-    rootPath: string,
-    query: string,
-    scope: WorkspaceIndexQueryScope,
-    limit: number,
-    cursor?: number | null,
-    context?: WorkspaceSearchRankingContext,
-  ) => Promise<SearchCandidate[]>;
-  queryWorkspaceSearchEverywhere?: (
-    rootPath: string,
-    query: string,
-    limit: number,
-  ) => Promise<SearchCandidate[]>;
 };
 
 export type SearchEntityRunnerInput = {
@@ -104,19 +91,6 @@ export function runSearchEntityQuery({
           null,
           rankingContext,
         )
-        : undefined,
-      runIndexed: workspaceApi.queryWorkspaceCandidates
-        ? (query, scope, limit) => workspaceApi.queryWorkspaceCandidates!(
-          rootPath,
-          query,
-          scope,
-          limit,
-          null,
-          rankingContext,
-        )
-        : undefined,
-      runLegacy: workspaceApi.queryWorkspaceSearchEverywhere
-        ? (query, limit) => workspaceApi.queryWorkspaceSearchEverywhere!(rootPath, query, limit)
         : undefined,
       runLocal: queryIndexCandidates,
       onReadiness: (envelope) => {

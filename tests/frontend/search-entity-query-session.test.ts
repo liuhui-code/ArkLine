@@ -4,7 +4,6 @@ import {
   buildSearchEntityAppendPatch,
   buildSearchEntityPatch,
   executeSearchEntityQuery,
-  filterLegacySearchEntityCandidates,
 } from "@/components/layout/search-entity-query-session";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
@@ -17,7 +16,6 @@ describe("search entity query session", () => {
       nextCursor: 5,
     };
     const readiness = async () => envelope;
-    const indexed = async () => [candidate("class", "Fallback")];
     const observed: unknown[] = [];
 
     const input = buildSearchEntityQueryRequest({
@@ -25,8 +23,6 @@ describe("search entity query session", () => {
       scope: "all",
       limit: 25,
       runReadiness: readiness,
-      runIndexed: indexed,
-      runLegacy: undefined,
       runLocal: () => [],
       onReadiness: (value) => observed.push(value),
     });
@@ -42,8 +38,6 @@ describe("search entity query session", () => {
       scope: "classes",
       limit: 25,
       runReadiness: undefined,
-      runIndexed: undefined,
-      runLegacy: undefined,
       runLocal: () => [candidate("class", "Entry")],
       onReadiness: () => undefined,
     });
@@ -51,15 +45,6 @@ describe("search entity query session", () => {
     await expect(executeSearchEntityQuery(input)).resolves.toEqual({
       candidates: [candidate("class", "Entry")],
     });
-  });
-
-  it("filters legacy candidates by scope", () => {
-    const result = filterLegacySearchEntityCandidates([
-      candidate("file", "Entry.ets"),
-      candidate("class", "Entry"),
-    ], "classes");
-
-    expect(result.candidates.map((item) => item.source)).toEqual(["class"]);
   });
 
   it("builds ordered capped search entity patches", () => {
@@ -112,22 +97,10 @@ describe("search entity query session", () => {
     const result = await executeSearchEntityQuery({
       runReadiness: async () => envelope,
       runLocal: () => [],
-      scope: "all",
       onReadiness: (next) => expect(next).toBe(envelope),
     });
 
     expect(result).toMatchObject({ candidates: envelope.items, explain: ["query:entity"], nextCursor: 2 });
-  });
-
-  it("executes legacy entity queries through scope filtering", async () => {
-    const result = await executeSearchEntityQuery({
-      runLegacy: async () => [candidate("file", "Entry.ets"), candidate("class", "Entry")],
-      runLocal: () => [],
-      scope: "files",
-      onReadiness: () => undefined,
-    });
-
-    expect(result.candidates.map((item) => item.source)).toEqual(["file"]);
   });
 
   it("builds append patches for paged entity results", () => {

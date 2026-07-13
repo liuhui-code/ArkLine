@@ -85,6 +85,43 @@ describe("search entity runner", () => {
     expect(trackQuery).not.toHaveBeenCalled();
     expect(clearSearchResults).not.toHaveBeenCalled();
   });
+
+  it("uses local fallback when readiness entity search is unavailable", async () => {
+    const queryIndexCandidates = vi.fn(() => [candidate("class", "LocalEntry")]);
+    const patchSearchSession = vi.fn();
+    const trackQuery = vi.fn(async ({ request, apply }) => {
+      apply(await request, 10);
+    });
+
+    runSearchEntityQuery({
+      requestId: 10,
+      query: "Entry",
+      rootPath: "/workspace",
+      scope: "all",
+      displayLimit: 25,
+      minimumQueryLength: 2,
+      activePath: null,
+      recentPaths: [],
+      openedPaths: [],
+      queryIndexCandidates,
+      workspaceApi: {},
+      replaceQueryReadiness: vi.fn(),
+      trackQuery,
+      clearSearchResults: vi.fn(),
+      patchSearchSession,
+      recordUiInteraction: vi.fn(),
+      reportMiss: vi.fn(),
+    });
+
+    await vi.waitFor(() => {
+      expect(patchSearchSession).toHaveBeenCalled();
+    });
+
+    expect(queryIndexCandidates).toHaveBeenCalledWith("Entry", "all", 26);
+    expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
+      candidates: [expect.objectContaining({ title: "LocalEntry" })],
+    }));
+  });
 });
 
 function candidate(source: SearchCandidate["source"], title: string): SearchCandidate {
