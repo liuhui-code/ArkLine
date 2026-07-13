@@ -142,8 +142,16 @@ export function IndexDiagnosticsCenter({
       onRebuildProjectIndex();
       return;
     }
+    if (action === "rebuildSdkIndex") {
+      onRebuildSdkIndex();
+      return;
+    }
     if (action === "configureSdk") {
       onConfigureSdk();
+      return;
+    }
+    if (action === "indexCurrentFile") {
+      onIndexCurrentFile?.();
       return;
     }
     if (action === "waitForIndex") {
@@ -152,6 +160,14 @@ export function IndexDiagnosticsCenter({
     }
     if (action === "inspectIndex") {
       document.getElementById("index-diagnostics-health")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (action === "inspectParserFailures") {
+      document.getElementById("index-diagnostics-parser-errors")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (action === "inspectUnresolvedImports") {
+      document.getElementById("index-diagnostics-unresolved-imports")?.scrollIntoView({ block: "start" });
     }
   }
 

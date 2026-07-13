@@ -38,6 +38,12 @@ describe("workspace query explain model", () => {
       "retryable:false",
       "action:inspectIndex",
     ])).toBe("Index needs inspection before this query can be trusted.");
+
+    expect(formatQueryEnvelopeExplain([
+      "query:definition",
+      "readiness:Blocked",
+      "action:indexCurrentFile",
+    ])).toBe("Current file index is missing. Index the current file.");
   });
 
   it("formats zero-result evidence when readiness is ready", () => {
@@ -116,7 +122,11 @@ describe("workspace query explain model", () => {
     expect(getQueryExplainActionButtonLabel("waitForIndex")).toBe("Show Processes");
     expect(getQueryExplainActionButtonLabel("inspectIndex")).toBe("Inspect Index");
     expect(getQueryExplainActionButtonLabel("rebuildIndex")).toBe("Rebuild Project Index");
+    expect(getQueryExplainActionButtonLabel("rebuildSdkIndex")).toBe("Rebuild SDK Index");
     expect(getQueryExplainActionButtonLabel("configureSdk")).toBe("Configure SDK");
+    expect(getQueryExplainActionButtonLabel("indexCurrentFile")).toBe("Index Current File");
+    expect(getQueryExplainActionButtonLabel("inspectParserFailures")).toBe("Show Parser Failures");
+    expect(getQueryExplainActionButtonLabel("inspectUnresolvedImports")).toBe("Show Unresolved Imports");
     expect(getQueryExplainActionButtonLabel("useResults")).toBeNull();
   });
 

@@ -76,6 +76,77 @@ describe("IndexDiagnosticsCenter query explain actions", () => {
 
     expect(scrolledElement).toBe(screen.getByRole("region", { name: "Processes / Queue" }));
   });
+
+  it("runs current-file indexing from a query explain action", () => {
+    const onIndexCurrentFile = vi.fn();
+    renderCenter({
+      recentQueryExplains: [{
+        id: "query-1",
+        kind: "definition",
+        query: "Entry.ets:6:49",
+        message: "Current file index is missing.",
+        explain: ["query:definition", "readiness:Blocked", "action:indexCurrentFile"],
+        createdAt: 1,
+      }],
+      onIndexCurrentFile,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Index Current File" }));
+
+    expect(onIndexCurrentFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs SDK rebuild from a query explain action", () => {
+    const onRebuildSdkIndex = vi.fn();
+    renderCenter({
+      diagnostics: diagnosticsWithQueryPayload({
+        explain: ["query:completion", "readiness:Blocked", "action:rebuildSdkIndex"],
+      }),
+      onRebuildSdkIndex,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rebuild SDK Index" }));
+
+    expect(onRebuildSdkIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes parser and unresolved import inspections to evidence sections", () => {
+    const { rerender } = renderCenter({
+      diagnostics: diagnosticsWithQueryPayload({
+        explain: ["query:definition", "readiness:Blocked", "action:inspectParserFailures"],
+      }),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Parser Failures" }));
+
+    expect(scrolledElement).toBe(screen.getByRole("region", { name: "Top Parser Errors" }));
+
+    rerender(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnosticsWithQueryPayload({
+          explain: ["query:definition", "readiness:Blocked", "action:inspectUnresolvedImports"],
+        })}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Unresolved Imports" }));
+
+    expect(scrolledElement).toBe(screen.getByRole("region", { name: "Unresolved Imports" }));
+  });
 });
 
 type RenderCenterOptions = Partial<Parameters<typeof IndexDiagnosticsCenter>[0]>;

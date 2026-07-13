@@ -48,7 +48,7 @@ Known remaining gaps:
 - Open lightweight indexing still exceeds the initial 800ms target on the ArkLine baseline:
   20,000 files measured 1123ms on 2026-07-07.
 - Full-refresh continuation can be persisted, rehydrated on workspace open, and cleared after the final continuation chunk completes.
-- Health has facts, but repair actions are not complete enough for user-driven rebuild and failure inspection.
+- Health exposes core repair actions; remaining work is to keep query recommendations, health repair evidence, and future actions on one typed action model.
 - Symbol identity is still shallow for namespaces, broader project members, generics, async returns, and flow-sensitive narrowing.
 - Completion lacks accept-history ranking, expected-type ranking, and explicit apply/import-edit flow.
 - Search ranking now has text lexical parity, recency/opened-file context, and project-proximity; remaining search work is mainly broader usage validation and future ranking telemetry.
@@ -419,6 +419,7 @@ This goal is complete when:
 - [x] Backend facade query events now reuse the same explain summary model by parsing `payloadJson.explain`. Diagnostics Center backend events no longer require reading raw JSON to understand action, used/skipped index layers, readiness, retryability, or generation gaps.
 - [x] Frontend query explains and backend facade query events now render through one newest-first Query Explain timeline. Each event keeps a `frontend` or `backend` source label, so diagnostics can correlate UI-observed misses with backend-recorded query events without jumping between separate lists.
 - [x] Query Explain timeline items now include severity, compact display time, and deterministic tie-breaking. Backend events sort ahead of frontend observations when timestamps tie, preserving a stable audit trail for rapid miss/blocked diagnosis.
+- [x] Query Explain action handling now routes more backend recommendations through concrete repair UI: rebuild SDK index, index current file, inspect parser failures, and inspect unresolved imports.
 - [x] Discovery state now appears in diagnostics and health contracts, including discovery status, discovered file count, excluded count, and cursor-more state, so large-project indexing can explain file enumeration separately from deeper index work.
 - [x] Current-file readiness now has a large-project foreground-navigation regression gate. The test protects the contract that an active file can become navigation-ready before full background refresh completes.
 

@@ -101,7 +101,11 @@ export function getQueryExplainActionButtonLabel(actionId: string | null) {
   if (actionId === "waitForIndex") return "Show Processes";
   if (actionId === "inspectIndex") return "Inspect Index";
   if (actionId === "rebuildIndex") return "Rebuild Project Index";
+  if (actionId === "rebuildSdkIndex") return "Rebuild SDK Index";
   if (actionId === "configureSdk") return "Configure SDK";
+  if (actionId === "indexCurrentFile") return "Index Current File";
+  if (actionId === "inspectParserFailures") return "Show Parser Failures";
+  if (actionId === "inspectUnresolvedImports") return "Show Unresolved Imports";
   return null;
 }
 
@@ -168,8 +172,14 @@ function formatExplainAction(action?: string) {
   if (action === "rebuildIndex") {
     return "Index data is missing. Rebuild the index.";
   }
+  if (action === "indexCurrentFile") {
+    return "Current file index is missing. Index the current file.";
+  }
   if (action === "inspectIndex") {
     return "Index needs inspection before this query can be trusted.";
+  }
+  if (action === "configureSdk") {
+    return "SDK index is not configured. Configure SDK settings.";
   }
   return null;
 }
@@ -177,8 +187,12 @@ function formatExplainAction(action?: string) {
 function formatExplainActionLabel(action?: string) {
   if (action === "waitForIndex") return "Wait for index";
   if (action === "rebuildIndex") return "Rebuild index";
+  if (action === "rebuildSdkIndex") return "Rebuild SDK index";
   if (action === "inspectIndex") return "Inspect index";
   if (action === "configureSdk") return "Configure SDK";
+  if (action === "indexCurrentFile") return "Index current file";
+  if (action === "inspectParserFailures") return "Inspect parser failures";
+  if (action === "inspectUnresolvedImports") return "Inspect unresolved imports";
   if (action === "showEmptyResult") return "Show empty result";
   if (action === "useResults") return "Use results";
   return action ?? null;
