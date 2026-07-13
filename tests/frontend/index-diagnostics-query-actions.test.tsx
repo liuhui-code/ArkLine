@@ -180,6 +180,7 @@ function diagnosticsWithQueryPayload(payload: Record<string, unknown>): Workspac
     status: "partial",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 10,
     symbolCount: 20,
     contentLineCount: 30,

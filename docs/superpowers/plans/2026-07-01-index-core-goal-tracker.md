@@ -490,4 +490,78 @@ Deep-layer performance v2 progress:
 - [x] Index observability event model plan is now recorded complete. Unified task/query/performance events are persisted, exposed through diagnostics and frontend API types, rendered in diagnostics timelines, and covered by targeted Rust and frontend tests.
 - [x] Index parse pool foundation plan is now recorded complete. The bounded parse pool supports priority ordering, concurrent workers, per-job failure isolation, ArkTS stub parsing, config-based worker budgets, and preserves existing manager priority behavior.
 - [x] Large workspace open performance plan is now recorded complete. Workspace opening uses root-only shell snapshots, background discovery follow-up tasks, durable discovery state, discovery-aware diagnostics/status copy, and regression coverage for root-only large workspace scans.
+- [x] Index diagnostics now include per-layer freshness summaries for content,
+  symbol, and stub-parser versions. The backend compares workspace files
+  against fingerprint metadata to report ready/stale/missing counts, and the
+  Diagnostics Health / Storage view renders those counts so partial indexing can
+  explain which layer is behind.
+- [x] Regex text-search prefiltering now has a focused planner boundary. The
+  fallback scanner still preserves existing regex, pagination, and cancellation
+  behavior, while regex literal extraction and content prefilter checks live in
+  `workspace_text_search_prefilter_service` with dedicated coverage for escaped
+  literals, case-insensitive hints, and no-literal scan-through behavior.
+- [x] Text-search results now carry `prefilterSkippedFiles` evidence. Regex
+  fallback scans report how many files were skipped by the literal prefilter,
+  while indexed text search and local frontend fallback report zero, giving
+  future diagnostics and large-project profiles a stable counter for regex
+  search scaling work.
+- [x] Find in Files partial/limit notices now surface nonzero
+  `prefilterSkippedFiles`, so large-project regex searches can show both scanned
+  and prefiltered file counts in the user-facing search status line.
+- [x] Text-search facade explain/events now include `searchedFiles`,
+  `prefilterSkippedFiles`, and `limitReached`. The same evidence that powers the
+  Find in Files status line is persisted through backend query events, so Index
+  Diagnostics can inspect regex prefilter effectiveness after a query finishes.
+- [x] Frontend Query Explain summaries now parse and render text-search metrics
+  from backend events. Diagnostics shows searched file count, nonzero regex
+  prefilter skips, and limit-reached state without forcing users to read raw
+  event JSON.
+- [x] Copy Evidence now includes per-layer freshness and query search metrics.
+  The copied diagnostics report carries ready/stale/missing counts plus searched
+  files, regex prefilter skips, limit state, result count, and recommended
+  action summary, making partial-index and slow-search feedback actionable
+  without screenshots.
+- [x] Copy Evidence query rows now include used/skipped index layers, readiness,
+  generation gap, and retryability. This makes copied reports useful for
+  diagnosing stale-generation misses and partial query results without opening
+  raw backend event JSON.
+- [x] Copy Evidence now expands deep-layer performance events into structured
+  slowest-stage and violation rows. Large-project feedback can show which index
+  stage exceeded threshold, duration, source, path count, and chunk index without
+  asking users to inspect raw performance payload JSON.
+- [x] The Index Diagnostics Performance Timeline now renders deep-layer
+  performance event payloads as readable evidence rows, so users can see
+  slowest stage and threshold violations directly in the diagnostics UI instead
+  of relying only on copy/export output.
+- [x] Copy Evidence now includes discovery and storage-layer counters:
+  fingerprint rows, stub files/declarations, dependency edges, discovery status,
+  discovered files, excluded entries, and `hasMore`. This makes `partial (0
+  files)` and large-workspace discovery stalls diagnosable from the copied
+  report.
+- [x] Query repair evidence now recognizes `inspectIndex`, `indexCurrentFile`,
+  and `resumeIndexing` recommended actions with readable labels. Backend query
+  payloads that ask the user to inspect stale or blocked index state now show up
+  in Repair Evidence instead of disappearing as raw JSON-only hints.
+- [x] Repair Evidence now also reads `action:*` from query `explain` arrays when
+  `recommendedAction` is absent. Query diagnostics and repair suggestions now
+  stay connected for both backend payload shapes used by the facade.
+- [x] Copy Evidence repair action rows now preserve the machine-readable action
+  id and include the human-readable label, so copied diagnostics can be read by
+  users while still mapping back to exact repair commands.
+- [x] Health Repair Actions now execute `indexCurrentFile` directly from the
+  diagnostics panel. Current-file stale or missing symbol/content states no
+  longer degrade to a static chip when the backend recommends foreground
+  indexing.
+- [x] Health Repair Actions now execute `inspectParserFailures` and
+  `inspectUnresolvedImports` as navigation buttons. Parser/import diagnosis
+  recommendations scroll to their evidence sections instead of rendering as
+  non-actionable chips.
+- [x] Live index projection now keeps up to three distinct repair actions from
+  recent query events in newest-first order. Mixed SDK/current-file/inspection
+  failures no longer collapse to only the latest hint before reaching the
+  diagnostics UI.
+- [x] Status-bar health text now shows when more repair actions are available,
+  using the primary action plus an extra count such as `Index: Needs Configure
+  SDK +1`. Multiple simultaneous index problems are no longer hidden behind the
+  first action label.
 - [x] Four-layer index / dual-channel parse plan is now recorded complete. Project and SDK layers have explicit priority/channel strategy, SDK API-only scan/chunk/cache behavior, layered readiness/explain evidence, and regression coverage proving SDK indexing does not block foreground file readiness.

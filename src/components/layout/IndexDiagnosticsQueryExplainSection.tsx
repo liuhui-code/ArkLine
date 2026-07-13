@@ -55,6 +55,7 @@ function QueryExplainSummary({
     ["Result count", summary.resultCount],
     ["Generation", summary.generation],
     ["Retryable", summary.retryable],
+    ["Search metrics", summary.searchMetrics],
   ].filter((row): row is [string, string] => Boolean(row[1]));
 
   if (rows.length === 0) {

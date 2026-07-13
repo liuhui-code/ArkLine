@@ -74,6 +74,7 @@ describe("workspace query explain model", () => {
       resultCount: "0",
       generation: "12 / 18",
       retryable: "yes",
+      searchMetrics: null,
     });
   });
 
@@ -88,6 +89,9 @@ describe("workspace query explain model", () => {
         "requestedGeneration:18",
         "servedGeneration:12",
         "retryable:false",
+        "searchedFiles:12",
+        "prefilterSkippedFiles:40",
+        "limitReached:true",
         "action:inspectIndex",
       ],
     });
@@ -101,6 +105,7 @@ describe("workspace query explain model", () => {
       resultCount: "0",
       generation: "12 / 18",
       retryable: "no",
+      searchMetrics: "searched 12 file(s), skipped 40 prefiltered file(s), limit reached: yes",
     });
     expect(summarizeQueryEventPayload("{broken")).toBeNull();
   });
@@ -115,6 +120,19 @@ describe("workspace query explain model", () => {
       resultCount: null,
       generation: null,
       retryable: null,
+      searchMetrics: null,
+    });
+  });
+
+  it("summarizes text-search explain metrics without skipped noise when zero", () => {
+    expect(summarizeQueryEnvelopeExplain([
+      "query:textSearch",
+      "readiness:Ready",
+      "searchedFiles:3",
+      "prefilterSkippedFiles:0",
+      "limitReached:false",
+    ])).toMatchObject({
+      searchMetrics: "searched 3 file(s), limit reached: no",
     });
   });
 

@@ -53,11 +53,22 @@ pub struct WorkspaceIndexSchemaVersionAction {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexFreshnessLayerSummary {
+    pub layer: String,
+    pub ready_count: i64,
+    pub stale_count: i64,
+    pub missing_count: i64,
+    pub expected_version: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexDiagnostics {
     pub root_path: String,
     pub status: String,
     pub schema_versions: std::collections::HashMap<String, i64>,
     pub schema_version_actions: Vec<WorkspaceIndexSchemaVersionAction>,
+    pub freshness_layers: Vec<WorkspaceIndexFreshnessLayerSummary>,
     pub file_count: i64,
     pub symbol_count: i64,
     pub content_line_count: i64,

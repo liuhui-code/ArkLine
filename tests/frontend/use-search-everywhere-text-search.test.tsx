@@ -81,6 +81,7 @@ describe("useSearchEverywhereController text search", () => {
       matches: [],
       partial: true,
       searchedFiles: 12,
+      prefilterSkippedFiles: 40,
       limitReached: true,
     }));
     const { result } = renderSearchHarness({
@@ -93,6 +94,7 @@ describe("useSearchEverywhereController text search", () => {
     await flushSearchDebounce();
 
     expect(result.current.search.searchEverywhereTruncationNotice).toContain("scanning 12 file");
+    expect(result.current.search.searchEverywhereTruncationNotice).toContain("skipped 40 prefiltered file");
   });
 
   it("does not call native text search after the Find query is deleted", async () => {

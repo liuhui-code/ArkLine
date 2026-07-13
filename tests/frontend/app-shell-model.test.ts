@@ -110,6 +110,8 @@ describe("app shell model", () => {
       .toBe("Index: Error, worker crashed");
     expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: null, repairActions: ["rebuildProjectIndex"] }))
       .toBe("Index: Needs Rebuild Project Index");
+    expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: null, repairActions: ["configureSdk", "indexCurrentFile"] }))
+      .toBe("Index: Needs Configure SDK +1");
     expect(getIndexHealthStatusText({ retryBackoffCount: 0, latestRetryBackoff: null, lastError: null, repairActions: [] })).toBeNull();
     expect(getIndexDiagnosticsStatusTarget("Index: Backoff, recommended retry delay 2000ms"))
       .toBe("index-diagnostics-health");

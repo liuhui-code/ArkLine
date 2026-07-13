@@ -208,11 +208,18 @@ function errorSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexEr
 }
 
 function repairSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexRepairSummary | undefined {
-  const action = [...events]
-    .reverse()
-    .map(repairActionFromEvent)
-    .find((candidate): candidate is string => candidate != null);
-  return action == null ? undefined : { repairActions: [action] };
+  const actions = [];
+  for (const event of [...events].reverse()) {
+    const action = repairActionFromEvent(event);
+    if (!action || actions.includes(action)) {
+      continue;
+    }
+    actions.push(action);
+    if (actions.length >= 3) {
+      break;
+    }
+  }
+  return actions.length === 0 ? undefined : { repairActions: actions };
 }
 
 function repairActionFromEvent(event: WorkspaceIndexEvent): string | null {

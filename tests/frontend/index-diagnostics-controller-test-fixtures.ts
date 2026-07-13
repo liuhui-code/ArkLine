@@ -77,6 +77,7 @@ export function diagnostics(): WorkspaceIndexDiagnostics {
     status: "ready",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 12,
     symbolCount: 30,
     contentLineCount: 100,

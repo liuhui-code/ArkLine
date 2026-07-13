@@ -349,6 +349,7 @@ describe("App shell", () => {
         status: "partial",
         schemaVersions: { catalog: 1, event: 1 },
         schemaVersionActions: [],
+        freshnessLayers: [],
         fileCount: 12,
         symbolCount: 34,
         contentLineCount: 128,

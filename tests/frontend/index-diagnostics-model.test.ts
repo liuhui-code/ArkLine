@@ -205,6 +205,13 @@ describe("index diagnostics model", () => {
         status: "partial",
         schemaVersions: {},
         schemaVersionActions: [],
+        freshnessLayers: [{
+          layer: "symbols",
+          readyCount: 9,
+          staleCount: 2,
+          missingCount: 1,
+          expectedVersion: 3,
+        }],
         fileCount: 12,
         symbolCount: 34,
         contentLineCount: 56,
@@ -238,7 +245,30 @@ describe("index diagnostics model", () => {
         parserFailures: [],
         unresolvedImports: [],
         timeline: [],
-        recentEvents: [indexEvent({ scope: "query", kind: "definition", phase: "miss", message: "No target" })],
+        recentEvents: [
+          indexEvent({ scope: "query", kind: "definition", phase: "miss", message: "No target" }),
+          indexEvent({
+            scope: "performance",
+            kind: "deep-layer",
+            phase: "threshold",
+            severity: "warning",
+            message: "Deep-layer performance: slowest referenceRefresh from project took 420ms; 1 violation(s)",
+            payloadJson: JSON.stringify({
+              slowestStage: "referenceRefresh",
+              slowestSource: "project",
+              slowestDurationMs: 420,
+              sampleCount: 3,
+              violations: [{
+                stage: "referenceRefresh",
+                source: "project",
+                durationMs: 420,
+                thresholdMs: 250,
+                pathCount: 128,
+                chunkIndex: 2,
+              }],
+            }),
+          }),
+        ],
       },
       activePath: "/workspace/src/Entry.ets",
       fileReadiness: null,
@@ -256,6 +286,27 @@ describe("index diagnostics model", () => {
           recommendedAction: "indexCurrentFile",
         }],
       },
+      queryTimeline: [{
+        id: "query-1",
+        source: "backend",
+        severity: "warning",
+        title: "backend · warning · search · complete",
+        message: "Search completed",
+        summary: {
+          actionId: "useResults",
+          action: "Use results",
+          used: "TextIndex",
+          skipped: "SDKIndex",
+          readiness: "Ready",
+          resultCount: "2",
+          generation: "4 / 6",
+          retryable: "yes",
+          searchMetrics: "searched 7 file(s), skipped 3 prefiltered file(s), limit reached: no",
+        },
+        raw: "{}",
+        createdAt: 1,
+        displayTime: "1ms",
+      }],
       taskStatuses: [task({ kind: "changed-paths", status: "running", progressCurrent: 1, progressTotal: 2 })],
     });
 
@@ -263,9 +314,22 @@ describe("index diagnostics model", () => {
     expect(report).toContain("workspace: /workspace");
     expect(report).toContain("activePath: /workspace/src/Entry.ets");
     expect(report).toContain("status: partial");
-    expect(report).toContain("repairActions: rebuildProjectIndex");
+    expect(report).toContain("fingerprints: 12");
+    expect(report).toContain("stubFiles: 10");
+    expect(report).toContain("stubDeclarations: 20");
+    expect(report).toContain("dependencyEdges: 2");
+    expect(report).toContain("discovery: running");
+    expect(report).toContain("discoveredFiles: 12");
+    expect(report).toContain("discoveryExcluded: 1");
+    expect(report).toContain("discoveryHasMore: yes");
+    expect(report).toContain("repairActions: rebuildProjectIndex (Rebuild Project Index)");
+    expect(report).toContain("freshness: symbols ready=9 stale=2 missing=1 expectedVersion=3");
+    expect(report).toContain("readiness=Ready generation=4 / 6 retryable=yes used=TextIndex skipped=SDKIndex");
+    expect(report).toContain("metrics=searched 7 file(s), skipped 3 prefiltered file(s), limit reached: no");
     expect(report).toContain("task: changed-paths running 1/2 (50%)");
     expect(report).toContain("layer: symbols workspace=partial current=missing");
+    expect(report).toContain("performance: slowest=referenceRefresh source=project duration=420ms samples=3 violations=1");
+    expect(report).toContain("violation: referenceRefresh project 420ms > 250ms paths=128 chunk=2");
     expect(report).toContain("event: query/definition/miss warning No target");
   });
 });

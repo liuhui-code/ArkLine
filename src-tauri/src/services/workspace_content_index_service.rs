@@ -89,6 +89,7 @@ pub fn search_indexed_workspace_content(
             matches: Vec::new(),
             partial: false,
             searched_files: 0,
+            prefilter_skipped_files: 0,
             limit_reached: false,
             next_cursor: None,
         });
@@ -175,6 +176,7 @@ pub fn search_indexed_workspace_content(
         matches,
         partial: limit_reached,
         searched_files,
+        prefilter_skipped_files: 0,
         limit_reached,
         next_cursor: limit_reached.then_some(WorkspaceTextSearchCursor {
             path_index: offset + consumed_candidates,

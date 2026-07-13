@@ -151,7 +151,12 @@ export function getIndexHealthStatusText(
     return `Index: Error, ${diagnostics.lastError}`;
   }
   const action = diagnostics?.repairActions[0];
-  return action ? `Index: Needs ${formatRepairAction(action)}` : null;
+  if (!action) {
+    return null;
+  }
+  const extraCount = Math.max(0, (diagnostics?.repairActions.length ?? 0) - 1);
+  const suffix = extraCount > 0 ? ` +${extraCount}` : "";
+  return `Index: Needs ${formatRepairAction(action)}${suffix}`;
 }
 
 export function getIndexDiagnosticsStatusTarget(workspaceIndexText: string) {

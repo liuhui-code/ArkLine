@@ -328,6 +328,7 @@ function diagnostics(): WorkspaceIndexDiagnostics {
     status: "partial",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 0,
     symbolCount: 0,
     contentLineCount: 0,

@@ -107,7 +107,9 @@ pub fn index_workspace_identifier_references(
                         callable_targets.get(token.name).and_then(|targets| {
                             targets
                                 .iter()
-                                .find(|target| !target.is_declaration_at(line_index as i64 + 1, token.column))
+                                .find(|target| {
+                                    !target.is_declaration_at(line_index as i64 + 1, token.column)
+                                })
                                 .map(|target| &target.symbol_id)
                         })
                     })
@@ -184,7 +186,10 @@ pub(crate) fn content_may_reference_aliases(
         .any(|(alias_path, alias_name)| alias_path == path && content.contains(alias_name))
 }
 
-fn content_may_reference_callables(content: &str, targets: &HashMap<String, Vec<CallableTarget>>) -> bool {
+fn content_may_reference_callables(
+    content: &str,
+    targets: &HashMap<String, Vec<CallableTarget>>,
+) -> bool {
     targets.keys().any(|name| content.contains(name))
 }
 

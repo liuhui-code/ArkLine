@@ -104,6 +104,7 @@ async function inspectWorkspaceIndex(deps: WorkspaceIndexManagementApiDependenci
     status: "empty",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 0,
     symbolCount: 0,
     contentLineCount: 0,

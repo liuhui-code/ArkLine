@@ -59,6 +59,7 @@ fn finds_text_matches_with_context_from_indexed_paths() {
     assert_eq!(result.matches[0].column, 2);
     assert_eq!(result.matches[0].context_before[0].text, "@Entry");
     assert!(!result.partial);
+    assert_eq!(result.prefilter_skipped_files, 0);
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -138,6 +139,7 @@ fn regex_search_prefilters_files_with_literal_hint() {
     assert_eq!(result.matches.len(), 1);
     assert_eq!(result.matches[0].file_name, "Match.ets");
     assert_eq!(result.searched_files, 1);
+    assert_eq!(result.prefilter_skipped_files, 1);
 
     fs::remove_dir_all(root).unwrap();
 }

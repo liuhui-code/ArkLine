@@ -176,7 +176,14 @@ where
     } else {
         "indexed"
     };
-    let explain = text_explain("textSearch", &readiness, 1, confidence, missing_text_index);
+    let explain = text_explain(
+        "textSearch",
+        &readiness,
+        1,
+        confidence,
+        missing_text_index,
+        Some(&result),
+    );
     Ok(WorkspaceIndexFacadeEnvelope {
         items: vec![WorkspaceIndexFacadeItem::TextSearch(result)],
         readiness,
@@ -212,10 +219,6 @@ fn query_facade_search_text_scope(
         downgrade_missing_text_index(&mut readiness);
     }
     let result = raw_text_search_result(index_runtime, request)?;
-    let items = text_search_candidates_from_result(result, query, limit)
-        .into_iter()
-        .map(WorkspaceIndexFacadeItem::Search)
-        .collect::<Vec<_>>();
     let confidence = if missing_text_index {
         "filesystemFallback"
     } else {
@@ -224,10 +227,15 @@ fn query_facade_search_text_scope(
     let explain = text_explain(
         "searchEverywhere",
         &readiness,
-        items.len(),
+        result.matches.len(),
         confidence,
         missing_text_index,
+        Some(&result),
     );
+    let items = text_search_candidates_from_result(result, query, limit)
+        .into_iter()
+        .map(WorkspaceIndexFacadeItem::Search)
+        .collect::<Vec<_>>();
     Ok(WorkspaceIndexFacadeEnvelope {
         items,
         readiness,
@@ -270,10 +278,19 @@ fn text_explain(
     item_count: usize,
     confidence: &str,
     missing_text_index: bool,
+    result: Option<&WorkspaceTextSearchResult>,
 ) -> Vec<String> {
     let mut explain = explain_facade_query(kind, readiness, item_count, Some(confidence));
     if missing_text_index {
         explain.push("skipped:TextIndex:missing".to_string());
+    }
+    if let Some(result) = result {
+        explain.push(format!("searchedFiles:{}", result.searched_files));
+        explain.push(format!(
+            "prefilterSkippedFiles:{}",
+            result.prefilter_skipped_files
+        ));
+        explain.push(format!("limitReached:{}", result.limit_reached));
     }
     explain
 }

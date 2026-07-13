@@ -48,6 +48,43 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(health).getByText("has more")).toBeVisible();
   });
 
+  it("renders index layer freshness evidence in health storage", () => {
+    const diagnostics = diagnosticsWithBackendQueryEvent();
+    diagnostics.freshnessLayers = [{
+      layer: "content",
+      readyCount: 1200,
+      staleCount: 3,
+      missingCount: 4,
+      expectedVersion: 1,
+    }];
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnostics}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const freshness = screen.getByLabelText("Layer Freshness");
+    expect(within(freshness).getByText("content")).toBeVisible();
+    expect(within(freshness).getByText("1,200")).toBeVisible();
+    expect(within(freshness).getByText("3")).toBeVisible();
+    expect(within(freshness).getByText("4")).toBeVisible();
+  });
+
   it("renders schema version rebuild evidence and triggers project rebuild", () => {
     const diagnostics = diagnosticsWithBackendQueryEvent();
     diagnostics.repairActions = ["rebuildProjectIndex"];
@@ -274,6 +311,7 @@ function diagnosticsWithBackendQueryEvent(createdAt = 1): WorkspaceIndexDiagnost
     status: "partial",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 10,
     symbolCount: 20,
     contentLineCount: 30,

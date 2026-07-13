@@ -68,6 +68,7 @@ describe("workspace text search", () => {
       preview: '    Text("ArkLine")',
     });
     expect(regexResults.matches[0]?.summary).toContain('Text("ArkLine")');
+    expect(regexResults.prefilterSkippedFiles).toBe(0);
   });
 
   it("supports case-sensitive and whole-word matching for text queries", async () => {

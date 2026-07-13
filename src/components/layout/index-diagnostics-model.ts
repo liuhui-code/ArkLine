@@ -4,6 +4,8 @@ import type {
   WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
+import type { QueryExplainTimelineItem } from "@/features/workspace/workspace-query-explain-model";
+import { formatPerformanceEventEvidence } from "@/components/layout/index-diagnostics-performance-evidence";
 import { repairActionFromPayload } from "@/features/workspace/workspace-index-repair-action-model";
 
 export type IndexDiagnosticsModelInput = {
@@ -103,6 +105,7 @@ export type IndexDiagnosticsEvidenceReportInput = {
   diagnostics: WorkspaceIndexDiagnostics | null;
   fileReadiness: WorkspaceIndexFileReadiness | null;
   layerReadiness: WorkspaceIndexLayerReadinessReport | null;
+  queryTimeline: QueryExplainTimelineItem[];
   taskStatuses: WorkspaceIndexTaskStatus[];
   activePath: string | null;
 };
@@ -174,6 +177,12 @@ export function formatRepairAction(action: string) {
       return "Rebuild SDK Index";
     case "configureSdk":
       return "Configure SDK";
+    case "indexCurrentFile":
+      return "Index Current File";
+    case "inspectIndex":
+      return "Inspect Index";
+    case "resumeIndexing":
+      return "Resume Indexing";
     case "inspectUnresolvedImports":
       return "Inspect Unresolved Imports";
     case "inspectParserFailures":
@@ -221,7 +230,15 @@ export function buildIndexDiagnosticsEvidenceReport(input: IndexDiagnosticsEvide
     `files: ${diagnostics?.fileCount ?? 0}`,
     `symbols: ${diagnostics?.symbolCount ?? 0}`,
     `textRows: ${diagnostics?.contentLineCount ?? 0}`,
+    `fingerprints: ${diagnostics?.fingerprintCount ?? 0}`,
+    `stubFiles: ${diagnostics?.stubFileCount ?? 0}`,
+    `stubDeclarations: ${diagnostics?.stubDeclarationCount ?? 0}`,
+    `dependencyEdges: ${diagnostics?.dependencyEdgeCount ?? 0}`,
     `sdkSymbols: ${diagnostics?.sdkSymbolCount ?? 0}`,
+    `discovery: ${diagnostics?.discoveryStatus ?? "none"}`,
+    `discoveredFiles: ${diagnostics?.discoveredFileCount ?? 0}`,
+    `discoveryExcluded: ${diagnostics?.discoveryExcludedCount ?? 0}`,
+    `discoveryHasMore: ${diagnostics?.discoveryHasMore ? "yes" : "no"}`,
     `parserErrors: ${diagnostics?.parserErrorCount ?? 0}`,
     `unresolvedImports: ${diagnostics?.unresolvedImportCount ?? 0}`,
     `staleFiles: ${diagnostics?.staleGenerationCount ?? 0}`,
@@ -229,7 +246,10 @@ export function buildIndexDiagnosticsEvidenceReport(input: IndexDiagnosticsEvide
     `lastError: ${diagnostics?.lastError ?? "none"}`,
     `lastExplain: ${diagnostics?.lastExplainStatus ?? "none"}`,
     `retryBackoff: ${diagnostics?.latestRetryBackoff ?? "none"}`,
-    `repairActions: ${formatList(diagnostics?.repairActions ?? [])}`,
+    `repairActions: ${formatRepairActionList(diagnostics?.repairActions ?? [])}`,
+    "",
+    "## Freshness",
+    ...formatFreshnessLayerEvidence(diagnostics),
     "",
     "## Current File",
     ...formatCurrentFileEvidence(input.fileReadiness),
@@ -243,6 +263,9 @@ export function buildIndexDiagnosticsEvidenceReport(input: IndexDiagnosticsEvide
     "",
     "## Layers",
     ...formatLayerEvidence(input.layerReadiness),
+    "",
+    "## Query Explain",
+    ...formatQueryExplainEvidence(input.queryTimeline),
     "",
     "## Recent Events",
     ...formatRecentEventEvidence(diagnostics),
@@ -262,6 +285,13 @@ function formatBytes(bytes: number) {
 
 function formatList(values: string[]) {
   return values.length > 0 ? values.join(", ") : "none";
+}
+
+function formatRepairActionList(actions: string[]) {
+  if (actions.length === 0) {
+    return "none";
+  }
+  return actions.map((action) => `${action} (${formatRepairAction(action)})`).join(", ");
 }
 
 function formatCurrentFileEvidence(fileReadiness: WorkspaceIndexFileReadiness | null) {
@@ -303,14 +333,44 @@ function formatLayerEvidence(layerReadiness: WorkspaceIndexLayerReadinessReport 
   ));
 }
 
+function formatFreshnessLayerEvidence(diagnostics: WorkspaceIndexDiagnostics | null) {
+  const layers = diagnostics?.freshnessLayers ?? [];
+  if (layers.length === 0) {
+    return ["freshness: unavailable"];
+  }
+  return layers.map((layer) => (
+    `freshness: ${layer.layer} ready=${layer.readyCount} stale=${layer.staleCount} `
+    + `missing=${layer.missingCount} expectedVersion=${layer.expectedVersion}`
+  ));
+}
+
+function formatQueryExplainEvidence(queryTimeline: QueryExplainTimelineItem[]) {
+  if (queryTimeline.length === 0) {
+    return ["queries: none"];
+  }
+  return queryTimeline.slice(0, 5).map((item) => {
+    const metrics = item.summary?.searchMetrics ? ` metrics=${item.summary.searchMetrics}` : "";
+    const action = item.summary?.action ? ` action=${item.summary.action}` : "";
+    const resultCount = item.summary?.resultCount ? ` results=${item.summary.resultCount}` : "";
+    const readiness = item.summary?.readiness ? ` readiness=${item.summary.readiness}` : "";
+    const generation = item.summary?.generation ? ` generation=${item.summary.generation}` : "";
+    const retryable = item.summary?.retryable ? ` retryable=${item.summary.retryable}` : "";
+    const used = item.summary?.used ? ` used=${item.summary.used}` : "";
+    const skipped = item.summary?.skipped ? ` skipped=${item.summary.skipped}` : "";
+    return `query: ${item.source}/${item.severity} ${item.message}${action}${resultCount}`
+      + `${readiness}${generation}${retryable}${used}${skipped}${metrics}`.trimEnd();
+  });
+}
+
 function formatRecentEventEvidence(diagnostics: WorkspaceIndexDiagnostics | null) {
   const events = diagnostics?.recentEvents ?? [];
   if (events.length === 0) {
     return ["events: none"];
   }
-  return events.slice(-8).reverse().map((event) => (
-    `event: ${event.scope}/${event.kind}/${event.phase} ${event.severity} ${event.message}`.trim()
-  ));
+  return events.slice(-8).reverse().flatMap((event) => [
+    ...formatPerformanceEventEvidence(event),
+    `event: ${event.scope}/${event.kind}/${event.phase} ${event.severity} ${event.message}`.trim(),
+  ]);
 }
 
 function formatDurationMs(durationMs: number) {

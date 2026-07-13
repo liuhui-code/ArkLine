@@ -69,6 +69,11 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
         "struct Index {\n  build() { Text(\"GlobalFacadeTarget\") }\n}\n",
     )
     .unwrap();
+    fs::write(
+        source_dir.join("Noise.ets"),
+        "struct Noise {\n  build() { Button(\"Other\") }\n}\n",
+    )
+    .unwrap();
     let root_path = root.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
@@ -108,6 +113,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
 
     assert_eq!(plain.matches.len(), 1);
     assert_eq!(regex.matches.len(), 1);
+    assert_eq!(regex.prefilter_skipped_files, 1);
     assert!(plain.matches[0].summary.contains("GlobalFacadeTarget"));
     let events = load_recent_index_events(&root_path, 8).unwrap();
     assert!(events.iter().any(|event| {
@@ -115,6 +121,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
             && event.kind == "textSearch"
             && event.phase == "hit"
             && event.payload_json.contains("query:textSearch")
+            && event.payload_json.contains("prefilterSkippedFiles:1")
     }));
     fs::remove_dir_all(root).unwrap();
 }
@@ -208,6 +215,9 @@ fn facade_routes_text_search_requests_with_readiness_and_explain() {
     );
     assert_explain_contains(&envelope.explain, "query:textSearch");
     assert_explain_contains(&envelope.explain, "used:TextIndex");
+    assert_explain_contains(&envelope.explain, "searchedFiles:1");
+    assert_explain_contains(&envelope.explain, "prefilterSkippedFiles:0");
+    assert_explain_contains(&envelope.explain, "limitReached:false");
     assert!(matches!(
         envelope.items.as_slice(),
         [WorkspaceIndexFacadeItem::TextSearch(result)] if result.matches[0].summary.contains("FacadeRequestTarget")

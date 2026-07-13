@@ -199,6 +199,7 @@ mod workspace_index_file_readiness_service_tests;
 pub(crate) mod workspace_index_follow_up_task_service;
 #[cfg(test)]
 mod workspace_index_follow_up_task_service_tests;
+pub(crate) mod workspace_index_freshness_service;
 pub mod workspace_index_full_refresh_service;
 #[cfg(test)]
 mod workspace_index_full_refresh_service_tests;
@@ -438,6 +439,9 @@ mod workspace_symbol_resolution_unresolved_service_tests;
 pub(crate) mod workspace_text_search_cancellation_service;
 #[cfg(test)]
 mod workspace_text_search_cancellation_service_tests;
+pub(crate) mod workspace_text_search_prefilter_service;
+#[cfg(test)]
+mod workspace_text_search_prefilter_service_tests;
 pub mod workspace_text_search_service;
 #[cfg(test)]
 mod workspace_text_search_service_tests;

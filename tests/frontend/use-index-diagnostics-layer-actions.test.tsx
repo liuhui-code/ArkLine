@@ -90,6 +90,7 @@ function diagnostics() {
     status: "ready",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 1,
     symbolCount: 0,
     contentLineCount: 0,

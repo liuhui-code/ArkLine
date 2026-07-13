@@ -170,6 +170,7 @@ describe("workspace api", () => {
       status: "ready",
       schemaVersions: { event: 1 },
       schemaVersionActions: [],
+    freshnessLayers: [],
       fileCount: 1,
       symbolCount: 1,
       contentLineCount: 1,

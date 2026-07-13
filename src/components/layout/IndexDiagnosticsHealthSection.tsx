@@ -15,6 +15,9 @@ type IndexDiagnosticsHealthSectionProps = {
   onRebuildProjectIndex: () => void;
   onRebuildSdkIndex: () => void;
   onConfigureSdk: () => void;
+  onIndexCurrentFile?: () => void;
+  onInspectParserFailures?: () => void;
+  onInspectUnresolvedImports?: () => void;
 };
 
 export function IndexDiagnosticsHealthSection({
@@ -28,6 +31,9 @@ export function IndexDiagnosticsHealthSection({
   onRebuildProjectIndex,
   onRebuildSdkIndex,
   onConfigureSdk,
+  onIndexCurrentFile,
+  onInspectParserFailures,
+  onInspectUnresolvedImports,
 }: IndexDiagnosticsHealthSectionProps) {
   const repairEvidence = buildRepairActionEvidence(diagnostics);
 
@@ -66,6 +72,24 @@ export function IndexDiagnosticsHealthSection({
         label="SDK Index"
         ariaLabel="SDK Index Task Summary"
       />
+      {diagnostics?.freshnessLayers.length ? (
+        <div className="index-diagnostics__table" aria-label="Layer Freshness">
+          <div className="index-diagnostics__row index-diagnostics__row--header">
+            <span>Layer Freshness</span>
+            <span>Ready</span>
+            <span>Stale</span>
+            <span>Missing</span>
+          </div>
+          {diagnostics.freshnessLayers.map((layer) => (
+            <div className="index-diagnostics__row" key={layer.layer}>
+              <span>{layer.layer}</span>
+              <span>{layer.readyCount.toLocaleString()}</span>
+              <span>{layer.staleCount.toLocaleString()}</span>
+              <span>{layer.missingCount.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {schemaRebuildActions.length > 0 ? (
         <div className="index-diagnostics__table" aria-label="Schema Rebuild Required">
           <div className="index-diagnostics__row index-diagnostics__row--header index-diagnostics__row--schema">
@@ -105,6 +129,18 @@ export function IndexDiagnosticsHealthSection({
           ) : action === "configureSdk" ? (
             <button type="button" className="toolbar__button" key={action} onClick={onConfigureSdk}>
               Configure SDK
+            </button>
+          ) : action === "indexCurrentFile" && onIndexCurrentFile ? (
+            <button type="button" className="toolbar__button" key={action} onClick={onIndexCurrentFile}>
+              Index Current File
+            </button>
+          ) : action === "inspectParserFailures" && onInspectParserFailures ? (
+            <button type="button" className="toolbar__button" key={action} onClick={onInspectParserFailures}>
+              Inspect Parser Failures
+            </button>
+          ) : action === "inspectUnresolvedImports" && onInspectUnresolvedImports ? (
+            <button type="button" className="toolbar__button" key={action} onClick={onInspectUnresolvedImports}>
+              Inspect Unresolved Imports
             </button>
           ) : (
             <span className="index-diagnostics__chip" key={action}>{formatRepairAction(action)}</span>

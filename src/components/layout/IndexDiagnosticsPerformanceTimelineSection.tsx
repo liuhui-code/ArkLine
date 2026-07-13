@@ -2,11 +2,13 @@ import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-a
 import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
 import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
+import { formatPerformanceEventEvidence } from "@/components/layout/index-diagnostics-performance-evidence";
 import { formatClockTime } from "@/components/layout/index-diagnostics-model";
 
 type IndexDiagnosticsPerformanceTimelineSectionProps = {
   timelineCount: number;
   diagnosticsTimeline: WorkspaceIndexDiagnostics["timeline"];
+  recentEvents: WorkspaceIndexDiagnostics["recentEvents"];
   uiLatencySamples: UiLatencySample[];
   ipcLatencySamples: IpcLatencySample[];
   renderPressureSamples: RenderPressureSample[];
@@ -15,17 +17,30 @@ type IndexDiagnosticsPerformanceTimelineSectionProps = {
 export function IndexDiagnosticsPerformanceTimelineSection({
   timelineCount,
   diagnosticsTimeline,
+  recentEvents,
   uiLatencySamples,
   ipcLatencySamples,
   renderPressureSamples,
 }: IndexDiagnosticsPerformanceTimelineSectionProps) {
+  const performanceEvidence = recentEvents.flatMap((event) => formatPerformanceEventEvidence(event));
+  const totalTimelineCount = timelineCount + performanceEvidence.length;
   return (
     <section className="index-diagnostics__section" id="index-diagnostics-timeline" aria-label="Performance Timeline">
       <div className="index-diagnostics__section-title">
         <h3>Performance Timeline</h3>
-        <span>{timelineCount} events</span>
+        <span>{totalTimelineCount} events</span>
       </div>
       <div className="index-diagnostics__timeline">
+        {performanceEvidence.length > 0 ? (
+          <div className="index-diagnostics__timeline-item">
+            <span className="index-diagnostics__severity index-diagnostics__severity--warning">perf</span>
+            <div>
+              <strong>Deep-layer performance</strong>
+              {performanceEvidence.map((line) => <span key={line}>{line}</span>)}
+            </div>
+            <span>event</span>
+          </div>
+        ) : null}
         {renderPressureSamples.map((item) => (
           <div className="index-diagnostics__timeline-item" key={`render:${item.label}`}>
             <span className="index-diagnostics__severity index-diagnostics__severity--info">render</span>
@@ -66,7 +81,7 @@ export function IndexDiagnosticsPerformanceTimelineSection({
             <span>{item.durationMs == null ? "start" : `${item.durationMs}ms`}</span>
           </div>
         )) : null}
-        {timelineCount === 0 ? (
+        {totalTimelineCount === 0 ? (
           <div className="index-diagnostics__empty">No timeline events yet.</div>
         ) : null}
       </div>

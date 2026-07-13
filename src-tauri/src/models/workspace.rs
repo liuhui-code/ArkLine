@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub use crate::models::workspace_index_diagnostics::{
-    WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexParserFailure,
-    WorkspaceIndexQueuePressure, WorkspaceIndexSchemaVersionAction, WorkspaceIndexTimelineItem,
-    WorkspaceIndexUnresolvedImport,
+    WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexFreshnessLayerSummary,
+    WorkspaceIndexParserFailure, WorkspaceIndexQueuePressure, WorkspaceIndexSchemaVersionAction,
+    WorkspaceIndexTimelineItem, WorkspaceIndexUnresolvedImport,
 };
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -396,6 +396,8 @@ pub struct WorkspaceTextSearchResult {
     pub partial: bool,
     #[serde(default)]
     pub searched_files: usize,
+    #[serde(default)]
+    pub prefilter_skipped_files: usize,
     #[serde(default)]
     pub limit_reached: bool,
     #[serde(default)]

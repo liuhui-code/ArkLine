@@ -29,6 +29,7 @@ export type WorkspaceTextSearchResult = {
   matches: WorkspaceTextSearchMatch[];
   partial?: boolean;
   searchedFiles?: number;
+  prefilterSkippedFiles?: number;
   limitReached?: boolean;
   nextCursor?: WorkspaceTextSearchCursor | null;
 };
@@ -102,7 +103,15 @@ export async function searchWorkspaceText({
 }: SearchWorkspaceTextOptions): Promise<WorkspaceTextSearchResult> {
   const parsedQuery = parseSearchQuery(query);
   if (parsedQuery.kind === "invalid" || !parsedQuery.query) {
-    return { query: parsedQuery, matches: [], partial: false, searchedFiles: 0, limitReached: false, nextCursor: null };
+    return {
+      query: parsedQuery,
+      matches: [],
+      partial: false,
+      searchedFiles: 0,
+      prefilterSkippedFiles: 0,
+      limitReached: false,
+      nextCursor: null,
+    };
   }
 
   const matches: WorkspaceTextSearchMatch[] = [];
@@ -156,7 +165,15 @@ export async function searchWorkspaceText({
     }
   }
 
-  return { query: parsedQuery, matches, partial: Boolean(nextCursor), searchedFiles, limitReached: Boolean(nextCursor), nextCursor };
+  return {
+    query: parsedQuery,
+    matches,
+    partial: Boolean(nextCursor),
+    searchedFiles,
+    prefilterSkippedFiles: 0,
+    limitReached: Boolean(nextCursor),
+    nextCursor,
+  };
 }
 
 function findLineMatch(lineText: string, query: SearchQuery, options: WorkspaceTextSearchOptions) {

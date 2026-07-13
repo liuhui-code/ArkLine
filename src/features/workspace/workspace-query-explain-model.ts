@@ -18,6 +18,7 @@ export type QueryEnvelopeExplainSummary = {
   resultCount: string | null;
   generation: string | null;
   retryable: string | null;
+  searchMetrics: string | null;
 };
 
 export type QueryExplainTimelineItem = {
@@ -69,6 +70,11 @@ export function summarizeQueryEnvelopeExplain(explain?: string[]): QueryEnvelope
       findExplainValue(explain, "requestedGeneration"),
     ),
     retryable: formatBoolean(findExplainValue(explain, "retryable")),
+    searchMetrics: formatSearchMetrics(
+      findExplainValue(explain, "searchedFiles"),
+      findExplainValue(explain, "prefilterSkippedFiles"),
+      findExplainValue(explain, "limitReached"),
+    ),
   };
 
   return Object.values(summary).some(Boolean) ? summary : null;
@@ -208,6 +214,7 @@ function emptyActionSummary(actionId: string): QueryEnvelopeExplainSummary {
     resultCount: null,
     generation: null,
     retryable: null,
+    searchMetrics: null,
   };
 }
 
@@ -231,4 +238,12 @@ function formatBoolean(value?: string) {
   if (value === "true") return "yes";
   if (value === "false") return "no";
   return value ?? null;
+}
+
+function formatSearchMetrics(searched?: string, skipped?: string, limitReached?: string) {
+  const parts = [];
+  if (searched) parts.push(`searched ${searched} file(s)`);
+  if (skipped && skipped !== "0") parts.push(`skipped ${skipped} prefiltered file(s)`);
+  if (limitReached) parts.push(`limit reached: ${formatBoolean(limitReached) ?? limitReached}`);
+  return parts.length ? parts.join(", ") : null;
 }

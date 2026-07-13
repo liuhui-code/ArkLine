@@ -156,6 +156,41 @@ describe("workspace index projection store", () => {
       repairActions: ["rebuildProjectIndex"],
     });
   });
+
+  it("keeps distinct repair action hints in newest-first order", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordRecentEvents("/workspace", [
+      indexEvent({
+        eventId: "configure-sdk",
+        scope: "query",
+        kind: "completion",
+        phase: "blocked",
+        payloadJson: JSON.stringify({ recommendedAction: "configureSdk" }),
+        createdAt: 1,
+      }),
+      indexEvent({
+        eventId: "index-current-file",
+        scope: "query",
+        kind: "definition",
+        phase: "blocked",
+        payloadJson: JSON.stringify({ explain: ["action:indexCurrentFile"] }),
+        createdAt: 2,
+      }),
+      indexEvent({
+        eventId: "configure-sdk-duplicate",
+        scope: "query",
+        kind: "completion",
+        phase: "blocked",
+        payloadJson: JSON.stringify({ recommendedAction: "configureSdk" }),
+        createdAt: 3,
+      }),
+    ]);
+
+    expect(store.snapshot().repairSummary).toEqual({
+      repairActions: ["configureSdk", "indexCurrentFile"],
+    });
+  });
 });
 
 function taskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

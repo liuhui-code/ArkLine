@@ -77,6 +77,65 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
 }
 
 #[test]
+fn reports_freshness_layers_for_stale_index_versions() {
+    let root = unique_temp_dir("workspace-index-diagnostics-freshness");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let ready_path = source_dir.join("Ready.ets");
+    let stale_content_path = source_dir.join("StaleContent.ets");
+    let stale_stub_path = source_dir.join("StaleStub.ets");
+    fs::write(&ready_path, "struct Ready {}\n").unwrap();
+    fs::write(&stale_content_path, "struct StaleContent {}\n").unwrap();
+    fs::write(&stale_stub_path, "struct StaleStub {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let connection = Connection::open(
+        root.join(".arkline")
+            .join("index")
+            .join("workspace-catalog.sqlite"),
+    )
+    .unwrap();
+    connection
+        .execute(
+            "update workspace_file_fingerprints
+             set content_index_version = 0
+             where path = ?1",
+            params![stale_content_path.to_string_lossy().replace('/', "\\")],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "update workspace_file_fingerprints
+             set stub_parser_version = 0
+             where path = ?1",
+            params![stale_stub_path.to_string_lossy().replace('/', "\\")],
+        )
+        .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+    let content = diagnostics
+        .freshness_layers
+        .iter()
+        .find(|layer| layer.layer == "content")
+        .expect("content freshness should be reported");
+    let stub = diagnostics
+        .freshness_layers
+        .iter()
+        .find(|layer| layer.layer == "stub")
+        .expect("stub freshness should be reported");
+
+    assert_eq!(content.ready_count, 2);
+    assert_eq!(content.stale_count, 1);
+    assert_eq!(content.missing_count, 0);
+    assert_eq!(stub.ready_count, 2);
+    assert_eq!(stub.stale_count, 1);
+    assert_eq!(stub.missing_count, 0);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_discovery_state_for_diagnostics() {
     let root = unique_temp_dir("workspace-index-diagnostics-discovery");
     fs::create_dir_all(&root).unwrap();

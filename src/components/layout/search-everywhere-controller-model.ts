@@ -21,8 +21,9 @@ export function textSearchInteractionKind(mode: SearchEverywhereMode): UiInterac
 export function textSearchPartialNotice(result: WorkspaceTextSearchResult) {
   if (!result.partial && !result.limitReached) return null;
   const scanned = result.searchedFiles ? ` after scanning ${result.searchedFiles} file(s)` : "";
-  if (result.limitReached) return `Showing first ${result.matches.length} matches${scanned}. Refine the query to see more.`;
-  return `Search was interrupted${scanned}; showing partial results.`;
+  const skipped = result.prefilterSkippedFiles ? `; skipped ${result.prefilterSkippedFiles} prefiltered file(s)` : "";
+  if (result.limitReached) return `Showing first ${result.matches.length} matches${scanned}${skipped}. Refine the query to see more.`;
+  return `Search was interrupted${scanned}${skipped}; showing partial results.`;
 }
 
 export function normalizeSelectedSearchText(value: string) {

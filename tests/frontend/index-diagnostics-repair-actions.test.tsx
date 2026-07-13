@@ -1,9 +1,22 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IndexDiagnosticsCenter } from "@/components/layout/IndexDiagnosticsCenter";
 import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-api";
 
 describe("IndexDiagnosticsCenter repair actions", () => {
+  let scrolledElement: Element | null = null;
+
+  beforeEach(() => {
+    scrolledElement = null;
+    HTMLElement.prototype.scrollIntoView = vi.fn(function scrollIntoView(this: Element) {
+      scrolledElement = this;
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("disables project rebuild while a project index task is active", () => {
     const diagnostics = diagnosticsWithRepairAction("rebuildProjectIndex");
     const onRebuildProjectIndex = vi.fn();
@@ -129,6 +142,90 @@ describe("IndexDiagnosticsCenter repair actions", () => {
     expect(within(activeTask).getByText("3.0s active")).toBeVisible();
   });
 
+  it("runs current-file indexing from an index-current-file repair action", () => {
+    const onIndexCurrentFile = vi.fn();
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnosticsWithRepairAction("indexCurrentFile")}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+        onIndexCurrentFile={onIndexCurrentFile}
+      />,
+    );
+
+    const repairActions = screen.getByLabelText("Repair Actions");
+    fireEvent.click(within(repairActions).getByRole("button", { name: "Index Current File" }));
+
+    expect(onIndexCurrentFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens parser failures from an inspect-parser-failures repair action", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnosticsWithRepairAction("inspectParserFailures")}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const repairActions = screen.getByLabelText("Repair Actions");
+    fireEvent.click(within(repairActions).getByRole("button", { name: "Inspect Parser Failures" }));
+
+    expect(scrolledElement).toHaveAttribute("id", "index-diagnostics-parser-errors");
+  });
+
+  it("opens unresolved imports from an inspect-unresolved-imports repair action", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnosticsWithRepairAction("inspectUnresolvedImports")}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const repairActions = screen.getByLabelText("Repair Actions");
+    fireEvent.click(within(repairActions).getByRole("button", { name: "Inspect Unresolved Imports" }));
+
+    expect(scrolledElement).toHaveAttribute("id", "index-diagnostics-unresolved-imports");
+  });
+
   it("shows query explain evidence for suggested repair actions", () => {
     const diagnostics = diagnosticsWithRepairAction("rebuildProjectIndex");
     diagnostics.recentEvents = [{
@@ -170,6 +267,90 @@ describe("IndexDiagnosticsCenter repair actions", () => {
     expect(within(evidence).getByText("definition miss")).toBeVisible();
     expect(within(evidence).getByText("No indexed evidence explains this query yet")).toBeVisible();
   });
+
+  it("shows inspect-index query explain evidence as a repair action", () => {
+    const diagnostics = diagnosticsWithRepairAction("rebuildProjectIndex");
+    diagnostics.recentEvents = [{
+      eventId: "query-blocked",
+      rootPath: "C:/workspace",
+      scope: "query",
+      kind: "textSearch",
+      phase: "blocked",
+      severity: "warning",
+      message: "Text index readiness is blocked",
+      taskId: null,
+      generation: 18,
+      payloadJson: JSON.stringify({ recommendedAction: "inspectIndex" }),
+      createdAt: 4,
+    }];
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnostics}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const evidence = screen.getByLabelText("Repair Evidence");
+    expect(within(evidence).getByText("Inspect Index")).toBeVisible();
+    expect(within(evidence).getByText("textSearch blocked")).toBeVisible();
+    expect(within(evidence).getByText("Text index readiness is blocked")).toBeVisible();
+  });
+
+  it("uses query explain action when recommendedAction is absent", () => {
+    const diagnostics = diagnosticsWithRepairAction("rebuildProjectIndex");
+    diagnostics.recentEvents = [{
+      eventId: "query-explain-action",
+      rootPath: "C:/workspace",
+      scope: "query",
+      kind: "completion",
+      phase: "blocked",
+      severity: "warning",
+      message: "Current file symbols are missing",
+      taskId: null,
+      generation: 18,
+      payloadJson: JSON.stringify({ explain: ["query:completion", "action:indexCurrentFile"] }),
+      createdAt: 4,
+    }];
+
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={diagnostics}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const evidence = screen.getByLabelText("Repair Evidence");
+    expect(within(evidence).getByText("Index Current File")).toBeVisible();
+    expect(within(evidence).getByText("completion blocked")).toBeVisible();
+    expect(within(evidence).getByText("Current file symbols are missing")).toBeVisible();
+  });
 });
 
 function diagnosticsWithRepairAction(action: string): WorkspaceIndexDiagnostics {
@@ -178,6 +359,7 @@ function diagnosticsWithRepairAction(action: string): WorkspaceIndexDiagnostics 
     status: "partial",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [],
     fileCount: 10,
     symbolCount: 20,
     contentLineCount: 30,

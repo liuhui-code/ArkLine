@@ -5,6 +5,7 @@ export type WorkspaceIndexDiagnostics = {
   status: string;
   schemaVersions: Record<string, number>;
   schemaVersionActions: WorkspaceIndexSchemaVersionAction[];
+  freshnessLayers: WorkspaceIndexFreshnessLayerSummary[];
   fileCount: number;
   symbolCount: number;
   contentLineCount: number;
@@ -40,6 +41,14 @@ export type WorkspaceIndexSchemaVersionAction = {
   expectedVersion: number;
   persistedVersion: number | null;
   status: "compatible" | "missing-version" | "needs-rebuild" | string;
+};
+
+export type WorkspaceIndexFreshnessLayerSummary = {
+  layer: string;
+  readyCount: number;
+  staleCount: number;
+  missingCount: number;
+  expectedVersion: number;
 };
 
 export type WorkspaceIndexEvent = {

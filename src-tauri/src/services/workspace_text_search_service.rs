@@ -8,13 +8,15 @@ use crate::models::workspace::{
     WorkspaceTextSearchOptions, WorkspaceTextSearchQuery, WorkspaceTextSearchRequest,
     WorkspaceTextSearchResult,
 };
+use crate::services::workspace_text_search_prefilter_service::{
+    content_matches_prefilter, plan_regex_prefilter, WorkspaceTextSearchPrefilterPlan,
+};
 
 enum ParsedTextSearchQuery {
     Text(String),
     Regex {
         expression: regex::Regex,
-        literal_hint: Option<String>,
-        case_insensitive: bool,
+        prefilter: WorkspaceTextSearchPrefilterPlan,
     },
     Invalid(String),
 }
@@ -43,6 +45,7 @@ where
             matches: Vec::new(),
             partial: false,
             searched_files: 0,
+            prefilter_skipped_files: 0,
             limit_reached: false,
             next_cursor: None,
         };
@@ -50,6 +53,7 @@ where
 
     let mut matches = Vec::new();
     let mut searched_files = 0;
+    let mut prefilter_skipped_files = 0;
     let mut partial = false;
     let mut limit_reached = false;
     let mut next_cursor = None;
@@ -77,6 +81,7 @@ where
             continue;
         };
         if !content_may_match(&content, &parsed_query) {
+            prefilter_skipped_files += 1;
             continue;
         }
         searched_files += 1;
@@ -141,6 +146,7 @@ where
         matches,
         partial,
         searched_files,
+        prefilter_skipped_files,
         limit_reached,
         next_cursor,
     }
@@ -165,8 +171,7 @@ fn parse_search_query(query: &str, _options: &WorkspaceTextSearchOptions) -> Par
     match builder.build() {
         Ok(expression) => ParsedTextSearchQuery::Regex {
             expression,
-            literal_hint: regex_literal_hint(&source),
-            case_insensitive: flags.contains('i'),
+            prefilter: plan_regex_prefilter(&source, &flags),
         },
         Err(error) => ParsedTextSearchQuery::Invalid(error.to_string()),
     }
@@ -242,74 +247,10 @@ fn find_line_match(
 }
 
 fn content_may_match(content: &str, query: &ParsedTextSearchQuery) -> bool {
-    let ParsedTextSearchQuery::Regex {
-        literal_hint,
-        case_insensitive,
-        ..
-    } = query
-    else {
+    let ParsedTextSearchQuery::Regex { prefilter, .. } = query else {
         return true;
     };
-    let Some(hint) = literal_hint else {
-        return true;
-    };
-    if *case_insensitive {
-        return content.to_lowercase().contains(&hint.to_lowercase());
-    }
-    content.contains(hint)
-}
-
-fn regex_literal_hint(source: &str) -> Option<String> {
-    let mut best = String::new();
-    let mut current = String::new();
-    let mut escaped = false;
-    for character in source.chars() {
-        if escaped {
-            if regex_escape_is_literal(character) {
-                current.push(character);
-            } else {
-                keep_longest_literal(&mut best, &mut current);
-            }
-            escaped = false;
-            continue;
-        }
-        if character == '\\' {
-            escaped = true;
-            continue;
-        }
-        if regex_character_is_literal(character) {
-            current.push(character);
-        } else {
-            keep_longest_literal(&mut best, &mut current);
-        }
-    }
-    keep_longest_literal(&mut best, &mut current);
-    if best.chars().count() >= 3 {
-        Some(best)
-    } else {
-        None
-    }
-}
-
-fn keep_longest_literal(best: &mut String, current: &mut String) {
-    if current.chars().count() > best.chars().count() {
-        *best = current.clone();
-    }
-    current.clear();
-}
-
-fn regex_escape_is_literal(character: char) -> bool {
-    matches!(
-        character,
-        '\\' | '/' | '.' | '+' | '*' | '?' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '|'
-    )
-}
-
-fn regex_character_is_literal(character: char) -> bool {
-    !matches!(
-        character,
-        '.' | '+' | '*' | '?' | '^' | '$' | '(' | ')' | '[' | ']' | '{' | '}' | '|'
-    )
+    content_matches_prefilter(content, prefilter)
 }
 
 fn is_whole_word_boundary(line_text: &str, start: usize, end: usize) -> bool {

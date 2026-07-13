@@ -1,5 +1,6 @@
 use crate::models::workspace_index_diagnostics::{
-    WorkspaceIndexDiagnostics, WorkspaceIndexQueuePressure, WorkspaceIndexSchemaVersionAction,
+    WorkspaceIndexDiagnostics, WorkspaceIndexFreshnessLayerSummary, WorkspaceIndexQueuePressure,
+    WorkspaceIndexSchemaVersionAction,
 };
 
 #[test]
@@ -13,6 +14,13 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
             expected_version: 1,
             persisted_version: Some(1),
             status: "compatible".to_string(),
+        }],
+        freshness_layers: vec![WorkspaceIndexFreshnessLayerSummary {
+            layer: "content".to_string(),
+            ready_count: 1,
+            stale_count: 0,
+            missing_count: 0,
+            expected_version: 1,
         }],
         file_count: 1,
         symbol_count: 2,
@@ -54,6 +62,7 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
 
     assert!(json.contains("\"rootPath\""));
     assert!(json.contains("\"schemaVersionActions\""));
+    assert!(json.contains("\"freshnessLayers\""));
     assert!(json.contains("\"retryBackoffCount\""));
     assert!(json.contains("\"expectedVersion\""));
     assert!(!json.contains("schema_version_actions"));

@@ -10,6 +10,7 @@ use crate::models::workspace::{
     WorkspaceIndexSchemaVersionAction, WorkspaceIndexTimelineItem,
 };
 use crate::services::workspace_index_event_service::load_recent_index_events;
+use crate::services::workspace_index_freshness_service::load_index_freshness_layers;
 use crate::services::workspace_index_repair_action_service::{
     workspace_index_health_status, workspace_index_repair_actions, WorkspaceIndexRepairActionInput,
 };
@@ -66,6 +67,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         status: index_status,
         schema_version_actions,
         schema_versions,
+        freshness_layers: load_index_freshness_layers(&connection, &root_key)?,
         file_count: count_rows(&connection, "workspace_files", &root_key)?,
         symbol_count: count_rows(&connection, "workspace_symbols", &root_key)?,
         content_line_count: count_rows(&connection, "workspace_content_lines", &root_key)?,

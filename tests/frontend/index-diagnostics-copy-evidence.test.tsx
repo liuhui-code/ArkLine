@@ -20,7 +20,25 @@ describe("IndexDiagnosticsCenter copy evidence", () => {
         diagnostics={diagnostics()}
         fileReadiness={null}
         layerReadiness={null}
-        recentQueryExplains={[]}
+        recentQueryExplains={[{
+          id: "query-1",
+          kind: "search",
+          query: "Entry",
+          message: "Search completed",
+          explain: [
+            "searchedFiles:7",
+            "prefilterSkippedFiles:3",
+            "limitReached:false",
+            "resultCount:2",
+            "readiness:Partial",
+            "servedGeneration:4",
+            "requestedGeneration:6",
+            "retryable:true",
+            "used:TextIndex",
+            "skipped:SDKIndex",
+          ],
+          createdAt: 1,
+        }]}
         taskStatuses={[]}
         onClose={vi.fn()}
         onRefresh={vi.fn()}
@@ -36,6 +54,9 @@ describe("IndexDiagnosticsCenter copy evidence", () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("# ArkLine Index Diagnostics Evidence"));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("workspace: /workspace"));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("activePath: /workspace/src/Entry.ets"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("freshness: content ready=8 stale=1 missing=1 expectedVersion=2"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("readiness=Partial generation=4 / 6 retryable=yes used=TextIndex skipped=SDKIndex"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metrics=searched 7 file(s), skipped 3 prefiltered file(s), limit reached: no"));
     expect(await screen.findByText("Evidence copied")).toBeVisible();
   });
 
@@ -80,6 +101,15 @@ function diagnostics(): WorkspaceIndexDiagnostics {
     status: "partial",
     schemaVersions: {},
     schemaVersionActions: [],
+    freshnessLayers: [
+      {
+        layer: "content",
+        readyCount: 8,
+        staleCount: 1,
+        missingCount: 1,
+        expectedVersion: 2,
+      },
+    ],
     fileCount: 10,
     symbolCount: 20,
     contentLineCount: 30,

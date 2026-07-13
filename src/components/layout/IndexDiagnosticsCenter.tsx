@@ -115,6 +115,10 @@ export function IndexDiagnosticsCenter({
     renderPressureCount: renderPressureSamples.length,
   });
 
+  function scrollToDiagnosticsSection(id: string) {
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
+  }
+
   function runLayerAction(action: string) {
     if (action === "configureSdk") {
       onConfigureSdk();
@@ -129,7 +133,7 @@ export function IndexDiagnosticsCenter({
       return;
     }
     if (action === "inspectParserFailures") {
-      document.getElementById("index-diagnostics-parser-errors")?.scrollIntoView({ block: "start" });
+      scrollToDiagnosticsSection("index-diagnostics-parser-errors");
       return;
     }
     if (action === "rebuildSdkIndex") {
@@ -155,19 +159,19 @@ export function IndexDiagnosticsCenter({
       return;
     }
     if (action === "waitForIndex") {
-      document.getElementById("index-diagnostics-processes")?.scrollIntoView({ block: "start" });
+      scrollToDiagnosticsSection("index-diagnostics-processes");
       return;
     }
     if (action === "inspectIndex") {
-      document.getElementById("index-diagnostics-health")?.scrollIntoView({ block: "start" });
+      scrollToDiagnosticsSection("index-diagnostics-health");
       return;
     }
     if (action === "inspectParserFailures") {
-      document.getElementById("index-diagnostics-parser-errors")?.scrollIntoView({ block: "start" });
+      scrollToDiagnosticsSection("index-diagnostics-parser-errors");
       return;
     }
     if (action === "inspectUnresolvedImports") {
-      document.getElementById("index-diagnostics-unresolved-imports")?.scrollIntoView({ block: "start" });
+      scrollToDiagnosticsSection("index-diagnostics-unresolved-imports");
     }
   }
 
@@ -180,6 +184,7 @@ export function IndexDiagnosticsCenter({
       diagnostics,
       fileReadiness,
       layerReadiness,
+      queryTimeline,
       taskStatuses,
       activePath,
     });
@@ -259,10 +264,13 @@ export function IndexDiagnosticsCenter({
               activeProjectTask={activeProjectTask}
               activeSdkTask={activeSdkTask}
               onResumeIndexing={onResumeIndexing}
-              onRebuildProjectIndex={onRebuildProjectIndex}
-              onRebuildSdkIndex={onRebuildSdkIndex}
-              onConfigureSdk={onConfigureSdk}
-            />
+            onRebuildProjectIndex={onRebuildProjectIndex}
+            onRebuildSdkIndex={onRebuildSdkIndex}
+            onConfigureSdk={onConfigureSdk}
+            onIndexCurrentFile={onIndexCurrentFile}
+            onInspectParserFailures={() => scrollToDiagnosticsSection("index-diagnostics-parser-errors")}
+            onInspectUnresolvedImports={() => scrollToDiagnosticsSection("index-diagnostics-unresolved-imports")}
+          />
 
             <IndexDiagnosticsParserErrorsSection parserFailures={diagnostics?.parserFailures ?? []} />
 
@@ -271,6 +279,7 @@ export function IndexDiagnosticsCenter({
             <IndexDiagnosticsPerformanceTimelineSection
               timelineCount={viewModel.timelineCount}
               diagnosticsTimeline={diagnostics?.timeline ?? []}
+              recentEvents={diagnostics?.recentEvents ?? []}
               uiLatencySamples={uiLatencySamples}
               ipcLatencySamples={ipcLatencySamples}
               renderPressureSamples={renderPressureSamples}
