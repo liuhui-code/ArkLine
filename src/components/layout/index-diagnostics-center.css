@@ -44,6 +44,15 @@
   font-size: 12px;
 }
 
+.index-diagnostics__explain-summary .index-diagnostics__explain-action {
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border-subtle));
+}
+
+.index-diagnostics__explain-action dd {
+  overflow: visible;
+}
+
 .index-diagnostics__row--layers {
   grid-template-columns: minmax(104px, 1fr) 82px 96px minmax(150px, 1.1fr) minmax(144px, 1.1fr) minmax(190px, 1.4fr);
 }

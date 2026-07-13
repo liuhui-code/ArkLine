@@ -134,6 +134,24 @@ export function IndexDiagnosticsCenter({
     }
   }
 
+  function runQueryExplainAction(action: string) {
+    if (action === "rebuildIndex") {
+      onRebuildProjectIndex();
+      return;
+    }
+    if (action === "configureSdk") {
+      onConfigureSdk();
+      return;
+    }
+    if (action === "waitForIndex") {
+      document.getElementById("index-diagnostics-processes")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    if (action === "inspectIndex") {
+      document.getElementById("index-diagnostics-health")?.scrollIntoView({ block: "start" });
+    }
+  }
+
   return (
     <div className="index-diagnostics-modal" role="presentation" onMouseDown={onClose}>
       <section
@@ -187,6 +205,7 @@ export function IndexDiagnosticsCenter({
             <IndexDiagnosticsQueryExplainSection
               queryTimeline={queryTimeline}
               recentCount={queryEvents.length + recentQueryExplains.length}
+              onAction={runQueryExplainAction}
             />
 
             <LanguageQuerySnapshotPanel id="index-diagnostics-language-queries" records={languageQuerySnapshots} />

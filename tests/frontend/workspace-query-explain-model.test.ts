@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildQueryExplainTimeline,
   formatQueryEnvelopeExplain,
+  getQueryExplainActionButtonLabel,
   summarizeQueryEventPayload,
   summarizeQueryEnvelopeExplain,
 } from "@/features/workspace/workspace-query-explain-model";
@@ -59,6 +60,7 @@ describe("workspace query explain model", () => {
       "retryable:true",
       "action:waitForIndex",
     ])).toEqual({
+      actionId: "waitForIndex",
       action: "Wait for index",
       used: "FileIndex, SDKIndex",
       skipped: "WorkspaceIndex:notReady",
@@ -85,6 +87,7 @@ describe("workspace query explain model", () => {
     });
 
     expect(summarizeQueryEventPayload(payloadJson)).toEqual({
+      actionId: "inspectIndex",
       action: "Inspect index",
       used: "FileIndex, SDKIndex",
       skipped: "WorkspaceIndex:notReady",
@@ -94,6 +97,27 @@ describe("workspace query explain model", () => {
       retryable: "no",
     });
     expect(summarizeQueryEventPayload("{broken")).toBeNull();
+  });
+
+  it("summarizes recommended action payloads without explain details", () => {
+    expect(summarizeQueryEventPayload(JSON.stringify({ recommendedAction: "configureSdk" }))).toEqual({
+      actionId: "configureSdk",
+      action: "Configure SDK",
+      used: null,
+      skipped: null,
+      readiness: null,
+      resultCount: null,
+      generation: null,
+      retryable: null,
+    });
+  });
+
+  it("labels actionable query explain controls", () => {
+    expect(getQueryExplainActionButtonLabel("waitForIndex")).toBe("Show Processes");
+    expect(getQueryExplainActionButtonLabel("inspectIndex")).toBe("Inspect Index");
+    expect(getQueryExplainActionButtonLabel("rebuildIndex")).toBe("Rebuild Project Index");
+    expect(getQueryExplainActionButtonLabel("configureSdk")).toBe("Configure SDK");
+    expect(getQueryExplainActionButtonLabel("useResults")).toBeNull();
   });
 
   it("builds one newest-first query explain timeline from frontend and backend events", () => {

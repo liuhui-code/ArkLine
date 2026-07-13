@@ -342,7 +342,7 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(layers).getByText("42 indexed · 2 failed · 7 stale")).toBeVisible();
     expect(within(layers).getByText("Files · Quick open")).toBeVisible();
     expect(within(layers).getByText("Symbols · Navigation")).toBeVisible();
-    expect(within(layers).getByText("indexCurrentFile")).toBeVisible();
+    expect(within(layers).getByRole("button", { name: "Index Current File" })).toBeVisible();
     expect(within(layers).getByText("Current file symbols are not ready.")).toBeVisible();
   });
 

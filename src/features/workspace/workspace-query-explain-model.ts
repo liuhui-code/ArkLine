@@ -10,6 +10,7 @@ export type RecentQueryExplain = {
 };
 
 export type QueryEnvelopeExplainSummary = {
+  actionId: string | null;
   action: string | null;
   used: string | null;
   skipped: string | null;
@@ -54,9 +55,11 @@ export function formatQueryEnvelopeExplain(explain?: string[]) {
 
 export function summarizeQueryEnvelopeExplain(explain?: string[]): QueryEnvelopeExplainSummary | null {
   if (!explain?.length) return null;
+  const actionId = findExplainValue(explain, "action") ?? null;
 
   const summary = {
-    action: formatExplainActionLabel(findExplainValue(explain, "action")),
+    actionId,
+    action: formatExplainActionLabel(actionId ?? undefined),
     used: formatExplainList(findExplainValue(explain, "used")),
     skipped: formatSkippedExplain(findExplainValue(explain, "skipped")),
     readiness: findExplainValue(explain, "readiness") ?? null,
@@ -74,13 +77,32 @@ export function summarizeQueryEnvelopeExplain(explain?: string[]): QueryEnvelope
 export function summarizeQueryEventPayload(payloadJson?: string): QueryEnvelopeExplainSummary | null {
   if (!payloadJson) return null;
   try {
-    const payload = JSON.parse(payloadJson) as { explain?: unknown };
-    if (!Array.isArray(payload.explain)) return null;
+    const payload = JSON.parse(payloadJson) as { explain?: unknown; recommendedAction?: unknown };
+    const recommendedAction = typeof payload.recommendedAction === "string" ? payload.recommendedAction : null;
+    if (!Array.isArray(payload.explain)) {
+      return recommendedAction ? emptyActionSummary(recommendedAction) : null;
+    }
     const explain = payload.explain.filter((item): item is string => typeof item === "string");
-    return summarizeQueryEnvelopeExplain(explain);
+    const summary = summarizeQueryEnvelopeExplain(explain);
+    if (!summary || summary.actionId || !recommendedAction) {
+      return summary;
+    }
+    return {
+      ...summary,
+      actionId: recommendedAction,
+      action: formatExplainActionLabel(recommendedAction),
+    };
   } catch {
     return null;
   }
+}
+
+export function getQueryExplainActionButtonLabel(actionId: string | null) {
+  if (actionId === "waitForIndex") return "Show Processes";
+  if (actionId === "inspectIndex") return "Inspect Index";
+  if (actionId === "rebuildIndex") return "Rebuild Project Index";
+  if (actionId === "configureSdk") return "Configure SDK";
+  return null;
 }
 
 export function buildQueryExplainTimeline({
@@ -156,9 +178,23 @@ function formatExplainActionLabel(action?: string) {
   if (action === "waitForIndex") return "Wait for index";
   if (action === "rebuildIndex") return "Rebuild index";
   if (action === "inspectIndex") return "Inspect index";
+  if (action === "configureSdk") return "Configure SDK";
   if (action === "showEmptyResult") return "Show empty result";
   if (action === "useResults") return "Use results";
   return action ?? null;
+}
+
+function emptyActionSummary(actionId: string): QueryEnvelopeExplainSummary {
+  return {
+    actionId,
+    action: formatExplainActionLabel(actionId),
+    used: null,
+    skipped: null,
+    readiness: null,
+    resultCount: null,
+    generation: null,
+    retryable: null,
+  };
 }
 
 function formatExplainList(value?: string) {

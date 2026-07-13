@@ -1,16 +1,18 @@
 import type { QueryEnvelopeExplainSummary } from "@/features/workspace/workspace-query-explain-model";
-import type { buildQueryExplainTimeline } from "@/features/workspace/workspace-query-explain-model";
+import { getQueryExplainActionButtonLabel, type buildQueryExplainTimeline } from "@/features/workspace/workspace-query-explain-model";
 
 type QueryExplainTimelineItem = ReturnType<typeof buildQueryExplainTimeline>[number];
 
 type IndexDiagnosticsQueryExplainSectionProps = {
   queryTimeline: QueryExplainTimelineItem[];
   recentCount: number;
+  onAction: (actionId: string) => void;
 };
 
 export function IndexDiagnosticsQueryExplainSection({
   queryTimeline,
   recentCount,
+  onAction,
 }: IndexDiagnosticsQueryExplainSectionProps) {
   return (
     <section className="index-diagnostics__section" id="index-diagnostics-query-explain" aria-label="Query Explain">
@@ -23,7 +25,7 @@ export function IndexDiagnosticsQueryExplainSection({
           <span>{event.title}</span>
           <span>{event.displayTime}</span>
           <strong>{event.message}</strong>
-          <QueryExplainSummary summary={event.summary} />
+          <QueryExplainSummary summary={event.summary} onAction={onAction} />
           <code>{event.raw}</code>
         </div>
       )) : null}
@@ -34,10 +36,17 @@ export function IndexDiagnosticsQueryExplainSection({
   );
 }
 
-function QueryExplainSummary({ summary }: { summary: QueryEnvelopeExplainSummary | null }) {
+function QueryExplainSummary({
+  summary,
+  onAction,
+}: {
+  summary: QueryEnvelopeExplainSummary | null;
+  onAction: (actionId: string) => void;
+}) {
   if (!summary) {
     return null;
   }
+  const actionLabel = getQueryExplainActionButtonLabel(summary.actionId);
   const rows = [
     ["Action", summary.action],
     ["Used", summary.used],
@@ -60,6 +69,16 @@ function QueryExplainSummary({ summary }: { summary: QueryEnvelopeExplainSummary
           <dd>{value}</dd>
         </div>
       ))}
+      {actionLabel ? (
+        <div className="index-diagnostics__explain-action">
+          <dt>Next</dt>
+          <dd>
+            <button type="button" className="toolbar__button" onClick={() => onAction(summary.actionId!)}>
+              {actionLabel}
+            </button>
+          </dd>
+        </div>
+      ) : null}
     </dl>
   );
 }
