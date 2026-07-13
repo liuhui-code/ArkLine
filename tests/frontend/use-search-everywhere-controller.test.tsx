@@ -53,7 +53,7 @@ describe("useSearchEverywhereController", () => {
       "all",
       25,
       null,
-      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
     );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(1);
 
@@ -96,7 +96,7 @@ describe("useSearchEverywhereController", () => {
       "all",
       25,
       null,
-      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
     );
   });
 
@@ -217,7 +217,7 @@ describe("useSearchEverywhereController", () => {
       "all",
       25,
       null,
-      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
     );
   });
 
@@ -370,6 +370,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   const queryIndexCandidates = overrides.queryIndexCandidates ?? vi.fn(() => []);
   const getTextSearchPaths = overrides.getTextSearchPaths ?? vi.fn(() => ["/workspace/Entry.ets"]);
   const getRecentPaths = overrides.getRecentPaths ?? vi.fn(() => []);
+  const getOpenedPaths = overrides.getOpenedPaths ?? vi.fn(() => []);
   const replaceQueryReadiness = overrides.replaceQueryReadiness ?? vi.fn();
   const getOpenDocumentContent = overrides.getOpenDocumentContent ?? vi.fn(() => null);
   const hasDirtyDocuments = overrides.hasDirtyDocuments ?? vi.fn(() => false);
@@ -395,6 +396,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       queryIndexCandidates,
       getTextSearchPaths,
       getRecentPaths,
+      getOpenedPaths,
       replaceQueryReadiness,
       getOpenDocumentContent,
       getActiveContent: () => overrides.editorContent ?? "struct Entry {}",
@@ -437,6 +439,7 @@ type HarnessOptions = {
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
   getTextSearchPaths: () => string[];
   getRecentPaths: () => string[];
+  getOpenedPaths: () => string[];
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
   getOpenDocumentContent: (path: string) => string | null;
   hasDirtyDocuments: () => boolean;

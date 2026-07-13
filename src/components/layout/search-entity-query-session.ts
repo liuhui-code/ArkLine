@@ -19,6 +19,7 @@ export type SearchEntityPatchInput = SearchEntityQueryResult & {
   displayLimit: number;
   activePath: string | null;
   recentPaths: string[];
+  openedPaths: string[];
   readinessCursorAvailable: boolean;
 };
 
@@ -98,11 +99,12 @@ export function buildSearchEntityPatch({
   displayLimit,
   activePath,
   recentPaths,
+  openedPaths,
   nextCursor,
   readinessCursorAvailable,
 }: SearchEntityPatchInput) {
   const visibleCandidates = filterEntityCandidates(candidates);
-  const ordered = orderSearchEverywhereCandidates(visibleCandidates, { activePath, recentPaths });
+  const ordered = orderSearchEverywhereCandidates(visibleCandidates, { activePath, recentPaths, openedPaths });
   const capped = capSearchEverywhereCandidates(ordered, { scope, displayLimit });
   return {
     patch: {

@@ -176,6 +176,7 @@ export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" |
 export type WorkspaceSearchRankingContext = {
   activePath?: string | null;
   recentPaths?: string[];
+  openedPaths?: string[];
 };
 
 export type WorkspaceTextSearchRequest = {

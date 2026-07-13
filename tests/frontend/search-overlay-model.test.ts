@@ -19,6 +19,23 @@ describe("search overlay model", () => {
     ]);
   });
 
+  it("prioritizes opened paths after recent paths within search everywhere groups", () => {
+    const ranked = orderSearchEverywhereCandidates([
+      candidate("symbol", "Other symbol", "/workspace/src/Other.ets", 120),
+      candidate("symbol", "Opened symbol", "/workspace/src/Opened.ets", 90),
+      candidate("symbol", "Recent symbol", "/workspace/src/Recent.ets", 110),
+    ], {
+      recentPaths: ["/workspace/src/Recent.ets"],
+      openedPaths: ["/workspace/src/Opened.ets"],
+    });
+
+    expect(ranked.map((item) => item.title)).toEqual([
+      "Recent symbol",
+      "Opened symbol",
+      "Other symbol",
+    ]);
+  });
+
   it("uses project proximity when source and score tie", () => {
     const ranked = orderSearchEverywhereCandidates([
       candidate("file", "Remote Settings", "/workspace/features/settings/Settings.ets", 90),

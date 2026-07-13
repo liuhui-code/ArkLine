@@ -7,6 +7,7 @@ use crate::models::workspace::WorkspaceSearchCandidate;
 pub struct WorkspaceSearchRankingContext {
     pub active_path: Option<String>,
     pub recent_paths: Vec<String>,
+    pub opened_paths: Vec<String>,
 }
 
 pub fn build_file_candidates(
@@ -57,12 +58,17 @@ pub fn sort_search_everywhere_candidates_with_context(
         .iter()
         .map(|path| normalize_search_path(path))
         .collect::<Vec<_>>();
+    let opened_paths = context
+        .opened_paths
+        .iter()
+        .map(|path| normalize_search_path(path))
+        .collect::<Vec<_>>();
     candidates.sort_by(|left, right| {
         source_priority(&left.source)
             .cmp(&source_priority(&right.source))
             .then_with(|| {
-                context_priority(left, active_path.as_deref(), &recent_paths).cmp(
-                    &context_priority(right, active_path.as_deref(), &recent_paths),
+                context_priority(left, active_path.as_deref(), &recent_paths, &opened_paths).cmp(
+                    &context_priority(right, active_path.as_deref(), &recent_paths, &opened_paths),
                 )
             })
             .then_with(|| {
@@ -86,14 +92,16 @@ pub fn sort_text_candidates_by_lexical_match(
 ) {
     let trimmed = query.trim();
     for (index, candidate) in candidates.iter_mut().enumerate() {
-        candidate.score =
-            score_text_candidate(candidate, trimmed).unwrap_or(20.0) - index as f64 * 0.01;
+        candidate.score = score_text_candidate(candidate, trimmed).unwrap_or(20.0)
+            - candidate.title.len() as f64 * 0.01
+            - index as f64 * 0.001;
     }
     candidates.sort_by(|left, right| {
         right
             .score
             .partial_cmp(&left.score)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.title.len().cmp(&right.title.len()))
             .then_with(|| left.title.cmp(&right.title))
             .then_with(|| left.subtitle.cmp(&right.subtitle))
     });
@@ -133,6 +141,7 @@ fn context_priority(
     candidate: &WorkspaceSearchCandidate,
     active_path: Option<&str>,
     recent_paths: &[String],
+    opened_paths: &[String],
 ) -> usize {
     let Some(path) = candidate.path.as_deref().map(normalize_search_path) else {
         return usize::MAX;
@@ -140,10 +149,13 @@ fn context_priority(
     if active_path.is_some_and(|active| active == path) {
         return 0;
     }
-    recent_paths
+    if let Some(index) = recent_paths.iter().position(|recent| recent == &path) {
+        return index + 1;
+    }
+    opened_paths
         .iter()
-        .position(|recent| recent == &path)
-        .map(|index| index + 1)
+        .position(|opened| opened == &path)
+        .map(|index| recent_paths.len() + index + 1)
         .unwrap_or(usize::MAX)
 }
 

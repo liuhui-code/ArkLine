@@ -116,6 +116,7 @@ function entityApplication() {
     displayLimit: 10,
     activePath: null,
     recentPaths: [],
+    openedPaths: [],
     readinessCursorAvailable: false,
   };
 }

@@ -32,6 +32,7 @@ export type SearchRunActionsOptions = {
   minimumQueryLength: number;
   activePath: string | null;
   recentPaths: string[];
+  openedPaths: string[];
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
   workspaceApi: SearchEntityWorkspaceApi & SearchTextWorkspaceApi;
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
@@ -57,6 +58,7 @@ export function createSearchRunActions(options: SearchRunActionsOptions) {
         minimumQueryLength: options.minimumQueryLength,
         activePath: options.activePath,
         recentPaths: options.recentPaths,
+        openedPaths: options.openedPaths,
         queryIndexCandidates: options.queryIndexCandidates,
         workspaceApi: options.workspaceApi,
         replaceQueryReadiness: options.replaceQueryReadiness,

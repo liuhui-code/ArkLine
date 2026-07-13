@@ -53,6 +53,7 @@ export type SearchEntityRunnerInput = {
   minimumQueryLength: number;
   activePath: string | null;
   recentPaths: string[];
+  openedPaths: string[];
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
   workspaceApi: SearchEntityWorkspaceApi;
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
@@ -72,6 +73,7 @@ export function runSearchEntityQuery({
   minimumQueryLength,
   activePath,
   recentPaths,
+  openedPaths,
   queryIndexCandidates,
   workspaceApi,
   replaceQueryReadiness,
@@ -82,7 +84,7 @@ export function runSearchEntityQuery({
   reportMiss,
 }: SearchEntityRunnerInput) {
   if (!rootPath) return;
-  const rankingContext: WorkspaceSearchRankingContext = { activePath, recentPaths };
+  const rankingContext: WorkspaceSearchRankingContext = { activePath, recentPaths, openedPaths };
   runEntitySearchRequest({
     requestId,
     query,
@@ -126,6 +128,7 @@ export function runSearchEntityQuery({
       displayLimit,
       activePath,
       recentPaths,
+      openedPaths,
       readinessCursorAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness),
     },
     patchSearchSession,

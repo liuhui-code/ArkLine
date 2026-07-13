@@ -28,6 +28,7 @@ describe("search entity runner", () => {
       minimumQueryLength: 2,
       activePath: "/workspace/Entry.ets",
       recentPaths: [],
+      openedPaths: [],
       queryIndexCandidates: vi.fn(),
       workspaceApi: { queryWorkspaceCandidatesWithReadiness },
       replaceQueryReadiness,
@@ -47,7 +48,7 @@ describe("search entity runner", () => {
       "all",
       26,
       null,
-      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
     );
     expect(replaceQueryReadiness).toHaveBeenCalledWith(envelope.readiness);
     expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
@@ -70,6 +71,7 @@ describe("search entity runner", () => {
       minimumQueryLength: 2,
       activePath: null,
       recentPaths: [],
+      openedPaths: [],
       queryIndexCandidates: vi.fn(),
       workspaceApi: {},
       replaceQueryReadiness: vi.fn(),

@@ -14,6 +14,7 @@ describe("search result application", () => {
       displayLimit: 10,
       activePath: "/workspace/Entry.ets",
       recentPaths: [],
+      openedPaths: [],
       readinessCursorAvailable: true,
       result: {
         candidates: [candidate("text", "width"), candidate("class", "Entry")],
@@ -32,6 +33,7 @@ describe("search result application", () => {
       displayLimit: 10,
       activePath: null,
       recentPaths: [],
+      openedPaths: [],
       readinessCursorAvailable: false,
       result: {
         candidates: [candidate("text", "Missing")],

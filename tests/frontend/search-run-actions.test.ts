@@ -26,6 +26,7 @@ describe("search run actions", () => {
       minimumQueryLength: 2,
       activePath: "/workspace/Entry.ets",
       recentPaths: [],
+      openedPaths: [],
       queryIndexCandidates: vi.fn(),
       workspaceApi: { queryWorkspaceCandidatesWithReadiness },
       replaceQueryReadiness: vi.fn(),
@@ -50,7 +51,7 @@ describe("search run actions", () => {
       "all",
       26,
       null,
-      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
     );
   });
 
@@ -71,6 +72,7 @@ describe("search run actions", () => {
       minimumQueryLength: 2,
       activePath: null,
       recentPaths: [],
+      openedPaths: [],
       queryIndexCandidates: vi.fn(),
       workspaceApi: {},
       replaceQueryReadiness: vi.fn(),

@@ -16,6 +16,7 @@ export type EntitySearchApplicationInput = {
   displayLimit: number;
   activePath: string | null;
   recentPaths: string[];
+  openedPaths: string[];
   readinessCursorAvailable: boolean;
   result: SearchEntityQueryResult;
 };
@@ -32,6 +33,7 @@ export function buildEntitySearchApplication({
   displayLimit,
   activePath,
   recentPaths,
+  openedPaths,
   readinessCursorAvailable,
   result,
 }: EntitySearchApplicationInput) {
@@ -42,6 +44,7 @@ export function buildEntitySearchApplication({
     displayLimit,
     activePath,
     recentPaths,
+    openedPaths,
     readinessCursorAvailable,
   });
   return {

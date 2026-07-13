@@ -53,6 +53,7 @@ export type UseSearchEverywhereControllerOptions = {
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
   getTextSearchPaths: () => string[];
   getRecentPaths: () => string[];
+  getOpenedPaths: () => string[];
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
   getOpenDocumentContent: (path: string) => string | null;
   getActiveContent: () => string;
@@ -78,6 +79,7 @@ export function useSearchEverywhereController({
   queryIndexCandidates,
   getTextSearchPaths,
   getRecentPaths,
+  getOpenedPaths,
   replaceQueryReadiness,
   getOpenDocumentContent,
   getActiveContent,
@@ -162,7 +164,7 @@ export function useSearchEverywhereController({
     getRootPath: searchContext.getRootPath,
     getQuery: searchContext.getQuery,
     getScope: searchContext.getScope,
-    getRankingContext: () => ({ activePath, recentPaths: getRecentPaths() }),
+    getRankingContext: () => ({ activePath, recentPaths: getRecentPaths(), openedPaths: getOpenedPaths() }),
     displayLimit: SEARCH_EVERYWHERE_DISPLAY_LIMIT,
     interactionRuntime: interactionRuntimeRef.current,
     queryEntityPage: workspaceApi.queryWorkspaceCandidatesWithReadiness,
@@ -181,6 +183,7 @@ export function useSearchEverywhereController({
     minimumQueryLength: MIN_SEARCH_QUERY_LENGTH,
     activePath,
     recentPaths: getRecentPaths(),
+    openedPaths: getOpenedPaths(),
     queryIndexCandidates,
     workspaceApi,
     replaceQueryReadiness,

@@ -74,6 +74,7 @@ describe("search entity query session", () => {
       displayLimit: 1,
       activePath: "/workspace/Entry.ets",
       recentPaths: [],
+      openedPaths: [],
       nextCursor: 9,
       readinessCursorAvailable: true,
     });
@@ -93,6 +94,7 @@ describe("search entity query session", () => {
       displayLimit: 20,
       activePath: null,
       recentPaths: [],
+      openedPaths: [],
       nextCursor: 12,
       readinessCursorAvailable: false,
     });

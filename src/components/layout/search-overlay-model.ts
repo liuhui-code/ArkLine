@@ -80,6 +80,7 @@ export function getOverlayLabel(
 export type SearchEverywhereOrderContext = {
   activePath?: string | null;
   recentPaths?: string[];
+  openedPaths?: string[];
 };
 
 export type SearchEverywhereTruncationMetadata = {
@@ -127,12 +128,18 @@ export function orderSearchEverywhereCandidates(
       .map(normalizePath)
       .map((path, index) => [path, index] as const),
   );
+  const openedRanks = new Map(
+    (context.openedPaths ?? [])
+      .map(normalizePath)
+      .map((path, index) => [path, index] as const),
+  );
 
   return candidates
     .map((candidate, index) => ({ candidate, index }))
     .sort((left, right) => (
       sourcePriority(left.candidate.source) - sourcePriority(right.candidate.source)
-      || contextPriority(left.candidate, activePath, recentRanks) - contextPriority(right.candidate, activePath, recentRanks)
+      || contextPriority(left.candidate, activePath, recentRanks, openedRanks)
+      - contextPriority(right.candidate, activePath, recentRanks, openedRanks)
       || right.candidate.score - left.candidate.score
       || proximityPriority(right.candidate, activePath) - proximityPriority(left.candidate, activePath)
       || left.index - right.index
@@ -144,6 +151,7 @@ function contextPriority(
   candidate: SearchCandidate,
   activePath: string | null,
   recentRanks: Map<string, number>,
+  openedRanks: Map<string, number>,
 ) {
   if (!candidate.path) {
     return Number.MAX_SAFE_INTEGER;
@@ -153,7 +161,13 @@ function contextPriority(
     return -2;
   }
   const recentRank = recentRanks.get(path);
-  return recentRank === undefined ? Number.MAX_SAFE_INTEGER : recentRank;
+  if (recentRank !== undefined) {
+    return recentRank;
+  }
+  const openedRank = openedRanks.get(path);
+  return openedRank === undefined
+    ? Number.MAX_SAFE_INTEGER
+    : recentRanks.size + openedRank;
 }
 
 function proximityPriority(candidate: SearchCandidate, activePath: string | null) {

@@ -184,6 +184,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     queryIndexCandidates: (query, scope, limit) => workspaceIndexRef.current.queryCandidates(query, scope, limit),
     getTextSearchPaths: () => workspaceIndexRef.current.getTextSearchPaths(),
     getRecentPaths: () => tabsRef.current.state.recentFiles,
+    getOpenedPaths: () => tabsRef.current.state.openTabs.map((tab) => tab.path),
     replaceQueryReadiness: (readiness) => {
       workspaceIndexRef.current.replaceQueryReadiness(readiness);
       setWorkspaceIndexState({ ...workspaceIndexRef.current.state });

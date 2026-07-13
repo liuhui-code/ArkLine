@@ -160,11 +160,11 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_service_t
   - [x] Add facade request support for Files, Classes, Symbols, and APIs scopes.
   - [x] Add facade request support for Text scope.
   - [x] Migrate frontend Double Shift command path to the facade wrapper.
-- [ ] Add ranking for exact, prefix, camel-case, fuzzy, recency, opened files, project proximity, and SDK source.
+- [x] Add ranking for exact, prefix, camel-case, fuzzy, recency, opened files, project proximity, and SDK source.
   - [x] Add deterministic file/path ranking for exact, prefix, contains, camel-case acronym, and fuzzy matches.
   - [x] Add the same lexical ranking contract to symbol, class, and API candidates.
-  - [ ] Add the same lexical ranking contract to text candidates.
-  - [ ] Add recency, opened files, and project proximity signals.
+  - [x] Add the same lexical ranking contract to text candidates.
+  - [x] Add recency, opened files, and project proximity signals.
 - [x] Ensure global content search uses indexed content for normal text and filesystem fallback only for regex, unsupported options, dirty documents, or missing index state.
 - [x] Add partial-readiness messaging for indexed global text search.
 - [ ] Add large-result caps for every indexed search scope.

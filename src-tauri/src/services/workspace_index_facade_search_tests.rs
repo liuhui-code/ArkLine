@@ -213,6 +213,7 @@ fn facade_search_everywhere_context_prioritizes_active_and_recent_paths() {
             context: WorkspaceSearchRankingContext {
                 active_path: Some(active_path),
                 recent_paths: vec![recent_path],
+                opened_paths: Vec::new(),
             },
         },
     )
@@ -223,6 +224,64 @@ fn facade_search_everywhere_context_prioritizes_active_and_recent_paths() {
         vec![
             "SettingsActive.ets",
             "SettingsRecent.ets",
+            "SettingsOther.ets"
+        ]
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn facade_search_everywhere_context_prioritizes_opened_paths() {
+    let root = create_empty_workspace("facade-search-opened");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(
+        source_dir.join("SettingsOther.ets"),
+        "class SettingsOther {}\n",
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("SettingsOpened.ets"),
+        "class SettingsOpened {}\n",
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("SettingsRecent.ets"),
+        "class SettingsRecent {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let opened_path = source_dir
+        .join("SettingsOpened.ets")
+        .to_string_lossy()
+        .to_string();
+    let recent_path = source_dir
+        .join("SettingsRecent.ets")
+        .to_string_lossy()
+        .to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhereWithContext {
+            root_path: root_path.clone(),
+            query: "settings".to_string(),
+            scope: WorkspaceIndexQueryScope::Files,
+            limit: 8,
+            context: WorkspaceSearchRankingContext {
+                active_path: None,
+                recent_paths: vec![recent_path],
+                opened_paths: vec![opened_path],
+            },
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        search_titles(&envelope),
+        vec![
+            "SettingsRecent.ets",
+            "SettingsOpened.ets",
             "SettingsOther.ets"
         ]
     );
@@ -263,6 +322,7 @@ fn facade_search_everywhere_context_uses_project_proximity_tie_break() {
             context: WorkspaceSearchRankingContext {
                 active_path: Some(active_path),
                 recent_paths: Vec::new(),
+                opened_paths: Vec::new(),
             },
         },
     )

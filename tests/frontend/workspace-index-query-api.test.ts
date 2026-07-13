@@ -17,6 +17,7 @@ describe("workspace index query api", () => {
     const context = {
       activePath: "C:/samples/DemoWorkspace/src/Entry.ets",
       recentPaths: ["C:/samples/DemoWorkspace/src/Recent.ets"],
+      openedPaths: ["C:/samples/DemoWorkspace/src/Opened.ets"],
     };
     const invokeSpy = vi.fn();
     const invoke = <T,>(command: string, args?: Record<string, unknown>) => {

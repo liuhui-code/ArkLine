@@ -133,7 +133,7 @@ describe("useSearchEverywhereController pagination", () => {
       "all",
       24,
       24,
-      { activePath: "/workspace/a.ets", recentPaths: [] },
+      { activePath: "/workspace/a.ets", recentPaths: [], openedPaths: [] },
     );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(25);
     expect(result.current.search.searchEverywhereSelectedIndex).toBe(24);
@@ -157,6 +157,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       queryIndexCandidates: () => [],
       getTextSearchPaths: overrides.getTextSearchPaths ?? (() => []),
       getRecentPaths: () => [],
+      getOpenedPaths: () => [],
       replaceQueryReadiness: vi.fn(),
       getOpenDocumentContent: overrides.getOpenDocumentContent ?? (() => null),
       getActiveContent: () => "",

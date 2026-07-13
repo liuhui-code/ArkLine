@@ -94,6 +94,7 @@ describe("useSearchEverywhereController navigation isolation", () => {
       query: "",
       overlay: "searchEverywhere",
       workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+      getOpenedPaths: () => ["/workspace/Opened.ets", "/workspace/Entry.ets"],
     });
 
     act(() => {
@@ -116,7 +117,11 @@ describe("useSearchEverywhereController navigation isolation", () => {
       "all",
       25,
       null,
-      { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      {
+        activePath: "/workspace/Entry.ets",
+        recentPaths: [],
+        openedPaths: ["/workspace/Opened.ets", "/workspace/Entry.ets"],
+      },
     );
   });
 
@@ -201,6 +206,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       queryIndexCandidates: vi.fn(() => []),
       getTextSearchPaths: vi.fn(() => []),
       getRecentPaths: vi.fn(() => []),
+      getOpenedPaths: overrides.getOpenedPaths ?? vi.fn(() => []),
       replaceQueryReadiness: vi.fn(),
       getOpenDocumentContent: vi.fn(() => null),
       getActiveContent: () => "struct Entry {}",
@@ -222,6 +228,7 @@ type HarnessOptions = {
   overlay: OverlayKey;
   navigateToLocation: (location: { path: string; line: number; column: number }, label: "Usage") => Promise<void>;
   recordUiInteraction: Parameters<typeof useSearchEverywhereController>[0]["recordUiInteraction"];
+  getOpenedPaths: () => string[];
 };
 
 type CandidateEnvelope = {

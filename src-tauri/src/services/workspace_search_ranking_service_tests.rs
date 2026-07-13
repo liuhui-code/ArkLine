@@ -56,6 +56,39 @@ fn text_ranking_prefers_summary_matches_over_path_only_matches() {
 }
 
 #[test]
+fn text_ranking_prefers_exact_prefix_contains_then_camel_acronym_matches() {
+    let mut candidates = vec![
+        text_candidate(
+            "/workspace/src/Contains.ets",
+            "renderQueryTarget()",
+            "src/Contains.ets:1",
+        ),
+        text_candidate(
+            "/workspace/src/Exact.ets",
+            "query",
+            "src/Exact.ets:1",
+        ),
+        text_candidate(
+            "/workspace/src/Camel.ets",
+            "QueryPipelineTarget",
+            "src/Camel.ets:1",
+        ),
+        text_candidate(
+            "/workspace/src/Prefix.ets",
+            "queryProfile()",
+            "src/Prefix.ets:1",
+        ),
+    ];
+
+    sort_text_candidates_by_lexical_match(&mut candidates, "query");
+
+    assert_eq!(
+        titles(&candidates),
+        vec!["query", "queryProfile()", "QueryPipelineTarget", "renderQueryTarget()"]
+    );
+}
+
+#[test]
 fn search_ranking_context_prefers_active_and_recent_paths_within_source_group() {
     let mut candidates = vec![
         candidate("symbol", "Other symbol", "/workspace/src/Other.ets", 120.0),
@@ -74,12 +107,37 @@ fn search_ranking_context_prefers_active_and_recent_paths_within_source_group() 
         &WorkspaceSearchRankingContext {
             active_path: Some("/workspace/src/Active.ets".to_string()),
             recent_paths: vec!["c:/workspace/src/Recent.ets".to_string()],
+            opened_paths: Vec::new(),
         },
     );
 
     assert_eq!(
         titles(&candidates),
         vec!["Active symbol", "Recent symbol", "Other symbol"]
+    );
+}
+
+#[test]
+fn search_ranking_context_prefers_opened_paths_after_recent_paths() {
+    let mut candidates = vec![
+        candidate("symbol", "Other symbol", "/workspace/src/Other.ets", 120.0),
+        candidate("symbol", "Opened symbol", "/workspace/src/Opened.ets", 90.0),
+        candidate("symbol", "Recent symbol", "/workspace/src/Recent.ets", 110.0),
+    ];
+
+    sort_search_everywhere_candidates_with_context(
+        &mut candidates,
+        8,
+        &WorkspaceSearchRankingContext {
+            active_path: None,
+            recent_paths: vec!["/workspace/src/Recent.ets".to_string()],
+            opened_paths: vec!["/workspace/src/Opened.ets".to_string()],
+        },
+    );
+
+    assert_eq!(
+        titles(&candidates),
+        vec!["Recent symbol", "Opened symbol", "Other symbol"]
     );
 }
 
@@ -106,6 +164,7 @@ fn search_ranking_context_uses_project_proximity_when_scores_tie() {
         &WorkspaceSearchRankingContext {
             active_path: Some("/workspace/src/pages/Home.ets".to_string()),
             recent_paths: Vec::new(),
+            opened_paths: Vec::new(),
         },
     );
 

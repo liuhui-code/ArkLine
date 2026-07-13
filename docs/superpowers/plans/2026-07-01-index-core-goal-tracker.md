@@ -51,7 +51,7 @@ Known remaining gaps:
 - Health has facts, but repair actions are not complete enough for user-driven rebuild and failure inspection.
 - Symbol identity is still shallow for namespaces, broader project members, generics, async returns, and flow-sensitive narrowing.
 - Completion lacks accept-history ranking, expected-type ranking, and explicit apply/import-edit flow.
-- Search ranking lacks recency, opened-file, project-proximity, and text-candidate lexical parity.
+- Search ranking now has text lexical parity, recency/opened-file context, and project-proximity; remaining search work is mainly broader usage validation and future ranking telemetry.
 - Query facade coverage still needs cleanup so all old commands are compatibility wrappers, not parallel behavior paths.
 
 ## Guardrails

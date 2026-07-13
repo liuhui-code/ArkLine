@@ -108,6 +108,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       queryIndexCandidates: vi.fn(() => []),
       getTextSearchPaths: vi.fn(() => []),
       getRecentPaths: vi.fn(() => []),
+      getOpenedPaths: vi.fn(() => []),
       replaceQueryReadiness: vi.fn(),
       getOpenDocumentContent: overrides.getOpenDocumentContent ?? vi.fn(() => null),
       getActiveContent: () => "struct Entry {}",
