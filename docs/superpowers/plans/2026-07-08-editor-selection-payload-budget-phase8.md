@@ -16,15 +16,15 @@
 - Create: `src/editor/editor-selection-budget.ts`
 - Test: `tests/frontend/editor-selection-budget.test.ts`
 
-- [ ] **Step 1: Add budget tests**
+- [x] **Step 1: Add budget tests**
 
 Verify small selections are readable and selections beyond the budget are omitted.
 
-- [ ] **Step 2: Implement model**
+- [x] **Step 2: Implement model**
 
 Export `MAX_EDITOR_SELECTED_TEXT_LENGTH` and `readSelectedTextWithinBudget(doc, from, to)`.
 
-- [ ] **Step 3: Verify model**
+- [x] **Step 3: Verify model**
 
 Run:
 
@@ -40,15 +40,15 @@ Expected: all tests pass.
 - Modify: `src/editor/editor-events.ts`
 - Test: `tests/frontend/editor-selection-events.test.tsx`
 
-- [ ] **Step 1: Add integration tests**
+- [x] **Step 1: Add integration tests**
 
 Verify small selected text is forwarded and huge selected text is omitted while line/column still update.
 
-- [ ] **Step 2: Use the budget model**
+- [x] **Step 2: Use the budget model**
 
 Replace direct `doc.sliceString(selectionFrom, selectionTo)` in `createSelectionChangeListener`.
 
-- [ ] **Step 3: Verify focused tests**
+- [x] **Step 3: Verify focused tests**
 
 Run:
 
@@ -63,7 +63,7 @@ Expected: all tests pass.
 **Files:**
 - Modify only files from Tasks 1 and 2 plus this plan.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
@@ -73,7 +73,7 @@ wc -l src/editor/editor-selection-budget.ts src/editor/editor-events.ts tests/fr
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and performance gate**
+- [x] **Step 2: Build and performance gate**
 
 Run:
 
@@ -85,9 +85,22 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-editor-selection-payload-budget-phase8.md src/editor/editor-selection-budget.ts src/editor/editor-events.ts tests/frontend/editor-selection-budget.test.ts tests/frontend/editor-selection-events.test.tsx
 git commit -m "Cap editor selected text payloads"
 ```
+
+## Completion Notes
+
+- Implemented `editor-selection-budget` and integrated it into CodeMirror selection change events.
+- Selection events always preserve line/column updates, but omit huge selected text payloads before they enter React state or query controllers.
+- Verified focused editor suite:
+
+```bash
+pnpm test -- --run tests/frontend/editor-document-budget.test.ts tests/frontend/editor-large-document.test.tsx tests/frontend/editor-selection-budget.test.ts tests/frontend/editor-selection-events.test.tsx tests/frontend/editor.test.tsx
+```
+
+- Code files in this phase remain under 500 lines.
+- Commit intentionally remains pending until explicitly requested.

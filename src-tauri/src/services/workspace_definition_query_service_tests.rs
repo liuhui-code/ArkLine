@@ -126,8 +126,8 @@ fn definition_facade_resolves_active_sdk_api_symbol() {
     .unwrap();
     let root_path = workspace_dir.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
-    runtime.refresh_workspace_index(&root_path).unwrap();
     index_workspace_sdk_symbols(&root_path, &sdk_dir.to_string_lossy(), "12").unwrap();
+    runtime.refresh_workspace_index(&root_path).unwrap();
 
     let envelope = query_definition_candidates_with_readiness(
         &runtime,
@@ -149,6 +149,71 @@ fn definition_facade_resolves_active_sdk_api_symbol() {
     );
     assert!(envelope.items.iter().any(|candidate| {
         candidate.path == api_path.to_string_lossy() && candidate.preview.contains("TextAttribute")
+    }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn definition_facade_merges_sdk_and_project_wrapper_member_definitions() {
+    let root = unique_temp_dir("workspace-definition-sdk-project-merge");
+    let workspace_dir = root.join("workspace");
+    let sdk_dir = root.join("sdk");
+    let source_dir = workspace_dir
+        .join("entry")
+        .join("src")
+        .join("main")
+        .join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::create_dir_all(sdk_dir.join("ets")).unwrap();
+    let api_path = sdk_dir.join("ets").join("arkui.d.ts");
+    fs::write(
+        &api_path,
+        "declare class Text {\n  width(value: Length): Text;\n}\n",
+    )
+    .unwrap();
+    let wrapper_path = source_dir.join("WrappedText.ets");
+    fs::write(
+        &wrapper_path,
+        "export class Text {\n  width(value: number): Text { return this; }\n}\n",
+    )
+    .unwrap();
+    let app_path = source_dir.join("Index.ets");
+    fs::write(
+        &app_path,
+        [
+            "import { Text as WrappedText } from \"./WrappedText\";",
+            "const wrapper = new WrappedText();",
+            "wrapper.width(12);",
+            "Text('hi').width(12);",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = workspace_dir.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    index_workspace_sdk_symbols(&root_path, &sdk_dir.to_string_lossy(), "12").unwrap();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let envelope = query_definition_candidates_with_readiness(
+        &runtime,
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 4,
+            column: 12,
+            content: Some(fs::read_to_string(&app_path).unwrap()),
+        },
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert!(envelope
+        .items
+        .iter()
+        .any(|candidate| candidate.path == api_path.to_string_lossy() && candidate.line == 2));
+    assert!(envelope.items.iter().any(|candidate| {
+        candidate.path == wrapper_path.to_string_lossy() && candidate.line == 2
     }));
     fs::remove_dir_all(root).unwrap();
 }

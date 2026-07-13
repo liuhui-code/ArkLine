@@ -16,15 +16,15 @@
 - Create: `src/features/search/search-interaction-runtime.ts`
 - Test: `tests/frontend/search-interaction-runtime.test.ts`
 
-- [ ] **Step 1: Write failing runtime tests**
+- [x] **Step 1: Write failing runtime tests**
 
 Add tests proving that new query sessions invalidate old sessions, foreground invalidation cancels active backend work, and preview generations can be invalidated independently.
 
-- [ ] **Step 2: Implement runtime**
+- [x] **Step 2: Implement runtime**
 
 Create a focused runtime with `startQuery`, `invalidateForeground`, `startPreview`, `invalidatePreview`, `isCurrentQuery`, and `isCurrentPreview`.
 
-- [ ] **Step 3: Verify runtime**
+- [x] **Step 3: Verify runtime**
 
 Run:
 
@@ -40,19 +40,19 @@ Expected: all runtime tests pass.
 - Modify: `src/components/layout/use-search-everywhere-controller.ts`
 - Test: `tests/frontend/use-search-everywhere-navigation.test.tsx`
 
-- [ ] **Step 1: Add stale-result regression tests**
+- [x] **Step 1: Add stale-result regression tests**
 
 Add tests proving that a slow stale search cannot overwrite a newer result and a slow result cannot repopulate results after the panel closes.
 
-- [ ] **Step 2: Replace local request refs**
+- [x] **Step 2: Replace local request refs**
 
 Use the new runtime for query and preview generation checks. Keep the existing public hook contract unchanged.
 
-- [ ] **Step 3: Clear transient work on invalidation**
+- [x] **Step 3: Clear transient work on invalidation**
 
 When foreground input, close, or navigation invalidates the session, clear preview content and reset page loading so the UI never looks stuck on an obsolete request.
 
-- [ ] **Step 4: Verify search controller**
+- [x] **Step 4: Verify search controller**
 
 Run:
 
@@ -62,22 +62,24 @@ Run:
 
 Expected: search navigation, cancellation, and preview tests pass.
 
+Actual: `tests/frontend/search-interaction-runtime.test.ts`, `tests/frontend/use-search-everywhere-controller.test.tsx`, `tests/frontend/use-search-everywhere-navigation.test.tsx`, and `tests/frontend/use-search-everywhere-preview.test.tsx` passed.
+
 ### Task 3: Release Checks
 
 **Files:**
 - Modify only files from Task 1 and Task 2.
 
-- [ ] **Step 1: Enforce file-size policy**
+- [x] **Step 1: Enforce file-size policy**
 
 Run:
 
 ```bash
-wc -l src/features/search/search-interaction-runtime.ts src/components/layout/use-search-everywhere-controller.ts tests/frontend/search-interaction-runtime.test.ts tests/frontend/use-search-everywhere-navigation.test.tsx
+wc -l src/features/search/search-interaction-runtime.ts src/components/layout/use-search-everywhere-controller.ts src/components/layout/search-session-lifecycle.ts src/components/layout/search-workspace-runtime.ts src/components/layout/search-request-runner.ts tests/frontend/search-interaction-runtime.test.ts tests/frontend/use-search-everywhere-controller.test.tsx tests/frontend/use-search-everywhere-navigation.test.tsx docs/superpowers/plans/2026-07-08-interaction-responsiveness-phase1.md
 ```
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Run build and diff checks**
+- [x] **Step 2: Run build and diff checks**
 
 Run:
 
@@ -88,7 +90,9 @@ git diff --check
 
 Expected: both commands pass.
 
-- [ ] **Step 3: Commit**
+Actual: `pnpm build`, `pnpm perf:runtime`, and `git diff --check HEAD --` passed. `pnpm build` still reports the existing Vite chunk-size warning.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-interaction-responsiveness-phase1.md src/features/search/search-interaction-runtime.ts src/components/layout/use-search-everywhere-controller.ts tests/frontend/search-interaction-runtime.test.ts tests/frontend/use-search-everywhere-navigation.test.tsx

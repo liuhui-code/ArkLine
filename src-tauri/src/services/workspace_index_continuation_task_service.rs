@@ -130,7 +130,10 @@ fn schedule_and_save(
     let root_path = task.root_path.clone();
     let reason = task.reason.clone();
     let kind = task.kind.clone();
-    let superseded = scheduler.schedule(task);
+    let schedule_result = scheduler.schedule_with_result(task);
+    if !schedule_result.scheduled {
+        return Ok(Vec::new());
+    }
     if let Some(pending) = scheduler
         .pending_tasks_for_root(&root_path)
         .into_iter()
@@ -138,7 +141,7 @@ fn schedule_and_save(
     {
         save_resume_task(&pending.root_path, &pending)?;
     }
-    Ok(superseded)
+    Ok(schedule_result.superseded_tasks)
 }
 
 fn next_deep_refresh_task(result: &WorkspaceIndexTaskResult) -> Option<WorkspaceIndexTask> {

@@ -16,15 +16,15 @@
 - Modify: `src/components/layout/use-search-everywhere-controller.ts`
 - Test: `tests/frontend/use-search-everywhere-preview.test.tsx`
 
-- [ ] **Step 1: Add regression tests**
+- [x] **Step 1: Add regression tests**
 
 Verify unopened search results do not call `workspaceApi.openFile` for preview, and already open documents still provide preview content.
 
-- [ ] **Step 2: Implement cache-only preview reads**
+- [x] **Step 2: Implement cache-only preview reads**
 
 Make `scheduleSelectedPreview` call `readSearchFile(path, false)` while full text search fallback keeps `readSearchFile(path, true)`.
 
-- [ ] **Step 3: Verify focused tests**
+- [x] **Step 3: Verify focused tests**
 
 Run:
 
@@ -34,22 +34,24 @@ Run:
 
 Expected: all tests pass.
 
+Actual: `tests/frontend/search-file-reader.test.ts`, `tests/frontend/search-preview-action.test.ts`, `tests/frontend/search-preview-session.test.ts`, `tests/frontend/use-search-everywhere-preview.test.tsx`, and `tests/frontend/use-search-everywhere-navigation.test.tsx` passed.
+
 ### Task 2: Release Checks
 
 **Files:**
 - Modify only files from Task 1 plus this plan.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
 ```bash
-wc -l src/components/layout/use-search-everywhere-controller.ts tests/frontend/use-search-everywhere-preview.test.tsx docs/superpowers/plans/2026-07-08-preview-io-budget-phase6.md
+wc -l src/components/layout/use-search-everywhere-controller.ts src/components/layout/search-file-reader.ts src/components/layout/search-preview-action.ts src/features/search/search-preview-session.ts tests/frontend/use-search-everywhere-preview.test.tsx tests/frontend/search-file-reader.test.ts tests/frontend/search-preview-action.test.ts tests/frontend/search-preview-session.test.ts docs/superpowers/plans/2026-07-08-preview-io-budget-phase6.md
 ```
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and performance gate**
+- [x] **Step 2: Build and performance gate**
 
 Run:
 
@@ -61,7 +63,9 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Commit**
+Actual: `pnpm build`, `pnpm perf:runtime`, and `git diff --check HEAD --` passed. `pnpm build` still reports the existing Vite chunk-size warning.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-preview-io-budget-phase6.md src/components/layout/use-search-everywhere-controller.ts tests/frontend/use-search-everywhere-preview.test.tsx

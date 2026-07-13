@@ -16,15 +16,15 @@
 - Create: `src/editor/editor-change-dispatcher.ts`
 - Test: `tests/frontend/editor-change-dispatcher.test.ts`
 
-- [ ] **Step 1: Add dispatcher tests**
+- [x] **Step 1: Add dispatcher tests**
 
 Verify multiple queued documents emit only the latest value, flushing is explicit, and cancelling clears pending work.
 
-- [ ] **Step 2: Implement dispatcher**
+- [x] **Step 2: Implement dispatcher**
 
 Expose `createEditorChangeDispatcher(onChange, scheduler)` with `queue`, `flush`, and `cancel`.
 
-- [ ] **Step 3: Verify dispatcher**
+- [x] **Step 3: Verify dispatcher**
 
 Run:
 
@@ -40,15 +40,15 @@ Expected: all tests pass.
 - Modify: `src/editor/editor-events.ts`
 - Test: `tests/frontend/editor.test.tsx`
 
-- [ ] **Step 1: Wire dispatcher into `createDocumentChangeListener`**
+- [x] **Step 1: Wire dispatcher into `createDocumentChangeListener`**
 
 Replace direct `update.state.doc.toString()` with `dispatcher.queue(update.state.doc)`.
 
-- [ ] **Step 2: Preserve editor behavior**
+- [x] **Step 2: Preserve editor behavior**
 
 Run existing editor tests to ensure controlled updates, typing, selection, jump reveal, and git blame still work.
 
-- [ ] **Step 3: Verify focused tests**
+- [x] **Step 3: Verify focused tests**
 
 Run:
 
@@ -63,7 +63,7 @@ Expected: all tests pass.
 **Files:**
 - Modify only files from Tasks 1 and 2 plus this plan.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
@@ -73,7 +73,7 @@ wc -l src/editor/editor-change-dispatcher.ts src/editor/editor-events.ts tests/f
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and performance gate**
+- [x] **Step 2: Build and performance gate**
 
 Run:
 
@@ -85,9 +85,18 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-editor-change-coalescing-phase9.md src/editor/editor-change-dispatcher.ts src/editor/editor-events.ts tests/frontend/editor-change-dispatcher.test.ts
 git commit -m "Coalesce editor change payloads"
 ```
+
+## Completion Notes
+
+- `createEditorChangeDispatcher` coalesces queued CodeMirror documents and emits only the latest `doc.toString()` on the scheduled frame.
+- `createDocumentChangeListener` keeps normal documents synchronous and enables coalescing for large-document mode through `editor-extensions`.
+- Large-document editor coverage proves rapid document changes emit one coalesced `onChange` payload on the next animation frame.
+- Verified focused coverage with:
+  - `pnpm test -- --run tests/frontend/editor-change-dispatcher.test.ts tests/frontend/editor.test.tsx tests/frontend/editor-selection-events.test.tsx tests/frontend/editor-large-document.test.tsx`
+  - `wc -l src/editor/editor-change-dispatcher.ts src/editor/editor-events.ts tests/frontend/editor-change-dispatcher.test.ts tests/frontend/editor.test.tsx tests/frontend/editor-large-document.test.tsx`

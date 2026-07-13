@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index;
-use crate::services::workspace_index_query_service::query_workspace_search_everywhere;
-use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::{
     index_workspace_sdk_symbol_chunk, index_workspace_sdk_symbols, query_workspace_sdk_symbols,
 };
@@ -45,45 +43,6 @@ fn indexes_queries_and_reports_sdk_api_symbols() {
     assert!(matches[0].id.contains(":method:Text:width:"));
     assert_eq!(diagnostics.schema_versions.get("sdk"), Some(&1));
     assert_eq!(diagnostics.sdk_symbol_count, 4);
-
-    fs::remove_dir_all(workspace).unwrap();
-}
-
-#[test]
-fn sdk_switch_exposes_only_active_sdk_candidates() {
-    let workspace = unique_temp_dir("active-sdk-switch");
-    let old_sdk_root = workspace.join("old-openharmony");
-    let new_sdk_root = workspace.join("new-openharmony");
-    fs::create_dir_all(old_sdk_root.join("ets")).unwrap();
-    fs::create_dir_all(new_sdk_root.join("ets")).unwrap();
-    fs::write(
-        old_sdk_root.join("ets").join("old.d.ts"),
-        "declare class LegacyOnly {\n  oldWidth(value: Length): LegacyOnly;\n}\n",
-    )
-    .unwrap();
-    fs::write(
-        new_sdk_root.join("ets").join("new.d.ts"),
-        "declare class CurrentOnly {\n  currentWidth(value: Length): CurrentOnly;\n}\n",
-    )
-    .unwrap();
-    let workspace_path = workspace.to_string_lossy().to_string();
-    let old_sdk_path = old_sdk_root.to_string_lossy().to_string();
-    let new_sdk_path = new_sdk_root.to_string_lossy().to_string();
-    let runtime = WorkspaceIndexRuntime::default();
-
-    index_workspace_sdk_symbols(&workspace_path, &old_sdk_path, "old-sdk").unwrap();
-    index_workspace_sdk_symbols(&workspace_path, &new_sdk_path, "new-sdk").unwrap();
-    let old_matches =
-        query_workspace_search_everywhere(&runtime, &workspace_path, "oldWidth", 8).unwrap();
-    let current_matches =
-        query_workspace_search_everywhere(&runtime, &workspace_path, "currentWidth", 8).unwrap();
-
-    assert!(old_matches
-        .iter()
-        .all(|candidate| candidate.source != "api"));
-    assert!(current_matches
-        .iter()
-        .any(|candidate| { candidate.source == "api" && candidate.title == "currentWidth" }));
 
     fs::remove_dir_all(workspace).unwrap();
 }
@@ -459,31 +418,6 @@ fn indexes_sdk_enum_members_with_qualified_containers() {
     assert_eq!(center.len(), 1);
     assert_eq!(center[0].kind, "property");
     assert!(center[0].subtitle.starts_with("InlineAlignment"));
-
-    fs::remove_dir_all(workspace).unwrap();
-}
-
-#[test]
-fn search_everywhere_includes_indexed_sdk_api_symbols() {
-    let workspace = unique_temp_dir("search-everywhere");
-    let sdk_root = workspace.join("openharmony");
-    fs::create_dir_all(sdk_root.join("ets")).unwrap();
-    fs::create_dir_all(sdk_root.join("toolchains")).unwrap();
-    fs::write(
-        sdk_root.join("ets").join("arkui.d.ts"),
-        "declare class Text {\n  width(value: Length): Text;\n}\n",
-    )
-    .unwrap();
-    let workspace_path = workspace.to_string_lossy().to_string();
-    let sdk_path = sdk_root.to_string_lossy().to_string();
-    let runtime = WorkspaceIndexRuntime::default();
-    index_workspace_sdk_symbols(&workspace_path, &sdk_path, "test-sdk").unwrap();
-
-    let matches = query_workspace_search_everywhere(&runtime, &workspace_path, "width", 8).unwrap();
-
-    assert!(matches
-        .iter()
-        .any(|candidate| candidate.source == "api" && candidate.title == "width"));
 
     fs::remove_dir_all(workspace).unwrap();
 }

@@ -16,15 +16,15 @@
 - Create: `src/features/search/search-preview-window.ts`
 - Test: `tests/frontend/search-preview-window.test.ts`
 
-- [ ] **Step 1: Write model tests**
+- [x] **Step 1: Write model tests**
 
 Cover small files, large files, hit line near the beginning, and hit line near the end.
 
-- [ ] **Step 2: Implement the model**
+- [x] **Step 2: Implement the model**
 
 Expose `createSearchPreviewWindow(lines, hitLine, radius)` returning visible lines with original line numbers and full line count.
 
-- [ ] **Step 3: Verify model**
+- [x] **Step 3: Verify model**
 
 Run:
 
@@ -37,17 +37,17 @@ Expected: all tests pass.
 ### Task 2: Search Preview Integration
 
 **Files:**
-- Modify: `src/components/layout/SearchEverywherePanel.tsx`
+- Modify: `src/components/layout/SearchPreviewPane.tsx`
 
-- [ ] **Step 1: Replace full-file preview render**
+- [x] **Step 1: Replace full-file preview render**
 
 Use `createSearchPreviewWindow` in `SearchPreview` so large files do not render every line.
 
-- [ ] **Step 2: Preserve fallback context preview**
+- [x] **Step 2: Preserve fallback context preview**
 
 When full content is not available yet, keep the existing context-before/hit/context-after rendering.
 
-- [ ] **Step 3: Verify focused search tests**
+- [x] **Step 3: Verify focused search tests**
 
 Run:
 
@@ -57,22 +57,32 @@ Run:
 
 Expected: all tests pass.
 
+Validated with:
+
+```bash
+./node_modules/.bin/vitest run tests/frontend/search-preview-window.test.ts tests/frontend/SearchPreviewPane.test.tsx tests/frontend/search-result-window.test.ts tests/frontend/use-search-everywhere-preview.test.tsx tests/frontend/use-search-everywhere-navigation.test.tsx
+```
+
+Expected: all tests pass.
+
+Actual: 5 files / 20 tests passed.
+
 ### Task 3: Release Checks
 
 **Files:**
 - Modify only files from Tasks 1 and 2.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
 ```bash
-wc -l src/features/search/search-preview-window.ts src/components/layout/SearchEverywherePanel.tsx tests/frontend/search-preview-window.test.ts
+wc -l src/features/search/search-preview-window.ts src/components/layout/SearchPreviewPane.tsx tests/frontend/search-preview-window.test.ts tests/frontend/SearchPreviewPane.test.tsx docs/superpowers/plans/2026-07-08-search-render-budget-phase3.md
 ```
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and diff check**
+- [x] **Step 2: Build and diff check**
 
 Run:
 
@@ -83,9 +93,11 @@ git diff --check
 
 Expected: both pass.
 
-- [ ] **Step 3: Commit**
+Actual: `pnpm build`, `git diff --check HEAD --`, and `pnpm perf:runtime` passed. `pnpm build` still reports the existing Vite chunk-size warning.
+
+- [x] **Step 3: Commit**
 
 ```bash
-git add docs/superpowers/plans/2026-07-08-search-render-budget-phase3.md src/features/search/search-preview-window.ts src/components/layout/SearchEverywherePanel.tsx tests/frontend/search-preview-window.test.ts
+git add docs/superpowers/plans/2026-07-08-search-render-budget-phase3.md src/features/search/search-preview-window.ts src/components/layout/SearchPreviewPane.tsx tests/frontend/search-preview-window.test.ts tests/frontend/SearchPreviewPane.test.tsx
 git commit -m "Bound search preview rendering"
 ```

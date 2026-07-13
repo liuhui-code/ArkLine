@@ -42,6 +42,43 @@ fn schedules_discovery_after_open_workspace_result() {
 }
 
 #[test]
+fn duplicate_discovery_follow_up_does_not_report_pending_roots() {
+    let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
+    let results = vec![TaskResult {
+        root_path: "/tmp/project".to_string(),
+        kind: "open-workspace".to_string(),
+        status: "ready".to_string(),
+        reason: "open-workspace".to_string(),
+        generation: 1,
+        started_at: None,
+        finished_at: None,
+        message: None,
+        error: None,
+        refresh_result: None,
+        refresh_continuation: None,
+        sdk_path: None,
+        sdk_version: None,
+        sdk_remaining_files: Vec::new(),
+        sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
+    }];
+
+    let first = schedule_index_follow_up_tasks(&scheduler, &results).unwrap();
+    let second = schedule_index_follow_up_tasks(&scheduler, &results).unwrap();
+    let pending = scheduler
+        .lock()
+        .unwrap()
+        .pending_tasks_for_root("/tmp/project");
+
+    assert_eq!(first.root_paths, vec!["/tmp/project".to_string()]);
+    assert!(second.root_paths.is_empty());
+    assert!(second.superseded_tasks.is_empty());
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].generation, 1);
+}
+
+#[test]
 fn schedules_background_refresh_after_discovery_ready_result() {
     let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
     let results = vec![TaskResult {

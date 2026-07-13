@@ -107,7 +107,9 @@ fn records_and_returns_query_event_for_live_emit() {
     assert_eq!(event.kind, "definition");
     assert_eq!(event.phase, "miss");
     assert_eq!(event.severity, "warning");
-    assert!(events.iter().any(|stored| stored.event_id == event.event_id));
+    assert!(events
+        .iter()
+        .any(|stored| stored.event_id == event.event_id));
 
     fs::remove_dir_all(root).unwrap();
 }

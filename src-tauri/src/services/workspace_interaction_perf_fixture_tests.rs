@@ -6,7 +6,7 @@ use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRe
 use crate::services::workspace_index_facade_service::query_facade_text_search_result;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-use crate::services::workspace_index_query_service::query_workspace_search_everywhere;
+use crate::services::workspace_index_query_service::query_workspace_search_everywhere_raw_baseline;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::scan_workspace;
@@ -172,8 +172,12 @@ fn build_interaction_smoothness_report(root: &Path) -> Result<InteractionSmoothn
     let first_file_readiness = readiness_start.elapsed();
 
     let search_start = Instant::now();
-    let search_results =
-        query_workspace_search_everywhere(&runtime, &snapshot.root_path, &search_query, 20)?;
+    let search_results = query_workspace_search_everywhere_raw_baseline(
+        &runtime,
+        &snapshot.root_path,
+        &search_query,
+        20,
+    )?;
     let double_shift_first_result = search_start.elapsed();
 
     let text_start = Instant::now();

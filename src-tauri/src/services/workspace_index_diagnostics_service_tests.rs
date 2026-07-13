@@ -2,27 +2,17 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexQueuePressure};
 use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursor;
 use crate::services::workspace_discovery_store_service::{
     update_discovery_state, WorkspaceDiscoveryState,
 };
-use crate::services::workspace_index_diagnostics_service::{
-    inspect_workspace_index, inspect_workspace_index_with_queue_pressure,
-};
-use crate::services::workspace_index_event_service::store_index_event;
-use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-use crate::services::workspace_index_performance_gate_service::{
-    evaluate_deep_layer_performance, record_deep_layer_performance_report,
-    WorkspaceIndexPerfGateThresholds, WorkspaceIndexStageSample,
-};
+use crate::services::workspace_index_diagnostics_service::inspect_workspace_index;
 use crate::services::workspace_index_resume_service::save_resume_task;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
-use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
 use rusqlite::{params, Connection};
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -87,32 +77,6 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
 }
 
 #[test]
-fn reports_active_sdk_index_metadata_for_diagnostics() {
-    let root = unique_temp_dir("workspace-index-diagnostics-sdk");
-    let sdk_root = root.join("openharmony");
-    fs::create_dir_all(sdk_root.join("ets")).unwrap();
-    fs::write(
-        sdk_root.join("ets").join("arkui.d.ts"),
-        "declare class Text {\n  width(value: Length): Text;\n}\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let sdk_path = sdk_root.to_string_lossy().to_string();
-
-    index_workspace_sdk_symbols(&root_path, &sdk_path, "test-sdk").unwrap();
-    let diagnostics = inspect_workspace_index(&root_path).unwrap();
-
-    assert_eq!(
-        diagnostics.active_sdk_path.as_deref(),
-        Some(sdk_path.as_str())
-    );
-    assert_eq!(diagnostics.active_sdk_version.as_deref(), Some("test-sdk"));
-    assert_eq!(diagnostics.sdk_symbol_count, 2);
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
 fn reports_discovery_state_for_diagnostics() {
     let root = unique_temp_dir("workspace-index-diagnostics-discovery");
     fs::create_dir_all(&root).unwrap();
@@ -136,156 +100,6 @@ fn reports_discovery_state_for_diagnostics() {
     assert_eq!(diagnostics.discovered_file_count, 2048);
     assert_eq!(diagnostics.discovery_excluded_count, 12);
     assert!(diagnostics.discovery_has_more);
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_recent_unified_index_events_for_diagnostics() {
-    let root = unique_temp_dir("workspace-index-diagnostics-events");
-    let source_dir = root.join("entry").join("src").join("main").join("ets");
-    fs::create_dir_all(&source_dir).unwrap();
-    fs::write(
-        source_dir.join("Index.ets"),
-        "struct Index { build() {} }\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let runtime = WorkspaceIndexRuntime::default();
-    let manager = WorkspaceIndexManagerRuntime::default();
-
-    manager.refresh_workspace_index(&root_path).unwrap();
-    manager.drain_index_task_results(&runtime).unwrap();
-    let diagnostics = inspect_workspace_index(&root_path).unwrap();
-
-    assert_eq!(diagnostics.recent_events.len(), 4);
-    assert_eq!(diagnostics.recent_events[0].phase, "queued");
-    assert_eq!(diagnostics.recent_events[1].phase, "running");
-    assert!(diagnostics.recent_events.iter().any(|event| {
-        event.phase == "ready" && event.task_id.as_deref() == Some("1:refresh-workspace")
-    }));
-    assert!(diagnostics
-        .recent_events
-        .iter()
-        .any(|event| event.kind == "changed-paths" && event.phase == "queued"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_task_timeline_from_unified_index_events() {
-    let root = unique_temp_dir("workspace-index-diagnostics-timeline");
-    let source_dir = root.join("entry").join("src").join("main").join("ets");
-    fs::create_dir_all(&source_dir).unwrap();
-    fs::write(
-        source_dir.join("Index.ets"),
-        "struct Index { build() {} }\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let runtime = WorkspaceIndexRuntime::default();
-    let manager = WorkspaceIndexManagerRuntime::default();
-
-    manager.refresh_workspace_index(&root_path).unwrap();
-    manager.drain_index_task_results(&runtime).unwrap();
-    let diagnostics = inspect_workspace_index(&root_path).unwrap();
-
-    assert_eq!(diagnostics.timeline.len(), 4);
-    assert_eq!(diagnostics.timeline[0].scope, "task");
-    assert_eq!(diagnostics.timeline[0].phase, "queued");
-    assert_eq!(diagnostics.timeline[0].title, "refresh-workspace queued");
-    assert!(diagnostics.timeline.iter().any(|event| {
-        event.phase == "ready"
-            && event.task_id.as_deref() == Some("1:refresh-workspace")
-            && event.duration_ms.is_some()
-    }));
-    assert!(diagnostics
-        .timeline
-        .iter()
-        .any(|event| event.phase == "queued" && event.title == "changed-paths queued"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_deep_layer_performance_gate_events_in_timeline() {
-    let root = unique_temp_dir("workspace-index-diagnostics-performance");
-    fs::create_dir_all(&root).unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let report = evaluate_deep_layer_performance(
-        vec![WorkspaceIndexStageSample {
-            source: "project".to_string(),
-            stage: "referenceRefresh".to_string(),
-            duration_ms: 420,
-            path_count: 128,
-            chunk_index: Some(2),
-            detail: None,
-        }],
-        WorkspaceIndexPerfGateThresholds {
-            foreground_ready_ms: 500,
-            deep_tick_ms: 1_000,
-            stage_ms: 250,
-        },
-    );
-    record_deep_layer_performance_report(&root_path, &report).unwrap();
-
-    let diagnostics = inspect_workspace_index(&root_path).unwrap();
-
-    assert!(diagnostics.timeline.iter().any(|event| {
-        event.scope == "performance"
-            && event.kind == "deep-layer"
-            && event.phase == "threshold"
-            && event.message.contains("referenceRefresh")
-    }));
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_latest_error_and_query_explain_status_from_events() {
-    let root = unique_temp_dir("workspace-index-diagnostics-latest-events");
-    fs::create_dir_all(&root).unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let root_key = root_path.replace('/', "\\");
-
-    store_index_event(
-        &root_path,
-        &WorkspaceIndexEvent {
-            event_id: "task:error:100".to_string(),
-            root_path: root_key.clone(),
-            scope: "task".to_string(),
-            kind: "refresh-workspace".to_string(),
-            phase: "failed".to_string(),
-            severity: "error".to_string(),
-            message: "Parser exploded".to_string(),
-            task_id: Some("1:refresh-workspace".to_string()),
-            generation: Some(1),
-            payload_json: "{}".to_string(),
-            created_at: 100,
-        },
-    )
-    .unwrap();
-    store_index_event(
-        &root_path,
-        &WorkspaceIndexEvent {
-            event_id: "query:blocked:200".to_string(),
-            root_path: root_key,
-            scope: "query".to_string(),
-            kind: "definition".to_string(),
-            phase: "blocked".to_string(),
-            severity: "warning".to_string(),
-            message: "SDK index is not ready".to_string(),
-            task_id: None,
-            generation: None,
-            payload_json: "{}".to_string(),
-            created_at: 200,
-        },
-    )
-    .unwrap();
-
-    let diagnostics = inspect_workspace_index(&root_path).unwrap();
-
-    assert_eq!(diagnostics.last_error.as_deref(), Some("Parser exploded"));
-    assert_eq!(diagnostics.last_explain_status.as_deref(), Some("blocked"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -387,97 +201,6 @@ fn reports_resume_repair_action_for_persisted_resume_tasks() {
         .repair_actions
         .iter()
         .any(|action| action == "resumeIndexing"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_queued_diagnostics_when_workspace_work_is_pending() {
-    let root = unique_temp_dir("workspace-index-diagnostics-queued");
-    fs::create_dir_all(&root).unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let queue_pressure = WorkspaceIndexQueuePressure {
-        root_path: root_path.clone(),
-        pending_task_count: 1,
-        workspace_pending_task_count: 1,
-        highest_priority: Some("full-refresh".to_string()),
-        highest_priority_task_kind: Some("refresh-workspace".to_string()),
-    };
-
-    let diagnostics =
-        inspect_workspace_index_with_queue_pressure(&root_path, queue_pressure).unwrap();
-
-    assert_eq!(diagnostics.status, "queued");
-    assert_eq!(diagnostics.queue_pressure.workspace_pending_task_count, 1);
-    assert!(!diagnostics
-        .repair_actions
-        .iter()
-        .any(|action| action == "rebuildProjectIndex"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_queued_diagnostics_when_sdk_index_work_is_pending() {
-    let root = unique_temp_dir("workspace-index-diagnostics-sdk-queued");
-    let source_dir = root.join("entry").join("src").join("main").join("ets");
-    fs::create_dir_all(&source_dir).unwrap();
-    fs::write(source_dir.join("Index.ets"), "struct Index {}\n").unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let runtime = WorkspaceIndexRuntime::default();
-    runtime.refresh_workspace_index(&root_path).unwrap();
-    let queue_pressure = WorkspaceIndexQueuePressure {
-        root_path: root_path.clone(),
-        pending_task_count: 1,
-        workspace_pending_task_count: 1,
-        highest_priority: Some("sdk-indexing".to_string()),
-        highest_priority_task_kind: Some("sdk".to_string()),
-    };
-
-    let diagnostics =
-        inspect_workspace_index_with_queue_pressure(&root_path, queue_pressure).unwrap();
-
-    assert_eq!(diagnostics.status, "queued");
-    assert_eq!(diagnostics.sdk_symbol_count, 0);
-    assert!(!diagnostics
-        .repair_actions
-        .iter()
-        .any(|action| action == "configureSdk" || action == "rebuildSdkIndex"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn reports_sdk_symbol_count_for_the_active_sdk_only() {
-    let root = unique_temp_dir("workspace-index-diagnostics-active-sdk-count");
-    let old_sdk_root = root.join("old-openharmony");
-    let new_sdk_root = root.join("new-openharmony");
-    fs::create_dir_all(old_sdk_root.join("ets")).unwrap();
-    fs::create_dir_all(new_sdk_root.join("ets")).unwrap();
-    fs::write(
-        old_sdk_root.join("ets").join("old.d.ts"),
-        "declare class Legacy {\n  oldOnly(value: Length): Legacy;\n}\n",
-    )
-    .unwrap();
-    fs::write(
-        new_sdk_root.join("ets").join("new.d.ts"),
-        "declare class Current {\n  currentOnly(value: Length): Current;\n}\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let old_sdk_path = old_sdk_root.to_string_lossy().to_string();
-    let new_sdk_path = new_sdk_root.to_string_lossy().to_string();
-
-    index_workspace_sdk_symbols(&root_path, &old_sdk_path, "old-sdk").unwrap();
-    index_workspace_sdk_symbols(&root_path, &new_sdk_path, "new-sdk").unwrap();
-    let diagnostics = inspect_workspace_index(&root_path).unwrap();
-
-    assert_eq!(
-        diagnostics.active_sdk_path.as_deref(),
-        Some(new_sdk_path.as_str())
-    );
-    assert_eq!(diagnostics.active_sdk_version.as_deref(), Some("new-sdk"));
-    assert_eq!(diagnostics.sdk_symbol_count, 2);
 
     fs::remove_dir_all(root).unwrap();
 }

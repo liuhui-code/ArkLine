@@ -3,6 +3,7 @@ import {
   pathWithinDirectory,
   uniqueNormalizedPaths,
 } from "@/components/layout/app-shell-model";
+import { shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
 import { createFileTreeNodes } from "@/features/workspace/file-tree-store";
 import type { WorkspaceApi, WorkspaceIndexRefreshResult, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
@@ -34,7 +35,12 @@ export function useWorkspaceSession({
     if (!workspaceApi.scheduleVisibleFilesIndex || visibleFiles.length === 0) {
       return;
     }
-    void workspaceApi.scheduleVisibleFilesIndex(rootPath, visibleFiles).catch((error) => {
+    const scheduledFiles = uniqueNormalizedPaths(visibleFiles)
+      .filter((path) => shouldScheduleForegroundIndex("visible", rootPath, path));
+    if (scheduledFiles.length === 0) {
+      return;
+    }
+    void workspaceApi.scheduleVisibleFilesIndex(rootPath, scheduledFiles).catch((error) => {
       onStatusChange(`Visible index scheduling failed: ${error instanceof Error ? error.message : String(error)}`);
     });
   }

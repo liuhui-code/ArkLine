@@ -4,11 +4,11 @@ import {
   SDK_INDEX_READY_WAIT_INTERVAL_MS,
 } from "@/components/layout/app-shell-constants";
 import {
-  getIndexStatusText,
-  getIndexHealthStatusText,
-  getLayerReadinessStatusText,
-  getSdkIndexStatusText,
-} from "@/components/layout/app-shell-model";
+  isTerminalIndexTaskStatus,
+  isTerminalProjectIndexTaskStatus,
+  mergeIndexDiagnosticsProjection,
+  workspaceIndexStatusSummary as buildWorkspaceIndexStatusSummary,
+} from "@/components/layout/index-diagnostics-controller-model";
 import type { IndexExplainContext } from "@/components/layout/app-shell-types";
 import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import type { AppSettings } from "@/features/settings/settings-store";
@@ -76,13 +76,13 @@ export function useIndexDiagnosticsController({
     indexDiagnostics,
     indexProjection.rootPath === workspace?.rootPath ? indexProjection : null,
   );
-  const workspaceIndexStatusSummary = {
-    workspaceIndexText: getIndexHealthStatusText(effectiveIndexDiagnostics)
-      ?? getIndexHealthStatusText(indexHealthSummary ? { ...indexHealthSummary, lastError: null, repairActions: [] } : null)
-      ?? getLayerReadinessStatusText(layerReadiness)
-      ?? getIndexStatusText(workspaceIndexState, workspaceIndexTaskStatuses),
-    sdkIndexText: getSdkIndexStatusText(workspaceIndexTaskStatuses),
-  };
+  const workspaceIndexStatusSummary = buildWorkspaceIndexStatusSummary({
+    diagnostics: effectiveIndexDiagnostics,
+    healthSummary: indexHealthSummary,
+    layerReadiness,
+    workspaceIndexState,
+    taskStatuses: workspaceIndexTaskStatuses,
+  });
 
   useEffect(() => {
     if (!workspace?.rootPath) {
@@ -389,36 +389,4 @@ export function useIndexDiagnosticsController({
     openSettingsFromExplainPanel,
     retryLatestExplainQuery,
   };
-}
-
-function mergeIndexDiagnosticsProjection(
-  diagnostics: WorkspaceIndexDiagnostics | null,
-  projection: ReturnType<typeof workspaceIndexProjectionStore.snapshot> | null,
-): WorkspaceIndexDiagnostics | null {
-  if (!diagnostics || !projection) {
-    return diagnostics;
-  }
-  return {
-    ...diagnostics,
-    lastError: projection.errorSummary?.lastError ?? diagnostics.lastError,
-    lastExplainStatus: projection.explainSummary?.lastExplainStatus ?? diagnostics.lastExplainStatus,
-    retryBackoffCount: projection.healthSummary?.retryBackoffCount ?? diagnostics.retryBackoffCount,
-    latestRetryBackoff: projection.healthSummary?.latestRetryBackoff ?? diagnostics.latestRetryBackoff,
-    repairActions: projection.repairSummary?.repairActions.length
-      ? projection.repairSummary.repairActions
-      : diagnostics.repairActions,
-    recentEvents: projection.recentEvents.length > 0 ? projection.recentEvents : diagnostics.recentEvents,
-    timeline: projection.timeline.length > 0 ? projection.timeline : diagnostics.timeline,
-  };
-}
-
-function isTerminalIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
-  return status.status === "ready"
-    || status.status === "partial"
-    || status.status === "stale"
-    || status.status === "failed";
-}
-
-function isTerminalProjectIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
-  return status.kind !== "sdk" && isTerminalIndexTaskStatus(status);
 }

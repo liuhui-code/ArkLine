@@ -45,4 +45,5 @@ fn incremental_path_plan_keeps_empty_inputs_empty() {
     assert!(plan.changed_paths.is_empty());
     assert!(plan.removed_paths.is_empty());
     assert!(plan.affected_paths.is_empty());
+    assert!(plan.is_empty());
 }

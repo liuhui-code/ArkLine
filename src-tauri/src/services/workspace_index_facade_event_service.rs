@@ -4,7 +4,7 @@ use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexReadinessState
 use crate::services::workspace_index_event_service::store_index_event;
 use crate::services::workspace_index_facade_service::WorkspaceIndexFacadeEnvelope;
 
-pub fn record_facade_query_event(
+pub(crate) fn record_facade_query_event(
     root_path: &str,
     kind: &str,
     envelope: &WorkspaceIndexFacadeEnvelope,

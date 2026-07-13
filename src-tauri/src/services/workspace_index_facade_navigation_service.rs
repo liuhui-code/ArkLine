@@ -9,7 +9,7 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_reference_index_service::query_reference_at_position;
 use crate::services::workspace_usage_query_service::query_usages_with_readiness;
 
-pub fn query_facade_definition(
+pub(crate) fn query_facade_definition(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     request: &LanguageQueryRequest,
@@ -51,7 +51,7 @@ pub fn query_facade_definition(
     })
 }
 
-pub fn query_facade_usages(
+pub(crate) fn query_facade_usages(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     request: &LanguageQueryRequest,

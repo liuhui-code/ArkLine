@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use crate::services::workspace_discovery_task_service::is_workspace_discovery_task_reason;
 use crate::services::workspace_index_task_lifecycle_service::task_kind_replaces_pending;
 
 #[allow(dead_code)]
@@ -45,13 +46,27 @@ pub struct WorkspaceIndexScheduler {
     tasks: VecDeque<WorkspaceIndexTask>,
 }
 
+#[derive(Debug, Default)]
+pub struct WorkspaceIndexScheduleResult {
+    pub superseded_tasks: Vec<WorkspaceIndexTask>,
+    pub scheduled: bool,
+}
+
 impl WorkspaceIndexScheduler {
     #[allow(dead_code)]
-    pub fn schedule(&mut self, mut task: WorkspaceIndexTask) -> Vec<WorkspaceIndexTask> {
-        self.generation += 1;
-        task.generation = self.generation;
+    pub fn schedule(&mut self, task: WorkspaceIndexTask) -> Vec<WorkspaceIndexTask> {
+        self.schedule_with_result(task).superseded_tasks
+    }
+
+    pub fn schedule_with_result(
+        &mut self,
+        mut task: WorkspaceIndexTask,
+    ) -> WorkspaceIndexScheduleResult {
         task.changed_paths.sort();
         task.changed_paths.dedup();
+        if is_empty_noop_changed_paths_task(&task) {
+            return WorkspaceIndexScheduleResult::default();
+        }
 
         if task.kind == WorkspaceIndexTaskKind::ChangedPaths {
             if let Some(existing) = self.tasks.iter_mut().find(|existing| {
@@ -59,6 +74,11 @@ impl WorkspaceIndexScheduler {
                     && existing.root_path == task.root_path
                     && existing.reason == task.reason
             }) {
+                if changed_path_task_is_noop(existing, &task) {
+                    return WorkspaceIndexScheduleResult::default();
+                }
+                self.generation += 1;
+                task.generation = self.generation;
                 let superseded = existing.clone();
                 existing.changed_paths.extend(task.changed_paths);
                 existing.changed_paths.sort();
@@ -66,13 +86,21 @@ impl WorkspaceIndexScheduler {
                 existing.generation = task.generation;
                 existing.priority = existing.priority.max(task.priority);
                 existing.reason = task.reason;
-                return vec![superseded];
+                return WorkspaceIndexScheduleResult {
+                    superseded_tasks: vec![superseded],
+                    scheduled: true,
+                };
             }
         }
 
+        self.generation += 1;
+        task.generation = self.generation;
         let cancelled = drain_replaceable_tasks(&mut self.tasks, &task);
         self.tasks.push_back(task);
-        cancelled
+        WorkspaceIndexScheduleResult {
+            superseded_tasks: cancelled,
+            scheduled: true,
+        }
     }
 
     #[allow(dead_code)]
@@ -122,6 +150,20 @@ impl WorkspaceIndexScheduler {
     pub fn has_pending_tasks(&self) -> bool {
         !self.tasks.is_empty()
     }
+}
+
+fn is_empty_noop_changed_paths_task(task: &WorkspaceIndexTask) -> bool {
+    task.kind == WorkspaceIndexTaskKind::ChangedPaths
+        && task.changed_paths.is_empty()
+        && !is_workspace_discovery_task_reason(&task.reason)
+}
+
+fn changed_path_task_is_noop(existing: &WorkspaceIndexTask, task: &WorkspaceIndexTask) -> bool {
+    task.priority <= existing.priority
+        && task
+            .changed_paths
+            .iter()
+            .all(|path| existing.changed_paths.binary_search(path).is_ok())
 }
 
 fn is_exclusive_batch_priority(priority: WorkspaceIndexTaskPriority) -> bool {

@@ -1,6 +1,6 @@
 use crate::models::workspace::{WorkspaceIndexReadiness, WorkspaceIndexReadinessState};
 
-pub fn explain_facade_query(
+pub(crate) fn explain_facade_query(
     kind: &str,
     readiness: &WorkspaceIndexReadiness,
     item_count: usize,

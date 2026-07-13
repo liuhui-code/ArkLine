@@ -25,7 +25,7 @@ use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingCon
 use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
-pub async fn query_workspace_candidates_blocking(
+pub async fn query_workspace_candidates_facade_blocking(
     index_runtime: WorkspaceIndexRuntime,
     root_path: String,
     query: String,
@@ -72,7 +72,7 @@ pub async fn query_workspace_quick_open_blocking(
         .map_err(|error| error.to_string())?
 }
 
-pub async fn query_workspace_search_everywhere_blocking(
+pub async fn query_workspace_search_everywhere_compat_blocking(
     index_runtime: WorkspaceIndexRuntime,
     root_path: String,
     query: String,
@@ -93,7 +93,7 @@ pub async fn query_workspace_search_everywhere_blocking(
     .map_err(|error| error.to_string())?
 }
 
-pub async fn query_workspace_file_symbols_blocking(
+pub async fn query_workspace_file_symbols_facade_blocking(
     index_runtime: WorkspaceIndexRuntime,
     root_path: String,
     file_path: String,

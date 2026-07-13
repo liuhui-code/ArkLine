@@ -166,6 +166,57 @@ fn workspace_refresh_resolves_project_member_access_from_field_chain() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn workspace_refresh_resolves_namespace_static_member_chain() {
+    let root = create_empty_workspace("reference-index-project-namespace-static-chain");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(
+        source_dir.join("Api.ets"),
+        [
+            "export namespace Api {",
+            "  export class Client {",
+            "    static create(): Client { return new Client(); }",
+            "    refresh() {}",
+            "  }",
+            "}",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    fs::write(
+        source_dir.join("Index.ets"),
+        [
+            "import { Api } from \"./Api\";",
+            "Api.Client.create().refresh();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let connection = workspace_connection(&root);
+    let rows = query_member_access_target_rows(&connection);
+
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].0, "Api");
+    assert_eq!(rows[0].1, "Client");
+    assert!(rows[0].2.contains(":class:Api.Client:"));
+    assert_eq!(rows[0].3, "memberResolved");
+    assert_eq!(rows[1].0, "Api.Client");
+    assert_eq!(rows[1].1, "create");
+    assert!(rows[1].2.contains(":method:Api.Client.create:"));
+    assert_eq!(rows[1].3, "memberResolved");
+    assert_eq!(rows[2].0, "Api.Client.create");
+    assert_eq!(rows[2].1, "refresh");
+    assert!(rows[2].2.contains(":method:Api.Client.refresh:"));
+    assert_eq!(rows[2].3, "memberResolved");
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn workspace_connection(root: &std::path::Path) -> Connection {
     Connection::open(
         root.join(".arkline")

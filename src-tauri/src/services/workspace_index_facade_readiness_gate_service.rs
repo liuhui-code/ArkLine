@@ -3,7 +3,7 @@ use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
 
-pub fn gate_workspace_layer(
+pub(crate) fn gate_workspace_layer(
     root_path: &str,
     readiness: &mut WorkspaceIndexReadiness,
     layer_name: &str,
@@ -24,7 +24,7 @@ pub fn gate_workspace_layer(
     Ok(vec![format!("skipped:{skipped_index}:missing")])
 }
 
-pub fn gate_current_file_catalog(
+pub(crate) fn gate_current_file_catalog(
     root_path: &str,
     file_path: &str,
     readiness: &mut WorkspaceIndexReadiness,

@@ -200,12 +200,12 @@ Follow-up for frontend integration:
 
 Steps:
 
-- [ ] Add states: `queued`, `running`, `cancelling`, `cancelled`, `ready`, `partial`, `failed`, and `superseded`.
-- [ ] Add priorities: foreground navigation, completion, visible files, changed files, full refresh, SDK indexing.
-- [ ] Add generation checks so stale work cannot publish fresh readiness.
-- [ ] Add bounded batches so large-project indexing yields between chunks.
-- [ ] Add tests for superseding, cancellation, retry, and priority ordering.
-- [ ] Run:
+- [x] Add states: `queued`, `running`, `cancelling`, `cancelled`, `ready`, `partial`, `failed`, and `superseded`.
+- [x] Add priorities: foreground navigation, completion, visible files, changed files, full refresh, SDK indexing.
+- [x] Add generation checks so stale work cannot publish fresh readiness.
+- [x] Add bounded batches so large-project indexing yields between chunks.
+- [x] Add tests for superseding, cancellation, retry, and priority ordering.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_state_machine_service_tests workspace_index_worker_service_tests
@@ -224,11 +224,11 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_index_state_machine_se
 
 Steps:
 
-- [ ] Report file count, symbol count, reference count, SDK API count, unresolved import count, parse failure count, and queue state.
-- [ ] Add repair actions: rebuild project index, rebuild SDK index, inspect excluded path, inspect parser failure.
-- [ ] Add tests for healthy, partial, stale, and failed index states.
-- [ ] Keep UI presentation separate from the backend health contract.
-- [ ] Run:
+- [x] Report file count, symbol count, reference count, SDK API count, unresolved import count, parse failure count, and queue state.
+- [x] Add repair actions: rebuild project index, rebuild SDK index, inspect excluded path, inspect parser failure.
+- [x] Add tests for healthy, partial, stale, and failed index states.
+- [x] Keep UI presentation separate from the backend health contract.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_health_service_tests

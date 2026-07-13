@@ -16,15 +16,15 @@
 - Modify: `src/features/documents/document-store.ts`
 - Test: `tests/frontend/document-store.test.ts`
 
-- [ ] **Step 1: Add dirty count tests**
+- [x] **Step 1: Add dirty count tests**
 
 Verify `hasDirtyDocuments()` tracks dirty, saved, external clean updates, and reopening a path.
 
-- [ ] **Step 2: Implement dirty count**
+- [x] **Step 2: Implement dirty count**
 
 Track dirty transitions through a helper so `updateDocument`, `saveDocument`, `applyExternalChange`, and `openDocument` keep count correct.
 
-- [ ] **Step 3: Verify store tests**
+- [x] **Step 3: Verify store tests**
 
 Run:
 
@@ -39,11 +39,11 @@ Expected: all tests pass.
 **Files:**
 - Modify: `src/components/layout/AppShell.tsx`
 
-- [ ] **Step 1: Use O(1) query**
+- [x] **Step 1: Use O(1) query**
 
 Replace `documentsRef.current.getDocuments().some((document) => document.isDirty)` with `documentsRef.current.hasDirtyDocuments()`.
 
-- [ ] **Step 2: Verify focused search tests**
+- [x] **Step 2: Verify focused search tests**
 
 Run:
 
@@ -53,12 +53,14 @@ Run:
 
 Expected: all tests pass.
 
+Actual: `tests/frontend/document-store.test.ts`, `tests/frontend/use-search-everywhere-controller.test.tsx`, and `tests/frontend/use-search-everywhere-pagination.test.tsx` passed.
+
 ### Task 3: Release Checks
 
 **Files:**
 - Modify only files from Tasks 1 and 2 plus this plan.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
@@ -68,7 +70,7 @@ wc -l src/features/documents/document-store.ts tests/frontend/document-store.tes
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and performance gate**
+- [x] **Step 2: Build and performance gate**
 
 Run:
 
@@ -80,7 +82,9 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Commit**
+Actual: focused document/search tests passed, `src/components/layout/AppShell.tsx` is 463 lines, all listed files are under 500 lines, and the latest `pnpm build`, `pnpm perf:runtime`, and `git diff --check HEAD --` run passed. `pnpm build` still reports the existing Vite chunk-size warning.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-11-document-dirty-state-budget-phase11.md src/features/documents/document-store.ts tests/frontend/document-store.test.ts src/components/layout/AppShell.tsx

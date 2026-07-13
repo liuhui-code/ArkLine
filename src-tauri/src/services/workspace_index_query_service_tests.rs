@@ -7,10 +7,12 @@ use crate::models::workspace::{
     WorkspaceIndexedSymbol, WorkspaceScanSummary, WorkspaceSnapshot, WorkspaceTextSearchOptions,
     WorkspaceTextSearchRequest,
 };
+use crate::services::workspace_index_facade_service::{
+    query_facade_file_symbols_with_readiness, query_facade_search_everywhere_with_readiness,
+};
 use crate::services::workspace_index_persistence_service::persist_index_state;
 use crate::services::workspace_index_query_service::{
-    query_workspace_candidates, query_workspace_candidates_with_readiness,
-    query_workspace_file_symbols_with_readiness, query_workspace_quick_open, search_workspace_text,
+    query_workspace_candidates, query_workspace_quick_open, search_workspace_text,
     WorkspaceIndexQueryScope,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -38,7 +40,7 @@ fn snapshot(root_path: &str, truncated: bool) -> WorkspaceSnapshot {
 }
 
 #[test]
-fn query_facade_preserves_partial_freshness_for_quick_open() {
+fn query_service_preserves_partial_freshness_for_quick_open() {
     let root = unique_temp_dir("workspace-query-facade-partial");
     fs::create_dir_all(
         root.join("entry")
@@ -73,7 +75,7 @@ fn query_facade_preserves_partial_freshness_for_quick_open() {
 }
 
 #[test]
-fn query_facade_preserves_stale_freshness_from_restored_index() {
+fn query_service_preserves_stale_freshness_from_restored_index() {
     let root = unique_temp_dir("workspace-query-facade-stale");
     fs::create_dir_all(
         root.join("entry")
@@ -108,7 +110,7 @@ fn query_facade_preserves_stale_freshness_from_restored_index() {
 }
 
 #[test]
-fn query_facade_preserves_stale_freshness_for_symbol_scopes() {
+fn query_service_preserves_stale_freshness_for_symbol_scopes() {
     let root = unique_temp_dir("workspace-query-facade-stale-symbol");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
     let root_path = root.to_string_lossy().to_string();
@@ -153,7 +155,7 @@ fn query_facade_preserves_stale_freshness_for_symbol_scopes() {
 }
 
 #[test]
-fn query_facade_envelope_reports_ready_readiness() {
+fn facade_search_envelope_reports_ready_readiness() {
     let root = unique_temp_dir("workspace-query-envelope-ready");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     fs::create_dir_all(&source_dir).unwrap();
@@ -162,7 +164,7 @@ fn query_facade_envelope_reports_ready_readiness() {
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
 
-    let envelope = query_workspace_candidates_with_readiness(
+    let envelope = query_facade_search_everywhere_with_readiness(
         &runtime,
         &root_path,
         "ready",
@@ -186,7 +188,7 @@ fn query_facade_envelope_reports_ready_readiness() {
 }
 
 #[test]
-fn query_facade_envelope_reports_stale_readiness() {
+fn facade_search_envelope_reports_stale_readiness() {
     let root = unique_temp_dir("workspace-query-envelope-stale");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
     let root_path = root.to_string_lossy().to_string();
@@ -215,7 +217,7 @@ fn query_facade_envelope_reports_stale_readiness() {
     .unwrap();
     let runtime = WorkspaceIndexRuntime::default();
 
-    let envelope = query_workspace_candidates_with_readiness(
+    let envelope = query_facade_search_everywhere_with_readiness(
         &runtime,
         &root_path,
         "stale",
@@ -237,7 +239,7 @@ fn query_facade_envelope_reports_stale_readiness() {
 }
 
 #[test]
-fn file_symbols_envelope_reports_partial_readiness() {
+fn facade_file_symbols_envelope_reports_partial_readiness() {
     let root = unique_temp_dir("workspace-query-envelope-file-symbols");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     fs::create_dir_all(&source_dir).unwrap();
@@ -263,7 +265,7 @@ fn file_symbols_envelope_reports_partial_readiness() {
         })
         .unwrap();
 
-    let envelope = query_workspace_file_symbols_with_readiness(
+    let envelope = query_facade_file_symbols_with_readiness(
         &runtime,
         &root_path,
         &file_path.to_string_lossy(),
@@ -290,7 +292,7 @@ fn file_symbols_envelope_reports_partial_readiness() {
 }
 
 #[test]
-fn query_facade_preserves_partial_freshness_for_symbol_scopes() {
+fn query_service_preserves_partial_freshness_for_symbol_scopes() {
     let root = unique_temp_dir("workspace-query-facade-partial-symbol");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     fs::create_dir_all(&source_dir).unwrap();
@@ -327,7 +329,7 @@ fn query_facade_preserves_partial_freshness_for_symbol_scopes() {
 }
 
 #[test]
-fn query_facade_routes_plain_text_to_index_and_regex_to_file_search() {
+fn query_service_routes_plain_text_to_index_and_regex_to_file_search() {
     let root = unique_temp_dir("workspace-query-facade-text");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     fs::create_dir_all(&source_dir).unwrap();

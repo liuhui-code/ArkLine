@@ -7,17 +7,15 @@ use crate::commands::workspace_emit::{
 };
 use crate::models::workspace::{
     WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexHealth,
-    WorkspaceIndexParserFailure, WorkspaceIndexQueryEnvelope, WorkspaceIndexRefreshResult,
-    WorkspaceIndexState, WorkspaceIndexTaskStatus, WorkspaceIndexUnresolvedImport,
-    WorkspaceSearchCandidate, WorkspaceSnapshot, WorkspaceTextSearchRequest,
-    WorkspaceTextSearchResult,
+    WorkspaceIndexParserFailure, WorkspaceIndexRefreshResult, WorkspaceIndexState,
+    WorkspaceIndexTaskStatus, WorkspaceIndexUnresolvedImport, WorkspaceSnapshot,
+    WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::diff_service::load_workspace_diff_text;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index_with_queue_pressure as inspect_workspace_index_service;
 use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
 use crate::services::workspace_index_maintenance_service::clear_workspace_index as clear_workspace_index_service;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_rebuild_service::rebuild_workspace_index_through_manager;
 use crate::services::workspace_index_repair_service::{
     inspect_parser_failures as inspect_parser_failures_service,
@@ -31,13 +29,8 @@ use crate::services::workspace_index_ui_activity_service::{
 };
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
 use crate::services::workspace_open_command_service::open_workspace_through_manager_blocking;
-use crate::services::workspace_query_command_service::{
-    query_workspace_candidates_blocking, query_workspace_file_symbols_blocking,
-    query_workspace_quick_open_blocking, query_workspace_search_everywhere_blocking,
-    search_workspace_text_blocking,
-};
+use crate::services::workspace_query_command_service::search_workspace_text_blocking;
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
-use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
 use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 use crate::services::workspace_service::list_workspace_directory as list_workspace_directory_service;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
@@ -218,119 +211,6 @@ pub fn submit_workspace_sdk_index(
 }
 
 #[tauri::command]
-pub async fn query_workspace_quick_open(
-    root_path: String,
-    query: String,
-    limit: usize,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    query_workspace_quick_open_blocking(index_runtime.inner().clone(), root_path, query, limit)
-        .await
-}
-
-#[tauri::command]
-pub async fn query_workspace_search_everywhere(
-    root_path: String,
-    query: String,
-    limit: usize,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    query_workspace_search_everywhere_blocking(
-        index_runtime.inner().clone(),
-        root_path,
-        query,
-        limit,
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn query_workspace_candidates(
-    root_path: String,
-    query: String,
-    scope: String,
-    limit: usize,
-    cursor: Option<usize>,
-    context: Option<WorkspaceSearchRankingContext>,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    Ok(query_workspace_candidates_blocking(
-        index_runtime.inner().clone(),
-        root_path,
-        query,
-        parse_index_query_scope(&scope)?,
-        limit,
-        cursor,
-        context.unwrap_or_default(),
-    )
-    .await?
-    .items)
-}
-
-#[tauri::command]
-pub async fn query_workspace_candidates_with_readiness(
-    root_path: String,
-    query: String,
-    scope: String,
-    limit: usize,
-    cursor: Option<usize>,
-    context: Option<WorkspaceSearchRankingContext>,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    query_workspace_candidates_blocking(
-        index_runtime.inner().clone(),
-        root_path,
-        query,
-        parse_index_query_scope(&scope)?,
-        limit,
-        cursor,
-        context.unwrap_or_default(),
-    )
-    .await
-}
-
-#[tauri::command]
-pub async fn query_workspace_file_symbols(
-    root_path: String,
-    file_path: String,
-    query: String,
-    limit: usize,
-    cursor: Option<usize>,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    Ok(query_workspace_file_symbols_blocking(
-        index_runtime.inner().clone(),
-        root_path,
-        file_path,
-        query,
-        limit,
-        cursor,
-    )
-    .await?
-    .items)
-}
-
-#[tauri::command]
-pub async fn query_workspace_file_symbols_with_readiness(
-    root_path: String,
-    file_path: String,
-    query: String,
-    limit: usize,
-    cursor: Option<usize>,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
-    query_workspace_file_symbols_blocking(
-        index_runtime.inner().clone(),
-        root_path,
-        file_path,
-        query,
-        limit,
-        cursor,
-    )
-    .await
-}
-
-#[tauri::command]
 pub fn update_workspace_index_files(
     root_path: String,
     added_paths: Vec<String>,
@@ -417,18 +297,6 @@ pub fn load_workspace_diff(root_path: Option<String>) -> Result<String, String> 
     match root_path {
         Some(path) => load_workspace_diff_text(&PathBuf::from(path)),
         None => Ok(String::new()),
-    }
-}
-
-fn parse_index_query_scope(scope: &str) -> Result<WorkspaceIndexQueryScope, String> {
-    match scope {
-        "all" => Ok(WorkspaceIndexQueryScope::All),
-        "files" => Ok(WorkspaceIndexQueryScope::Files),
-        "classes" => Ok(WorkspaceIndexQueryScope::Classes),
-        "symbols" => Ok(WorkspaceIndexQueryScope::Symbols),
-        "api" => Ok(WorkspaceIndexQueryScope::Apis),
-        "text" => Ok(WorkspaceIndexQueryScope::Text),
-        value => Err(format!("Unsupported workspace index query scope: {value}")),
     }
 }
 

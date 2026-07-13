@@ -4,6 +4,7 @@ use rusqlite::{params, Connection};
 
 use crate::models::language::{DefinitionCandidate, LanguageQueryRequest};
 use crate::services::workspace_reference_index_service::query_reference_at_position;
+use crate::services::workspace_symbol_identity_merge_service::query_merged_symbol_ids;
 use crate::services::workspace_symbol_resolution_query_service::query_resolved_symbol_by_id;
 
 pub fn query_reference_definition_candidates(
@@ -18,11 +19,23 @@ pub fn query_reference_definition_candidates(
     let Some(symbol_id) = reference.symbol_id else {
         return Ok(Vec::new());
     };
+    let mut candidates = Vec::new();
+    for merged_id in query_merged_symbol_ids(root_path, &symbol_id)? {
+        candidates.extend(query_definition_by_symbol_id(root_path, &merged_id)?);
+    }
+    dedupe_definition_candidates(&mut candidates);
+    Ok(candidates)
+}
+
+fn query_definition_by_symbol_id(
+    root_path: &str,
+    symbol_id: &str,
+) -> Result<Vec<DefinitionCandidate>, String> {
     if symbol_id.starts_with("sdk:") {
-        return query_sdk_definition_by_symbol_id(root_path, &symbol_id);
+        return query_sdk_definition_by_symbol_id(root_path, symbol_id);
     }
     if symbol_id.starts_with("project:") {
-        return query_project_definition_by_symbol_id(root_path, &symbol_id);
+        return query_project_definition_by_symbol_id(root_path, symbol_id);
     }
     Ok(Vec::new())
 }
@@ -109,4 +122,11 @@ fn normalize_index_path(path: &str) -> String {
 
 fn denormalize_index_path(path: &str) -> String {
     path.replace('\\', "/")
+}
+
+fn dedupe_definition_candidates(candidates: &mut Vec<DefinitionCandidate>) {
+    let mut seen = std::collections::HashSet::new();
+    candidates.retain(|candidate| {
+        seen.insert((candidate.path.clone(), candidate.line, candidate.column))
+    });
 }

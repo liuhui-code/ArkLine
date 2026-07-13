@@ -1,10 +1,15 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetForegroundIndexScheduleGate } from "@/components/layout/foreground-index-schedule-gate";
 import { useWorkspaceSession } from "@/components/layout/use-workspace-session";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
 describe("useWorkspaceSession", () => {
+  afterEach(() => {
+    resetForegroundIndexScheduleGate();
+  });
+
   it("applies workspace snapshots and persists recent projects", () => {
     const onOpenWorkspaceIndex = vi.fn();
     const onPersistRecentProjects = vi.fn();
@@ -75,6 +80,30 @@ describe("useWorkspaceSession", () => {
     act(() => result.current.includeVisibleWorkspaceFile("/workspace/src/A.ets"));
 
     expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/A.ets"]);
+  });
+
+  it("deduplicates rapid visible-file indexing while preserving newly visible files", () => {
+    const scheduleVisibleFilesIndex = vi.fn(async () => undefined);
+    const { result } = renderHook(() => useWorkspaceSession(options({
+      workspaceApi: workspaceApi({ scheduleVisibleFilesIndex }),
+    })));
+
+    act(() => result.current.scheduleVisibleFilesIndex("/workspace", [
+      "/workspace/src/B.ets",
+      "/workspace/src/A.ets",
+    ]));
+    act(() => result.current.scheduleVisibleFilesIndex("/workspace", [
+      "/workspace/src/A.ets",
+      "/workspace/src/C.ets",
+    ]));
+
+    expect(scheduleVisibleFilesIndex).toHaveBeenNthCalledWith(1, "/workspace", [
+      "/workspace/src/A.ets",
+      "/workspace/src/B.ets",
+    ]);
+    expect(scheduleVisibleFilesIndex).toHaveBeenNthCalledWith(2, "/workspace", [
+      "/workspace/src/C.ets",
+    ]);
   });
 });
 

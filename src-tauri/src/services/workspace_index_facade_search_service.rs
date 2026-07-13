@@ -19,7 +19,7 @@ use crate::services::workspace_search_ranking_service::{
 };
 use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
 
-pub fn query_facade_search_everywhere(
+pub(crate) fn query_facade_search_everywhere(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,
@@ -29,7 +29,7 @@ pub fn query_facade_search_everywhere(
     query_facade_search_everywhere_page(index_runtime, root_path, query, scope, limit, None)
 }
 
-pub fn query_facade_search_everywhere_with_context(
+pub(crate) fn query_facade_search_everywhere_with_context(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,
@@ -48,7 +48,7 @@ pub fn query_facade_search_everywhere_with_context(
     )
 }
 
-pub fn query_facade_search_everywhere_page(
+pub(crate) fn query_facade_search_everywhere_page(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,
@@ -67,7 +67,7 @@ pub fn query_facade_search_everywhere_page(
     )
 }
 
-pub fn query_facade_search_everywhere_page_with_context(
+pub(crate) fn query_facade_search_everywhere_page_with_context(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,
@@ -103,7 +103,7 @@ pub fn query_facade_search_everywhere_page_with_context(
     })
 }
 
-pub fn query_facade_file_symbols(
+pub(crate) fn query_facade_file_symbols(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     file_path: &str,
@@ -113,7 +113,7 @@ pub fn query_facade_file_symbols(
     query_facade_file_symbols_page(index_runtime, root_path, file_path, query, limit, None)
 }
 
-pub fn query_facade_file_symbols_page(
+pub(crate) fn query_facade_file_symbols_page(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     file_path: &str,
@@ -148,14 +148,14 @@ pub fn query_facade_file_symbols_page(
     })
 }
 
-pub fn query_facade_text_search(
+pub(crate) fn query_facade_text_search(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String> {
     query_facade_text_search_with_cancellation(index_runtime, request, || false)
 }
 
-pub fn query_facade_text_search_with_cancellation<F>(
+pub(crate) fn query_facade_text_search_with_cancellation<F>(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
     is_cancelled: F,

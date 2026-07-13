@@ -16,15 +16,15 @@
 - Modify: `src/features/documents/document-store.ts`
 - Test: `tests/frontend/document-store.test.ts`
 
-- [ ] **Step 1: Add coalescing tests**
+- [x] **Step 1: Add coalescing tests**
 
 Verify repeated updates to the same path notify once with the latest document, while different paths still notify separately.
 
-- [ ] **Step 2: Implement microtask flush**
+- [x] **Step 2: Implement microtask flush**
 
 Replace immediate listener iteration with a pending path map and `queueMicrotask` flush.
 
-- [ ] **Step 3: Verify store tests**
+- [x] **Step 3: Verify store tests**
 
 Run:
 
@@ -40,11 +40,11 @@ Expected: all tests pass.
 - Test: `tests/frontend/use-active-document-content.test.tsx`
 - Test: `tests/frontend/use-active-document-projection.test.tsx`
 
-- [ ] **Step 1: Update hook tests**
+- [x] **Step 1: Update hook tests**
 
 Use `waitFor` after document updates because notifications now flush through a microtask.
 
-- [ ] **Step 2: Verify focused hooks**
+- [x] **Step 2: Verify focused hooks**
 
 Run:
 
@@ -54,12 +54,14 @@ Run:
 
 Expected: all tests pass.
 
+Actual: `tests/frontend/document-store.test.ts`, `tests/frontend/use-active-document-content.test.tsx`, and `tests/frontend/use-active-document-projection.test.tsx` passed.
+
 ### Task 3: Release Checks
 
 **Files:**
 - Modify only files from Tasks 1 and 2 plus this plan.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
@@ -69,7 +71,7 @@ wc -l src/features/documents/document-store.ts tests/frontend/document-store.tes
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and performance gate**
+- [x] **Step 2: Build and performance gate**
 
 Run:
 
@@ -81,7 +83,9 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Commit**
+Actual: focused document/search tests passed, all listed files are under 500 lines, and the latest `pnpm build`, `pnpm perf:runtime`, and `git diff --check HEAD --` run passed. `pnpm build` still reports the existing Vite chunk-size warning.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-11-document-store-notification-budget-phase10.md src/features/documents/document-store.ts tests/frontend/document-store.test.ts tests/frontend/use-active-document-content.test.tsx tests/frontend/use-active-document-projection.test.tsx

@@ -2,6 +2,7 @@ import {
   collectCompletionCandidateResult,
   collectCompletionCandidates,
 } from "@/components/layout/completion-candidate-provider";
+import { resetForegroundIndexScheduleGate } from "@/components/layout/foreground-index-schedule-gate";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
@@ -56,6 +57,10 @@ const baseRequest = {
 };
 
 describe("completion candidate provider", () => {
+  afterEach(() => {
+    resetForegroundIndexScheduleGate();
+  });
+
   it("combines semantic, file-index, workspace-index, and keyword completions", async () => {
     const api = workspaceApi({
       queryWorkspaceFileSymbolsWithReadiness: async () => envelope([candidate({ title: "localBuild" })]),
@@ -80,13 +85,11 @@ describe("completion candidate provider", () => {
   });
 
   it("uses readiness-envelope APIs when available", async () => {
-    const queryWorkspaceCandidates = vi.fn(async () => [candidate({ title: "LegacyWorkspace" })]);
     const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => envelope([candidate({ title: "localBuild" })]));
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => envelope([
       candidate({ source: "class", kind: "class", title: "PrivateProfile" }),
     ]));
     const api = workspaceApi({
-      queryWorkspaceCandidates,
       queryWorkspaceFileSymbolsWithReadiness,
       queryWorkspaceCandidatesWithReadiness,
     });
@@ -100,7 +103,6 @@ describe("completion candidate provider", () => {
 
     expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalled();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalled();
-    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual([
       "semanticBuild()",
       "localBuild()",
@@ -272,20 +274,14 @@ describe("completion candidate provider", () => {
     expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
   });
 
-  it("does not use legacy workspace candidate APIs for completion candidates", async () => {
-    const queryWorkspaceCandidates = vi.fn(async () => [candidate({ source: "class", kind: "class", title: "LegacyProfile" })]);
-    const api = workspaceApi({
-      queryWorkspaceCandidates,
-    });
-
+  it("does not use non-envelope workspace candidates for completion candidates", async () => {
     const items = await collectCompletionCandidates({
       ...baseRequest,
-      workspaceApi: api,
+      workspaceApi: workspaceApi(),
       query: "leg",
       replacePrefix: "leg",
     });
 
-    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
   });
 
@@ -379,5 +375,29 @@ describe("completion candidate provider", () => {
 
     expect(scheduleForegroundCompletionIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/main.ets"]);
     expect(events.slice(0, 2)).toEqual(["schedule-completion-index", "semantic-completion"]);
+  });
+
+  it("deduplicates rapid foreground completion indexing for the same file", async () => {
+    const scheduleForegroundCompletionIndex = vi.fn(async () => undefined);
+    const semanticCompleteSymbol = vi.fn(async () => ({
+      items: [],
+      readiness: {
+        rootPath: "/workspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+    const api = workspaceApi({
+      scheduleForegroundCompletionIndex,
+      semanticCompleteSymbol,
+    });
+
+    await collectCompletionCandidates({ ...baseRequest, workspaceApi: api, query: "a", replacePrefix: "a" });
+    await collectCompletionCandidates({ ...baseRequest, workspaceApi: api, query: "ab", replacePrefix: "ab" });
+
+    expect(scheduleForegroundCompletionIndex).toHaveBeenCalledTimes(1);
+    expect(semanticCompleteSymbol).toHaveBeenCalledTimes(2);
   });
 });

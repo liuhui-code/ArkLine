@@ -111,7 +111,7 @@ Keep every new Rust source/test file under 500 lines. If an existing modified fi
 - Create: `src-tauri/src/services/workspace_index_layer_strategy_service_tests.rs`
 - Modify: `src-tauri/src/lib.rs`
 
-- [ ] **Step 1: Write failing tests for layer/channel priority mapping**
+- [x] **Step 1: Write failing tests for layer/channel priority mapping**
 
 Create `src-tauri/src/services/workspace_index_layer_strategy_service_tests.rs`:
 
@@ -158,7 +158,7 @@ fn keeps_sdk_api_below_visible_files_and_above_background_deep_work() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -168,7 +168,7 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_index_layer_strategy_s
 
 Expected: FAIL because `workspace_index_layer_strategy_service` does not exist.
 
-- [ ] **Step 3: Add the strategy service**
+- [x] **Step 3: Add the strategy service**
 
 Create `src-tauri/src/services/workspace_index_layer_strategy_service.rs`:
 
@@ -211,7 +211,7 @@ pub fn priority_for_layer(layer: WorkspaceIndexLayerKind) -> WorkspaceIndexTaskP
 }
 ```
 
-- [ ] **Step 4: Register modules**
+- [x] **Step 4: Register modules**
 
 In `src-tauri/src/lib.rs`, add:
 
@@ -222,7 +222,7 @@ pub mod workspace_index_layer_strategy_service;
 mod workspace_index_layer_strategy_service_tests;
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -242,7 +242,7 @@ Expected: PASS.
 - Create: `src-tauri/src/services/workspace_sdk_api_scan_plan_service_tests.rs`
 - Modify: `src-tauri/src/lib.rs`
 
-- [ ] **Step 1: Write failing tests for SDK declaration selection**
+- [x] **Step 1: Write failing tests for SDK declaration selection**
 
 Create `src-tauri/src/services/workspace_sdk_api_scan_plan_service_tests.rs`:
 
@@ -318,7 +318,7 @@ fn relative_paths(root: &Path, files: &[String]) -> Vec<String> {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -328,7 +328,7 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_sdk_api_scan_plan_serv
 
 Expected: FAIL because the service does not exist.
 
-- [ ] **Step 3: Implement SDK API scan planning**
+- [x] **Step 3: Implement SDK API scan planning**
 
 Create `src-tauri/src/services/workspace_sdk_api_scan_plan_service.rs`:
 
@@ -407,7 +407,7 @@ fn path_components(path: &Path) -> Vec<String> {
 }
 ```
 
-- [ ] **Step 4: Register modules**
+- [x] **Step 4: Register modules**
 
 In `src-tauri/src/lib.rs`, add:
 
@@ -418,7 +418,7 @@ pub mod workspace_sdk_api_scan_plan_service;
 mod workspace_sdk_api_scan_plan_service_tests;
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -438,7 +438,7 @@ Expected: PASS.
 - Modify: `src-tauri/src/services/workspace_sdk_index_service.rs`
 - Test: `src-tauri/src/services/workspace_sdk_index_service_tests.rs`
 
-- [ ] **Step 1: Add failing tests for API-only exported/public symbols**
+- [x] **Step 1: Add failing tests for API-only exported/public symbols**
 
 Append to `src-tauri/src/services/workspace_sdk_index_service_tests.rs`:
 
@@ -480,7 +480,7 @@ fn sdk_index_keeps_exported_api_symbols_and_skips_private_implementation_symbols
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -490,7 +490,7 @@ cargo test --manifest-path src-tauri/Cargo.toml sdk_index_keeps_exported_api_sym
 
 Expected: FAIL because the current parser indexes non-exported implementation declarations and private members.
 
-- [ ] **Step 3: Add API symbol visibility logic**
+- [x] **Step 3: Add API symbol visibility logic**
 
 In `src-tauri/src/services/workspace_sdk_parser_service.rs`, add exported/public filtering:
 
@@ -533,7 +533,7 @@ if let Some(container_name) = type_path(&contexts) {
 }
 ```
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -555,7 +555,7 @@ Expected: PASS.
 - Modify: `src-tauri/src/services/workspace_sdk_index_service.rs`
 - Modify: `src-tauri/src/lib.rs`
 
-- [ ] **Step 1: Write failing cache tests**
+- [x] **Step 1: Write failing cache tests**
 
 Create `src-tauri/src/services/workspace_sdk_api_cache_service_tests.rs`:
 
@@ -583,7 +583,7 @@ fn sdk_api_manifest_fingerprint_is_order_independent() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -593,7 +593,7 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_sdk_api_cache_service_
 
 Expected: FAIL because the service does not exist.
 
-- [ ] **Step 3: Implement cache helpers**
+- [x] **Step 3: Implement cache helpers**
 
 Create `src-tauri/src/services/workspace_sdk_api_cache_service.rs`:
 
@@ -628,7 +628,7 @@ pub fn sdk_api_cache_key(
 }
 ```
 
-- [ ] **Step 4: Register modules**
+- [x] **Step 4: Register modules**
 
 In `src-tauri/src/lib.rs`, add:
 
@@ -639,7 +639,7 @@ pub mod workspace_sdk_api_cache_service;
 mod workspace_sdk_api_cache_service_tests;
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -661,7 +661,7 @@ Expected: PASS.
 - Test: `src-tauri/src/services/workspace_sdk_index_service_tests.rs`
 - Test: `src-tauri/src/services/workspace_index_worker_service_tests.rs`
 
-- [ ] **Step 1: Add failing test for SDK chunk progress**
+- [x] **Step 1: Add failing test for SDK chunk progress**
 
 Append to `src-tauri/src/services/workspace_sdk_index_service_tests.rs`:
 
@@ -699,7 +699,7 @@ fn sdk_api_index_can_index_a_single_chunk() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -709,7 +709,7 @@ cargo test --manifest-path src-tauri/Cargo.toml sdk_api_index_can_index_a_single
 
 Expected: FAIL because `index_workspace_sdk_symbol_chunk` does not exist.
 
-- [ ] **Step 3: Implement chunk API**
+- [x] **Step 3: Implement chunk API**
 
 In `src-tauri/src/services/workspace_sdk_index_service.rs`, add:
 
@@ -759,7 +759,7 @@ pub fn index_workspace_sdk_symbol_chunk(
 
 Also add helper `insert_sdk_symbols(...)` by moving the existing insert loop from `index_workspace_sdk_symbols` into a reusable function.
 
-- [ ] **Step 4: Replace one-shot SDK task with scan-plan chunks**
+- [x] **Step 4: Replace one-shot SDK task with scan-plan chunks**
 
 In `workspace_index_worker_service.rs`, update `IndexSdk` handling:
 
@@ -781,7 +781,7 @@ let summary = index_workspace_sdk_symbol_chunk(
 
 If more chunks remain, return a partial result with `progress_current = 1`, `progress_total = chunks.len()`, and a continuation carrying remaining SDK files. Use a new continuation reason prefix `sdk-api-continuation`.
 
-- [ ] **Step 5: Add worker test for SDK below foreground**
+- [x] **Step 5: Add worker test for SDK below foreground**
 
 In `workspace_index_worker_service_tests.rs`, add a test that schedules:
 
@@ -790,7 +790,7 @@ In `workspace_index_worker_service_tests.rs`, add a test that schedules:
 
 Expected result: foreground result is emitted before SDK result.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 Run:
 
@@ -811,7 +811,7 @@ Expected: PASS.
 - Modify: `src-tauri/src/services/workspace_index_layer_readiness_service.rs`
 - Test: `src-tauri/src/services/workspace_index_layer_readiness_service_tests.rs`
 
-- [ ] **Step 1: Add failing readiness test**
+- [x] **Step 1: Add failing readiness test**
 
 Append to `workspace_index_layer_readiness_service_tests.rs`:
 
@@ -838,7 +838,7 @@ fn readiness_report_exposes_four_index_layers() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -848,7 +848,7 @@ cargo test --manifest-path src-tauri/Cargo.toml readiness_report_exposes_four_in
 
 Expected: FAIL because current layer names are not the four target layers.
 
-- [ ] **Step 3: Update readiness projection**
+- [x] **Step 3: Update readiness projection**
 
 In `workspace_index_layer_readiness_service.rs`, ensure returned layers include:
 
@@ -866,7 +866,7 @@ Map existing storage evidence:
 - `projectDeep`: content index + references + dependency graph evidence.
 - `sdkApi`: `workspace_sdk_symbols` + active SDK metadata.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -887,7 +887,7 @@ Expected: PASS.
 - Test: `src-tauri/src/services/workspace_index_facade_search_tests.rs`
 - Test: `src-tauri/src/services/workspace_index_facade_completion_tests.rs`
 
-- [ ] **Step 1: Add failing search explain test**
+- [x] **Step 1: Add failing search explain test**
 
 Append to `workspace_index_facade_search_tests.rs`:
 
@@ -914,7 +914,7 @@ fn search_everywhere_explain_names_project_and_sdk_layers() {
 }
 ```
 
-- [ ] **Step 2: Run the failing test**
+- [x] **Step 2: Run the failing test**
 
 Run:
 
@@ -924,7 +924,7 @@ cargo test --manifest-path src-tauri/Cargo.toml search_everywhere_explain_names_
 
 Expected: FAIL because explain lines do not name layered sources.
 
-- [ ] **Step 3: Add layered explain lines**
+- [x] **Step 3: Add layered explain lines**
 
 In `workspace_index_facade_search_service.rs`, extend explain construction with:
 
@@ -935,11 +935,11 @@ explain.push(format!("layer:sdkApi:{}", sdk_readiness_label(&request_root_path)?
 
 Use existing readiness helpers where possible. If helper names differ, create a small private helper in the same file and keep the file under 500 lines by moving helper logic to a new focused service if needed.
 
-- [ ] **Step 4: Add completion explain/readiness test**
+- [x] **Step 4: Add completion explain/readiness test**
 
 In `workspace_index_facade_completion_tests.rs`, add a test proving completion candidates can include SDK API candidates while project file readiness remains independent.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -960,7 +960,7 @@ Expected: PASS.
 - Modify: `src-tauri/src/services/workspace_large_project_index_tests.rs`
 - Modify: `docs/superpowers/plans/2026-07-01-index-core-goal-tracker.md`
 
-- [ ] **Step 1: Add large-project regression for SDK not blocking active file**
+- [x] **Step 1: Add large-project regression for SDK not blocking active file**
 
 In `workspace_large_project_index_tests.rs`, add:
 
@@ -984,7 +984,7 @@ fn sdk_api_indexing_does_not_block_foreground_file_readiness() {
 
 Use existing fixture helpers in the file. If method names differ, adapt to the current manager helper names used by nearby tests.
 
-- [ ] **Step 2: Extend interaction profile summary**
+- [x] **Step 2: Extend interaction profile summary**
 
 In `workspace_interaction_perf_fixture_tests.rs`, add fields:
 
@@ -1000,7 +1000,7 @@ const SDK_PROGRESS_THRESHOLD_MS: u128 = 1_500;
 const FOREGROUND_DURING_SDK_THRESHOLD_MS: u128 = 800;
 ```
 
-- [ ] **Step 3: Keep strict mode opt-in**
+- [x] **Step 3: Keep strict mode opt-in**
 
 Ensure `strict_perf_enabled()` remains the only path that asserts violations:
 
@@ -1010,7 +1010,7 @@ if strict_perf_enabled() {
 }
 ```
 
-- [ ] **Step 4: Update tracker doc**
+- [x] **Step 4: Update tracker doc**
 
 In `docs/superpowers/plans/2026-07-01-index-core-goal-tracker.md`, add to Current Baseline after implementation:
 
@@ -1019,7 +1019,7 @@ In `docs/superpowers/plans/2026-07-01-index-core-goal-tracker.md`, add to Curren
 - SDK API-only scan plan with chunked progress and foreground-safe scheduling.
 ```
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 

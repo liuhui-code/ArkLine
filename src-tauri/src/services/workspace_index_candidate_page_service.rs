@@ -7,7 +7,7 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 const MAX_CANDIDATE_PAGE_LIMIT: usize = 100;
 
-pub fn query_workspace_candidate_page(
+pub(crate) fn query_workspace_candidate_page(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,
@@ -31,7 +31,7 @@ pub fn query_workspace_candidate_page(
     })
 }
 
-pub fn query_workspace_file_symbol_page(
+pub(crate) fn query_workspace_file_symbol_page(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     file_path: &str,

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
+import { shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
 import { decideLanguageQuerySync, formatLanguageQuerySyncBlockedMessage } from "@/components/layout/language-query-policy-guard";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import {
@@ -332,6 +333,9 @@ async function scheduleForegroundNavigationIndex(
   activePath: string,
 ) {
   if (!workspaceApi.scheduleForegroundNavigationIndex) {
+    return;
+  }
+  if (!shouldScheduleForegroundIndex("navigation", rootPath, activePath)) {
     return;
   }
   try {

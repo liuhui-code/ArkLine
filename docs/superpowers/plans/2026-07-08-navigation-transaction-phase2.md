@@ -16,15 +16,15 @@
 - Create: `src/features/navigation/navigation-transaction-runtime.ts`
 - Test: `tests/frontend/navigation-transaction-runtime.test.ts`
 
-- [ ] **Step 1: Write runtime tests**
+- [x] **Step 1: Write runtime tests**
 
 Cover starting a transaction, checking whether it is current, completing it, and invalidating an older transaction when a newer one starts.
 
-- [ ] **Step 2: Implement runtime**
+- [x] **Step 2: Implement runtime**
 
 Expose `start(path)`, `isCurrent(id)`, `finish(id)`, and `getCurrent()`.
 
-- [ ] **Step 3: Verify runtime**
+- [x] **Step 3: Verify runtime**
 
 Run:
 
@@ -40,19 +40,19 @@ Expected: all tests pass.
 - Modify: `src/components/layout/use-editor-surface-controller.ts`
 - Test: `tests/frontend/use-editor-surface-controller.test.tsx`
 
-- [ ] **Step 1: Add pending and failure tests**
+- [x] **Step 1: Add pending and failure tests**
 
 Verify `openFile` reports `Opening <file>...` before `workspaceApi.openFile` resolves, and reports `Open failed <file>` only for the latest request.
 
-- [ ] **Step 2: Replace local request id**
+- [x] **Step 2: Replace local request id**
 
 Use the navigation runtime instead of a raw `useRef` counter.
 
-- [ ] **Step 3: Keep stale requests isolated**
+- [x] **Step 3: Keep stale requests isolated**
 
 Ensure stale successes do not open tabs/documents and stale failures do not overwrite latest status.
 
-- [ ] **Step 4: Verify editor controller**
+- [x] **Step 4: Verify editor controller**
 
 Run:
 
@@ -67,7 +67,7 @@ Expected: navigation and editor open tests pass.
 **Files:**
 - Modify only files from Tasks 1 and 2.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
@@ -77,7 +77,7 @@ wc -l src/features/navigation/navigation-transaction-runtime.ts src/components/l
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and diff check**
+- [x] **Step 2: Build and diff check**
 
 Run:
 
@@ -88,9 +88,21 @@ git diff --check
 
 Expected: both pass.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-navigation-transaction-phase2.md src/features/navigation/navigation-transaction-runtime.ts src/components/layout/use-editor-surface-controller.ts tests/frontend/navigation-transaction-runtime.test.ts tests/frontend/use-editor-surface-controller.test.tsx
 git commit -m "Add editor navigation transactions"
 ```
+
+## Completion Notes
+
+- `createNavigationTransactionRuntime` owns monotonic navigation transaction ids and stale checks.
+- `useEditorSurfaceController` uses the runtime for async file opens and restore paths.
+- Pending open status is emitted before content loads.
+- Stale successes do not open tabs or cache stale document content.
+- Stale failures do not overwrite the latest navigation status.
+- Focused coverage includes 20 out-of-order navigation requests and already-loaded document activation.
+- Verified with:
+  - `pnpm test -- --run tests/frontend/navigation-transaction-runtime.test.ts tests/frontend/use-editor-surface-controller.test.tsx tests/frontend/use-editor-navigation.test.tsx`
+  - `wc -l src/features/navigation/navigation-transaction-runtime.ts src/components/layout/use-editor-surface-controller.ts tests/frontend/navigation-transaction-runtime.test.ts tests/frontend/use-editor-surface-controller.test.tsx`

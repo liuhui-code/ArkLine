@@ -40,6 +40,11 @@ pub fn persist_incremental_sqlite_index_state_with_priority(
     removed_paths: &[String],
     priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
+    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
+    if path_plan.is_empty() {
+        return Ok(());
+    }
+
     let mut connection = open_incremental_store(root_path)?;
     let root_key = state
         .root_path
@@ -48,7 +53,6 @@ pub fn persist_incremental_sqlite_index_state_with_priority(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
     persist_file_symbol_rows(&transaction, &root_key, state, changed_symbols, &path_plan)?;
     replace_changed_stub_rows(
         &transaction,
@@ -69,6 +73,11 @@ pub fn persist_incremental_sqlite_file_symbol_state(
     changed_paths: &[String],
     removed_paths: &[String],
 ) -> Result<(), String> {
+    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
+    if path_plan.is_empty() {
+        return Ok(());
+    }
+
     let mut connection = open_incremental_store(root_path)?;
     let root_key = state
         .root_path
@@ -77,7 +86,6 @@ pub fn persist_incremental_sqlite_file_symbol_state(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
     persist_file_symbol_rows(&transaction, &root_key, state, changed_symbols, &path_plan)?;
     transaction.commit().map_err(|error| error.to_string())
 }
@@ -105,6 +113,11 @@ pub fn persist_incremental_sqlite_deep_state_with_priority(
     removed_paths: &[String],
     priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
+    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
+    if path_plan.is_empty() {
+        return Ok(());
+    }
+
     let mut connection = open_incremental_store(root_path)?;
     let root_key = state
         .root_path
@@ -113,7 +126,6 @@ pub fn persist_incremental_sqlite_deep_state_with_priority(
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
-    let path_plan = plan_incremental_index_paths(changed_paths, removed_paths);
     replace_changed_stub_rows(
         &transaction,
         &root_key,

@@ -104,6 +104,70 @@ pub struct UsageResult {
     pub confidence: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameImpactItem {
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub name: String,
+    pub kind: String,
+    pub confidence: String,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameImpactResult {
+    pub symbol_id: String,
+    pub current_name: String,
+    pub declaration: Option<RenameImpactItem>,
+    pub references: Vec<RenameImpactItem>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolHierarchyNode {
+    pub symbol_id: String,
+    pub name: String,
+    pub kind: String,
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyEdge {
+    pub symbol_id: String,
+    pub name: String,
+    pub kind: String,
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub preview: String,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CallHierarchyResult {
+    pub target: SymbolHierarchyNode,
+    pub incoming: Vec<CallHierarchyEdge>,
+    pub outgoing: Vec<CallHierarchyEdge>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeHierarchyResult {
+    pub target: SymbolHierarchyNode,
+    pub supertypes: Vec<SymbolHierarchyNode>,
+    pub subtypes: Vec<SymbolHierarchyNode>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {

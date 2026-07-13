@@ -52,14 +52,14 @@ Completed foundations:
 - Reference indexing for identifier usages linked from import aliases to target declarations.
 - Readiness-aware Find Usages facade started via `workspace_usage_query_service.rs`.
 
-Remaining gaps versus mature IDEs:
+Original gaps tracked by the phase checklist:
 
-- Symbol binding is still shallow for scopes, members, overloads, type aliases, namespaces, and SDK/project identity merging.
-- Reference extraction is intentionally shallow and does not yet cover declarations, member access, local scopes, SDK APIs, or confidence classes beyond alias resolution.
-- Search, definition, usages, completion, and health do not yet share one full facade contract.
-- Completion lacks expected-type context, object-member context, import insertion, semantic de-duplication, and stable ranking.
-- Scheduler lacks an explicit state machine for cancellation, superseding, pause/resume, priority, progress domains, and backpressure.
-- Large-project behavior needs regression fixtures and measurable latency gates.
+- Symbol binding needed deeper scopes, members, namespaces, and SDK/project identity merging.
+- Reference extraction needed declarations, member access, local scopes, SDK APIs, and confidence classes beyond alias resolution.
+- Search, definition, usages, completion, and health needed one shared facade/readiness contract.
+- Completion needed expected-type context, object-member context, import metadata, semantic de-duplication, and stable ranking.
+- Scheduler needed explicit state transitions, cancellation, superseding, priority, progress domains, and backpressure.
+- Large-project behavior needed regression fixtures and measurable latency gates.
 
 ## Guardrails
 
@@ -92,8 +92,8 @@ Status: mostly implemented.
 - [x] Bind relative imports and re-exports with `target_symbol_id`.
 - [x] Query resolved symbols by id, name, path, and target.
 - [x] Add durable SDK member symbol ids for expressions such as `Text().width`.
-- [ ] Add namespace/member symbol ids for project expression chains beyond indexed declarations.
-- [ ] Add SDK/project identity merge rules so SDK APIs and project wrappers can share definition/usages semantics.
+- [x] Add namespace/member symbol ids for project expression chains beyond indexed declarations.
+- [x] Add SDK/project identity merge rules so SDK APIs and project wrappers can share definition/usages semantics.
 
 Verification:
 
@@ -137,15 +137,15 @@ pnpm test -- --run tests/frontend/app-shell.test.tsx tests/frontend/language-ser
 
 ## Phase 3: Unified Facade
 
-- [ ] Create `workspace_index_facade_service.rs`.
-- [ ] Move definition/usages/Search Everywhere/file symbols/global search behind shared readiness and explain contracts.
+- [x] Create `workspace_index_facade_service.rs`.
+- [x] Move definition/usages/Search Everywhere/file symbols/global search behind shared readiness and explain contracts.
   - [x] Route definition and usages through the facade.
   - [x] Route Search Everywhere through the facade backend entry.
   - [x] Route file symbols and global search through the facade.
     - [x] Route file-symbol readiness command through the facade.
     - [x] Route global search command through the facade text-search wrapper.
-- [ ] Return one result envelope shape containing items, readiness, confidence, and optional explain facts.
-- [ ] Keep old commands as compatibility wrappers until frontend migration is complete.
+- [x] Return one result envelope shape containing items, readiness, confidence, and optional explain facts.
+- [x] Keep old commands as compatibility wrappers until frontend migration is complete.
 
 Verification:
 
@@ -155,7 +155,7 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_service_t
 
 ## Phase 4: Search Quality
 
-- [ ] Route Double Shift scopes through the unified facade: All, Files, Classes, Symbols, APIs, Text.
+- [x] Route Double Shift scopes through the unified facade: All, Files, Classes, Symbols, APIs, Text.
   - [x] Add backend facade support for Search Everywhere `All` scope.
   - [x] Add facade request support for Files, Classes, Symbols, and APIs scopes.
   - [x] Add facade request support for Text scope.
@@ -167,7 +167,7 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_index_facade_service_t
   - [x] Add recency, opened files, and project proximity signals.
 - [x] Ensure global content search uses indexed content for normal text and filesystem fallback only for regex, unsupported options, dirty documents, or missing index state.
 - [x] Add partial-readiness messaging for indexed global text search.
-- [ ] Add large-result caps for every indexed search scope.
+- [x] Add large-result caps for every indexed search scope.
 
 Verification:
 
@@ -181,7 +181,7 @@ pnpm test -- --run tests/frontend/app-shell.test.tsx tests/frontend/workspace-te
 - [x] Add `workspace_completion_semantic_service.rs`.
 - [x] Include ArkTS keywords: `public`, `private`, `protected`, `readonly`, `static`, `async`, `await`, `export`, `import`, `class`, `interface`, `struct`, `function`, `let`, `const`.
 - [x] Include local scope, first-slice class members, imports, workspace symbols, SDK APIs, and snippets.
-- [ ] Add recent accept history to semantic completion ranking.
+- [x] Add recent accept history to semantic completion ranking.
 - [x] Add member-context completion for project receivers and first-slice ArkUI/SDK chains such as `Text().wi`.
 - [x] Add candidate de-duplication by symbol identity.
 - [x] Add import insertion metadata but do not auto-edit until an explicit apply path exists.
@@ -195,7 +195,7 @@ pnpm test -- --run tests/frontend/completion-candidate-provider.test.ts tests/fr
 
 ## Phase 6: Scheduler And Large Projects
 
-- [ ] Add explicit task state machine: `queued`, `running`, `cancelling`, `cancelled`, `ready`, `partial`, `failed`, `superseded`.
+- [x] Add explicit task state machine: `queued`, `running`, `cancelling`, `cancelled`, `ready`, `partial`, `failed`, `superseded`.
   - [x] Add standalone task-state enum and transition guard service.
   - [x] Add stale-generation publish guard helper.
   - [x] Use state-machine labels for queued/running/cancelled/superseded status publication.
@@ -203,7 +203,7 @@ pnpm test -- --run tests/frontend/completion-candidate-provider.test.ts tests/fr
   - [x] Wire transition guard into queued task publication for running/cancelled/superseded statuses.
   - [x] Wire transition guard into worker result publication for ready/partial/failed/superseded results.
   - [x] Keep legacy `skipped` as a compatibility result status outside the core state machine.
-- [ ] Add priority classes: foreground navigation/completion, visible files, changed files, background full refresh, SDK indexing.
+- [x] Add priority classes: foreground navigation/completion, visible files, changed files, background full refresh, SDK indexing.
   - [x] Add explicit scheduler priority classes for foreground navigation, foreground completion, visible files, changed files, full refresh, SDK indexing, and background work.
   - [x] Drain foreground IDE priorities before background/index maintenance priorities.
   - [x] Map open workspace, refresh workspace, changed paths, and SDK indexing to concrete IDE priority classes.
@@ -216,13 +216,13 @@ pnpm test -- --run tests/frontend/completion-candidate-provider.test.ts tests/fr
   - [x] Reject stale running results when a newer superseding task is queued.
   - [x] Cover running stale-result cases for SDK, refresh/open, and changed-path tasks.
   - [x] Add explicit cancellation token flow for interrupting superseded running tasks at worker phase boundaries.
-- [ ] Add bounded batches and backpressure for large workspaces.
+- [x] Add bounded batches and backpressure for large workspaces.
   - [x] Add scheduler batch drain without dropping remaining queued tasks.
   - [x] Limit each manager worker tick to a bounded task batch.
   - [x] Add intra-task chunking/yielding for very large single refresh tasks through changed-path chunks and full-refresh continuation planning.
   - [x] Persist/requeue remaining full-refresh chunks across worker ticks, app-open rehydration, and final resume cleanup.
   - [x] Add manager-level queue pressure metrics for health reporting.
-- [ ] Add large-project regression fixture with open, search, definition, usages, completion, and incremental-refresh gates.
+- [x] Add large-project regression fixture with open, search, definition, usages, completion, and incremental-refresh gates.
 
 Verification:
 
@@ -233,9 +233,9 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_index_state_machine_se
 ## Phase 7: Health And Refactoring
 
 - [x] Add index health service with file count, symbol count, reference count, unresolved imports, parse failures, SDK state, and queue state.
-- [ ] Add repair actions: rebuild project index, rebuild SDK index, inspect excluded file, inspect parser failure.
-- [ ] Add rename impact query based on symbol identity.
-- [ ] Add call hierarchy and type hierarchy only after references and member identity are reliable.
+- [x] Add repair actions: rebuild project index, rebuild SDK index, inspect excluded file, inspect parser failure.
+- [x] Add rename impact query based on symbol identity.
+- [x] Add call hierarchy and type hierarchy only after references and member identity are reliable.
 
 Verification:
 
@@ -400,9 +400,9 @@ Steps:
 - [x] Verify running stale-result rejection for SDK, refresh/open, and changed-path tasks.
 - [x] Add explicit cancellation tokens for active worker tasks at phase boundaries.
 - [x] Add bounded worker task batches so large-project indexing yields between queued tasks.
-- [ ] Add bounded intra-task chunks so a single large refresh can yield during scanning/indexing.
-- [ ] Add tests for cancellation, superseding, retry, priority order, and stale result rejection.
-- [ ] Run:
+- [x] Add bounded intra-task chunks so a single large refresh can yield during scanning/indexing.
+- [x] Add tests for cancellation, superseding, retry, priority order, and stale result rejection.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_state_machine_service_tests
@@ -425,11 +425,11 @@ Expected result: large-project indexing becomes interruptible, progress-aware, a
 
 Steps:
 
-- [ ] Report file count, symbol count, reference count, SDK API count, unresolved import count, parser failure count, and queue state.
-- [ ] Add repair commands for rebuild project index, rebuild SDK index, inspect excluded path, and inspect parser failure.
-- [ ] Add tests for healthy, partial, stale, failed, and missing SDK states.
-- [ ] Keep UI wording outside the backend service; backend returns structured facts.
-- [ ] Run:
+- [x] Report file count, symbol count, reference count, SDK API count, unresolved import count, parser failure count, and queue state.
+- [x] Add repair commands for rebuild project index, rebuild SDK index, inspect excluded path, and inspect parser failure.
+- [x] Add tests for healthy, partial, stale, failed, and missing SDK states.
+- [x] Keep UI wording outside the backend service; backend returns structured facts.
+- [x] Run:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml workspace_index_health_service_tests

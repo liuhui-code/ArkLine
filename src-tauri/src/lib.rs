@@ -14,6 +14,7 @@ mod commands {
     pub(crate) mod workspace_emit;
     pub mod workspace_index;
     pub mod workspace_index_schedule;
+    pub mod workspace_query;
     #[cfg(test)]
     mod workspace_tests;
 }
@@ -69,13 +70,16 @@ pub fn run() {
             commands::workspace::inspect_workspace_unresolved_imports,
             commands::workspace::index_workspace_sdk_symbols,
             commands::workspace::submit_workspace_sdk_index,
-            commands::workspace::query_workspace_quick_open,
-            commands::workspace::query_workspace_search_everywhere,
-            commands::workspace::query_workspace_candidates,
-            commands::workspace::query_workspace_candidates_with_readiness,
-            commands::workspace::query_workspace_file_symbols,
-            commands::workspace::query_workspace_file_symbols_with_readiness,
+            commands::workspace_query::query_workspace_quick_open,
+            commands::workspace_query::query_workspace_search_everywhere,
+            commands::workspace_query::query_workspace_candidates,
+            commands::workspace_query::query_workspace_candidates_with_readiness,
+            commands::workspace_query::query_workspace_file_symbols,
+            commands::workspace_query::query_workspace_file_symbols_with_readiness,
+            commands::workspace_definition::query_call_hierarchy,
             commands::workspace_definition::query_definition_candidates_with_readiness,
+            commands::workspace_definition::query_rename_impact,
+            commands::workspace_definition::query_type_hierarchy,
             commands::workspace_definition::query_usages_with_readiness,
             commands::workspace_definition::semantic_complete_symbol,
             commands::workspace::update_workspace_index_files,

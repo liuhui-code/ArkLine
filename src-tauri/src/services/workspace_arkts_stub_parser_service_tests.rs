@@ -76,6 +76,38 @@ export class UserService {
 }
 
 #[test]
+fn parses_namespace_containers_with_qualified_member_symbols() {
+    let stub = parse_arkts_file_stub(
+        "entry/src/main/ets/services/Api.ets",
+        r#"
+export namespace Api {
+  export class Client {
+    static create(): Client {}
+    refresh() {}
+  }
+}
+"#,
+    );
+
+    let names = stub
+        .declarations
+        .iter()
+        .map(|declaration| {
+            (
+                declaration.kind.as_str(),
+                declaration.qualified_name.as_str(),
+                declaration.container.as_deref(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert!(names.contains(&("namespace", "Api", None)));
+    assert!(names.contains(&("class", "Api.Client", Some("Api"))));
+    assert!(names.contains(&("method", "Api.Client.create", Some("Api.Client"))));
+    assert!(names.contains(&("method", "Api.Client.refresh", Some("Api.Client"))));
+}
+
+#[test]
 fn parses_import_and_export_aliases() {
     let stub = parse_arkts_file_stub(
         "entry/src/main/ets/pages/Index.ets",

@@ -1606,7 +1606,6 @@ describe("App shell", () => {
 
   it("uses readiness-aware facade candidates for Search Everywhere when available", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceCandidates = vi.fn(async () => []);
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async (_rootPath: string, _query: string, scope: string) => ({
       items: scope === "classes"
         ? [{
@@ -1656,7 +1655,7 @@ describe("App shell", () => {
       },
     }));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidates, queryWorkspaceCandidatesWithReadiness })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Shift}{Shift}");
@@ -1670,7 +1669,6 @@ describe("App shell", () => {
       null,
       expect.any(Object),
     ));
-    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: /class LoginController/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /text Text\("Login"\)/ })).not.toBeInTheDocument();
 
@@ -3650,8 +3648,8 @@ describe("App shell", () => {
 
   it("adds workspace indexed symbols and ArkTS keywords to completion", async () => {
     const user = userEvent.setup();
-    const queryWorkspaceCandidates = vi.fn(async () => [
-      {
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [{
         id: "class:C:/samples/DemoWorkspace/src/profile.ets:3:8",
         source: "class" as const,
         kind: "class",
@@ -3662,8 +3660,15 @@ describe("App shell", () => {
         column: 8,
         score: 0,
         freshness: "ready" as const,
+      }],
+      readiness: {
+        rootPath: "C:/samples/DemoWorkspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
       },
-    ]);
+    }));
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
         rootName: "DemoWorkspace",
@@ -3681,7 +3686,7 @@ describe("App shell", () => {
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
-      queryWorkspaceCandidates,
+      queryWorkspaceCandidatesWithReadiness,
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
     });
@@ -3698,7 +3703,7 @@ describe("App shell", () => {
     await user.keyboard("i");
     await user.keyboard("{Control>} {/Control}");
 
-    await waitFor(() => expect(queryWorkspaceCandidates).toHaveBeenCalledWith(
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
       "pri",
       "all",

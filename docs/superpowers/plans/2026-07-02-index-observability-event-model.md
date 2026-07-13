@@ -18,10 +18,10 @@
 - Modify: `src-tauri/src/lib.rs`
 - Test: `src-tauri/src/services/workspace_index_event_service_tests.rs`
 
-- [ ] Add `WorkspaceIndexEvent` with `event_id`, `root_path`, `scope`, `kind`, `phase`, `severity`, `message`, `task_id`, `generation`, `payload_json`, `created_at`.
-- [ ] Add `workspace_index_events` table and indexes by `(root_path, created_at)` and `(root_path, task_id)`.
-- [ ] Add `store_index_event`, `load_recent_index_events`, and `event_from_task_status`.
-- [ ] Verify event roundtrip and limit ordering with `cargo test --manifest-path src-tauri/Cargo.toml workspace_index_event_service_tests`.
+- [x] Add `WorkspaceIndexEvent` with `event_id`, `root_path`, `scope`, `kind`, `phase`, `severity`, `message`, `task_id`, `generation`, `payload_json`, `created_at`.
+- [x] Add `workspace_index_events` table and indexes by `(root_path, created_at)` and `(root_path, task_id)`.
+- [x] Add `store_index_event`, `load_recent_index_events`, and `event_from_task_status`.
+- [x] Verify event roundtrip and limit ordering with `cargo test --manifest-path src-tauri/Cargo.toml workspace_index_event_service_tests`.
 
 ### Task 2: Bridge Existing Task Lifecycle
 
@@ -29,9 +29,9 @@
 - Modify: `src-tauri/src/services/workspace_index_task_journal_service.rs`
 - Test: `src-tauri/src/services/workspace_index_task_journal_service_tests.rs`
 
-- [ ] When `store_task_status` persists a task status, emit the matching unified event in the same SQLite store.
-- [ ] Keep task journal semantics unchanged so existing status bar and task watchers keep working.
-- [ ] Verify queued, running, ready, partial, failed, skipped, and superseded statuses map to useful event phases and severities.
+- [x] When `store_task_status` persists a task status, emit the matching unified event in the same SQLite store.
+- [x] Keep task journal semantics unchanged so existing status bar and task watchers keep working.
+- [x] Verify queued, running, ready, partial, failed, skipped, and superseded statuses map to useful event phases and severities.
 
 ### Task 3: Diagnostics Read Model
 
@@ -42,20 +42,32 @@
 - Modify: `src/features/workspace/workspace-api.ts`
 - Test: `tests/frontend/workspace-api.test.ts`
 
-- [ ] Add `recent_events` to `WorkspaceIndexDiagnostics`.
-- [ ] Load recent events from the unified event log in diagnostics.
-- [ ] Mirror the type in the frontend workspace API.
-- [ ] Verify diagnostics includes task lifecycle evidence after a refresh.
+- [x] Add `recent_events` to `WorkspaceIndexDiagnostics`.
+- [x] Load recent events from the unified event log in diagnostics.
+- [x] Mirror the type in the frontend workspace API.
+- [x] Verify diagnostics includes task lifecycle evidence after a refresh.
 
 ### Task 4: Verification
 
 **Files:**
 - Existing changed files only.
 
-- [ ] Run targeted Rust tests for event, journal, diagnostics, manager.
-- [ ] Run frontend workspace API tests.
-- [ ] Run `pnpm build`.
-- [ ] Report remaining gaps clearly: query explain events, heartbeat/stalled events, and timeline UI are next phases.
+- [x] Run targeted Rust tests for event, journal, diagnostics, manager.
+- [x] Run frontend workspace API tests.
+- [x] Run `pnpm build`.
+- [x] Report remaining gaps clearly: query explain events, heartbeat/stalled events, and timeline UI are next phases.
+
+Actual verification:
+
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_event_service_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_task_journal_service_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_diagnostics_event_tests
+cargo test --manifest-path src-tauri/Cargo.toml workspace_index_diagnostics_service_tests
+./node_modules/.bin/vitest run tests/frontend/workspace-api.test.ts tests/frontend/workspace-index-event-api.test.ts tests/frontend/index-diagnostics-center.test.tsx tests/frontend/index-diagnostics-center-query.test.tsx tests/frontend/index-diagnostics-model.test.ts tests/frontend/use-index-diagnostics-controller.test.tsx
+```
+
+All targeted Rust and frontend tests passed. Later tasks in this plan already closed the originally listed remaining gaps: query explain events, heartbeat/stalled status, and timeline UI.
 
 ### Task 5: Query Explain Events
 

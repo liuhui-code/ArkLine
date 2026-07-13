@@ -260,7 +260,7 @@ Expected: pass.
 
 **Files:** create `src-tauri/src/services/workspace_discovery_service.rs`, create `src-tauri/src/services/workspace_discovery_service_tests.rs`, modify `src-tauri/src/lib.rs`, modify `src-tauri/src/services/workspace_index_manager_service.rs`.
 
-- [ ] **Step 1: Add discovery service tests**
+- [x] **Step 1: Add discovery service tests**
 
 Cover:
 
@@ -278,7 +278,7 @@ assert!(result.has_more);
 assert!(result.excluded_count >= 1);
 ```
 
-- [ ] **Step 2: Implement chunked discovery model**
+- [x] **Step 2: Implement chunked discovery model**
 
 Create focused structs:
 
@@ -294,15 +294,15 @@ pub struct WorkspaceDiscoveryChunk {
 
 Use breadth-first directory traversal with a max file count per call. Do not compute hashes in this slice.
 
-- [ ] **Step 3: Register the module**
+- [x] **Step 3: Register the module**
 
 Add the new service/test modules in `src-tauri/src/lib.rs`.
 
-- [ ] **Step 4: Wire manager follow-up task planning**
+- [x] **Step 4: Wire manager follow-up task planning**
 
 The first manager integration should schedule discovery chunks before full refresh chunks. The output can still feed the existing changed-path/full-refresh indexing path, but the naming and task reason must identify discovery.
 
-- [ ] **Step 5: Verify discovery**
+- [x] **Step 5: Verify discovery**
 
 Run:
 
@@ -316,7 +316,7 @@ Expected: pass.
 
 **Files:** create `src-tauri/src/services/workspace_discovery_schema_service.rs`, create `src-tauri/src/services/workspace_discovery_store_service.rs`, create `src-tauri/src/services/workspace_discovery_store_service_tests.rs`, modify `src-tauri/src/services/workspace_index_schema_service.rs`.
 
-- [ ] **Step 1: Add schema tests**
+- [x] **Step 1: Add schema tests**
 
 Assert these tables exist after migration:
 
@@ -325,7 +325,7 @@ workspace_discovered_files
 workspace_discovery_state
 ```
 
-- [ ] **Step 2: Implement schema**
+- [x] **Step 2: Implement schema**
 
 Create:
 
@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS workspace_discovery_state (
 );
 ```
 
-- [ ] **Step 3: Implement store functions**
+- [x] **Step 3: Implement store functions**
 
 Expose:
 
@@ -352,7 +352,7 @@ pub fn update_discovery_state(state: &WorkspaceDiscoveryState) -> Result<(), Str
 pub fn load_discovered_files(root_path: &str, limit: usize) -> Result<Vec<String>, String>
 ```
 
-- [ ] **Step 4: Verify persistence**
+- [x] **Step 4: Verify persistence**
 
 Run:
 
@@ -366,7 +366,7 @@ Expected: pass.
 
 **Files:** modify `src/features/workspace/workspace-index-store.ts`, `src/components/layout/AppShell.tsx`, `tests/frontend/workspace-index-store.test.ts`, and `tests/frontend/app-shell.test.tsx`.
 
-- [ ] **Step 1: Add readiness copy tests**
+- [x] **Step 1: Add readiness copy tests**
 
 Expected UI copy:
 
@@ -378,15 +378,15 @@ Expected UI copy:
 
 Avoid saying “ready” when only the root shell is opened.
 
-- [ ] **Step 2: Update scan/status text**
+- [x] **Step 2: Update scan/status text**
 
 When `scanSummary.truncated && scannedFiles === 0`, show opened/discovering language instead of “partial 0 files”.
 
-- [ ] **Step 3: Connect task statuses to status bar**
+- [x] **Step 3: Connect task statuses to status bar**
 
 Use `workspace-index-task-updated` statuses to distinguish discovery/indexing/SDK. If no discovery-specific status exists yet, map `open-workspace` running to `Discovering`.
 
-- [ ] **Step 4: Verify UI readiness**
+- [x] **Step 4: Verify UI readiness**
 
 Run:
 
@@ -400,7 +400,7 @@ Expected: pass.
 
 **Files:** create `src-tauri/src/services/workspace_large_open_performance_tests.rs`, modify `src-tauri/src/lib.rs`.
 
-- [ ] **Step 1: Add no-recursive-open regression test**
+- [x] **Step 1: Add no-recursive-open regression test**
 
 Create nested directories with more than 10,000 files and assert:
 
@@ -408,7 +408,7 @@ Create nested directories with more than 10,000 files and assert:
 - root directory listing returns only the root-level entries;
 - no full scan is needed for the shell snapshot.
 
-- [ ] **Step 2: Add background queue regression test**
+- [x] **Step 2: Add background queue regression test**
 
 Open a large workspace through `open_workspace_through_manager` and assert:
 
@@ -416,7 +416,7 @@ Open a large workspace through `open_workspace_through_manager` and assert:
 - task statuses include `open-workspace`;
 - no synchronous index state is required before return.
 
-- [ ] **Step 3: Verify regression gate**
+- [x] **Step 3: Verify regression gate**
 
 Run:
 
@@ -430,7 +430,7 @@ Expected: pass.
 
 **Files:** no new files.
 
-- [ ] **Step 1: Run focused backend tests**
+- [x] **Step 1: Run focused backend tests**
 
 Run:
 
@@ -440,7 +440,7 @@ cargo test --manifest-path src-tauri/Cargo.toml workspace_service::tests workspa
 
 Expected: pass.
 
-- [ ] **Step 2: Run focused frontend tests**
+- [x] **Step 2: Run focused frontend tests**
 
 Run:
 
@@ -450,7 +450,7 @@ pnpm test -- --run tests/frontend/workspace-index-store.test.ts tests/frontend/a
 
 Expected: pass.
 
-- [ ] **Step 3: Run production build**
+- [x] **Step 3: Run production build**
 
 Run:
 
@@ -460,7 +460,7 @@ pnpm build
 
 Expected: pass.
 
-- [ ] **Step 4: Check whitespace**
+- [x] **Step 4: Check whitespace**
 
 Run:
 

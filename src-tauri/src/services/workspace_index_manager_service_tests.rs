@@ -1,8 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRequest};
@@ -133,6 +130,31 @@ fn coalesces_watcher_changes_before_refreshing_the_index() {
     assert_eq!(results.len(), 1);
     assert!(results[0].changed);
     assert_eq!(matches.matches.len(), 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ignores_duplicate_watcher_paths_without_status_churn() {
+    let root = unique_temp_dir("workspace-index-manager-duplicate-watcher");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let changed_path = root.join("Index.ets").to_string_lossy().to_string();
+    let manager = WorkspaceIndexManagerRuntime::default();
+
+    manager
+        .schedule_changed_paths(&root_path, &[changed_path.clone()])
+        .unwrap();
+    manager
+        .schedule_changed_paths(&root_path, &[changed_path])
+        .unwrap();
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
+
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].kind, "changed-paths");
+    assert_eq!(statuses[0].status, "queued");
+    assert_eq!(statuses[0].generation, 1);
+    assert_eq!(statuses[0].target_path_count, Some(1));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -353,136 +375,4 @@ fn replaces_pending_sdk_task_and_marks_old_generation_cancelled() {
     }));
 
     fs::remove_dir_all(root).unwrap_or(());
-}
-
-#[test]
-fn worker_runner_reports_running_and_ready_statuses() {
-    let root = unique_temp_dir("workspace-index-manager-worker");
-    let sdk_root = root.join("openharmony");
-    fs::create_dir_all(sdk_root.join("ets")).unwrap();
-    fs::write(
-        sdk_root.join("ets").join("arkui.d.ts"),
-        "declare class Text {\n  width(value: Length): Text;\n}\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let sdk_path = sdk_root.to_string_lossy().to_string();
-    let index_runtime = WorkspaceIndexRuntime::default();
-    let manager = WorkspaceIndexManagerRuntime::default();
-    let mut observed = Vec::new();
-
-    manager
-        .schedule_sdk_index(&root_path, &sdk_path, "test-sdk")
-        .unwrap();
-    let results = manager
-        .run_index_worker_once(&index_runtime, |status| observed.push(status))
-        .unwrap();
-
-    assert_eq!(results.len(), 1);
-    assert!(observed
-        .iter()
-        .any(|status| status.kind == "sdk" && status.status == "running"));
-    assert!(observed
-        .iter()
-        .any(|status| status.kind == "sdk" && status.status == "ready"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn background_worker_drains_tasks_and_reports_statuses() {
-    let root = unique_temp_dir("workspace-index-manager-background");
-    let sdk_root = root.join("openharmony");
-    fs::create_dir_all(sdk_root.join("ets")).unwrap();
-    fs::write(
-        sdk_root.join("ets").join("arkui.d.ts"),
-        "declare class Text {\n  width(value: Length): Text;\n}\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let sdk_path = sdk_root.to_string_lossy().to_string();
-    let index_runtime = WorkspaceIndexRuntime::default();
-    let manager = WorkspaceIndexManagerRuntime::default();
-    let observed = Arc::new(Mutex::new(Vec::new()));
-    let observed_for_worker = observed.clone();
-
-    manager
-        .schedule_sdk_index(&root_path, &sdk_path, "test-sdk")
-        .unwrap();
-    let started = manager
-        .start_background_worker_with_events(index_runtime.clone(), move |status, _events| {
-            observed_for_worker
-                .lock()
-                .unwrap()
-                .push((status.kind, status.status));
-        })
-        .unwrap();
-
-    assert!(started);
-    for _ in 0..80 {
-        if observed
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|status| status == &("sdk".to_string(), "ready".to_string()))
-        {
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-    let observed = observed.lock().unwrap().clone();
-
-    assert!(observed
-        .iter()
-        .any(|status| status == &("sdk".to_string(), "ready".to_string())));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn background_worker_processes_task_scheduled_before_start() {
-    let root = unique_temp_dir("workspace-index-manager-wake");
-    let sdk_root = root.join("openharmony");
-    fs::create_dir_all(sdk_root.join("ets")).unwrap();
-    fs::write(
-        sdk_root.join("ets").join("arkui.d.ts"),
-        "declare class Text {\n  width(value: Length): Text;\n}\n",
-    )
-    .unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let sdk_path = sdk_root.to_string_lossy().to_string();
-    let index_runtime = WorkspaceIndexRuntime::default();
-    let manager = WorkspaceIndexManagerRuntime::default();
-
-    manager
-        .schedule_sdk_index(&root_path, &sdk_path, "test-sdk")
-        .unwrap();
-    let queued = manager.get_index_task_statuses(&root_path).unwrap();
-    assert!(queued
-        .iter()
-        .any(|status| status.kind == "sdk" && status.status == "queued"));
-
-    let started = manager
-        .start_background_worker_with_events(index_runtime.clone(), |_, _| {})
-        .unwrap();
-    assert!(started);
-
-    for _ in 0..80 {
-        if manager
-            .get_index_task_statuses(&root_path)
-            .unwrap()
-            .iter()
-            .any(|status| status.kind == "sdk" && status.status == "ready")
-        {
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
-
-    assert!(statuses
-        .iter()
-        .any(|status| status.kind == "sdk" && status.status == "ready"));
-
-    fs::remove_dir_all(root).unwrap();
 }

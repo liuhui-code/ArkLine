@@ -3,6 +3,7 @@ import {
   keywordCompletionItems,
   mergeCompletionItems,
 } from "@/components/layout/indexed-completion-model";
+import { shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -81,6 +82,9 @@ async function scheduleForegroundCompletionIndex(
   path: string,
 ) {
   if (!rootPath || !workspaceApi.scheduleForegroundCompletionIndex) {
+    return;
+  }
+  if (!shouldScheduleForegroundIndex("completion", rootPath, path)) {
     return;
   }
   try {

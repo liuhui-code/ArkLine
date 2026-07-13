@@ -3,7 +3,16 @@ use crate::services::workspace_arkts_import_export_parser_service::{
     parse_imports, parse_named_exports,
 };
 
-const DECLARATION_KEYWORDS: &[&str] = &["struct", "class", "interface", "enum", "type", "function"];
+const DECLARATION_KEYWORDS: &[&str] = &[
+    "struct",
+    "class",
+    "interface",
+    "enum",
+    "namespace",
+    "module",
+    "type",
+    "function",
+];
 const MEMBER_MODIFIERS: &[&str] = &[
     "public",
     "private",
@@ -102,7 +111,7 @@ pub fn parse_arkts_file_stub(path: &str, content: &str) -> ArkTsFileStub {
             }
             if is_container_kind(&declaration.kind) && brace_delta(after_decorators) > 0 {
                 containers.push(ContainerScope {
-                    name: declaration.name.clone(),
+                    name: declaration.qualified_name.clone(),
                     close_depth: depth + brace_delta(after_decorators),
                 });
             }
@@ -359,7 +368,10 @@ fn brace_delta(value: &str) -> i32 {
 }
 
 fn is_container_kind(kind: &str) -> bool {
-    matches!(kind, "struct" | "class" | "interface" | "enum")
+    matches!(
+        kind,
+        "struct" | "class" | "interface" | "enum" | "namespace" | "module"
+    )
 }
 
 fn is_control_statement(value: &str) -> bool {

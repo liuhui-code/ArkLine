@@ -140,6 +140,89 @@ fn usage_facade_resolves_sdk_member_access_caret_to_indexed_references() {
 }
 
 #[test]
+fn usage_facade_merges_sdk_and_project_wrapper_member_identities() {
+    let root = create_empty_workspace("usage-query-sdk-project-merge");
+    let source_dir = create_workspace_source_dir(&root);
+    let sdk_root = root.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets")).unwrap();
+    fs::write(
+        sdk_root.join("ets").join("arkui.d.ts"),
+        "declare class Text {\n  width(value: Length): Text;\n}\n",
+    )
+    .unwrap();
+    let wrapper_path = source_dir.join("WrappedText.ets");
+    fs::write(
+        &wrapper_path,
+        "export class Text {\n  width(value: number): Text { return this; }\n}\n",
+    )
+    .unwrap();
+    let app_path = source_dir.join("Index.ets");
+    fs::write(
+        &app_path,
+        [
+            "import { Text as WrappedText } from \"./WrappedText\";",
+            "const wrapper = new WrappedText();",
+            "wrapper.width(12);",
+            "Text('hi').width(12);",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    index_workspace_sdk_symbols(&root_path, &sdk_root.to_string_lossy(), "test-sdk").unwrap();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let content = fs::read_to_string(&app_path).unwrap();
+
+    let sdk_envelope = query_usages_with_readiness(
+        &runtime,
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 4,
+            column: 12,
+            content: Some(content.clone()),
+        },
+        8,
+    )
+    .unwrap();
+    let project_envelope = query_usages_with_readiness(
+        &runtime,
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 3,
+            column: 9,
+            content: Some(content),
+        },
+        8,
+    )
+    .unwrap();
+
+    let expected = vec![
+        (3, 9, "wrapper.width(12);"),
+        (4, 12, "Text('hi').width(12);"),
+    ];
+    assert_eq!(
+        sdk_envelope
+            .items
+            .iter()
+            .map(|usage| (usage.line, usage.column, usage.preview.as_str()))
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(
+        project_envelope
+            .items
+            .iter()
+            .map(|usage| (usage.line, usage.column, usage.preview.as_str()))
+            .collect::<Vec<_>>(),
+        expected
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn usage_facade_resolves_project_member_access_caret_to_indexed_references() {
     let root = create_empty_workspace("usage-query-project-member");
     let source_dir = create_workspace_source_dir(&root);

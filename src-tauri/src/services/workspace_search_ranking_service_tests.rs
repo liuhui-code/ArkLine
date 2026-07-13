@@ -63,11 +63,7 @@ fn text_ranking_prefers_exact_prefix_contains_then_camel_acronym_matches() {
             "renderQueryTarget()",
             "src/Contains.ets:1",
         ),
-        text_candidate(
-            "/workspace/src/Exact.ets",
-            "query",
-            "src/Exact.ets:1",
-        ),
+        text_candidate("/workspace/src/Exact.ets", "query", "src/Exact.ets:1"),
         text_candidate(
             "/workspace/src/Camel.ets",
             "QueryPipelineTarget",
@@ -84,7 +80,12 @@ fn text_ranking_prefers_exact_prefix_contains_then_camel_acronym_matches() {
 
     assert_eq!(
         titles(&candidates),
-        vec!["query", "queryProfile()", "QueryPipelineTarget", "renderQueryTarget()"]
+        vec![
+            "query",
+            "queryProfile()",
+            "QueryPipelineTarget",
+            "renderQueryTarget()"
+        ]
     );
 }
 
@@ -122,7 +123,12 @@ fn search_ranking_context_prefers_opened_paths_after_recent_paths() {
     let mut candidates = vec![
         candidate("symbol", "Other symbol", "/workspace/src/Other.ets", 120.0),
         candidate("symbol", "Opened symbol", "/workspace/src/Opened.ets", 90.0),
-        candidate("symbol", "Recent symbol", "/workspace/src/Recent.ets", 110.0),
+        candidate(
+            "symbol",
+            "Recent symbol",
+            "/workspace/src/Recent.ets",
+            110.0,
+        ),
     ];
 
     sort_search_everywhere_candidates_with_context(

@@ -2,17 +2,16 @@ use std::fs;
 
 use crate::models::language::LanguageQueryRequest;
 use crate::models::workspace::WorkspaceIndexReadinessState;
-use crate::services::workspace_completion_semantic_service::query_semantic_completions_with_readiness;
+use crate::services::workspace_index_facade_service::{
+    query_facade_completions_with_readiness, query_facade_definition_candidates_with_readiness,
+    query_facade_search_everywhere_with_readiness, query_facade_usages_with_readiness,
+};
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-use crate::services::workspace_index_query_service::{
-    query_definition_candidates_with_readiness, query_workspace_candidates_with_readiness,
-    WorkspaceIndexQueryScope,
-};
+use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_large_fixture_service::create_large_workspace_fixture;
-use crate::services::workspace_usage_query_service::query_usages_with_readiness;
 
 #[test]
 fn large_project_fixture_protects_core_index_queries() {
@@ -25,7 +24,7 @@ fn large_project_fixture_protects_core_index_queries() {
 
     assert!(state.file_paths.len() >= 96);
 
-    let file_hits = query_workspace_candidates_with_readiness(
+    let file_hits = query_facade_search_everywhere_with_readiness(
         &runtime,
         &fixture.root_path,
         "FeaturePage042",
@@ -42,7 +41,7 @@ fn large_project_fixture_protects_core_index_queries() {
         .iter()
         .any(|candidate| candidate.title == "FeaturePage042.ets"));
 
-    let class_hits = query_workspace_candidates_with_readiness(
+    let class_hits = query_facade_search_everywhere_with_readiness(
         &runtime,
         &fixture.root_path,
         "LargeTargetService",
@@ -55,7 +54,7 @@ fn large_project_fixture_protects_core_index_queries() {
         .iter()
         .any(|candidate| candidate.title == "LargeTargetService"));
 
-    let symbol_hits = query_workspace_candidates_with_readiness(
+    let symbol_hits = query_facade_search_everywhere_with_readiness(
         &runtime,
         &fixture.root_path,
         "loadLargeTarget",
@@ -68,7 +67,7 @@ fn large_project_fixture_protects_core_index_queries() {
         .iter()
         .any(|candidate| candidate.title == "loadLargeTarget"));
 
-    let text_hits = query_workspace_candidates_with_readiness(
+    let text_hits = query_facade_search_everywhere_with_readiness(
         &runtime,
         &fixture.root_path,
         "LARGE_TEXT_MARKER_042",
@@ -82,7 +81,7 @@ fn large_project_fixture_protects_core_index_queries() {
         .any(|candidate| candidate.title.contains("LARGE_TEXT_MARKER_042")));
 
     let app_content = fs::read_to_string(&fixture.app_path).unwrap();
-    let definition = query_definition_candidates_with_readiness(
+    let definition = query_facade_definition_candidates_with_readiness(
         &runtime,
         &fixture.root_path,
         &LanguageQueryRequest {
@@ -100,7 +99,7 @@ fn large_project_fixture_protects_core_index_queries() {
         .iter()
         .any(|candidate| candidate.path == fixture.service_path && candidate.line == 2));
 
-    let usages = query_usages_with_readiness(
+    let usages = query_facade_usages_with_readiness(
         &runtime,
         &fixture.root_path,
         &LanguageQueryRequest {
@@ -114,7 +113,7 @@ fn large_project_fixture_protects_core_index_queries() {
     .unwrap();
     assert_eq!(usages.items.len(), 1);
 
-    let completions = query_semantic_completions_with_readiness(
+    let completions = query_facade_completions_with_readiness(
         &runtime,
         &fixture.root_path,
         &LanguageQueryRequest {
@@ -130,6 +129,116 @@ fn large_project_fixture_protects_core_index_queries() {
         .items
         .iter()
         .any(|item| item.label == "LargeTargetService"));
+
+    fs::remove_dir_all(fixture.root_path).unwrap();
+}
+
+#[test]
+fn large_project_incremental_refresh_keeps_core_index_queries_fresh() {
+    let fixture = create_large_workspace_fixture("large-project-incremental-index", 96).unwrap();
+    let runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    runtime.refresh_workspace_index(&fixture.root_path).unwrap();
+
+    let updated_service = [
+        "export class LargeTargetService {",
+        "  refreshLargeTarget() { return \"LARGE_INCREMENTAL_MARKER\"; }",
+        "}",
+    ]
+    .join("\n");
+    let updated_app = [
+        "import { LargeTargetService } from \"./LargeTargetService\";",
+        "const service = new LargeTargetService();",
+        "service.refreshLargeTarget();",
+    ]
+    .join("\n");
+    fs::write(&fixture.service_path, updated_service).unwrap();
+    fs::write(&fixture.app_path, &updated_app).unwrap();
+
+    manager
+        .schedule_changed_path_task(
+            &fixture.root_path,
+            &[fixture.service_path.clone(), fixture.app_path.clone()],
+            WorkspaceIndexTaskPriority::ChangedFiles,
+            "incremental-refresh",
+        )
+        .unwrap();
+    manager.run_index_worker_once(&runtime, |_| {}).unwrap();
+
+    let symbol_hits = query_facade_search_everywhere_with_readiness(
+        &runtime,
+        &fixture.root_path,
+        "refreshLargeTarget",
+        WorkspaceIndexQueryScope::Symbols,
+        8,
+    )
+    .unwrap();
+    assert!(symbol_hits
+        .items
+        .iter()
+        .any(|candidate| candidate.title == "refreshLargeTarget"));
+
+    let text_hits = query_facade_search_everywhere_with_readiness(
+        &runtime,
+        &fixture.root_path,
+        "LARGE_INCREMENTAL_MARKER",
+        WorkspaceIndexQueryScope::Text,
+        8,
+    )
+    .unwrap();
+    assert!(text_hits
+        .items
+        .iter()
+        .any(|candidate| candidate.title.contains("LARGE_INCREMENTAL_MARKER")));
+
+    let definition = query_facade_definition_candidates_with_readiness(
+        &runtime,
+        &fixture.root_path,
+        &LanguageQueryRequest {
+            path: fixture.app_path.clone(),
+            line: 3,
+            column: 9,
+            content: Some(updated_app.clone()),
+        },
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+    assert!(definition
+        .items
+        .iter()
+        .any(|candidate| candidate.path == fixture.service_path && candidate.line == 2));
+
+    let usages = query_facade_usages_with_readiness(
+        &runtime,
+        &fixture.root_path,
+        &LanguageQueryRequest {
+            path: fixture.app_path.clone(),
+            line: 3,
+            column: 9,
+            content: Some(updated_app.clone()),
+        },
+        8,
+    )
+    .unwrap();
+    assert_eq!(usages.items.len(), 1);
+
+    let completions = query_facade_completions_with_readiness(
+        &runtime,
+        &fixture.root_path,
+        &LanguageQueryRequest {
+            path: fixture.app_path.clone(),
+            line: 4,
+            column: 12,
+            content: Some([updated_app, "service.ref".to_string()].join("\n")),
+        },
+        20,
+    )
+    .unwrap();
+    assert!(completions
+        .items
+        .iter()
+        .any(|item| item.label == "refreshLargeTarget()"));
 
     fs::remove_dir_all(fixture.root_path).unwrap();
 }

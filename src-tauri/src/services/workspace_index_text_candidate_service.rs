@@ -5,7 +5,7 @@ use crate::services::workspace_index_query_service::search_workspace_text;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_search_ranking_service::sort_text_candidates_by_lexical_match;
 
-pub fn text_search_candidates(
+pub(crate) fn text_search_candidates(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     query: &str,

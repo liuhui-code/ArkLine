@@ -5,6 +5,7 @@ use rusqlite::{params, Connection, Statement};
 pub struct DeclarationReference {
     symbol_id: String,
     name: String,
+    pub(crate) kind: String,
     container: Option<String>,
     line: i64,
     column: i64,
@@ -16,7 +17,7 @@ pub fn load_workspace_declarations(
 ) -> Result<HashMap<String, Vec<DeclarationReference>>, String> {
     let mut statement = connection
         .prepare(
-            "select path, symbol_id, name, container, line, column
+            "select path, symbol_id, name, kind, container, line, column
              from workspace_resolved_symbols
              where root_path = ?1 and source = 'project'",
         )
@@ -37,7 +38,7 @@ pub fn load_workspace_declarations_for_paths(
     let mut declarations: HashMap<String, Vec<DeclarationReference>> = HashMap::new();
     let mut statement = connection
         .prepare(
-            "select path, symbol_id, name, container, line, column
+            "select path, symbol_id, name, kind, container, line, column
              from workspace_resolved_symbols
              where root_path = ?1 and source = 'project' and path = ?2",
         )
@@ -137,9 +138,10 @@ fn declaration_from_row(
         DeclarationReference {
             symbol_id: row.get(1)?,
             name: row.get(2)?,
-            container: row.get(3)?,
-            line: row.get(4)?,
-            column: row.get(5)?,
+            kind: row.get(3)?,
+            container: row.get(4)?,
+            line: row.get(5)?,
+            column: row.get(6)?,
         },
     ))
 }

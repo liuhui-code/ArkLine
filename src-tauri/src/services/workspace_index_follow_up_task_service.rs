@@ -44,8 +44,7 @@ fn schedule_discovery_tasks(
         .lock()
         .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
     for task in tasks {
-        summary.root_paths.push(task.root_path.clone());
-        summary.superseded_tasks.extend(scheduler.schedule(task));
+        push_schedule_summary(&mut scheduler, task, summary);
     }
     Ok(())
 }
@@ -64,8 +63,7 @@ fn schedule_refresh_after_discovery_tasks(
         .lock()
         .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
     for task in tasks {
-        summary.root_paths.push(task.root_path.clone());
-        summary.superseded_tasks.extend(scheduler.schedule(task));
+        push_schedule_summary(&mut scheduler, task, summary);
     }
     Ok(())
 }
@@ -80,10 +78,22 @@ fn schedule_sdk_continuation_tasks(
         .lock()
         .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
     for task in tasks {
-        summary.root_paths.push(task.root_path.clone());
-        summary.superseded_tasks.extend(scheduler.schedule(task));
+        push_schedule_summary(&mut scheduler, task, summary);
     }
     Ok(())
+}
+
+fn push_schedule_summary(
+    scheduler: &mut WorkspaceIndexScheduler,
+    task: WorkspaceIndexTask,
+    summary: &mut WorkspaceIndexFollowUpScheduleSummary,
+) {
+    let root_path = task.root_path.clone();
+    let result = scheduler.schedule_with_result(task);
+    if result.scheduled {
+        summary.root_paths.push(root_path);
+        summary.superseded_tasks.extend(result.superseded_tasks);
+    }
 }
 
 fn sdk_continuation_task(result: &WorkspaceIndexTaskResult) -> Option<WorkspaceIndexTask> {

@@ -9,6 +9,7 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_reference_index_service::{
     query_reference_at_position, query_references_by_symbol_id,
 };
+use crate::services::workspace_symbol_identity_merge_service::query_merged_symbol_ids;
 use crate::services::workspace_symbol_resolution_query_service::{
     query_resolved_symbols_by_name, query_resolved_symbols_by_name_and_path,
 };
@@ -28,7 +29,7 @@ pub fn query_usages_with_readiness(
             next_cursor: None,
         });
     };
-    let references = query_references_by_symbol_id(root_path, &symbol_id, limit)?;
+    let references = query_references_for_merged_symbols(root_path, &symbol_id, limit)?;
     let items = references
         .into_iter()
         .filter(|reference| reference.kind != "declaration")
@@ -47,6 +48,33 @@ pub fn query_usages_with_readiness(
         explain: Vec::new(),
         next_cursor: None,
     })
+}
+
+fn query_references_for_merged_symbols(
+    root_path: &str,
+    symbol_id: &str,
+    limit: usize,
+) -> Result<
+    Vec<crate::services::workspace_reference_query_service::WorkspaceSymbolReferenceRow>,
+    String,
+> {
+    let mut references = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for merged_id in query_merged_symbol_ids(root_path, symbol_id)? {
+        for reference in query_references_by_symbol_id(root_path, &merged_id, limit)? {
+            if seen.insert(reference.reference_id.clone()) {
+                references.push(reference);
+            }
+        }
+    }
+    references.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.column.cmp(&right.column))
+    });
+    references.truncate(limit);
+    Ok(references)
 }
 
 fn target_symbol_id_at_position(

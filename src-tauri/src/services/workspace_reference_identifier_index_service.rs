@@ -66,10 +66,14 @@ pub fn index_workspace_identifier_references(
     indexed_generation: u64,
     include_local_scope: bool,
 ) -> Result<(), String> {
-    if aliases.is_empty() && !include_local_scope {
+    let callable_targets = load_file_callable_targets(connection, root_key, path)?;
+    if aliases.is_empty() && callable_targets.is_empty() && !include_local_scope {
         return Ok(());
     }
-    if !include_local_scope && !content_may_reference_aliases(path, content, aliases) {
+    if !include_local_scope
+        && !content_may_reference_aliases(path, content, aliases)
+        && !content_may_reference_callables(content, &callable_targets)
+    {
         return Ok(());
     }
     let mut symbol_statement = connection
@@ -98,6 +102,16 @@ pub fn index_workspace_identifier_references(
             }
             let symbol_id = aliases
                 .get(&(path.to_string(), token.name.to_string()))
+                .or_else(|| {
+                    token_is_call(line, token.end_column).and_then(|_| {
+                        callable_targets.get(token.name).and_then(|targets| {
+                            targets
+                                .iter()
+                                .find(|target| !target.is_declaration_at(line_index as i64 + 1, token.column))
+                                .map(|target| &target.symbol_id)
+                        })
+                    })
+                })
                 .cloned();
             if symbol_id.is_some() {
                 insert_identifier_reference(
@@ -124,6 +138,42 @@ pub fn index_workspace_identifier_references(
     Ok(())
 }
 
+fn load_file_callable_targets(
+    connection: &Connection,
+    root_key: &str,
+    path: &str,
+) -> Result<HashMap<String, Vec<CallableTarget>>, String> {
+    let mut statement = connection
+        .prepare(
+            "select name, symbol_id, line, column
+             from workspace_resolved_symbols
+             where root_path = ?1
+               and path = ?2
+               and source = 'project'
+               and kind in ('function', 'method')
+             order by line, column",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![root_key, path], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                CallableTarget {
+                    symbol_id: row.get(1)?,
+                    line: row.get(2)?,
+                    column: row.get(3)?,
+                },
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    let mut targets: HashMap<String, Vec<CallableTarget>> = HashMap::new();
+    for row in rows {
+        let (name, target) = row.map_err(|error| error.to_string())?;
+        targets.entry(name).or_default().push(target);
+    }
+    Ok(targets)
+}
+
 pub(crate) fn content_may_reference_aliases(
     path: &str,
     content: &str,
@@ -132,6 +182,19 @@ pub(crate) fn content_may_reference_aliases(
     aliases
         .keys()
         .any(|(alias_path, alias_name)| alias_path == path && content.contains(alias_name))
+}
+
+fn content_may_reference_callables(content: &str, targets: &HashMap<String, Vec<CallableTarget>>) -> bool {
+    targets.keys().any(|name| content.contains(name))
+}
+
+fn token_is_call(line: &str, end_column: usize) -> Option<()> {
+    let mut index = end_column.saturating_sub(1);
+    let bytes = line.as_bytes();
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    (bytes.get(index) == Some(&b'(')).then_some(())
 }
 
 fn insert_identifier_reference(
@@ -236,4 +299,16 @@ struct IdentifierToken<'a> {
     name: &'a str,
     column: usize,
     end_column: usize,
+}
+
+struct CallableTarget {
+    symbol_id: String,
+    line: i64,
+    column: i64,
+}
+
+impl CallableTarget {
+    fn is_declaration_at(&self, line: i64, column: usize) -> bool {
+        self.line == line && self.column == column as i64
+    }
 }

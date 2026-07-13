@@ -5,6 +5,12 @@ pub(crate) struct WorkspaceIncrementalPathPlan {
     pub(crate) affected_paths: Vec<String>,
 }
 
+impl WorkspaceIncrementalPathPlan {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.affected_paths.is_empty()
+    }
+}
+
 pub(crate) fn plan_incremental_index_paths(
     changed_paths: &[String],
     removed_paths: &[String],

@@ -72,15 +72,29 @@ pub fn index_workspace_member_references_with_context(
             .cloned()
             .unwrap_or_default();
         for member in member_accesses(line) {
-            let project_target = receiver_types.get(member.owner).and_then(|receiver_type| {
-                resolve_project_member_target(
-                    &context.project_targets,
-                    &import_type_targets,
-                    &unresolved_import_types,
-                    receiver_type,
-                    member.name,
-                )
-            });
+            let project_target = receiver_types
+                .get(member.owner)
+                .and_then(|receiver_type| {
+                    resolve_project_member_target(
+                        &context.project_targets,
+                        &import_type_targets,
+                        &unresolved_import_types,
+                        receiver_type,
+                        member.name,
+                    )
+                })
+                .or_else(|| {
+                    if !member.owner.contains('.') {
+                        return None;
+                    }
+                    resolve_project_member_target(
+                        &context.project_targets,
+                        &import_type_targets,
+                        &unresolved_import_types,
+                        member.owner,
+                        member.name,
+                    )
+                });
             let sdk_target = context
                 .sdk_targets
                 .iter()

@@ -118,8 +118,12 @@ pub fn schedule_resume_tasks_from_store(
         .lock()
         .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
     for task in tasks {
-        root_paths.push(task.root_path.clone());
-        superseded_tasks.extend(scheduler.schedule(task));
+        let root_path = task.root_path.clone();
+        let result = scheduler.schedule_with_result(task);
+        if result.scheduled {
+            root_paths.push(root_path);
+            superseded_tasks.extend(result.superseded_tasks);
+        }
     }
     root_paths.sort();
     root_paths.dedup();

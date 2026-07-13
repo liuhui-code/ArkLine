@@ -2,7 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::services::workspace_index_query_service::query_workspace_search_everywhere;
+use crate::services::workspace_index_facade_service::query_facade_search_everywhere_with_readiness;
+use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -50,7 +51,15 @@ fn search_everywhere_returns_filesystem_paths_that_can_be_opened() {
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
 
-    let matches = query_workspace_search_everywhere(&runtime, &root_path, "login", 8).unwrap();
+    let matches = query_facade_search_everywhere_with_readiness(
+        &runtime,
+        &root_path,
+        "login",
+        WorkspaceIndexQueryScope::All,
+        8,
+    )
+    .unwrap()
+    .items;
     let path = matches
         .iter()
         .find(|candidate| candidate.title == "LoginController")

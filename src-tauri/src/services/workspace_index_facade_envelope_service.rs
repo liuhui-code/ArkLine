@@ -4,25 +4,25 @@ use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
 
-pub fn search_query_envelope(
+pub(crate) fn search_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate> {
     typed_query_envelope(envelope, search_item)
 }
 
-pub fn definition_query_envelope(
+pub(crate) fn definition_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<DefinitionCandidate> {
     typed_query_envelope(envelope, definition_item)
 }
 
-pub fn usage_query_envelope(
+pub(crate) fn usage_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<UsageResult> {
     typed_query_envelope(envelope, usage_item)
 }
 
-pub fn completion_query_envelope(
+pub(crate) fn completion_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<CompletionItem> {
     typed_query_envelope(envelope, completion_item)

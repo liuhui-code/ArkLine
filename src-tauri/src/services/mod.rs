@@ -72,6 +72,7 @@ pub(crate) mod workspace_content_match_service;
 #[cfg(test)]
 mod workspace_content_match_service_tests;
 pub mod workspace_content_query_service;
+pub(crate) mod workspace_definition_candidate_query_service;
 #[cfg(test)]
 mod workspace_definition_member_query_tests;
 #[cfg(test)]
@@ -135,9 +136,10 @@ mod workspace_index_cache_path_service_tests;
 pub mod workspace_index_cancellation_service;
 #[cfg(test)]
 mod workspace_index_cancellation_service_tests;
-pub mod workspace_index_candidate_page_service;
+pub(crate) mod workspace_index_candidate_page_service;
 #[cfg(test)]
 mod workspace_index_candidate_page_service_tests;
+pub(crate) mod workspace_index_changed_path_worker_service;
 pub mod workspace_index_chunk_service;
 #[cfg(test)]
 mod workspace_index_chunk_service_tests;
@@ -148,9 +150,13 @@ pub mod workspace_index_deep_layer_service;
 #[cfg(test)]
 mod workspace_index_dependency_expansion_service_tests;
 #[cfg(test)]
+mod workspace_index_diagnostics_event_tests;
+#[cfg(test)]
 mod workspace_index_diagnostics_retry_tests;
 #[cfg(test)]
 mod workspace_index_diagnostics_schema_service_tests;
+#[cfg(test)]
+mod workspace_index_diagnostics_sdk_tests;
 pub mod workspace_index_diagnostics_service;
 #[cfg(test)]
 mod workspace_index_diagnostics_service_tests;
@@ -158,24 +164,25 @@ pub(crate) mod workspace_index_discovery_result_service;
 pub mod workspace_index_entity_persistence_service;
 #[cfg(test)]
 mod workspace_index_entity_persistence_service_tests;
-pub mod workspace_index_entity_query_service;
+pub(crate) mod workspace_index_entity_query_service;
 #[cfg(test)]
 mod workspace_index_entity_query_service_tests;
+pub(crate) mod workspace_index_entity_store_service;
 pub mod workspace_index_event_service;
 #[cfg(test)]
 mod workspace_index_event_service_tests;
 pub mod workspace_index_explain_service;
 #[cfg(test)]
 mod workspace_index_explain_service_tests;
-pub mod workspace_index_facade_completion_service;
+pub(crate) mod workspace_index_facade_completion_service;
 #[cfg(test)]
 mod workspace_index_facade_completion_tests;
-pub mod workspace_index_facade_envelope_service;
-pub mod workspace_index_facade_event_service;
-pub mod workspace_index_facade_explain_service;
-pub mod workspace_index_facade_navigation_service;
-pub mod workspace_index_facade_readiness_gate_service;
-pub mod workspace_index_facade_search_service;
+pub(crate) mod workspace_index_facade_envelope_service;
+pub(crate) mod workspace_index_facade_event_service;
+pub(crate) mod workspace_index_facade_explain_service;
+pub(crate) mod workspace_index_facade_navigation_service;
+pub(crate) mod workspace_index_facade_readiness_gate_service;
+pub(crate) mod workspace_index_facade_search_service;
 #[cfg(test)]
 mod workspace_index_facade_search_tests;
 pub mod workspace_index_facade_service;
@@ -199,6 +206,8 @@ pub mod workspace_index_health_service;
 #[cfg(test)]
 mod workspace_index_health_service_tests;
 pub mod workspace_index_incremental_persistence_service;
+#[cfg(test)]
+mod workspace_index_incremental_persistence_service_tests;
 pub mod workspace_index_layer_readiness_service;
 #[cfg(test)]
 mod workspace_index_layer_readiness_service_tests;
@@ -224,6 +233,9 @@ mod workspace_index_manager_resume_tests;
 pub mod workspace_index_manager_service;
 #[cfg(test)]
 mod workspace_index_manager_service_tests;
+pub(crate) mod workspace_index_manager_status_service;
+#[cfg(test)]
+mod workspace_index_manager_worker_tests;
 pub(crate) mod workspace_index_metadata_restore_service;
 #[cfg(test)]
 mod workspace_index_metadata_restore_service_tests;
@@ -258,6 +270,8 @@ pub mod workspace_index_repair_action_service;
 pub mod workspace_index_repair_service;
 #[cfg(test)]
 mod workspace_index_repair_service_tests;
+#[cfg(test)]
+mod workspace_index_restore_tests;
 pub mod workspace_index_resume_service;
 #[cfg(test)]
 mod workspace_index_resume_service_tests;
@@ -298,11 +312,13 @@ pub mod workspace_index_task_lifecycle_service;
 pub mod workspace_index_task_status_service;
 #[cfg(test)]
 mod workspace_index_test_fixture_service;
-pub mod workspace_index_text_candidate_service;
+pub(crate) mod workspace_index_text_candidate_service;
 pub(crate) mod workspace_index_ui_activity_service;
 #[cfg(test)]
 mod workspace_index_ui_activity_service_tests;
 pub mod workspace_index_watcher_service;
+#[cfg(test)]
+mod workspace_index_worker_batch_tests;
 #[cfg(test)]
 mod workspace_index_worker_budget_integration_tests;
 pub(crate) mod workspace_index_worker_budget_service;
@@ -352,6 +368,9 @@ pub mod workspace_reference_receiver_type_service;
 pub(crate) mod workspace_reference_refresh_plan_service;
 #[cfg(test)]
 mod workspace_reference_refresh_plan_service_tests;
+pub mod workspace_rename_impact_service;
+#[cfg(test)]
+mod workspace_rename_impact_service_tests;
 pub mod workspace_sdk_api_cache_service;
 #[cfg(test)]
 mod workspace_sdk_api_cache_service_tests;
@@ -369,6 +388,8 @@ pub mod workspace_sdk_parser_service;
 mod workspace_sdk_persistence_service_tests;
 pub mod workspace_sdk_schema_service;
 #[cfg(test)]
+mod workspace_sdk_search_facade_tests;
+#[cfg(test)]
 mod workspace_search_everywhere_service_tests;
 pub mod workspace_search_ranking_service;
 #[cfg(test)]
@@ -384,6 +405,10 @@ pub(crate) mod workspace_stub_index_writer_service;
 pub(crate) mod workspace_stub_refresh_plan_service;
 #[cfg(test)]
 mod workspace_stub_refresh_plan_service_tests;
+pub mod workspace_symbol_hierarchy_service;
+#[cfg(test)]
+mod workspace_symbol_hierarchy_service_tests;
+pub mod workspace_symbol_identity_merge_service;
 pub mod workspace_symbol_identity_service;
 pub mod workspace_symbol_index_service;
 pub mod workspace_symbol_resolution_alias_service;

@@ -337,7 +337,11 @@ fn index_workspace_references_for_paths(
             continue;
         }
         declaration_inserter.index(root_key, &path, &declarations, indexed_generation)?;
-        if aliases.is_empty() && member_context.is_none() && !include_local_scope {
+        if aliases.is_empty()
+            && member_context.is_none()
+            && !include_local_scope
+            && !has_callable_declarations(declarations.get(&path))
+        {
             continue;
         }
         let Some(content) = contents.get(&path) else {
@@ -364,6 +368,14 @@ fn index_workspace_references_for_paths(
         )?;
     }
     Ok(())
+}
+
+fn has_callable_declarations(declarations: Option<&Vec<DeclarationReference>>) -> bool {
+    declarations.is_some_and(|declarations| {
+        declarations
+            .iter()
+            .any(|declaration| matches!(declaration.kind.as_str(), "function" | "method"))
+    })
 }
 
 fn delete_workspace_references_for_paths(

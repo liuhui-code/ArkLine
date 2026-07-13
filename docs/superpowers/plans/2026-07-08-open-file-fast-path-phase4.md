@@ -16,19 +16,19 @@
 - Modify: `src/components/layout/use-editor-surface-controller.ts`
 - Test: `tests/frontend/use-editor-surface-controller.test.tsx`
 
-- [ ] **Step 1: Add regression tests**
+- [x] **Step 1: Add regression tests**
 
 Verify that an already loaded document activates without calling `workspaceApi.openFile`, and that a cached closed document reopens as a tab without replacing in-memory content.
 
-- [ ] **Step 2: Implement fast path**
+- [x] **Step 2: Implement fast path**
 
 Check `documentsRef.current.getDocument(path)` before starting a navigation transaction or reading from the backend.
 
-- [ ] **Step 3: Share activation logic**
+- [x] **Step 3: Share activation logic**
 
 Move tab activation, transient editor reset, overlay close, and focus token bump into a local helper used by both cached and newly read documents.
 
-- [ ] **Step 4: Verify focused tests**
+- [x] **Step 4: Verify focused tests**
 
 Run:
 
@@ -38,22 +38,24 @@ Run:
 
 Expected: all tests pass.
 
+Actual: `tests/frontend/use-editor-surface-controller.test.tsx`, `tests/frontend/use-editor-navigation.test.tsx`, and `tests/frontend/navigation-transaction-runtime.test.ts` passed.
+
 ### Task 2: Release Checks
 
 **Files:**
 - Modify only files from Task 1 and this plan.
 
-- [ ] **Step 1: File size check**
+- [x] **Step 1: File size check**
 
 Run:
 
 ```bash
-wc -l src/components/layout/use-editor-surface-controller.ts tests/frontend/use-editor-surface-controller.test.tsx docs/superpowers/plans/2026-07-08-open-file-fast-path-phase4.md
+wc -l src/components/layout/use-editor-surface-controller.ts tests/frontend/use-editor-surface-controller.test.tsx tests/frontend/use-editor-navigation.test.tsx tests/frontend/navigation-transaction-runtime.test.ts docs/superpowers/plans/2026-07-08-open-file-fast-path-phase4.md
 ```
 
 Expected: every code file is under 500 lines.
 
-- [ ] **Step 2: Build and performance gate**
+- [x] **Step 2: Build and performance gate**
 
 Run:
 
@@ -65,7 +67,9 @@ git diff --check
 
 Expected: all commands pass.
 
-- [ ] **Step 3: Commit**
+Actual: `pnpm build`, `pnpm perf:runtime`, and `git diff --check HEAD --` passed. `pnpm build` still reports the existing Vite chunk-size warning.
+
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-07-08-open-file-fast-path-phase4.md src/components/layout/use-editor-surface-controller.ts tests/frontend/use-editor-surface-controller.test.tsx

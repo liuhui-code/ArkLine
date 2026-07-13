@@ -72,6 +72,47 @@ fn coalesces_and_deduplicates_changed_paths_for_the_same_root() {
 }
 
 #[test]
+fn ignores_duplicate_changed_path_subsets_without_generation_churn() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+
+    let first = scheduler.schedule_with_result(changed_task("/workspace", &["A.ets", "B.ets"]));
+    let second = scheduler.schedule_with_result(changed_task("/workspace", &["B.ets"]));
+    let tasks = scheduler.drain_ready();
+
+    assert!(first.scheduled);
+    assert!(!second.scheduled);
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].generation, 1);
+    assert_eq!(tasks[0].changed_paths, vec!["A.ets", "B.ets"]);
+}
+
+#[test]
+fn drops_empty_changed_path_tasks_before_they_enter_the_queue() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+
+    let cancelled = scheduler.schedule(changed_task("/workspace", &[]));
+
+    assert!(cancelled.is_empty());
+    assert!(!scheduler.has_pending_tasks());
+}
+
+#[test]
+fn keeps_empty_discovery_tasks_because_they_start_root_enumeration() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    let mut task = changed_task("/workspace", &[]);
+    task.priority = WorkspaceIndexTaskPriority::VisibleFiles;
+    task.reason = "workspace-discovery".to_string();
+
+    scheduler.schedule(task);
+    let tasks = scheduler.drain_ready();
+
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].kind, WorkspaceIndexTaskKind::ChangedPaths);
+    assert_eq!(tasks[0].reason, "workspace-discovery");
+    assert!(tasks[0].changed_paths.is_empty());
+}
+
+#[test]
 fn keeps_changed_path_tasks_for_different_roots_separate() {
     let mut scheduler = WorkspaceIndexScheduler::default();
 

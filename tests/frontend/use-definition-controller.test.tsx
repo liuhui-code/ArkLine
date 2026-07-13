@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetForegroundIndexScheduleGate } from "@/components/layout/foreground-index-schedule-gate";
 import { useDefinitionController } from "@/components/layout/use-definition-controller";
 import { LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD } from "@/components/layout/language-query-request-model";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
@@ -9,6 +10,7 @@ import { idleUsageSearchState, type UsageSearchState } from "@/features/workspac
 describe("useDefinitionController", () => {
   afterEach(() => {
     languageQuerySnapshotStore.clear();
+    resetForegroundIndexScheduleGate();
   });
 
   it("opens indexed resolved definition targets", async () => {
@@ -124,6 +126,28 @@ describe("useDefinitionController", () => {
 
     expect(scheduleForegroundNavigationIndex).toHaveBeenCalledWith("/workspace", ["/workspace/A.ets"]);
     expect(events.slice(0, 2)).toEqual(["schedule-navigation-index", "query-definition"]);
+  });
+
+  it("deduplicates rapid foreground navigation indexing for the same file", async () => {
+    const scheduleForegroundNavigationIndex = vi.fn(async () => undefined);
+    const queryDefinitionCandidatesWithReadiness = vi.fn(async () => ({
+      items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
+      readiness: readiness("ready"),
+    }));
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({
+        scheduleForegroundNavigationIndex,
+        queryDefinitionCandidatesWithReadiness,
+      }),
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(scheduleForegroundNavigationIndex).toHaveBeenCalledTimes(1);
+    expect(queryDefinitionCandidatesWithReadiness).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the latest resolved definition target when an older file open finishes later", async () => {

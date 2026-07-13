@@ -11,7 +11,7 @@ use crate::services::workspace_index_facade_service::{
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
-pub fn query_facade_completion(
+pub(crate) fn query_facade_completion(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
     request: &LanguageQueryRequest,

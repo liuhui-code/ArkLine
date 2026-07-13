@@ -246,6 +246,51 @@ export type DefinitionCandidate = {
   preview: string;
 };
 
+export type RenameImpactItem = {
+  path: string;
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  name: string;
+  kind: string;
+  confidence: string;
+  preview: string;
+};
+
+export type RenameImpactResult = {
+  symbolId: string;
+  currentName: string;
+  declaration: RenameImpactItem | null;
+  references: RenameImpactItem[];
+};
+
+export type SymbolHierarchyNode = {
+  symbolId: string;
+  name: string;
+  kind: string;
+  path: string;
+  line: number;
+  column: number;
+  preview: string;
+};
+
+export type CallHierarchyEdge = SymbolHierarchyNode & {
+  confidence: string;
+};
+
+export type CallHierarchyResult = {
+  target: SymbolHierarchyNode;
+  incoming: CallHierarchyEdge[];
+  outgoing: CallHierarchyEdge[];
+};
+
+export type TypeHierarchyResult = {
+  target: SymbolHierarchyNode;
+  supertypes: SymbolHierarchyNode[];
+  subtypes: SymbolHierarchyNode[];
+};
+
 export type LanguageCompletionItem = {
   label: string;
   detail: string;
@@ -339,12 +384,13 @@ export type WorkspaceApi = {
   indexWorkspaceSdkSymbols?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceSdkIndexSummary>;
   submitWorkspaceSdkIndex?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceSearchEverywhere?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidates?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<SearchCandidate[]>;
   queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
   queryUsagesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<UsageResult>>;
+  queryRenameImpact?(rootPath: string, request: LanguageQueryRequest): Promise<RenameImpactResult | null>;
+  queryCallHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
+  queryTypeHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
   semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;

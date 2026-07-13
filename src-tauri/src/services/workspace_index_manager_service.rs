@@ -14,6 +14,10 @@ use crate::services::workspace_index_cancellation_service::{
     WorkspaceIndexCancellationRegistry,
 };
 use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
+use crate::services::workspace_index_manager_status_service::{
+    mark_superseded_results, store_cancelled_statuses, store_pending_statuses_for_root,
+    store_recent_status, store_superseded_statuses,
+};
 use crate::services::workspace_index_queue_pressure_service::project_queue_pressure;
 use crate::services::workspace_index_resume_service::{
     clear_completed_resume_tasks, schedule_resume_tasks_from_store,
@@ -23,18 +27,15 @@ use crate::services::workspace_index_scheduler_service::{
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_state_machine_service::{
-    should_publish_task_result, task_state_label, WorkspaceIndexTaskState,
+    task_state_label, WorkspaceIndexTaskState,
 };
 use crate::services::workspace_index_status_projection_service::{
     is_terminal_task_status, project_task_statuses,
 };
-use crate::services::workspace_index_task_journal_service::{
-    load_recent_task_statuses, store_task_status, store_task_status_with_events,
-};
-use crate::services::workspace_index_task_lifecycle_service::task_supersedes_result;
+use crate::services::workspace_index_task_journal_service::load_recent_task_statuses;
 use crate::services::workspace_index_task_status_service::{
-    current_time_millis, superseded_task_result, task_status_from_publishable_result,
-    task_status_from_state_transition, task_status_from_task, WorkspaceIndexTaskResult,
+    current_time_millis, task_status_from_publishable_result, task_status_from_task,
+    WorkspaceIndexTaskResult,
 };
 use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity;
 
@@ -58,9 +59,9 @@ impl WorkspaceIndexManagerRuntime {
             "open-workspace",
         )?;
         let summary = schedule_resume_tasks_from_store(&self.scheduler, root_path)?;
-        self.store_superseded_statuses(summary.superseded_tasks)?;
+        store_superseded_statuses(&self.recent_statuses, summary.superseded_tasks)?;
         for root_path in summary.root_paths {
-            self.store_pending_statuses_for_root(&root_path)?;
+            store_pending_statuses_for_root(&self.scheduler, &root_path)?;
         }
         Ok(())
     }
@@ -98,11 +99,11 @@ impl WorkspaceIndexManagerRuntime {
             return Ok(());
         }
 
-        let superseded = {
+        let schedule_result = {
             self.scheduler
                 .lock()
                 .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
-                .schedule(WorkspaceIndexTask {
+                .schedule_with_result(WorkspaceIndexTask {
                     root_path: root_path.to_string(),
                     kind: WorkspaceIndexTaskKind::ChangedPaths,
                     priority,
@@ -113,14 +114,17 @@ impl WorkspaceIndexManagerRuntime {
                     reason: reason.to_string(),
                 })
         };
+        if !schedule_result.scheduled {
+            return Ok(());
+        }
         cancel_active_tasks_superseded_by_latest(
             &self.cancellations,
             &self.scheduler,
             root_path,
             WorkspaceIndexTaskKind::ChangedPaths,
         )?;
-        self.store_superseded_statuses(superseded)?;
-        self.store_pending_statuses_for_root(root_path)?;
+        store_superseded_statuses(&self.recent_statuses, schedule_result.superseded_tasks)?;
+        store_pending_statuses_for_root(&self.scheduler, root_path)?;
         self.wake_background_worker()?;
         Ok(())
     }
@@ -152,8 +156,8 @@ impl WorkspaceIndexManagerRuntime {
             root_path,
             WorkspaceIndexTaskKind::IndexSdk,
         )?;
-        self.store_cancelled_statuses(cancelled)?;
-        self.store_pending_statuses_for_root(root_path)?;
+        store_cancelled_statuses(&self.recent_statuses, cancelled)?;
+        store_pending_statuses_for_root(&self.scheduler, root_path)?;
         self.wake_background_worker()?;
         Ok(())
     }
@@ -234,8 +238,8 @@ impl WorkspaceIndexManagerRuntime {
             root_path,
             kind,
         )?;
-        self.store_superseded_statuses(superseded)?;
-        self.store_pending_statuses_for_root(root_path)?;
+        store_superseded_statuses(&self.recent_statuses, superseded)?;
+        store_pending_statuses_for_root(&self.scheduler, root_path)?;
         self.wake_background_worker()?;
         Ok(())
     }
@@ -300,7 +304,7 @@ impl WorkspaceIndexManagerRuntime {
             index_runtime,
             guarded_tasks,
             |running_status| {
-                let events = self.store_recent_status(running_status.clone())?;
+                let events = store_recent_status(&self.recent_statuses, running_status.clone())?;
                 on_status(running_status, events);
                 Ok::<(), String>(())
             },
@@ -308,17 +312,17 @@ impl WorkspaceIndexManagerRuntime {
         );
         finish_cancellable_tasks(&self.cancellations, &tokens)?;
         let results = results?;
-        let results = self.mark_superseded_results(results)?;
+        let results = mark_superseded_results(&self.scheduler, results)?;
         clear_completed_resume_tasks(&results)?;
         let continuation_summary = schedule_index_follow_up_tasks(&self.scheduler, &results)?;
-        self.store_superseded_statuses(continuation_summary.superseded_tasks)?;
+        store_superseded_statuses(&self.recent_statuses, continuation_summary.superseded_tasks)?;
         for root_path in continuation_summary.root_paths {
-            self.store_pending_statuses_for_root(&root_path)?;
+            store_pending_statuses_for_root(&self.scheduler, &root_path)?;
         }
 
         for result in &results {
             let ready_status = task_status_from_publishable_result(result)?;
-            let events = self.store_recent_status(ready_status.clone())?;
+            let events = store_recent_status(&self.recent_statuses, ready_status.clone())?;
             on_status(ready_status, events);
         }
 
@@ -398,100 +402,5 @@ impl WorkspaceIndexManagerRuntime {
             )
             .map(|(_, timeout)| timeout.timed_out())
             .unwrap_or(true)
-    }
-
-    fn store_recent_status(
-        &self,
-        status: WorkspaceIndexTaskStatus,
-    ) -> Result<Vec<WorkspaceIndexEvent>, String> {
-        {
-            let mut statuses = self
-                .recent_statuses
-                .lock()
-                .map_err(|_| "Workspace index status lock poisoned".to_string())?;
-            statuses.retain(|existing| existing.task_id != status.task_id);
-            statuses.push(status.clone());
-            statuses.sort_by(|left, right| left.generation.cmp(&right.generation));
-            if statuses.len() > 32 {
-                let overflow = statuses.len() - 32;
-                statuses.drain(0..overflow);
-            }
-        }
-        store_task_status_with_events(&status.root_path, &status)
-    }
-
-    fn store_pending_statuses_for_root(&self, root_path: &str) -> Result<(), String> {
-        let tasks = self
-            .scheduler
-            .lock()
-            .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
-            .pending_tasks_for_root(root_path);
-        for task in tasks {
-            store_task_status(
-                root_path,
-                &task_status_from_task(
-                    &task,
-                    task_state_label(WorkspaceIndexTaskState::Queued),
-                    None,
-                    None,
-                ),
-            )?;
-        }
-        Ok(())
-    }
-
-    fn store_cancelled_statuses(&self, tasks: Vec<WorkspaceIndexTask>) -> Result<(), String> {
-        for task in tasks {
-            self.store_recent_status(task_status_from_state_transition(
-                &task,
-                WorkspaceIndexTaskState::Queued,
-                WorkspaceIndexTaskState::Cancelled,
-                None,
-                Some("Replaced by a newer index task".to_string()),
-            )?)?;
-        }
-        Ok(())
-    }
-
-    fn store_superseded_statuses(&self, tasks: Vec<WorkspaceIndexTask>) -> Result<(), String> {
-        for task in tasks {
-            self.store_recent_status(task_status_from_state_transition(
-                &task,
-                WorkspaceIndexTaskState::Queued,
-                WorkspaceIndexTaskState::Superseded,
-                None,
-                Some("Replaced by a newer index task".to_string()),
-            )?)?;
-        }
-        Ok(())
-    }
-
-    fn mark_superseded_results(
-        &self,
-        results: Vec<WorkspaceIndexTaskResult>,
-    ) -> Result<Vec<WorkspaceIndexTaskResult>, String> {
-        results
-            .into_iter()
-            .map(|result| {
-                if self.has_newer_pending_task(&result)? {
-                    Ok(superseded_task_result(result))
-                } else {
-                    Ok(result)
-                }
-            })
-            .collect()
-    }
-
-    fn has_newer_pending_task(&self, result: &WorkspaceIndexTaskResult) -> Result<bool, String> {
-        Ok(self
-            .scheduler
-            .lock()
-            .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
-            .pending_tasks_for_root(&result.root_path)
-            .iter()
-            .any(|task| {
-                !should_publish_task_result(result.generation, task.generation)
-                    && task_supersedes_result(task, &result.kind, &result.reason)
-            }))
     }
 }
