@@ -58,8 +58,10 @@ const baseRequest = {
 describe("completion candidate provider", () => {
   it("combines semantic, file-index, workspace-index, and keyword completions", async () => {
     const api = workspaceApi({
-      queryWorkspaceFileSymbols: async () => [candidate({ title: "localBuild" })],
-      queryWorkspaceCandidates: async () => [candidate({ source: "class", kind: "class", title: "PrivateProfile" })],
+      queryWorkspaceFileSymbolsWithReadiness: async () => envelope([candidate({ title: "localBuild" })]),
+      queryWorkspaceCandidatesWithReadiness: async () => envelope([
+        candidate({ source: "class", kind: "class", title: "PrivateProfile" }),
+      ]),
     });
 
     const items = await collectCompletionCandidates({
@@ -241,24 +243,24 @@ describe("completion candidate provider", () => {
   });
 
   it("does not query workspace-wide symbols without a prefix", async () => {
-    const queryWorkspaceCandidates = vi.fn(async () => [candidate()]);
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => envelope([candidate()]));
     const api = workspaceApi({
-      queryWorkspaceFileSymbols: async () => [candidate({ title: "localBuild" })],
-      queryWorkspaceCandidates,
+      queryWorkspaceFileSymbolsWithReadiness: async () => envelope([candidate({ title: "localBuild" })]),
+      queryWorkspaceCandidatesWithReadiness,
     });
 
     const items = await collectCompletionCandidates({ ...baseRequest, workspaceApi: api });
 
-    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
+    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual(["semanticBuild()", "localBuild()"]);
   });
 
   it("keeps semantic completions when indexed completion queries fail", async () => {
     const api = workspaceApi({
-      queryWorkspaceFileSymbols: async () => {
+      queryWorkspaceFileSymbolsWithReadiness: async () => {
         throw new Error("file index unavailable");
       },
-      queryWorkspaceCandidates: async () => {
+      queryWorkspaceCandidatesWithReadiness: async () => {
         throw new Error("workspace index unavailable");
       },
     });
@@ -273,11 +275,33 @@ describe("completion candidate provider", () => {
     expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
   });
 
-  it("falls back to indexed and keyword completions when language service completion is unavailable", async () => {
+  it("does not use legacy indexed query APIs for completion candidates", async () => {
+    const queryWorkspaceFileSymbols = vi.fn(async () => [candidate({ title: "legacyLocal" })]);
+    const queryWorkspaceCandidates = vi.fn(async () => [candidate({ source: "class", kind: "class", title: "LegacyProfile" })]);
+    const api = workspaceApi({
+      queryWorkspaceFileSymbols,
+      queryWorkspaceCandidates,
+    });
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      query: "leg",
+      replacePrefix: "leg",
+    });
+
+    expect(queryWorkspaceFileSymbols).not.toHaveBeenCalled();
+    expect(queryWorkspaceCandidates).not.toHaveBeenCalled();
+    expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
+  });
+
+  it("uses indexed readiness and keyword completions when language service completion is unavailable", async () => {
     const api = workspaceApi({
       completeSymbol: undefined,
-      queryWorkspaceFileSymbols: async () => [candidate({ title: "localBuild" })],
-      queryWorkspaceCandidates: async () => [candidate({ source: "class", kind: "class", title: "PrivateProfile" })],
+      queryWorkspaceFileSymbolsWithReadiness: async () => envelope([candidate({ title: "localBuild" })]),
+      queryWorkspaceCandidatesWithReadiness: async () => envelope([
+        candidate({ source: "class", kind: "class", title: "PrivateProfile" }),
+      ]),
     });
 
     const items = await collectCompletionCandidates({
@@ -301,13 +325,13 @@ describe("completion candidate provider", () => {
         events.push("semantic-start");
         return semanticPromise;
       },
-      queryWorkspaceFileSymbols: async () => {
+      queryWorkspaceFileSymbolsWithReadiness: async () => {
         events.push("file-index-start");
-        return [candidate({ title: "localBuild" })];
+        return envelope([candidate({ title: "localBuild" })]);
       },
-      queryWorkspaceCandidates: async () => {
+      queryWorkspaceCandidatesWithReadiness: async () => {
         events.push("workspace-index-start");
-        return [candidate({ source: "class", kind: "class", title: "PrivateProfile" })];
+        return envelope([candidate({ source: "class", kind: "class", title: "PrivateProfile" })]);
       },
     });
 

@@ -44,14 +44,10 @@ export async function collectCompletionCandidateResult({
   const semanticRequest = collectSemanticCompletionResult(workspaceApi, rootPath, languageRequest);
   const fileIndexRequest = rootPath && workspaceApi.queryWorkspaceFileSymbolsWithReadiness
     ? workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, queryText, 80)
-    : rootPath && workspaceApi.queryWorkspaceFileSymbols
-      ? workspaceApi.queryWorkspaceFileSymbols(rootPath, path, queryText, 80).then(indexItemsEnvelope)
-      : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
+    : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
   const workspaceIndexRequest = rootPath && workspaceApi.queryWorkspaceCandidatesWithReadiness && queryText
     ? workspaceApi.queryWorkspaceCandidatesWithReadiness(rootPath, queryText, "all", 80)
-    : rootPath && workspaceApi.queryWorkspaceCandidates && queryText
-      ? workspaceApi.queryWorkspaceCandidates(rootPath, queryText, "all", 80).then(indexItemsEnvelope)
-      : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
+    : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
 
   const semanticResult = await semanticRequest;
   const semanticItems = semanticResult.items;
