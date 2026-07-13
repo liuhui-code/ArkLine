@@ -134,6 +134,11 @@
   background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 
+.index-diagnostics__copy-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .index-diagnostics__repair-running {
   display: inline-flex;
   gap: 8px;

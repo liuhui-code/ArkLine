@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type {
   WorkspaceIndexDiagnostics,
   WorkspaceIndexFileReadiness,
@@ -12,6 +12,7 @@ import {
   buildIndexDiagnosticsViewModel,
   buildActiveProjectTaskSummary,
   buildActiveSdkTaskSummary,
+  buildIndexDiagnosticsEvidenceReport,
 } from "@/components/layout/index-diagnostics-model";
 import {
   buildQueryExplainTimeline,
@@ -80,6 +81,8 @@ export function IndexDiagnosticsCenter({
   onConfigureSdk,
   onIndexCurrentFile,
 }: IndexDiagnosticsCenterProps) {
+  const [copyEvidenceStatus, setCopyEvidenceStatus] = useState("");
+
   useEffect(() => {
     if (!open || !sectionTarget) return;
     document.getElementById(sectionTarget)?.scrollIntoView({ block: "start" });
@@ -152,6 +155,26 @@ export function IndexDiagnosticsCenter({
     }
   }
 
+  async function copyIndexEvidence() {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+      setCopyEvidenceStatus("Copy unavailable");
+      return;
+    }
+    const report = buildIndexDiagnosticsEvidenceReport({
+      diagnostics,
+      fileReadiness,
+      layerReadiness,
+      taskStatuses,
+      activePath,
+    });
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopyEvidenceStatus("Evidence copied");
+    } catch {
+      setCopyEvidenceStatus("Copy failed");
+    }
+  }
+
   return (
     <div className="index-diagnostics-modal" role="presentation" onMouseDown={onClose}>
       <section
@@ -167,6 +190,8 @@ export function IndexDiagnosticsCenter({
             <p>{viewModel.headerStatusText}</p>
           </div>
           <div className="index-diagnostics__actions">
+            {copyEvidenceStatus ? <span className="index-diagnostics__copy-status">{copyEvidenceStatus}</span> : null}
+            <button type="button" className="toolbar__button" onClick={() => void copyIndexEvidence()}>Copy Evidence</button>
             <button type="button" className="toolbar__button" onClick={onRefresh}>Refresh</button>
             <button type="button" className="palette-shell__close" aria-label="Close Index Diagnostics" onClick={onClose}>x</button>
           </div>

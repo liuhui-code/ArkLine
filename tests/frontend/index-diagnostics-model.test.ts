@@ -3,6 +3,7 @@ import {
   buildIndexDiagnosticsViewModel,
   buildActiveProjectTaskSummary,
   buildActiveSdkTaskSummary,
+  buildIndexDiagnosticsEvidenceReport,
   buildRepairActionEvidence,
   formatRepairAction,
   formatTaskDuration,
@@ -195,6 +196,77 @@ describe("index diagnostics model", () => {
         detail: "No indexed evidence explains this query yet",
       },
     ]);
+  });
+
+  it("builds a copyable diagnostics evidence report", () => {
+    const report = buildIndexDiagnosticsEvidenceReport({
+      diagnostics: {
+        rootPath: "/workspace",
+        status: "partial",
+        schemaVersions: {},
+        schemaVersionActions: [],
+        fileCount: 12,
+        symbolCount: 34,
+        contentLineCount: 56,
+        fingerprintCount: 12,
+        stubFileCount: 10,
+        stubDeclarationCount: 20,
+        dependencyEdgeCount: 2,
+        unresolvedImportCount: 1,
+        parserErrorCount: 2,
+        staleGenerationCount: 3,
+        sdkSymbolCount: 4,
+        discoveryStatus: "running",
+        discoveredFileCount: 12,
+        discoveryExcludedCount: 1,
+        discoveryHasMore: true,
+        dbSizeBytes: 2048,
+        queuePressure: {
+          rootPath: "/workspace",
+          pendingTaskCount: 1,
+          workspacePendingTaskCount: 1,
+          highestPriority: "foreground",
+          highestPriorityTaskKind: "changed-paths",
+        },
+        activeSdkPath: null,
+        activeSdkVersion: null,
+        lastError: "worker failed",
+        lastExplainStatus: "miss",
+        retryBackoffCount: 1,
+        latestRetryBackoff: "recommended retry delay 2000ms",
+        repairActions: ["rebuildProjectIndex"],
+        parserFailures: [],
+        unresolvedImports: [],
+        timeline: [],
+        recentEvents: [indexEvent({ scope: "query", kind: "definition", phase: "miss", message: "No target" })],
+      },
+      activePath: "/workspace/src/Entry.ets",
+      fileReadiness: null,
+      layerReadiness: {
+        rootPath: "/workspace",
+        currentFilePath: "/workspace/src/Entry.ets",
+        layers: [{
+          layer: "symbols",
+          workspaceStatus: "partial",
+          currentFileStatus: "missing",
+          indexedCount: 34,
+          failedCount: 2,
+          staleCount: 3,
+          reason: "symbols stale",
+          recommendedAction: "indexCurrentFile",
+        }],
+      },
+      taskStatuses: [task({ kind: "changed-paths", status: "running", progressCurrent: 1, progressTotal: 2 })],
+    });
+
+    expect(report).toContain("# ArkLine Index Diagnostics Evidence");
+    expect(report).toContain("workspace: /workspace");
+    expect(report).toContain("activePath: /workspace/src/Entry.ets");
+    expect(report).toContain("status: partial");
+    expect(report).toContain("repairActions: rebuildProjectIndex");
+    expect(report).toContain("task: changed-paths running 1/2 (50%)");
+    expect(report).toContain("layer: symbols workspace=partial current=missing");
+    expect(report).toContain("event: query/definition/miss warning No target");
   });
 });
 

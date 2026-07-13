@@ -51,7 +51,22 @@ fn open_workspace_command_returns_snapshot_and_queues_background_index() {
             )
     }));
 
+    wait_for_workspace_index_idle(&index_manager, &root_path);
     fs::remove_dir_all(root).unwrap();
+}
+
+fn wait_for_workspace_index_idle(index_manager: &WorkspaceIndexManagerRuntime, root_path: &str) {
+    for _ in 0..80 {
+        let statuses = index_manager.get_index_task_statuses(root_path).unwrap();
+        let pressure = index_manager.get_queue_pressure(root_path).unwrap();
+        let has_active_status = statuses
+            .iter()
+            .any(|status| matches!(status.status.as_str(), "queued" | "running"));
+        if pressure.pending_task_count == 0 && !has_active_status {
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
