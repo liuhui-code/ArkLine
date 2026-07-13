@@ -12,6 +12,7 @@ export type CommandPaletteItem = {
 type RecentFile = {
   path: string;
   title: string;
+  relativePath: string;
 };
 
 type RecentProject = {
@@ -33,7 +34,11 @@ export function filterRecentFileResults(openTabs: RecentFile[], query: string) {
     return openTabs;
   }
 
-  return openTabs.filter((tab) => tab.path.toLowerCase().includes(normalized) || tab.title.toLowerCase().includes(normalized));
+  return openTabs.filter((tab) => (
+    tab.path.toLowerCase().includes(normalized)
+    || tab.title.toLowerCase().includes(normalized)
+    || tab.relativePath.toLowerCase().includes(normalized)
+  ));
 }
 
 export function filterRecentProjectResults(recentProjects: RecentProject[], query: string) {

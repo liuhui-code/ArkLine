@@ -1997,6 +1997,36 @@ button:disabled {
   color: var(--text-primary);
 }
 
+.recent-file-result {
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 46%);
+  min-height: 54px;
+  align-items: end;
+  padding: 10px 12px;
+}
+
+.recent-file-result__title {
+  align-self: center;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-file-result__path {
+  align-self: end;
+  justify-self: end;
+  max-width: 100%;
+  color: var(--text-muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .search-result__title {
   color: var(--text-primary);
   font-size: 12px;

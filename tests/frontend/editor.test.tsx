@@ -176,6 +176,25 @@ describe("ArkTsEditor", () => {
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("X");
   });
 
+  it("opens the editor search panel with Ctrl+F", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value="@Entry\nstruct Index {}"
+        onChange={() => undefined}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Editor Content"));
+    await user.keyboard("{Control>}f{/Control}");
+
+    const searchPanel = container.querySelector(".cm-panel.cm-search");
+    expect(searchPanel).toBeInTheDocument();
+    expect(searchPanel?.querySelector("input[name=search]")).toHaveAttribute("aria-label", "Find");
+  });
+
   it("replaces a mouse-drag multi-line selection", async () => {
     const user = userEvent.setup();
 

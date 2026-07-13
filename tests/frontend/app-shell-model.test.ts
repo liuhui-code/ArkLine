@@ -200,6 +200,32 @@ describe("app shell model", () => {
     expect(derived.workspaceIndexText).toBe("Index: ready (2 files)");
   });
 
+  it("derives recent files with IDE-style titles and relative paths", () => {
+    const derived = getAppShellDerivedState({
+      workspace: workspace({ truncated: false }),
+      workspaceIndex: createWorkspaceIndexStore(),
+      workspaceIndexState: indexState({ status: "ready" }),
+      workspaceIndexStatusSummary: {
+        workspaceIndexText: "Index: ready",
+        sdkIndexText: null,
+      },
+      quickOpenQuery: "settings",
+      recentFiles: ["/workspace/src/Main.ets", "/workspace/entry/src/Settings.ets"],
+      recentProjects: [],
+      activeOverlay: "recentFiles",
+      searchEverywhereMode: "searchEverywhere",
+      searchEverywhereTruncationNotice: null,
+      semanticState: semanticState(),
+      settingsApplyState: "idle",
+    });
+
+    expect(derived.recentFileResults).toEqual([{
+      path: "/workspace/entry/src/Settings.ets",
+      title: "Settings.ets",
+      relativePath: "entry/src/Settings.ets",
+    }]);
+  });
+
   it("derives status bar index text from projected index summary", () => {
     const derived = getAppShellDerivedState({
       workspace: workspace({ truncated: false, visibleFiles: ["/workspace/Entry.ets"] }),

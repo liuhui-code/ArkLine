@@ -5313,8 +5313,10 @@ describe("App shell", () => {
     const results = await screen.findByRole("list", { name: "Recent Files Results" });
     const items = within(results).getAllByRole("button");
 
-    expect(items[0]).toHaveTextContent("app.json5");
-    expect(items[1]).toHaveTextContent("main.ets");
+    expect(within(items[0]).getByText("app.json5")).toHaveClass("recent-file-result__title");
+    expect(within(items[0]).getByText("AppScope/app.json5")).toHaveClass("recent-file-result__path");
+    expect(within(items[1]).getByText("main.ets")).toHaveClass("recent-file-result__title");
+    expect(within(items[1]).getByText("src/main.ets")).toHaveClass("recent-file-result__path");
   });
 
   it("marks edited files dirty and clears the marker on save", async () => {

@@ -165,17 +165,24 @@ export function DeviceHiLogPanel({
 
     let disposed = false;
     let teardown: () => void = () => {};
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
-      void listen<{ streamId: string; deviceId: string; lines: string[] }>("device-log-output", (event) => {
-        appendLines(event.payload.deviceId, event.payload.lines);
-      }).then((unlisten) => {
+    void listen<{ streamId: string; deviceId: string; lines: string[] }>("device-log-output", (event) => {
+      if (event.payload.streamId !== streamIdRef.current) {
+        return;
+      }
+      appendLines(event.payload.deviceId, event.payload.lines);
+    })
+      .then((unlisten) => {
         if (disposed) {
           unlisten();
           return;
         }
         teardown = unlisten;
+      })
+      .catch(() => {
+        if (!disposed) {
+          teardown = () => {};
+        }
       });
-    }
 
     return () => {
       disposed = true;

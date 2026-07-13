@@ -12,7 +12,7 @@ import type { SemanticState } from "@/features/semantic/semantic-store";
 import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import { createWorkspaceIndexStore } from "@/features/workspace/workspace-index-store";
-import { getPathBasename } from "@/features/workspace/workspace-store";
+import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 type WorkspaceIndexStore = ReturnType<typeof createWorkspaceIndexStore>;
 type SettingsApplyState = "idle" | "applying" | "applied" | "failed";
@@ -59,7 +59,11 @@ export function getAppShellDerivedState({
     ? workspaceIndex.queryQuickOpen(quickOpenQuery, 8).flatMap((candidate) => candidate.path ? [{ path: candidate.path }] : [])
     : [];
   const recentFileResults = activeOverlay === "recentFiles"
-    ? filterRecentFileResults(recentFiles.map((path) => ({ path, title: getPathBasename(path) })), quickOpenQuery)
+    ? filterRecentFileResults(recentFiles.map((path) => ({
+      path,
+      title: getPathBasename(path),
+      relativePath: getRelativeFilePath(path, workspace?.rootPath),
+    })), quickOpenQuery)
     : [];
   const recentProjectResults = activeOverlay === "recentProjects"
     ? filterRecentProjectResults(recentProjects.map((path) => ({ path, name: getPathBasename(path) })), quickOpenQuery)
@@ -86,4 +90,17 @@ export function getAppShellDerivedState({
       ?? workspaceIndexState.partialReason
       ?? getWorkspacePartialNotice(workspace),
   };
+}
+
+function getRelativeFilePath(path: string, rootPath: string | null | undefined) {
+  const normalizedPath = normalizePath(path).replaceAll("\\", "/");
+  const normalizedRoot = rootPath ? normalizePath(rootPath).replaceAll("\\", "/").replace(/\/+$/, "") : "";
+  if (normalizedRoot && normalizedPath === normalizedRoot) {
+    return getPathBasename(path);
+  }
+  if (normalizedRoot && normalizedPath.startsWith(`${normalizedRoot}/`)) {
+    return normalizedPath.slice(normalizedRoot.length + 1);
+  }
+  const segments = normalizedPath.split("/").filter(Boolean);
+  return segments.length > 1 ? segments.slice(-2).join("/") : normalizedPath;
 }

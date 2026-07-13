@@ -15,7 +15,7 @@ type SearchOverlayContentProps = {
   commandPaletteItems: CommandPaletteItem[];
   quickOpenQuery: string;
   quickOpenResults: { path: string }[];
-  recentFileResults: { path: string }[];
+  recentFileResults: { path: string; title: string; relativePath: string }[];
   recentProjectResults: { path: string; name: string }[];
   searchEverywhereOptions: WorkspaceTextSearchOptions;
   searchEverywhereMode: SearchEverywhereMode;
@@ -121,10 +121,11 @@ export function SearchOverlayContent({
             <button
               key={tab.path}
               type="button"
-              className="search-result"
+              className="search-result recent-file-result"
               onClick={() => onOpenFile(tab.path)}
             >
-              {tab.path}
+              <span className="recent-file-result__title">{tab.title}</span>
+              <span className="recent-file-result__path">{tab.relativePath}</span>
             </button>
           ))}
           {recentFileResults.length === 0 ? <div className="palette-empty">No recent files</div> : null}
