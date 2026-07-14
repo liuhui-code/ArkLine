@@ -84,7 +84,11 @@ pub fn index_workspace_member_references_with_context(
                     )
                 })
                 .or_else(|| {
-                    if !member.owner.contains('.') {
+                    if !member.owner.contains('.')
+                        && !import_type_targets
+                            .iter()
+                            .any(|target| target.local_name == member.owner)
+                    {
                         return None;
                     }
                     resolve_project_member_target(
@@ -340,12 +344,14 @@ fn resolve_project_member_target<'a>(
         .iter()
         .find(|target| target.local_name == receiver_type)
     {
-        return project_targets.iter().find(|target| {
+        if let Some(target) = project_targets.iter().find(|target| {
             target.path == import_target.path
                 && target.name == member_name
                 && (target.matches(&import_target.target_name, member_name)
                     || target.matches(&import_target.target_qualified_name, member_name))
-        });
+        }) {
+            return Some(target);
+        }
     }
     if unresolved_import_types.contains(receiver_type) {
         return None;
