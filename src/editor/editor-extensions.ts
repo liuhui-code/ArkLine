@@ -2,7 +2,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { json } from "@codemirror/lang-json";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
-import { searchKeymap } from "@codemirror/search";
+import { openSearchPanel, searchKeymap } from "@codemirror/search";
 import { Compartment, Extension } from "@codemirror/state";
 import {
   dropCursor,
@@ -28,6 +28,7 @@ import {
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import { arkLineSyntaxTheme, createArkLineEditorTheme } from "@/editor/theme";
+import { searchPanelEnhancement } from "@/editor/search-panel";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
 
@@ -35,6 +36,16 @@ export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
 export const gitTraceCompartment = new Compartment();
 export const editorStructureCompartment = new Compartment();
+
+function openReplacePanel(view: EditorView) {
+  const opened = openSearchPanel(view);
+  window.setTimeout(() => {
+    const replaceInput = view.dom.querySelector<HTMLInputElement>('input[name="replace"]');
+    replaceInput?.focus();
+    replaceInput?.select();
+  }, 0);
+  return opened;
+}
 
 export function appearanceExtensionForSettings(appearance: EditorAppearance): Extension {
   return createArkLineEditorTheme(appearance);
@@ -105,8 +116,8 @@ export function createEditorExtensions(
   largeDocumentMode = false,
 ): Extension[] {
   const keymaps = largeDocumentMode
-    ? [indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]
-    : [indentWithTab, ...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap];
+    ? [indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: "Mod-r", run: openReplacePanel, scope: "editor search-panel" }]
+    : [indentWithTab, ...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, { key: "Mod-r", run: openReplacePanel, scope: "editor search-panel" }];
 
   return [
     EditorView.contentAttributes.of({
@@ -122,6 +133,7 @@ export function createEditorExtensions(
     jumpRevealDecorationField,
     ...(largeDocumentMode ? [] : [definitionHoverDecorationField]),
     keymap.of(keymaps),
+    searchPanelEnhancement,
     createDocumentChangeListener(onChange, largeDocumentMode),
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),

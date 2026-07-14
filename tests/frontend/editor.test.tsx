@@ -186,10 +186,8 @@ describe("ArkTsEditor", () => {
         onChange={() => undefined}
       />,
     );
-
     await user.click(screen.getByLabelText("Editor Content"));
     await user.keyboard("{Control>}f{/Control}");
-
     const searchPanel = container.querySelector(".cm-panel.cm-search");
     expect(searchPanel).toBeInTheDocument();
     expect(searchPanel?.querySelector("input[name=search]")).toHaveAttribute("aria-label", "Find");

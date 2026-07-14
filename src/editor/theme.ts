@@ -199,13 +199,16 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       borderBottom: "0",
     },
     ".cm-panel.cm-search": {
-      display: "flex",
+      display: "grid",
+      gridTemplateColumns: "minmax(190px, 1fr) auto auto auto auto",
+      gridTemplateRows: "32px 30px 22px",
       alignItems: "center",
-      gap: "6px",
-      width: "min(720px, calc(100% - 28px))",
-      minHeight: "36px",
+      columnGap: "5px",
+      rowGap: "5px",
+      width: "min(620px, calc(100% - 28px))",
+      minHeight: "96px",
       margin: "8px 14px 0 auto",
-      padding: "6px 8px",
+      padding: "7px 8px 8px",
       backgroundColor: "#2b3038",
       border: "1px solid rgba(125, 133, 144, 0.28)",
       borderRadius: "7px",
@@ -217,9 +220,10 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
     ".cm-panel.cm-search label": {
       display: "inline-flex",
       alignItems: "center",
-      gap: "5px",
+      gap: "4px",
       color: editorPalette.foregroundMuted,
       whiteSpace: "nowrap",
+      fontSize: "11px",
     },
     ".cm-panels input": {
       backgroundColor: "#1f2329",
@@ -233,10 +237,16 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       padding: "0 7px",
     },
     ".cm-panel.cm-search input[name=search]": {
-      width: "220px",
+      width: "auto",
+      minWidth: "0",
+      gridColumn: "1",
+      gridRow: "1",
     },
     ".cm-panel.cm-search input[name=replace]": {
-      width: "180px",
+      width: "auto",
+      minWidth: "0",
+      gridColumn: "1",
+      gridRow: "2",
     },
     ".cm-panels input:focus": {
       borderColor: "rgba(88, 166, 255, 0.62)",
@@ -244,8 +254,8 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
     },
     ".cm-panel.cm-search button": {
       height: "24px",
-      minWidth: "28px",
-      padding: "0 8px",
+      minWidth: "30px",
+      padding: "0 7px",
       backgroundColor: "#333944",
       border: "1px solid rgba(125, 133, 144, 0.24)",
       borderRadius: "5px",
@@ -264,7 +274,9 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       boxShadow: "0 0 0 2px rgba(88, 166, 255, 0.14)",
     },
     ".cm-panel.cm-search button[name=close]": {
-      minWidth: "24px",
+      gridColumn: "5",
+      gridRow: "1",
+      minWidth: "26px",
       padding: "0",
       backgroundColor: "transparent",
       borderColor: "transparent",
@@ -279,6 +291,51 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       width: "13px",
       height: "13px",
       accentColor: "#4c8ed9",
+    },
+    ".cm-panel.cm-search button[name=next]": {
+      gridColumn: "3",
+      gridRow: "1",
+    },
+    ".cm-panel.cm-search button[name=prev]": {
+      gridColumn: "2",
+      gridRow: "1",
+    },
+    ".cm-panel.cm-search button[name=select]": {
+      gridColumn: "4",
+      gridRow: "1",
+    },
+    ".cm-panel.cm-search button[name=replace]": {
+      gridColumn: "2",
+      gridRow: "2",
+    },
+    ".cm-panel.cm-search button[name=replaceAll]": {
+      gridColumn: "3",
+      gridRow: "2",
+    },
+    ".cm-panel.cm-search label:nth-of-type(1)": {
+      gridColumn: "1",
+      gridRow: "3",
+      justifySelf: "start",
+    },
+    ".cm-panel.cm-search label:nth-of-type(2)": {
+      gridColumn: "2",
+      gridRow: "3",
+    },
+    ".cm-panel.cm-search label:nth-of-type(3)": {
+      gridColumn: "3",
+      gridRow: "3",
+    },
+    ".cm-panel.cm-search br": {
+      display: "none",
+    },
+    ".cm-search-match-count": {
+      gridColumn: "1",
+      gridRow: "1",
+      justifySelf: "end",
+      marginRight: "7px",
+      color: editorPalette.foregroundMuted,
+      fontSize: "11px",
+      pointerEvents: "none",
     },
     ".cm-panel.cm-search [aria-live]": {
       minWidth: "52px",
