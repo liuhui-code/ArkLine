@@ -82,6 +82,47 @@ To create a downloadable artifact:
 The generated file is named `ArkLine-windows-x64.exe`. It is a portable Windows
 application; the target machine still needs Microsoft WebView2 Runtime.
 
+#### Publish a Windows exe to GitHub Releases
+
+Use the `macos-windows-exe` workflow when the release asset should be built on
+GitHub and attached to a versioned Release. This path is useful when the local
+machine is macOS or does not have the Windows MSVC toolchain.
+
+Before publishing:
+
+1. Commit and push the code that should be released to `main`.
+2. Confirm the repository Actions checks are green, especially `pnpm check:fast`.
+3. Choose a new immutable tag, for example `v0.1.1`. Do not reuse a tag for a
+   different build unless replacing an intentionally broken asset.
+
+Publish from the GitHub UI:
+
+1. Open `Actions -> macos-windows-exe -> Run workflow`.
+2. Set `release_tag` to the new tag, such as `v0.1.1`.
+3. Start the workflow and wait for the `build-windows-exe` job to finish.
+4. Open `Releases`, verify `ArkLine-windows-x64.exe` is attached to the tag,
+   and download it once before announcing the release.
+
+The equivalent GitHub CLI command is:
+
+```bash
+gh workflow run macos-windows-exe.yml -f release_tag=v0.1.1
+gh run list --workflow macos-windows-exe.yml --limit 1
+gh run watch <run-id> --exit-status
+gh release view v0.1.1 --json tagName,assets,url
+```
+
+The workflow also uploads `ArkLine-windows-x64.exe` as a temporary Actions
+artifact. A successful workflow is required before treating the Release as
+downloadable. On the target Windows machine, install WebView2 if it is absent,
+then launch the executable and verify project opening, editor input, Ctrl+F,
+search navigation, and SDK/index status before distributing it.
+
+If the workflow fails before packaging, inspect the failed step first. Common
+causes are a failing quality gate, an invalid Rust target, missing
+`cargo-xwin`/`llvm-rc` setup, or a reused release tag. Fix the source or use a
+new tag, rerun, and verify the asset checksum and file size after download.
+
 #### Fastest way for developers
 
 Prerequisites:

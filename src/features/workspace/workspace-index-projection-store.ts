@@ -208,7 +208,7 @@ function errorSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexEr
 }
 
 function repairSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexRepairSummary | undefined {
-  const actions = [];
+  const actions: string[] = [];
   for (const event of [...events].reverse()) {
     const action = repairActionFromEvent(event);
     if (!action || actions.includes(action)) {
