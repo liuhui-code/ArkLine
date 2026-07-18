@@ -49,6 +49,8 @@ describe("search entity runner", () => {
       26,
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
+      9,
+      250,
     );
     expect(replaceQueryReadiness).toHaveBeenCalledWith(envelope.readiness);
     expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({

@@ -6,6 +6,9 @@ use crate::models::language::{
 use crate::services::document_service::read_text_file;
 use crate::services::semantic::router::SemanticRouter;
 use crate::services::semantic_host::config::SemanticHostConfig;
+use crate::services::semantic_host::launcher::{
+    direct_semantic_worker_launcher, SharedSemanticWorkerLauncher,
+};
 use crate::services::settings_store::AppSettings;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -13,43 +16,70 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct LanguageRuntime {
     state: Arc<Mutex<LanguageRuntimeState>>,
+    launcher: SharedSemanticWorkerLauncher,
 }
 
 struct LanguageRuntimeState {
     config: SemanticHostConfig,
-    router: SemanticRouter,
+    router: Arc<SemanticRouter>,
 }
 
 impl Default for LanguageRuntime {
     fn default() -> Self {
-        let config = SemanticHostConfig::default();
-        Self {
-            state: Arc::new(Mutex::new(LanguageRuntimeState {
-                config: config.clone(),
-                router: SemanticRouter::new(config),
-            })),
-        }
+        Self::new(direct_semantic_worker_launcher())
     }
 }
 
 impl LanguageRuntime {
+    pub fn new(launcher: SharedSemanticWorkerLauncher) -> Self {
+        let config = SemanticHostConfig::default();
+        Self {
+            state: Arc::new(Mutex::new(LanguageRuntimeState {
+                config: config.clone(),
+                router: Arc::new(SemanticRouter::new_with_launcher(config, launcher.clone())),
+            })),
+            launcher,
+        }
+    }
+
+    pub(crate) fn launcher(&self) -> SharedSemanticWorkerLauncher {
+        self.launcher.clone()
+    }
+
     fn with_router<T>(
         &self,
         settings: &AppSettings,
         callback: impl FnOnce(&SemanticRouter) -> T,
     ) -> T {
+        let router = self.router_for(SemanticHostConfig::from_settings(settings));
+        callback(&router)
+    }
+
+    fn router_for(&self, next_config: SemanticHostConfig) -> Arc<SemanticRouter> {
+        {
+            let state = self
+                .state
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if state.config == next_config {
+                return state.router.clone();
+            }
+        }
+
+        next_config.apply_to_process_env();
+        let next_router = Arc::new(SemanticRouter::new_with_launcher(
+            next_config.clone(),
+            self.launcher.clone(),
+        ));
         let mut state = self
             .state
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let next_config = SemanticHostConfig::from_settings(settings);
         if state.config != next_config {
-            next_config.apply_to_process_env();
-            state.config = next_config.clone();
-            state.router = SemanticRouter::new(next_config);
+            state.config = next_config;
+            state.router = next_router;
         }
-
-        callback(&state.router)
+        state.router.clone()
     }
 }
 

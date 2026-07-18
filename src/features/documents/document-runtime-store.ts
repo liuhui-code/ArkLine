@@ -8,17 +8,11 @@ export type ActiveDocumentProjection = {
   activePath: string | null;
   title: string;
   isDirty: boolean;
-  line: number;
-  column: number;
-  selectedText: string;
 };
 
 export type ActiveDocumentProjectionInput = {
   documentsRef: MutableRefObject<DocumentRuntimeStore>;
   activePath: string | null;
-  line: number;
-  column: number;
-  selectedText: string;
 };
 
 export function projectActiveDocument(input: ActiveDocumentProjectionInput): ActiveDocumentProjection {
@@ -27,19 +21,13 @@ export function projectActiveDocument(input: ActiveDocumentProjectionInput): Act
     activePath: input.activePath,
     title: input.activePath ? getPathBasename(input.activePath) : "",
     isDirty: document?.isDirty ?? false,
-    line: input.line,
-    column: input.column,
-    selectedText: input.selectedText,
   };
 }
 
 export function sameActiveDocumentProjection(left: ActiveDocumentProjection, right: ActiveDocumentProjection) {
   return left.activePath === right.activePath
     && left.title === right.title
-    && left.isDirty === right.isDirty
-    && left.line === right.line
-    && left.column === right.column
-    && left.selectedText === right.selectedText;
+    && left.isDirty === right.isDirty;
 }
 
 export function isActiveDocumentRecord(path: string, activePath: string | null, document: DocumentRecord) {

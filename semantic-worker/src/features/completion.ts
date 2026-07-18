@@ -1,5 +1,4 @@
 import { collectDocumentSymbolsForPath } from "./document-analysis.js"
-import { loadWorkspace } from "../sdk/workspace-loader.js"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
 import { completeArkuiApis } from "../sdk/arkui-api-index.js"
 import { completeArktsKeywords } from "./arkts-keywords.js"
@@ -11,16 +10,20 @@ import type {
   SemanticResponsePayload,
 } from "../protocol.js"
 import type { ArkuiApiEntry } from "../sdk/arkui-api-index.js"
+import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import type { SemanticTypeQueryContext } from "../types/type-engine.js"
 
 export function resolveCompletion(
   position: SemanticDocumentPosition | undefined,
+  workspace: SemanticWorkspaceView | undefined,
+  typeEngine?: SemanticTypeQueryContext,
 ): SemanticResponsePayload {
-  if (!position) {
+  if (!position || !workspace) {
     return []
   }
 
-  const workspace = loadWorkspace(position.path, position.content)
-  const currentDocument = workspace.documents.find((document) => document.path === position.path)
+  const currentPath = workspace.state.path
+  const currentDocument = workspace.documents.find((document) => document.path === currentPath)
   if (!currentDocument) {
     return []
   }
@@ -50,6 +53,10 @@ export function resolveCompletion(
 
   for (const keyword of completeArktsKeywords(content, position)) {
     push(keyword)
+  }
+
+  for (const item of typeEngine?.complete(position) ?? []) {
+    push(item)
   }
 
   for (const symbol of workspace.documents.flatMap((document) =>

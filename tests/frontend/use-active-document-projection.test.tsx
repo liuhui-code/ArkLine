@@ -14,9 +14,6 @@ describe("useActiveDocumentProjection", () => {
       const projection = useActiveDocumentProjection({
         documentsRef,
         activePath: "/workspace/A.ets",
-        line: 1,
-        column: 1,
-        selectedText: "",
       });
       return { documentsRef, projection };
     });

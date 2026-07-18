@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { TerminalToolWindow } from "@/components/layout/TerminalToolWindow";
 import { createTerminalOutputController, type TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import type { TerminalSessionSummary } from "@/features/terminal/terminal-types";
@@ -13,7 +13,7 @@ type TerminalToolWindowHostProps = {
   workspaceRootPath: string | null;
 };
 
-export function TerminalToolWindowHost({
+export const TerminalToolWindowHost = memo(function TerminalToolWindowHost({
   active,
   layoutToken,
   onStatusChange,
@@ -189,4 +189,4 @@ export function TerminalToolWindowHost({
   }, [activeSessionId, clearSession, closeSession, createSession, focusToken, handleInput, layoutToken, sessions, setActiveSession, stopSession]);
 
   return terminalToolWindow;
-}
+});

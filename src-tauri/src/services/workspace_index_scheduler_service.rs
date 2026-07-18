@@ -93,8 +93,12 @@ impl WorkspaceIndexScheduler {
             }
         }
 
-        self.generation += 1;
-        task.generation = self.generation;
+        if preserves_discovery_generation(&task) {
+            self.generation = self.generation.max(task.generation);
+        } else {
+            self.generation += 1;
+            task.generation = self.generation;
+        }
         let cancelled = drain_replaceable_tasks(&mut self.tasks, &task);
         self.tasks.push_back(task);
         WorkspaceIndexScheduleResult {
@@ -150,6 +154,13 @@ impl WorkspaceIndexScheduler {
     pub fn has_pending_tasks(&self) -> bool {
         !self.tasks.is_empty()
     }
+}
+
+fn preserves_discovery_generation(task: &WorkspaceIndexTask) -> bool {
+    task.kind == WorkspaceIndexTaskKind::ChangedPaths
+        && is_workspace_discovery_task_reason(&task.reason)
+        && task.generation > 0
+        && !task.changed_paths.is_empty()
 }
 
 fn is_empty_noop_changed_paths_task(task: &WorkspaceIndexTask) -> bool {

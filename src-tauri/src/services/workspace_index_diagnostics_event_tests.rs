@@ -1,6 +1,7 @@
 use std::fs;
 
 use crate::models::workspace::WorkspaceIndexEvent;
+use crate::services::workspace_index_connection_service::with_workspace_index_writer;
 use crate::services::workspace_index_diagnostics_service::inspect_workspace_index;
 use crate::services::workspace_index_event_service::store_index_event;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
@@ -40,6 +41,27 @@ fn reports_recent_unified_index_events_for_diagnostics() {
         .iter()
         .any(|event| event.kind == "changed-paths" && event.phase == "queued"));
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn reports_bounded_writer_wait_and_hold_metrics_in_diagnostics() {
+    let root = unique_temp_dir("workspace-index-diagnostics-writer-metrics");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    with_workspace_index_writer(&root_path, |connection| {
+        connection
+            .execute_batch("create table writer_metric_probe(value integer);")
+            .map_err(|error| error.to_string())
+    })
+    .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+
+    assert_eq!(diagnostics.writer_metrics.sample_count, 1);
+    assert_eq!(diagnostics.writer_metrics.active_writer_count, 0);
+    assert_eq!(diagnostics.writer_metrics.queued_writer_count, 0);
+    assert!(diagnostics.writer_metrics.hold_max_us > 0);
     fs::remove_dir_all(root).unwrap();
 }
 

@@ -5,7 +5,6 @@ import {
   readDocument,
   symbolAtPosition,
 } from "./document-analysis.js"
-import { loadWorkspace } from "../sdk/workspace-loader.js"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
 import { findArkuiApiDefinition } from "../sdk/arkui-api-index.js"
 import { findArkuiContext } from "./arkui-context.js"
@@ -15,6 +14,8 @@ import type {
   SemanticDocumentPosition,
   SemanticResponsePayload,
 } from "../protocol.js"
+import type { SemanticWorkspaceView } from "../workspace/document-store.js"
+import type { SemanticTypeQueryContext } from "../types/type-engine.js"
 
 function toDefinitionCandidate(
   position: SemanticDocumentPosition,
@@ -70,13 +71,14 @@ function resolveImportedModuleCandidates(
 
 export function resolveDefinitionCandidates(
   position: SemanticDocumentPosition | undefined,
+  workspace: SemanticWorkspaceView | undefined,
+  typeEngine?: SemanticTypeQueryContext,
 ): SemanticDefinitionCandidate[] {
-  if (!position) {
+  if (!position || !workspace) {
     return []
   }
 
-  const workspace = loadWorkspace(position.path, position.content)
-  const currentDocument = workspace.documents.find((document) => document.path === position.path)
+  const currentDocument = workspace.documents.find((document) => document.path === workspace.state.path)
   if (!currentDocument) {
     return []
   }
@@ -121,12 +123,17 @@ export function resolveDefinitionCandidates(
     .filter((candidate) => candidate.name === symbol)
     .map((candidate) => toDefinitionCandidate(position, candidate))
 
-  return resolveImportedModuleCandidates(
+  const importedWorkspaceDefinitions = resolveImportedModuleCandidates(
     currentDocument.path,
     currentDocument.content,
     symbol,
     workspaceDefinitions,
   )
+  if (importedWorkspaceDefinitions.length > 0) {
+    return importedWorkspaceDefinitions
+  }
+
+  return typeEngine?.define(position) ?? []
 }
 
 function resolveArkuiSystemAttribute(
@@ -209,8 +216,10 @@ function resolveSdkModulePaths(sdkRoot: string, moduleSpecifier: string): string
 
 export function resolveDefinition(
   position: SemanticDocumentPosition | undefined,
+  workspace: SemanticWorkspaceView | undefined,
+  typeEngine?: SemanticTypeQueryContext,
 ): SemanticResponsePayload {
-  const candidates = resolveDefinitionCandidates(position)
+  const candidates = resolveDefinitionCandidates(position, workspace, typeEngine)
   if (candidates.length === 0) {
     return null
   }

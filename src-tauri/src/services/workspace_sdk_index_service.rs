@@ -6,8 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::workspace::WorkspaceSearchCandidate;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_sdk_binding_service::{mark_sdk_binding_ready, record_sdk_binding};
 use crate::services::workspace_sdk_parser_service::{
     collect_sdk_symbols, collect_sdk_symbols_from_files, WorkspaceSdkSymbol,
+};
+use crate::services::workspace_sdk_shared_bridge_service::{
+    mark_active_sdk_artifact_ready, publish_complete_sdk_artifact, publish_sdk_artifact_chunk,
+    query_shared_sdk_name_candidates,
 };
 use crate::services::workspace_search_ranking_service::lexical_match_score;
 use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
@@ -40,6 +45,7 @@ pub fn index_workspace_sdk_symbols(
     let root_key = normalize_index_path(root_path);
     let sdk_key = normalize_index_path(sdk_path);
     let symbols = collect_sdk_symbols(sdk_path)?;
+    let identity = publish_complete_sdk_artifact(root_path, sdk_path, sdk_version, &symbols)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
@@ -51,7 +57,14 @@ pub fn index_workspace_sdk_symbols(
         )
         .map_err(|error| error.to_string())?;
     insert_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version, &symbols)?;
-    record_active_sdk_index(&transaction, &root_key, &sdk_key, sdk_version)?;
+    record_sdk_binding(
+        &transaction,
+        &root_key,
+        &sdk_key,
+        sdk_version,
+        &identity,
+        "ready",
+    )?;
     prune_superseded_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version)?;
     transaction.commit().map_err(|error| error.to_string())?;
 
@@ -79,6 +92,8 @@ pub fn index_workspace_sdk_symbol_chunk(
     let root_key = normalize_index_path(root_path);
     let sdk_key = normalize_index_path(sdk_path);
     let symbols = collect_sdk_symbols_from_files(files)?;
+    let identity =
+        publish_sdk_artifact_chunk(root_path, sdk_path, sdk_version, &symbols, replace_existing)?;
     let transaction = connection
         .transaction()
         .map_err(|error| error.to_string())?;
@@ -92,7 +107,14 @@ pub fn index_workspace_sdk_symbol_chunk(
             .map_err(|error| error.to_string())?;
     }
     insert_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version, &symbols)?;
-    record_active_sdk_index(&transaction, &root_key, &sdk_key, sdk_version)?;
+    record_sdk_binding(
+        &transaction,
+        &root_key,
+        &sdk_key,
+        sdk_version,
+        &identity,
+        "building",
+    )?;
     prune_superseded_sdk_symbols(&transaction, &root_key, &sdk_key, sdk_version)?;
     transaction.commit().map_err(|error| error.to_string())?;
 
@@ -123,6 +145,11 @@ pub fn query_workspace_sdk_symbols(
         .map(|character| format!("%{}%", escape_like_pattern(&character.to_string())))
         .unwrap_or_else(|| pattern.clone());
     let fetch_limit = limit.saturating_mul(16).max(limit);
+    if let Ok(Some(symbols)) =
+        query_shared_sdk_name_candidates(root_path, &query_terms.name_query, fetch_limit)
+    {
+        return Ok(rank_sdk_symbols(symbols, &query_terms, limit));
+    }
     let mut statement = connection
         .prepare(
             "select symbol.kind, symbol.name, symbol.path, symbol.line, symbol.column,
@@ -160,9 +187,18 @@ pub fn query_workspace_sdk_symbols(
         )
         .map_err(|error| error.to_string())?;
 
-    let mut candidates = rows
+    let symbols = rows
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())?;
+    Ok(rank_sdk_symbols(symbols, &query_terms, limit))
+}
+
+fn rank_sdk_symbols(
+    symbols: Vec<WorkspaceSdkSymbol>,
+    query_terms: &SdkQueryTerms,
+    limit: usize,
+) -> Vec<WorkspaceSearchCandidate> {
+    let mut candidates = symbols
         .into_iter()
         .filter_map(|symbol| to_candidate(symbol, &query_terms))
         .collect::<Vec<_>>();
@@ -175,7 +211,7 @@ pub fn query_workspace_sdk_symbols(
             .then_with(|| left.subtitle.cmp(&right.subtitle))
     });
     candidates.truncate(limit);
-    Ok(candidates)
+    candidates
 }
 
 fn insert_sdk_symbols(
@@ -218,25 +254,11 @@ fn insert_sdk_symbols(
     Ok(())
 }
 
-fn record_active_sdk_index(
-    transaction: &Transaction<'_>,
-    root_key: &str,
-    sdk_key: &str,
-    sdk_version: &str,
-) -> Result<(), String> {
-    transaction
-        .execute(
-            "insert into workspace_sdk_index_metadata (
-                root_path, sdk_path, sdk_version, indexed_at
-             ) values (?1, ?2, ?3, strftime('%s','now') * 1000)
-             on conflict(root_path) do update set
-                sdk_path = excluded.sdk_path,
-                sdk_version = excluded.sdk_version,
-                indexed_at = excluded.indexed_at",
-            params![root_key, sdk_key, sdk_version],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+pub fn mark_workspace_sdk_artifact_ready(root_path: &str) -> Result<(), String> {
+    mark_active_sdk_artifact_ready(root_path)?;
+    let connection = open_index_store(root_path)?;
+    ensure_workspace_index_schema(&connection)?;
+    mark_sdk_binding_ready(&connection, &normalize_index_path(root_path))
 }
 
 fn prune_superseded_sdk_symbols(

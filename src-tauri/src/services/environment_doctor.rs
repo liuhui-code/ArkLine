@@ -3,8 +3,12 @@ use serde::Serialize;
 use crate::services::process_command_service::hidden_command;
 use crate::services::semantic::arkts_lsp_provider::ArkTsLspProvider;
 use crate::services::semantic_host::config::SemanticHostConfig;
+use crate::services::semantic_host::launcher::{
+    direct_semantic_worker_launcher, SharedSemanticWorkerLauncher,
+};
 use crate::services::semantic_host::manager::SemanticHostReadiness;
 use crate::services::semantic_host::sdk::{discover_harmony_sdk, SdkDiscovery};
+use crate::services::semantic_host::supervisor::semantic_memory_budget_bytes;
 use crate::services::settings_store::AppSettings;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -22,6 +26,13 @@ pub struct EnvironmentReport {
 }
 
 pub fn inspect_environment(settings: &AppSettings) -> EnvironmentReport {
+    inspect_environment_with_launcher(settings, direct_semantic_worker_launcher())
+}
+
+pub fn inspect_environment_with_launcher(
+    settings: &AppSettings,
+    launcher: SharedSemanticWorkerLauncher,
+) -> EnvironmentReport {
     EnvironmentReport {
         tools: vec![
             detect_command("git", &["--version"]),
@@ -37,8 +48,8 @@ pub fn inspect_environment(settings: &AppSettings) -> EnvironmentReport {
                 &["--version"],
             ),
             detect_harmony_sdk(settings),
-            detect_semantic_worker(settings),
-            detect_arkts_language_server(settings),
+            detect_semantic_worker(settings, launcher.clone()),
+            detect_arkts_language_server(settings, launcher),
             ToolStatus {
                 name: "webview2".to_string(),
                 available: true,
@@ -110,18 +121,34 @@ fn detect_harmony_sdk(settings: &AppSettings) -> ToolStatus {
     }
 }
 
-fn detect_semantic_worker(settings: &AppSettings) -> ToolStatus {
-    let readiness = SemanticHostReadiness::discover(SemanticHostConfig::from_settings(settings));
+fn detect_semantic_worker(
+    settings: &AppSettings,
+    launcher: SharedSemanticWorkerLauncher,
+) -> ToolStatus {
+    let readiness = SemanticHostReadiness::discover_with_launcher(
+        SemanticHostConfig::from_settings(settings),
+        launcher,
+    );
 
     ToolStatus {
         name: "semanticWorker".to_string(),
-        available: readiness.worker.entry_path.is_some() && readiness.worker.node_path.is_some(),
-        detail: readiness.worker.detail,
+        available: readiness.is_ready(),
+        detail: format!(
+            "{}; memory budget {} MiB",
+            readiness.worker.detail,
+            semantic_memory_budget_bytes() / 1024 / 1024
+        ),
     }
 }
 
-fn detect_arkts_language_server(settings: &AppSettings) -> ToolStatus {
-    let discovery = ArkTsLspProvider::discovery(SemanticHostConfig::from_settings(settings));
+fn detect_arkts_language_server(
+    settings: &AppSettings,
+    launcher: SharedSemanticWorkerLauncher,
+) -> ToolStatus {
+    let discovery = ArkTsLspProvider::discovery_with_launcher(
+        SemanticHostConfig::from_settings(settings),
+        launcher,
+    );
 
     ToolStatus {
         name: "arktsLanguageServer".to_string(),

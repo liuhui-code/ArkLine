@@ -3,6 +3,11 @@ use std::collections::HashSet;
 use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexedSymbol};
+use crate::services::workspace_file_identity_service::ensure_workspace_file_id;
+use crate::services::workspace_symbol_posting_service::{
+    insert_symbol_posting_with_statement, symbol_posting_insert_statement,
+    symbol_trigram_insert_statement,
+};
 
 pub fn persist_metadata_row(
     connection: &Connection,
@@ -45,6 +50,7 @@ pub fn replace_changed_files(
             .map_err(|error| error.to_string())?;
     }
     for path in file_paths {
+        ensure_workspace_file_id(connection, root_key, path)?;
         connection
             .execute(
                 "insert or ignore into workspace_files (root_path, path) values (?1, ?2)",
@@ -86,12 +92,20 @@ pub(crate) fn replace_changed_symbols_for_paths(
     }
     let mut legacy_statement = legacy_symbol_insert_statement(connection)?;
     let mut entity_statement = symbol_entity_insert_statement(connection)?;
+    let mut posting_statement = symbol_posting_insert_statement(connection)?;
+    let mut trigram_statement = symbol_trigram_insert_statement(connection)?;
     for symbol in symbols
         .iter()
         .filter(|symbol| affected_path_set.contains(&normalize_index_path(&symbol.path)))
     {
         insert_legacy_symbol_with_statement(&mut legacy_statement, root_key, symbol)?;
-        insert_symbol_entity_with_statement(&mut entity_statement, root_key, symbol)?;
+        insert_symbol_entity_with_statement(
+            &mut entity_statement,
+            &mut posting_statement,
+            &mut trigram_statement,
+            root_key,
+            symbol,
+        )?;
     }
     Ok(())
 }
@@ -141,7 +155,15 @@ pub fn insert_symbol_entity(
     symbol: &WorkspaceIndexedSymbol,
 ) -> Result<(), String> {
     let mut statement = symbol_entity_insert_statement(connection)?;
-    insert_symbol_entity_with_statement(&mut statement, root_key, symbol)
+    let mut posting_statement = symbol_posting_insert_statement(connection)?;
+    let mut trigram_statement = symbol_trigram_insert_statement(connection)?;
+    insert_symbol_entity_with_statement(
+        &mut statement,
+        &mut posting_statement,
+        &mut trigram_statement,
+        root_key,
+        symbol,
+    )
 }
 
 fn symbol_entity_insert_statement(connection: &Connection) -> Result<Statement<'_>, String> {
@@ -157,14 +179,17 @@ fn symbol_entity_insert_statement(connection: &Connection) -> Result<Statement<'
 
 fn insert_symbol_entity_with_statement(
     statement: &mut Statement<'_>,
+    posting_statement: &mut Statement<'_>,
+    trigram_statement: &mut Statement<'_>,
     root_key: &str,
     symbol: &WorkspaceIndexedSymbol,
 ) -> Result<(), String> {
     let qualified_name = qualified_symbol_name(symbol);
+    let entity_id = symbol_entity_id(symbol, &qualified_name);
     statement
         .execute(params![
             root_key,
-            symbol_entity_id(symbol, &qualified_name),
+            entity_id,
             qualified_name,
             symbol.source,
             symbol.kind,
@@ -177,7 +202,16 @@ fn insert_symbol_entity_with_statement(
             symbol_end_column(symbol) as i64,
         ])
         .map_err(|error| error.to_string())?;
-    Ok(())
+    insert_symbol_posting_with_statement(
+        posting_statement,
+        trigram_statement,
+        root_key,
+        "entity",
+        &entity_id,
+        &symbol.path,
+        &symbol.source,
+        &symbol.name,
+    )
 }
 
 fn qualified_symbol_name(symbol: &WorkspaceIndexedSymbol) -> String {
@@ -216,6 +250,18 @@ fn delete_symbols_for_path(
     connection
         .execute(
             "delete from workspace_symbol_entities where root_path = ?1 and path = ?2",
+            params![root_key, path],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "delete from workspace_symbol_trigrams where root_path = ?1 and path = ?2",
+            params![root_key, path],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "delete from workspace_symbol_postings where root_path = ?1 and path = ?2",
             params![root_key, path],
         )
         .map_err(|error| error.to_string())?;

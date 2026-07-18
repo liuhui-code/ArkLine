@@ -1,9 +1,11 @@
+import { useSyncExternalStore } from "react";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 import { getIndexDiagnosticsStatusTarget } from "@/components/layout/app-shell-model";
 import { SemanticCapabilityBadge } from "@/components/layout/SemanticCapabilityBadge";
 import { SemanticModeBadge } from "@/components/layout/SemanticModeBadge";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
 import type { SemanticState } from "@/features/semantic/semantic-store";
+import type { StatusMessageStore } from "@/features/status/status-message-store";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 
 type ShellStatusBarProps = {
@@ -11,7 +13,7 @@ type ShellStatusBarProps = {
   activePath: string | null;
   semanticState: SemanticState;
   semanticCapability: SemanticCapabilityState;
-  statusText: string;
+  statusMessageStore: StatusMessageStore;
   workspaceName: string | null;
   workspaceScanText: string | null;
   workspaceIndexText: string;
@@ -34,7 +36,7 @@ export function ShellStatusBar({
   activePath,
   semanticState,
   semanticCapability,
-  statusText,
+  statusMessageStore,
   workspaceName,
   workspaceScanText,
   workspaceIndexText,
@@ -101,8 +103,13 @@ export function ShellStatusBar({
           ) : null}
         </div>
         <span className="status-pill status-pill--em">{activeBottomTool === "terminal" && terminalRunning ? "Running" : "Ready"}</span>
-        <span className="status-pill">{statusText}</span>
+        <StatusMessage store={statusMessageStore} />
       </div>
     </footer>
   );
+}
+
+function StatusMessage({ store }: { store: StatusMessageStore }) {
+  const message = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  return <span className="status-pill">{message}</span>;
 }

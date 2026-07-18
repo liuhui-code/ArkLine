@@ -1,13 +1,16 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
+import { createStatusMessageStore } from "@/features/status/status-message-store";
 
 function renderStatusBar(capability: SemanticCapabilityState, overrides: {
   workspaceIndexText?: string;
   sdkIndexText?: string | null;
   onOpenIndexDiagnostics?: (sectionTarget?: string) => void;
+  statusMessageStore?: ReturnType<typeof createStatusMessageStore>;
 } = {}) {
-  return render(
+  const statusMessageStore = overrides.statusMessageStore ?? createStatusMessageStore("Ready");
+  const result = render(
     <ShellStatusBar
       activeBottomTool="terminal"
       activePath={null}
@@ -17,7 +20,7 @@ function renderStatusBar(capability: SemanticCapabilityState, overrides: {
         detail: "Using fallback",
       }}
       semanticCapability={capability}
-      statusText="Ready"
+      statusMessageStore={statusMessageStore}
       workspaceName="Demo"
       workspaceScanText={null}
       workspaceIndexText={overrides.workspaceIndexText ?? "Index: ready (2 files)"}
@@ -34,6 +37,7 @@ function renderStatusBar(capability: SemanticCapabilityState, overrides: {
       onOpenIndexDiagnostics={overrides.onOpenIndexDiagnostics ?? (() => undefined)}
     />,
   );
+  return { ...result, statusMessageStore };
 }
 
 describe("ShellStatusBar", () => {
@@ -105,4 +109,56 @@ describe("ShellStatusBar", () => {
 
     expect(onOpenIndexDiagnostics).toHaveBeenCalledWith("index-diagnostics-health");
   });
+
+  it("updates only the subscribed status message surface", () => {
+    const statusMessageStore = createStatusMessageStore("Ready");
+    const ownerRender = vi.fn();
+    const capability: SemanticCapabilityState = {
+      status: "semantic",
+      semanticNavigation: true,
+      semanticCompletion: true,
+      localFallback: true,
+      message: "SDK ready",
+    };
+
+    function Owner() {
+      ownerRender();
+      return renderStatusBarElement(capability, statusMessageStore);
+    }
+
+    render(<Owner />);
+    act(() => statusMessageStore.setMessage("Definition: Entry.ets:8:2"));
+
+    expect(screen.getByText("Definition: Entry.ets:8:2")).toBeVisible();
+    expect(ownerRender).toHaveBeenCalledTimes(1);
+  });
 });
+
+function renderStatusBarElement(
+  capability: SemanticCapabilityState,
+  statusMessageStore: ReturnType<typeof createStatusMessageStore>,
+) {
+  return (
+    <ShellStatusBar
+      activeBottomTool="terminal"
+      activePath={null}
+      semanticState={{ provider: "fallback", mode: "fallback", detail: "Using fallback" }}
+      semanticCapability={capability}
+      statusMessageStore={statusMessageStore}
+      workspaceName="Demo"
+      workspaceScanText={null}
+      workspaceIndexText="Index: ready (2 files)"
+      sdkIndexText={null}
+      terminalRunning={false}
+      buildMessage="Build idle"
+      gitBlameVisible={false}
+      gitBlameMenuOpen={false}
+      onToggleGitBlameMenu={() => undefined}
+      onToggleGitBlame={() => undefined}
+      onRefreshGitBlame={() => undefined}
+      onShowCurrentLineBlame={() => undefined}
+      onCloseGitBlame={() => undefined}
+      onOpenIndexDiagnostics={() => undefined}
+    />
+  );
+}

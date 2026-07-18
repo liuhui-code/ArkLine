@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 
 const INPUT_COMMIT_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = {
-  searchEverywhere: 80,
-  find: 120,
-  replace: 120,
+  searchEverywhere: 40,
+  find: 100,
+  replace: 100,
 };
 
 export function useSearchSessionInput(
@@ -25,7 +25,10 @@ export function useSearchSessionInput(
     if (draftQuery === committedQuery) {
       return;
     }
-    const timeout = window.setTimeout(() => onCommitRef.current(draftQuery), INPUT_COMMIT_DEBOUNCE_MS[mode]);
+    const timeout = window.setTimeout(
+      () => onCommitRef.current(draftQuery),
+      INPUT_COMMIT_DEBOUNCE_MS[mode],
+    );
     return () => window.clearTimeout(timeout);
   }, [committedQuery, draftQuery, mode]);
 

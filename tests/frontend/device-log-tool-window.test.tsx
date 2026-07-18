@@ -182,7 +182,7 @@ describe("Device Log tool window", () => {
     nowSpy.mockRestore();
   });
 
-  it("queries the backend recent log window when a running stream is filtered", async () => {
+  it("queries the backend recent log window while a stream is running, even without a filter", async () => {
     const queryDeviceLogs = vi.fn(async () => ({
       rows: [{
         seq: 12,
@@ -211,15 +211,17 @@ describe("Device Log tool window", () => {
     await user.click(screen.getByRole("tab", { name: "HiLog" }));
     const panel = await screen.findByLabelText("Device Log Panel");
     await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
-    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "width" } });
 
     expect(await within(panel).findByLabelText("backend width log")).toBeVisible();
     expect(queryDeviceLogs).toHaveBeenCalledWith(expect.objectContaining({
       streamId: "stream-1",
-      query: "width",
+      query: "",
       timeRangeMs: 60_000,
     }));
     expect(within(panel).getByText(/1,200 candidates · 34 scanned · 7ms/u)).toBeVisible();
+
+    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "width" } });
+    await waitFor(() => expect(queryDeviceLogs).toHaveBeenCalledWith(expect.objectContaining({ query: "width" })));
     expect(within(panel).getAllByText("width").some((node) => node.tagName.toLowerCase() === "mark")).toBe(true);
   });
 

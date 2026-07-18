@@ -9,7 +9,7 @@ describe("search overlay command actions", () => {
     const setActiveOverlay = vi.fn();
     const actions = createSearchOverlayCommandActions({
       mode: "searchEverywhere",
-      editorSelectedText: "  Entry\nAbility  ",
+      getEditorSelectedText: () => "  Entry\nAbility  ",
       invalidateSearchSession: vi.fn(),
       resetDebouncedSearchQuery: vi.fn(),
       patchSearchSession: vi.fn(),
@@ -34,7 +34,7 @@ describe("search overlay command actions", () => {
     const setQuickOpenQuery = vi.fn();
     const actions = createSearchOverlayCommandActions({
       mode: "find",
-      editorSelectedText: "",
+      getEditorSelectedText: () => "",
       invalidateSearchSession,
       resetDebouncedSearchQuery: vi.fn(),
       patchSearchSession: vi.fn(),
@@ -56,7 +56,7 @@ describe("search overlay command actions", () => {
     const setSearchEverywhereOptions = vi.fn();
     const actions = createSearchOverlayCommandActions({
       mode: "find",
-      editorSelectedText: "",
+      getEditorSelectedText: () => "",
       invalidateSearchSession: vi.fn(),
       resetDebouncedSearchQuery: vi.fn(),
       patchSearchSession: vi.fn(),
@@ -80,5 +80,27 @@ describe("search overlay command actions", () => {
       caseSensitive: true,
       wholeWord: false,
     })).toEqual({ caseSensitive: true, wholeWord: true });
+  });
+
+  it("reads editor selection when the command runs instead of when actions are created", () => {
+    let selectedText = "first";
+    const setQuickOpenQuery = vi.fn();
+    const actions = createSearchOverlayCommandActions({
+      mode: "find",
+      getEditorSelectedText: () => selectedText,
+      invalidateSearchSession: vi.fn(),
+      resetDebouncedSearchQuery: vi.fn(),
+      patchSearchSession: vi.fn(),
+      setSearchEverywhereMode: vi.fn(),
+      setSearchEverywhereScope: vi.fn(),
+      setQuickOpenQuery,
+      setActiveOverlay: vi.fn(),
+      setSearchEverywhereOptions: vi.fn(),
+    });
+
+    selectedText = "latest selection";
+    actions.openSearchOverlay("find");
+
+    expect(setQuickOpenQuery).toHaveBeenCalledWith("latest selection");
   });
 });

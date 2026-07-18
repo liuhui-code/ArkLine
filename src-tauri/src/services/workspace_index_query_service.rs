@@ -7,7 +7,7 @@ use crate::models::workspace::{
 use crate::services::workspace_content_index_service::search_indexed_workspace_content;
 use crate::services::workspace_definition_candidate_query_service::query_index_definition_candidates;
 use crate::services::workspace_index_entity_query_service::{
-    query_workspace_entities, WorkspaceEntityQueryScope,
+    query_workspace_entities_with_file_index, WorkspaceEntityQueryScope,
 };
 use crate::services::workspace_index_query_path_service::normalize_candidate_paths_for_filesystem;
 use crate::services::workspace_index_readiness_service::readiness_for_query;
@@ -30,8 +30,13 @@ pub fn query_workspace_quick_open(
     query: &str,
     limit: usize,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    let mut candidates =
-        query_workspace_entities(root_path, query, WorkspaceEntityQueryScope::Files, limit)?;
+    let mut candidates = query_workspace_entities_with_file_index(
+        index_runtime,
+        root_path,
+        query,
+        WorkspaceEntityQueryScope::Files,
+        limit,
+    )?;
     if candidates.is_empty() {
         candidates = index_runtime.query_quick_open(root_path, query, limit)?;
     }
@@ -77,7 +82,13 @@ pub(crate) fn query_workspace_candidates(
         WorkspaceIndexQueryScope::Apis => WorkspaceEntityQueryScope::Apis,
         WorkspaceIndexQueryScope::Text => unreachable!("text scope is handled above"),
     };
-    let mut candidates = query_workspace_entities(root_path, query, entity_scope, limit)?;
+    let mut candidates = query_workspace_entities_with_file_index(
+        index_runtime,
+        root_path,
+        query,
+        entity_scope,
+        limit,
+    )?;
     if candidates.is_empty() && scope == WorkspaceIndexQueryScope::All {
         candidates = index_runtime.query_search_everywhere(root_path, query, limit)?;
         normalize_candidate_paths_for_filesystem(root_path, &mut candidates);

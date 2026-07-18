@@ -10,18 +10,33 @@ pub fn discovery_task_result(
     chunk: &WorkspaceDiscoveryChunk,
     started_at: u128,
 ) -> WorkspaceIndexTaskResult {
+    discovery_task_result_from_counts(
+        task,
+        chunk.files.len(),
+        chunk.excluded_count,
+        chunk.has_more,
+        started_at,
+    )
+}
+
+pub fn discovery_task_result_from_counts(
+    task: &WorkspaceIndexTask,
+    file_count: usize,
+    excluded_count: usize,
+    has_more: bool,
+    started_at: u128,
+) -> WorkspaceIndexTaskResult {
     WorkspaceIndexTaskResult {
         root_path: task.root_path.clone(),
         kind: discovery_task_kind_label().to_string(),
-        status: if chunk.has_more { "partial" } else { "ready" }.to_string(),
+        status: if has_more { "partial" } else { "ready" }.to_string(),
         reason: task.reason.clone(),
         generation: task.generation,
         started_at: Some(started_at),
         finished_at: Some(current_time_millis()),
         message: Some(format!(
             "Discovered {} file(s), excluded {} entries",
-            chunk.files.len(),
-            chunk.excluded_count
+            file_count, excluded_count
         )),
         error: None,
         refresh_result: None,
@@ -30,11 +45,11 @@ pub fn discovery_task_result(
         sdk_version: None,
         sdk_remaining_files: Vec::new(),
         sdk_symbol_count: None,
-        progress_current: chunk.files.len(),
-        progress_total: if chunk.has_more {
-            chunk.files.len().saturating_add(1)
+        progress_current: file_count,
+        progress_total: if has_more {
+            file_count.saturating_add(1)
         } else {
-            chunk.files.len()
+            file_count
         },
     }
 }

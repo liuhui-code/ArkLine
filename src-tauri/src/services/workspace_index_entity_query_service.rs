@@ -6,12 +6,13 @@ use crate::services::workspace_index_entity_store_service::{
     load_legacy_file_symbols, load_legacy_symbols, load_stub_symbols, load_symbol_entities,
     normalize_index_path, open_existing_index_store, symbol_to_candidate,
 };
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 use crate::services::workspace_search_ranking_service::{
     build_file_candidates, sort_search_everywhere_candidates,
 };
 use crate::services::workspace_symbol_index_service::query_index_symbols;
+use crate::services::workspace_symbol_posting_service::query_posted_symbols;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WorkspaceEntityQueryScope {
@@ -48,6 +49,29 @@ pub(crate) fn query_workspace_entities(
     Ok(candidates)
 }
 
+pub(crate) fn query_workspace_entities_with_file_index(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+    query: &str,
+    scope: WorkspaceEntityQueryScope,
+    limit: usize,
+) -> Result<Vec<WorkspaceSearchCandidate>, String> {
+    let mut candidates = match scope {
+        WorkspaceEntityQueryScope::All => {
+            let mut candidates = index_runtime.query_quick_open(root_path, query, limit)?;
+            candidates.extend(query_symbol_entities(root_path, query, None, limit)?);
+            candidates.extend(query_workspace_sdk_symbols(root_path, query, limit)?);
+            candidates
+        }
+        WorkspaceEntityQueryScope::Files => {
+            return index_runtime.query_quick_open(root_path, query, limit);
+        }
+        _ => return query_workspace_entities(root_path, query, scope, limit),
+    };
+    sort_search_everywhere_candidates(&mut candidates, limit);
+    Ok(candidates)
+}
+
 pub(crate) fn query_workspace_file_symbols(
     root_path: &str,
     file_path: &str,
@@ -57,7 +81,6 @@ pub(crate) fn query_workspace_file_symbols(
     let Some(connection) = open_existing_index_store(root_path)? else {
         return Ok(Vec::new());
     };
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let normalized_file_path = normalize_index_path(file_path);
     let freshness = load_index_freshness(&connection, &root_key)?;
@@ -110,7 +133,6 @@ fn query_file_entities(
     let Some(connection) = open_existing_index_store(root_path)? else {
         return Ok(Vec::new());
     };
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let freshness = load_index_freshness(&connection, &root_key)?;
     let mut statement = connection
@@ -139,22 +161,24 @@ fn query_symbol_entities(
     let Some(connection) = open_existing_index_store(root_path)? else {
         return Ok(Vec::new());
     };
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let freshness = load_index_freshness(&connection, &root_key)?;
-    let symbols = load_stub_symbols(&connection, &root_key).and_then(|symbols| {
-        if symbols.is_empty() {
-            load_symbol_entities(&connection, &root_key).and_then(|symbols| {
-                if symbols.is_empty() {
-                    load_legacy_symbols(&connection, &root_key)
-                } else {
-                    Ok(symbols)
-                }
-            })
-        } else {
-            Ok(symbols)
-        }
-    })?;
+    let symbols = match query_posted_symbols(&connection, &root_key, query, source, limit)? {
+        Some(symbols) => symbols,
+        None => load_stub_symbols(&connection, &root_key).and_then(|symbols| {
+            if symbols.is_empty() {
+                load_symbol_entities(&connection, &root_key).and_then(|symbols| {
+                    if symbols.is_empty() {
+                        load_legacy_symbols(&connection, &root_key)
+                    } else {
+                        Ok(symbols)
+                    }
+                })
+            } else {
+                Ok(symbols)
+            }
+        })?,
+    };
     let candidates = query_index_symbols(&symbols, query, symbols.len().max(limit))
         .into_iter()
         .filter(|candidate| source.is_none_or(|value| candidate.source == value))

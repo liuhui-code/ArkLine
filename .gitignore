@@ -1,6 +1,9 @@
 node_modules/
 .pnpm-store/
 dist/
+semantic-worker/bundle/
+src-tauri/binaries/arkline-semantic-*
+src-tauri/binaries/arkline-indexer-*
 coverage/
 target/
 src-tauri/target/

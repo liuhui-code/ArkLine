@@ -78,6 +78,43 @@ describe("useBuildControllerState", () => {
     expect(replaceBuildProblems.mock.calls[0]?.[0]).toEqual(expect.not.arrayContaining([diagnostic]));
   });
 
+  it("builds a lazily opened project from native project inspection", async () => {
+    const runTerminalCommand = vi.fn(async () => ({
+      runId: "build-1",
+      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const inspectHarmonyBuildProject = vi.fn(async () => ({
+      rootPath: "/project",
+      isHarmonyProject: true,
+      hasHvigorWrapper: true,
+      hvigorWrapperCommand: "./hvigorw",
+      hasHvigorFile: true,
+      hasBuildProfile: true,
+      hasOhPackage: true,
+      modules: ["entry"],
+      defaultModule: "entry",
+    }));
+    const { result } = renderHarness({
+      workspace: { ...workspace(), visibleFiles: [], fileTree: [] },
+      workspaceApi: workspaceApi({ inspectHarmonyBuildProject, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(inspectHarmonyBuildProject).toHaveBeenCalledWith("/project");
+    expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+    }));
+    expect(result.current.buildState.status).toBe("success");
+  });
+
   it("reports preflight failure when no workspace is open", async () => {
     const showBuild = vi.fn();
     const { result } = renderHarness({ workspace: null, showBuild });

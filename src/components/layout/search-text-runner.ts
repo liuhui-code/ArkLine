@@ -31,6 +31,10 @@ export type SearchTextWorkspaceApi = {
     query: string,
     scope: WorkspaceIndexQueryScope,
     limit: number,
+    cursor?: number | null,
+    context?: undefined,
+    generation?: number,
+    deadlineMs?: number,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
 };
 
@@ -99,7 +103,16 @@ export function runSearchTextQuery({
       rootPath,
       query,
       generation: requestId,
-      runIndexed: (rootPath, query, scope, limit) => indexedText!(rootPath, query, scope, limit),
+      runIndexed: (rootPath, query, scope, limit) => indexedText!(
+        rootPath,
+        query,
+        scope,
+        limit,
+        null,
+        undefined,
+        requestId,
+        1_500,
+      ),
       runFallback: (query, generation) => runFallback(query, dirty, generation),
       convertIndexed: (items) => textCandidatesToSearchResult(rootPath, query, items),
       onIndexedReadiness: replaceQueryReadiness,

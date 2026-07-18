@@ -1,8 +1,9 @@
-use std::path::{Path, PathBuf};
-
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::workspace::{WorkspaceIndexedSymbol, WorkspaceSearchCandidate};
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, WorkspaceIndexReader,
+};
 use crate::services::workspace_stub_index_service::ARKTS_STUB_PARSER_VERSION;
 
 pub(crate) fn load_stub_symbols(
@@ -201,14 +202,10 @@ pub(crate) fn load_index_freshness(
     .to_string())
 }
 
-pub(crate) fn open_existing_index_store(root_path: &str) -> Result<Option<Connection>, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    if !cache_path.exists() {
-        return Ok(None);
-    }
-    Connection::open(cache_path)
-        .map(Some)
-        .map_err(|error| error.to_string())
+pub(crate) fn open_existing_index_store(
+    root_path: &str,
+) -> Result<Option<WorkspaceIndexReader<'static>>, String> {
+    open_existing_workspace_index_reader(root_path)
 }
 
 pub(crate) fn normalize_index_path(path: &str) -> String {
@@ -246,13 +243,6 @@ fn row_to_symbol(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceIndexedSy
         signature: row.get(7)?,
         visibility: row.get(8)?,
     })
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn stub_source_for_kind(kind: &str) -> &str {

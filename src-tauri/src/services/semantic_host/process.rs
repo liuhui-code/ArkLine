@@ -1,5 +1,6 @@
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::services::process_command_service::hidden_command;
 
@@ -8,27 +9,40 @@ use super::config::SemanticHostConfig;
 pub const ARKLINE_NODE_PATH_ENV: &str = "ARKLINE_NODE_PATH";
 pub const ARKLINE_SEMANTIC_WORKER_ENTRY_ENV: &str = "ARKLINE_SEMANTIC_WORKER_ENTRY";
 
+static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticWorkerDiscovery {
     pub entry_path: Option<PathBuf>,
     pub node_path: Option<PathBuf>,
+    pub standalone: bool,
     pub detail: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticWorkerProcessSpec {
     pub entry_path: PathBuf,
-    pub node_path: PathBuf,
+    pub node_path: Option<PathBuf>,
+    pub standalone: bool,
 }
 
 impl SemanticWorkerProcessSpec {
     pub fn discover_with_config(config: &SemanticHostConfig) -> Result<Self, String> {
-        let node_path = resolve_node_path(config.node_path.as_deref(), env::consts::OS)?;
         let entry_path = resolve_worker_entry(config.semantic_worker_path.as_deref())?;
+        let standalone = is_standalone_entry(&entry_path);
+        let node_path = if standalone {
+            None
+        } else {
+            Some(resolve_node_path(
+                config.node_path.as_deref(),
+                env::consts::OS,
+            )?)
+        };
 
         Ok(Self {
             entry_path,
             node_path,
+            standalone,
         })
     }
 }
@@ -37,28 +51,57 @@ pub fn discover_semantic_worker(config: &SemanticHostConfig) -> SemanticWorkerDi
     match SemanticWorkerProcessSpec::discover_with_config(config) {
         Ok(spec) => SemanticWorkerDiscovery {
             entry_path: Some(spec.entry_path.clone()),
-            node_path: Some(spec.node_path.clone()),
-            detail: format!(
-                "Semantic worker is ready at {} using node {}",
-                spec.entry_path.display(),
-                spec.node_path.display()
-            ),
+            node_path: spec.node_path.clone(),
+            standalone: spec.standalone,
+            detail: if let Some(node_path) = spec.node_path.as_ref() {
+                format!(
+                    "Semantic worker is ready at {} using node {}",
+                    spec.entry_path.display(),
+                    node_path.display()
+                )
+            } else {
+                format!(
+                    "Standalone semantic worker is ready at {}",
+                    spec.entry_path.display()
+                )
+            },
         },
         Err(detail) => SemanticWorkerDiscovery {
             entry_path: None,
             node_path: None,
+            standalone: false,
             detail,
         },
     }
 }
 
 pub fn default_worker_entry_candidate() -> PathBuf {
+    if let Some(resource_dir) = RESOURCE_DIR.get() {
+        let bundled = bundled_worker_entry_candidate(resource_dir);
+        if bundled.is_file() {
+            return bundled;
+        }
+    }
+    repo_worker_bundle_candidate()
+}
+
+pub fn register_resource_dir(path: PathBuf) {
+    let _ = RESOURCE_DIR.set(path);
+}
+
+pub fn bundled_worker_entry_candidate(resource_dir: &Path) -> PathBuf {
+    resource_dir
+        .join("semantic-worker")
+        .join("semantic-worker.cjs")
+}
+
+fn repo_worker_bundle_candidate() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("crate manifest should live inside src-tauri")
         .join("semantic-worker")
-        .join("dist")
-        .join("main.js")
+        .join("bundle")
+        .join("semantic-worker.cjs")
 }
 
 fn resolve_node_path(configured: Option<&str>, platform: &str) -> Result<PathBuf, String> {
@@ -146,21 +189,39 @@ fn is_node_executable_file(path: &Path) -> bool {
             .unwrap_or(false)
 }
 
+fn is_standalone_entry(path: &Path) -> bool {
+    !matches!(
+        path.extension().and_then(|value| value.to_str()),
+        Some("js" | "mjs" | "cjs")
+    )
+}
+
 fn resolve_worker_entry(configured: Option<&str>) -> Result<PathBuf, String> {
     if let Some(path) = configured {
         return validate_file_path(PathBuf::from(path), ARKLINE_SEMANTIC_WORKER_ENTRY_ENV);
     }
 
-    validate_file_path(
-        default_worker_entry_candidate(),
-        ARKLINE_SEMANTIC_WORKER_ENTRY_ENV,
-    )
-    .map_err(|_| {
-        format!(
-            "Build semantic-worker/dist/main.js or set {} to a compiled worker entry file",
-            ARKLINE_SEMANTIC_WORKER_ENTRY_ENV
-        )
-    })
+    let bundled = default_worker_entry_candidate();
+    if bundled.is_file() {
+        return Ok(bundled);
+    }
+    let legacy = legacy_worker_entry_candidate();
+    if legacy.is_file() {
+        return Ok(legacy);
+    }
+    Err(format!(
+        "Build semantic-worker/bundle/semantic-worker.cjs or set {} to a compiled worker entry file",
+        ARKLINE_SEMANTIC_WORKER_ENTRY_ENV
+    ))
+}
+
+fn legacy_worker_entry_candidate() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crate manifest should live inside src-tauri")
+        .join("semantic-worker")
+        .join("dist")
+        .join("main.js")
 }
 
 fn validate_file_path(path: PathBuf, env_name: &str) -> Result<PathBuf, String> {
@@ -181,12 +242,15 @@ fn validate_file_path(path: PathBuf, env_name: &str) -> Result<PathBuf, String> 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        default_worker_entry_candidate, resolve_node_path, resolve_worker_entry,
-        ARKLINE_NODE_PATH_ENV, ARKLINE_SEMANTIC_WORKER_ENTRY_ENV,
+        bundled_worker_entry_candidate, default_worker_entry_candidate, resolve_node_path,
+        resolve_worker_entry, SemanticWorkerProcessSpec, ARKLINE_NODE_PATH_ENV,
+        ARKLINE_SEMANTIC_WORKER_ENTRY_ENV,
     };
+    use crate::services::semantic_host::config::SemanticHostConfig;
 
     fn unique_temp_dir(name: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now()
@@ -197,12 +261,22 @@ mod tests {
     }
 
     #[test]
-    fn points_to_repo_local_worker_dist() {
+    fn points_to_repo_local_worker_bundle() {
         let candidate = default_worker_entry_candidate();
 
         assert!(candidate
             .to_string_lossy()
-            .contains("semantic-worker/dist/main.js"));
+            .contains("semantic-worker/bundle/semantic-worker.cjs"));
+    }
+
+    #[test]
+    fn maps_bundled_worker_under_the_tauri_resource_directory() {
+        let candidate = bundled_worker_entry_candidate(Path::new("/app/resources"));
+
+        assert_eq!(
+            candidate,
+            Path::new("/app/resources/semantic-worker/semantic-worker.cjs")
+        );
     }
 
     #[test]
@@ -212,6 +286,26 @@ mod tests {
 
         assert!(error.contains(ARKLINE_SEMANTIC_WORKER_ENTRY_ENV));
         assert!(error.contains("does not exist"));
+    }
+
+    #[test]
+    fn standalone_worker_does_not_require_a_node_runtime() {
+        let root = unique_temp_dir("standalone-worker");
+        fs::create_dir_all(&root).unwrap();
+        let worker = root.join("arkline-semantic.exe");
+        fs::write(&worker, "standalone").unwrap();
+
+        let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+            semantic_worker_path: Some(worker.to_string_lossy().to_string()),
+            node_path: Some(root.join("missing-node").to_string_lossy().to_string()),
+            ..SemanticHostConfig::default()
+        })
+        .unwrap();
+
+        assert!(spec.standalone);
+        assert_eq!(spec.entry_path, worker);
+        assert_eq!(spec.node_path, None);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

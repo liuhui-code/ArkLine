@@ -1,11 +1,12 @@
+import { useSyncExternalStore } from "react";
 import type { CompletionPresentation } from "@/components/layout/completion-model";
-import type { EditorCaretRect } from "@/editor/editor-events";
+import { getCompletionPopupPosition } from "@/components/layout/app-shell-model";
+import type { CompletionAnchorStore } from "@/features/editor/completion-anchor-store";
 
 type CompletionPopupProps = {
   items: CompletionPresentation[];
   selectedIndex: number;
-  position: { top: number; left: number };
-  anchor: EditorCaretRect | null;
+  anchorStore: CompletionAnchorStore;
   status: "loading" | "ready" | "empty" | "error";
   message?: string;
   detailsVisible: boolean;
@@ -16,14 +17,19 @@ type CompletionPopupProps = {
 export function CompletionPopup({
   items,
   selectedIndex,
-  position,
-  anchor,
+  anchorStore,
   status,
   message,
   detailsVisible,
   onAccept,
   onSelect,
 }: CompletionPopupProps) {
+  const anchor = useSyncExternalStore(
+    anchorStore.subscribe,
+    anchorStore.getSnapshot,
+    anchorStore.getSnapshot,
+  );
+  const position = getCompletionPopupPosition(anchor);
   const selectedItem = items[selectedIndex] ?? null;
   const activeOptionId = selectedItem ? completionOptionId(selectedItem.id) : undefined;
   const detailsId = selectedItem ? completionDetailsId(selectedItem.id) : undefined;

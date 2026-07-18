@@ -1,11 +1,17 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::models::language::LanguageQueryRequest;
 use crate::services::process_command_service::hidden_command;
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::process::SemanticWorkerProcessSpec;
-use crate::services::semantic_host::session::{parse_completion_item, SemanticWorkerSession};
+use crate::services::semantic_host::session::{
+    parse_completion_item, IdleHealthProbe, SemanticWorkerSession,
+};
 
 fn unique_temp_path(name: &str, extension: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -25,8 +31,9 @@ import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const request = JSON.parse(line);
-  const payload = request.method === "health" ? { health: { status: "ok" } } : {};
-  process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, error: null })}\n`);
+  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 3 } } : {};
+  const runtime = { rssBytes: 104857600, heapUsedBytes: 40, heapTotalBytes: 80, externalBytes: 2, uptimeMs: 10 };
+  process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, runtime, error: null })}\n`);
 });
 "#,
     )
@@ -49,6 +56,29 @@ setInterval(() => {}, 1000);
     path
 }
 
+fn incompatible_worker_entry() -> PathBuf {
+    let path = unique_temp_path("incompatible-semantic-worker", "mjs");
+    fs::write(
+        &path,
+        r#"
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  process.stdout.write(`${JSON.stringify({
+    id: request.id,
+    ok: true,
+    payload: { status: "ready", protocolVersion: 1 },
+    error: null,
+  })}\n`);
+});
+"#,
+    )
+    .unwrap();
+    path
+}
+
 fn empty_line_worker_entry() -> PathBuf {
     let path = unique_temp_path("empty-line-semantic-worker", "mjs");
     fs::write(
@@ -62,6 +92,61 @@ rl.on("line", () => {
 });
 setInterval(() => {}, 1000);
 "#,
+    )
+    .unwrap();
+    path
+}
+
+fn stale_generation_worker_entry() -> PathBuf {
+    let path = unique_temp_path("stale-generation-semantic-worker", "mjs");
+    fs::write(
+        &path,
+        r#"
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  const generation = request.position?.contentGeneration ?? 0;
+  process.stdout.write(`${JSON.stringify({
+    id: request.id,
+    ok: true,
+    payload: [],
+    state: { contentGeneration: generation + 1 },
+  })}\n`);
+});
+"#,
+    )
+    .unwrap();
+    path
+}
+
+fn slow_query_worker_entry(marker: &PathBuf) -> PathBuf {
+    let path = unique_temp_path("slow-query-semantic-worker", "mjs");
+    let marker = serde_json::to_string(&marker.to_string_lossy()).unwrap();
+    fs::write(
+        &path,
+        format!(
+            r#"
+import fs from "node:fs";
+import readline from "node:readline";
+
+const marker = {marker};
+const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY }});
+rl.on("line", (line) => {{
+  const request = JSON.parse(line);
+  if (request.method === "health") {{
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 3 }} }})}}\n`);
+    return;
+  }}
+  fs.writeFileSync(marker, "query-started");
+  setTimeout(() => {{
+    const state = {{ contentGeneration: request.position.contentGeneration }};
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: [], state }})}}\n`);
+  }}, 200);
+}});
+"#,
+        ),
     )
     .unwrap();
     path
@@ -158,6 +243,10 @@ fn drops_and_stops_the_worker_process() {
         .expect("worker pid should be available");
 
     assert_eq!(session.health().unwrap(), "ok");
+    assert_eq!(
+        session.runtime_snapshot().unwrap().rss_bytes,
+        100 * 1024 * 1024
+    );
 
     drop(session);
 
@@ -182,6 +271,22 @@ fn times_out_when_worker_starts_but_never_responds() {
 }
 
 #[test]
+fn rejects_an_incompatible_worker_protocol() {
+    let entry_path = incompatible_worker_entry();
+    let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+        semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+        ..SemanticHostConfig::default()
+    })
+    .expect("worker spec should be discoverable");
+    let session = SemanticWorkerSession::start(&spec).expect("worker session should start");
+
+    let error = session.health().unwrap_err();
+
+    assert!(error.contains("protocol mismatch"));
+    fs::remove_file(entry_path).unwrap();
+}
+
+#[test]
 fn rejects_empty_worker_response_without_blocking_on_stderr() {
     let entry_path = empty_line_worker_entry();
     let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
@@ -194,5 +299,65 @@ fn rejects_empty_worker_response_without_blocking_on_stderr() {
     let error = session.health().unwrap_err();
 
     assert!(error.contains("Semantic worker returned an empty response"));
+    fs::remove_file(entry_path).unwrap();
+}
+
+#[test]
+fn rejects_a_semantic_response_for_the_wrong_document_generation() {
+    let entry_path = stale_generation_worker_entry();
+    let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+        semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+        ..SemanticHostConfig::default()
+    })
+    .expect("worker spec should be discoverable");
+    let session = SemanticWorkerSession::start(&spec).expect("worker session should start");
+    let error = session
+        .completion(&LanguageQueryRequest {
+            path: "/tmp/Index.ets".to_string(),
+            line: 1,
+            column: 1,
+            content: Some("const value = 1".to_string()),
+        })
+        .unwrap_err();
+
+    assert!(error.contains("served stale document generation"));
+    fs::remove_file(entry_path).unwrap();
+}
+
+#[test]
+fn idle_health_probe_skips_a_busy_foreground_transport() {
+    let marker = unique_temp_path("slow-query-started", "txt");
+    let entry_path = slow_query_worker_entry(&marker);
+    let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+        semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+        ..SemanticHostConfig::default()
+    })
+    .expect("worker spec should be discoverable");
+    let session =
+        Arc::new(SemanticWorkerSession::start(&spec).expect("worker session should start"));
+    session.health().unwrap();
+    let foreground = {
+        let session = session.clone();
+        thread::spawn(move || {
+            session.completion(&LanguageQueryRequest {
+                path: "/tmp/Busy.ets".to_string(),
+                line: 1,
+                column: 1,
+                content: Some("const busy = true".to_string()),
+            })
+        })
+    };
+    for _ in 0..100 {
+        if marker.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+
+    assert!(marker.exists());
+    assert!(matches!(session.try_health(), IdleHealthProbe::Busy));
+    foreground.join().unwrap().unwrap();
+
+    fs::remove_file(marker).unwrap();
     fs::remove_file(entry_path).unwrap();
 }

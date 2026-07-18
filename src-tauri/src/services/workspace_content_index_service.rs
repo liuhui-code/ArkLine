@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use rusqlite::{params, Connection, Statement};
+use rusqlite::{params, Connection};
 
 use crate::models::workspace::{
     WorkspaceTextSearchCursor, WorkspaceTextSearchMatch, WorkspaceTextSearchQuery,
@@ -12,7 +11,12 @@ use crate::services::workspace_content_match_service::{
     build_summary, find_line_match, slice_context,
 };
 use crate::services::workspace_content_query_service::{load_candidate_lines, IndexedLine};
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_index_connection_service::open_existing_workspace_index_reader;
+
+#[cfg(test)]
+pub use crate::services::workspace_content_refresh_service::{
+    index_workspace_content, update_workspace_content,
+};
 
 struct MatchedIndexedLine {
     line: IndexedLine,
@@ -20,65 +24,19 @@ struct MatchedIndexedLine {
     end: usize,
 }
 
-pub fn index_workspace_content(root_path: &str, indexed_paths: &[String]) -> Result<(), String> {
-    if !Path::new(root_path).is_dir() {
-        return Ok(());
-    }
-
-    let mut connection = open_content_index(root_path)?;
-    ensure_schema(&connection)?;
-    let root_key = normalize_index_path(root_path);
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "delete from workspace_content_lines where root_path = ?1",
-            params![root_key],
-        )
-        .map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "delete from workspace_content_fts where root_path = ?1",
-            params![root_key],
-        )
-        .map_err(|error| error.to_string())?;
-
-    index_paths(&transaction, root_path, &root_key, indexed_paths)?;
-    transaction.commit().map_err(|error| error.to_string())
-}
-
-pub fn update_workspace_content(
-    root_path: &str,
-    added_paths: &[String],
-    removed_paths: &[String],
-) -> Result<(), String> {
-    if !Path::new(root_path).is_dir() {
-        return Ok(());
-    }
-
-    let mut connection = open_content_index(root_path)?;
-    ensure_schema(&connection)?;
-    let root_key = normalize_index_path(root_path);
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    for path in removed_paths {
-        delete_indexed_path(&transaction, &root_key, path)?;
-    }
-    for path in added_paths {
-        if content_path_exists(&transaction, &root_key, path)? {
-            delete_indexed_path(&transaction, &root_key, path)?;
-        }
-    }
-
-    index_paths(&transaction, root_path, &root_key, added_paths)?;
-    transaction.commit().map_err(|error| error.to_string())
-}
-
 pub fn search_indexed_workspace_content(
     request: &WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceTextSearchResult, String> {
+    search_indexed_workspace_content_with_cancellation(request, || false)
+}
+
+pub fn search_indexed_workspace_content_with_cancellation<F>(
+    request: &WorkspaceTextSearchRequest,
+    mut is_cancelled: F,
+) -> Result<WorkspaceTextSearchResult, String>
+where
+    F: FnMut() -> bool + Send + 'static,
+{
     let query = request.query.trim();
     let result_query = WorkspaceTextSearchQuery::Text {
         query: query.to_string(),
@@ -95,8 +53,25 @@ pub fn search_indexed_workspace_content(
         });
     }
 
-    let connection = open_content_index(&request.root_path)?;
-    ensure_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(&request.root_path)? else {
+        return Ok(empty_text_search_result(result_query));
+    };
+    if is_cancelled() {
+        return Err("Workspace text search cancelled".to_string());
+    }
+    connection.progress_handler(1_000, Some(is_cancelled));
+    let result =
+        search_indexed_workspace_content_on_connection(&connection, request, query, result_query);
+    connection.progress_handler(0, None::<fn() -> bool>);
+    result.map_err(normalize_search_error)
+}
+
+fn search_indexed_workspace_content_on_connection(
+    connection: &Connection,
+    request: &WorkspaceTextSearchRequest,
+    query: &str,
+    result_query: WorkspaceTextSearchQuery,
+) -> Result<WorkspaceTextSearchResult, String> {
     let root_key = normalize_index_path(&request.root_path);
     let offset = request
         .cursor
@@ -104,7 +79,7 @@ pub fn search_indexed_workspace_content(
         .map_or(0, |cursor| cursor.path_index);
     let scan_limit = indexed_candidate_scan_limit(request);
     let candidate_lines = load_candidate_lines(
-        &connection,
+        connection,
         &root_key,
         query,
         request.options.case_sensitive,
@@ -139,7 +114,7 @@ pub fn search_indexed_workspace_content(
         .iter()
         .map(|matched| matched.line.clone())
         .collect::<Vec<_>>();
-    let grouped_lines = load_context_lines(&connection, &root_key, &context_sources)?;
+    let grouped_lines = load_context_lines(connection, &root_key, &context_sources)?;
     let mut matches = Vec::new();
 
     for matched in visible_lines {
@@ -185,114 +160,24 @@ pub fn search_indexed_workspace_content(
     })
 }
 
-fn open_content_index(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace content index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(&cache_path).map_err(|error| error.to_string())
-}
-
-fn ensure_schema(connection: &Connection) -> Result<(), String> {
-    ensure_workspace_index_schema(connection)
-}
-
-fn delete_indexed_path(connection: &Connection, root_key: &str, path: &str) -> Result<(), String> {
-    let normalized_path = normalize_index_path(path);
-    connection
-        .execute(
-            "delete from workspace_content_lines where root_path = ?1 and path = ?2",
-            params![root_key, normalized_path],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "delete from workspace_content_fts where root_path = ?1 and path = ?2",
-            params![root_key, normalized_path],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn content_path_exists(
-    connection: &Connection,
-    root_key: &str,
-    path: &str,
-) -> Result<bool, String> {
-    let normalized_path = normalize_index_path(path);
-    let count: i64 = connection
-        .query_row(
-            "select count(*)
-             from workspace_content_lines
-             where root_path = ?1 and path = ?2
-             limit 1",
-            params![root_key, normalized_path],
-            |row| row.get(0),
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(count > 0)
-}
-
-fn index_paths(
-    connection: &Connection,
-    root_path: &str,
-    root_key: &str,
-    indexed_paths: &[String],
-) -> Result<(), String> {
-    let mut line_statement = connection
-        .prepare(
-            "insert into workspace_content_lines (
-                root_path, path, line, text
-             ) values (?1, ?2, ?3, ?4)",
-        )
-        .map_err(|error| error.to_string())?;
-    let mut fts_statement = connection
-        .prepare(
-            "insert into workspace_content_fts (
-                root_path, path, line, text
-             ) values (?1, ?2, ?3, ?4)",
-        )
-        .map_err(|error| error.to_string())?;
-    for indexed_path in indexed_paths {
-        let file_path = to_filesystem_path(root_path, indexed_path);
-        let Ok(content) = fs::read_to_string(&file_path) else {
-            continue;
-        };
-
-        let normalized_path = normalize_index_path(indexed_path);
-        for (line_index, line_text) in content.lines().enumerate() {
-            insert_indexed_line(
-                &mut line_statement,
-                &mut fts_statement,
-                root_key,
-                &normalized_path,
-                line_index,
-                line_text,
-            )?;
-        }
+fn normalize_search_error(error: String) -> String {
+    if error.to_lowercase().contains("interrupted") {
+        "Workspace text search cancelled".to_string()
+    } else {
+        error
     }
-    Ok(())
 }
 
-fn insert_indexed_line(
-    line_statement: &mut Statement<'_>,
-    fts_statement: &mut Statement<'_>,
-    root_key: &str,
-    path: &str,
-    line_index: usize,
-    line_text: &str,
-) -> Result<(), String> {
-    line_statement
-        .execute(params![root_key, path, (line_index + 1) as i64, line_text])
-        .map_err(|error| error.to_string())?;
-    fts_statement
-        .execute(params![root_key, path, (line_index + 1) as i64, line_text])
-        .map_err(|error| error.to_string())?;
-    Ok(())
+fn empty_text_search_result(query: WorkspaceTextSearchQuery) -> WorkspaceTextSearchResult {
+    WorkspaceTextSearchResult {
+        query,
+        matches: Vec::new(),
+        partial: false,
+        searched_files: 0,
+        prefilter_skipped_files: 0,
+        limit_reached: false,
+        next_cursor: None,
+    }
 }
 
 fn load_context_lines(
@@ -332,13 +217,6 @@ fn indexed_candidate_scan_limit(request: &WorkspaceTextSearchRequest) -> usize {
         return request.limit.saturating_mul(8).max(request.limit + 1);
     }
     request.limit + 1
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn to_filesystem_path(root_path: &str, indexed_path: &str) -> String {

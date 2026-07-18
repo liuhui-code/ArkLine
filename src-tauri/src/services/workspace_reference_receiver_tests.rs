@@ -1,4 +1,5 @@
 use std::fs;
+use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
 
@@ -7,6 +8,33 @@ use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir,
 };
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
+
+#[test]
+fn member_context_load_does_not_wait_on_its_own_workspace_writer() {
+    let root = create_empty_workspace("reference-member-context-writer");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(source_dir.join("Index.ets"), "service.load();\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let mut connection = workspace_connection(&root);
+    let transaction = connection.transaction().unwrap();
+    transaction
+        .execute("create table writer_lock_probe (value integer)", [])
+        .unwrap();
+    let started = Instant::now();
+    crate::services::workspace_reference_member_index_service::WorkspaceMemberReferenceContext::load(
+        &transaction,
+        &root_path.replace('/', "\\"),
+    )
+    .unwrap();
+
+    assert!(started.elapsed() < Duration::from_millis(500));
+    transaction.rollback().unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
 
 #[test]
 fn workspace_refresh_indexes_member_access_with_owner_context() {

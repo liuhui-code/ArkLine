@@ -320,6 +320,12 @@ fn clear_content_index(root: &std::path::Path) {
     connection
         .execute("delete from workspace_content_fts", [])
         .unwrap();
+    connection
+        .execute("delete from workspace_content_trigram_fts", [])
+        .unwrap();
+    connection
+        .execute("delete from workspace_content_files", [])
+        .unwrap();
 }
 
 fn assert_explain_contains(explain: &[String], expected: &str) {

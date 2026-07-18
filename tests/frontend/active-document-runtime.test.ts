@@ -21,4 +21,21 @@ describe("active document runtime", () => {
     expect(runtime.getActiveContentLength()).toBe(0);
     expect(runtime.getActiveContentSlice(0, 5)).toBe("");
   });
+
+  it("uses persistent text projections without materializing the full document", () => {
+    const runtime = createActiveDocumentRuntime({
+      current: {
+        getDocument: () => ({
+          get currentContent(): string {
+            throw new Error("full snapshot should not be read");
+          },
+        }),
+        getDocumentLength: () => 10,
+        getDocumentSlice: (_path, start, end) => "0123456789".slice(start, end),
+      },
+    }, () => "/workspace/A.ets");
+
+    expect(runtime.getActiveContentLength()).toBe(10);
+    expect(runtime.getActiveContentSlice(2, 6)).toBe("2345");
+  });
 });

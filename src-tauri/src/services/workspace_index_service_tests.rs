@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use crate::models::workspace::{WorkspaceScanSummary, WorkspaceSnapshot};
 use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRequest};
 use crate::services::workspace_content_index_service::search_indexed_workspace_content;
+use crate::services::workspace_index_schema_version_service::WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 fn snapshot(root_path: &str, truncated: bool) -> WorkspaceSnapshot {
@@ -152,12 +153,20 @@ fn refresh_workspace_index_records_schema_domain_versions() {
             |row| row.get(0),
         )
         .unwrap();
+    let semantic_layer_version: i64 = connection
+        .query_row(
+            "select version from workspace_index_schema_versions where domain = 'semantic_layer'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
 
-    assert_eq!(version_count, 14);
+    assert_eq!(version_count as usize, WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT);
     assert_eq!(symbol_resolution_version, 1);
     assert_eq!(reference_version, 1);
     assert_eq!(event_version, 1);
     assert_eq!(resume_version, 1);
+    assert_eq!(semantic_layer_version, 1);
 
     fs::remove_dir_all(root).unwrap();
 }

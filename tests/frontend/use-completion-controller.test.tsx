@@ -39,6 +39,41 @@ describe("useCompletionController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Completion: 1 items");
   });
 
+  it("keeps hidden caret movement out of React state while retaining the latest anchor", async () => {
+    const onRender = vi.fn();
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(async () => [
+          { label: "build()", detail: "Workspace method", kind: "function" },
+        ]),
+      }),
+      onRender,
+    });
+    const caret = {
+      left: 80,
+      right: 81,
+      top: 40,
+      bottom: 60,
+      line: 4,
+      column: 9,
+      measured: true,
+    };
+    const renderCount = onRender.mock.calls.length;
+
+    act(() => {
+      result.current.completion.setCompletionAnchor(caret);
+    });
+    expect(result.current.completion.completionAnchorStore.getSnapshot()).toEqual(caret);
+    expect(onRender).toHaveBeenCalledTimes(renderCount);
+
+    await act(async () => {
+      await result.current.completion.openCompletionFromEditor();
+    });
+
+    expect(result.current.completion.completionAnchorStore.getSnapshot()).toEqual(caret);
+    expect(result.current.overlay).toBe("completion");
+  });
+
   it("records envelope explain for empty completion results", async () => {
     const recordRecentQueryExplain = vi.fn();
     const onStatusChange = vi.fn();
@@ -192,6 +227,7 @@ describe("useCompletionController", () => {
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   return renderHook(() => {
+    overrides.onRender?.();
     const [overlay, setOverlay] = useState<OverlayKey>("none");
     const [quickOpenQuery, setQuickOpenQuery] = useState("");
     const [insertTarget, setInsertTarget] = useState<{ text: string; replaceBefore?: number; nonce: number } | null>(null);
@@ -230,6 +266,7 @@ type HarnessOptions = {
   isEditorFocused: () => boolean;
   recordRecentQueryExplain: Parameters<typeof useCompletionController>[0]["recordRecentQueryExplain"];
   onStatusChange: (message: string) => void;
+  onRender: () => void;
 };
 
 function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {

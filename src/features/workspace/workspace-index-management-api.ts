@@ -178,6 +178,7 @@ async function getWorkspaceIndexFileReadiness(
     parserStatus: "unknown",
     parserError: null,
     indexedGeneration: null,
+    semanticLayers: [],
     definitionAvailable: false,
     completionAvailable: false,
     usagesAvailable: false,

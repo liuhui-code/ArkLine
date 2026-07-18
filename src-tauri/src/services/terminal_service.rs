@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -217,6 +217,8 @@ pub fn run_command(
     {
         command.current_dir(Path::new(cwd));
     }
+    command.envs(&request.environment);
+    prepend_path_entries(&mut command, &request.path_entries)?;
 
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let child = command.spawn().map_err(|error| error.to_string())?;
@@ -257,6 +259,20 @@ pub fn run_command(
         duration_ms: started_at.elapsed().as_millis() as u64,
         stopped,
     })
+}
+
+fn prepend_path_entries(command: &mut Command, entries: &[String]) -> Result<(), String> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    let mut paths = entries.iter().map(PathBuf::from).collect::<Vec<_>>();
+    if let Some(existing) = std::env::var_os("PATH") {
+        paths.extend(std::env::split_paths(&existing));
+    }
+    let path = std::env::join_paths(paths).map_err(|error| error.to_string())?;
+    command.env("PATH", path);
+    Ok(())
 }
 
 pub fn stop_command(runtime: &TerminalRuntime, run_id: &str) -> Result<(), String> {

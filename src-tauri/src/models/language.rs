@@ -15,6 +15,32 @@ pub struct LanguageServiceReport {
     pub document_symbols: bool,
     pub find_usages: bool,
     pub detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supervisor: Option<SemanticSupervisorSnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticWorkerRuntime {
+    pub rss_bytes: u64,
+    pub heap_used_bytes: u64,
+    pub heap_total_bytes: u64,
+    pub external_bytes: u64,
+    pub uptime_ms: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticSupervisorSnapshot {
+    pub status: String,
+    pub restart_count: u64,
+    pub restored_document_count: u64,
+    pub consecutive_failures: u32,
+    pub last_heartbeat_epoch_ms: Option<u64>,
+    pub retry_after_ms: u64,
+    pub last_error: Option<String>,
+    pub runtime: Option<SemanticWorkerRuntime>,
+    pub memory_budget_bytes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

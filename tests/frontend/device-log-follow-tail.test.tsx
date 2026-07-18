@@ -84,6 +84,38 @@ describe("Device Log follow-tail behavior", () => {
     expect(within(panel).getAllByTestId("device-log-entry").length).toBeLessThan(500);
   });
 
+  it("coalesces burst scroll events into one animation-frame update", async () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    const log = within(panel).getByRole("log", { name: "Device Log Entries" });
+    setLogGeometry(log, { clientHeight: 52, scrollHeight: 780 });
+    appendLines(panel, 30);
+    act(() => callbacks.at(-1)?.(performance.now()));
+    expect(await within(panel).findByLabelText("tail line 30")).toBeVisible();
+    const beforeScroll = rafSpy.mock.calls.length;
+
+    act(() => {
+      for (let offset = 0; offset < 20; offset += 1) {
+        log.scrollTop = offset;
+        fireEvent.scroll(log);
+      }
+    });
+
+    expect(rafSpy.mock.calls.length - beforeScroll).toBe(1);
+    act(() => callbacks.at(-1)?.(performance.now()));
+    expect(within(panel).getByRole("button", { name: "Follow Tail" })).toBeVisible();
+  });
+
   it("pauses the live view without dropping incoming log lines", async () => {
     const user = userEvent.setup();
     render(<AppShell workspaceApi={createWorkspaceApi()} />);

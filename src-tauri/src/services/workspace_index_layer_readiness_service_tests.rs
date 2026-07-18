@@ -31,6 +31,10 @@ fn reports_missing_layers_for_empty_workspace() {
         report.layer("sdk").unwrap().workspace_status,
         WorkspaceIndexLayerStatus::Missing
     );
+    assert_eq!(
+        report.layer("semantic.syntax").unwrap().workspace_status,
+        WorkspaceIndexLayerStatus::Missing
+    );
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -111,7 +115,59 @@ fn reports_ready_current_file_layers_after_indexing() {
         report.layer("sdk").unwrap().workspace_status,
         WorkspaceIndexLayerStatus::Missing
     );
+    assert_eq!(
+        report.layer("semantic.syntax").unwrap().current_file_status,
+        Some(WorkspaceIndexLayerStatus::Ready)
+    );
+    assert_eq!(
+        report
+            .layer("semantic.definitions")
+            .unwrap()
+            .current_file_status,
+        Some(WorkspaceIndexLayerStatus::Ready)
+    );
+    assert_eq!(
+        report.layer("semantic.types").unwrap().current_file_status,
+        Some(WorkspaceIndexLayerStatus::Missing)
+    );
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn content_layer_counts_empty_files_and_persisted_failures() {
+    let root = create_empty_workspace("layer-readiness-content-states");
+    let source_dir = create_workspace_source_dir(&root);
+    let ready_path = source_dir.join("Empty.ets");
+    let failed_path = source_dir.join("Failed.ets");
+    fs::write(&ready_path, "").unwrap();
+    fs::write(&failed_path, "export class Failed {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    let connection =
+        rusqlite::Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
+    connection
+        .execute(
+            "update workspace_content_files set status = 'failed', error = 'fixture failure'
+             where path like '%Failed.ets'",
+            [],
+        )
+        .unwrap();
+
+    let report =
+        get_workspace_index_layer_readiness(&root_path, Some(&ready_path.to_string_lossy()))
+            .unwrap();
+    let content = report.layer("content").unwrap();
+
+    assert_eq!(content.workspace_status, WorkspaceIndexLayerStatus::Failed);
+    assert_eq!(
+        content.current_file_status,
+        Some(WorkspaceIndexLayerStatus::Ready)
+    );
+    assert_eq!(content.indexed_count, 1);
+    assert_eq!(content.failed_count, 1);
     fs::remove_dir_all(root).unwrap();
 }
 

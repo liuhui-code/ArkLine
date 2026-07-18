@@ -11,6 +11,8 @@ use crate::services::workspace_reference_member_access_parser_service::{
     contains_member_access_line, is_identifier, member_accesses, MemberAccess,
 };
 use crate::services::workspace_reference_receiver_type_service::receiver_type_maps_by_line;
+use crate::services::workspace_sdk_shared_bridge_service::query_shared_sdk_members_from_binding;
+use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
 
 pub struct WorkspaceMemberReferenceContext {
     sdk_targets: Vec<MemberTarget>,
@@ -217,6 +219,28 @@ fn load_sdk_member_targets(
     connection: &Connection,
     root_key: &str,
 ) -> Result<Vec<MemberTarget>, String> {
+    let root_path = root_key.replace('\\', "/");
+    if let Ok(Some(symbols)) =
+        query_shared_sdk_members_from_binding(connection, &root_path, root_key)
+    {
+        return Ok(symbols
+            .into_iter()
+            .map(|symbol| MemberTarget {
+                symbol_id: sdk_symbol_id(
+                    &symbol.path,
+                    &symbol.kind,
+                    symbol.container.as_deref(),
+                    &symbol.name,
+                    symbol.line as i64,
+                    symbol.column as i64,
+                ),
+                name: symbol.name,
+                path: symbol.path,
+                container: symbol.container.unwrap_or_default(),
+                return_type: None,
+            })
+            .collect());
+    }
     let mut statement = connection
         .prepare(
             "select symbol.symbol_id, symbol.kind, symbol.name, symbol.path, symbol.line, symbol.column,

@@ -127,6 +127,7 @@ export function readiness(path = "/workspace/Entry.ets"): WorkspaceIndexFileRead
     parserStatus: "ready",
     parserError: null,
     indexedGeneration: 1,
+    semanticLayers: [],
     definitionAvailable: true,
     completionAvailable: true,
     usagesAvailable: true,

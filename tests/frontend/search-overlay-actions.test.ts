@@ -15,7 +15,7 @@ describe("search overlay actions", () => {
 
     openSearchOverlayAction({
       mode: "searchEverywhere",
-      editorSelectedText: "  Login   Controller  ",
+      getEditorSelectedText: () => "  Login   Controller  ",
       setSearchEverywhereMode,
       setSearchEverywhereScope,
       setQuickOpenQuery,
@@ -34,7 +34,7 @@ describe("search overlay actions", () => {
 
     openSearchOverlayAction({
       mode: "find",
-      editorSelectedText: "width",
+      getEditorSelectedText: () => "width",
       setSearchEverywhereMode: vi.fn(),
       setSearchEverywhereScope: vi.fn(),
       setQuickOpenQuery,
@@ -42,7 +42,7 @@ describe("search overlay actions", () => {
     });
     openSearchOverlayAction({
       mode: "replace",
-      editorSelectedText: "",
+      getEditorSelectedText: () => "",
       setSearchEverywhereMode: vi.fn(),
       setSearchEverywhereScope: vi.fn(),
       setQuickOpenQuery,

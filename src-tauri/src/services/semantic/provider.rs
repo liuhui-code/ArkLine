@@ -49,6 +49,7 @@ impl SemanticProvider for FallbackProvider {
             document_symbols: true,
             find_usages: true,
             detail: self.detail.clone(),
+            supervisor: None,
         }
     }
 

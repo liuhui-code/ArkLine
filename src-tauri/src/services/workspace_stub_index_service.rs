@@ -6,17 +6,22 @@ use crate::models::workspace::ArkTsFileStub;
 use crate::services::workspace_dependency_graph_service::{
     rebuild_dependency_graph, update_dependency_graph_for_paths,
 };
-use crate::services::workspace_index_parse_pool_service::{
-    WorkspaceIndexParseJob, WorkspaceIndexParsePool,
+use crate::services::workspace_index_layer_generation_service::{
+    publish_layer_generation, STUB_LAYER,
 };
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
-use crate::services::workspace_performance_config_service::{
-    resolve_performance_config, PerformanceUserSettings,
-};
 use crate::services::workspace_reference_index_service::{
     replace_workspace_references, replace_workspace_references_for_paths,
 };
+use crate::services::workspace_semantic_layer_state_service::{
+    clear_semantic_layers, mark_semantic_layers_stale, publish_definition_layers,
+    publish_project_model_layers, publish_syntax_layers, remove_semantic_layers,
+};
 use crate::services::workspace_stub_index_writer_service::insert_parsed_stub_rows;
+use crate::services::workspace_stub_prepare_service::{
+    parse_stub_files, prepare_changed_stub_rows, PreparedWorkspaceStubRefresh,
+};
+#[cfg(test)]
 use crate::services::workspace_stub_refresh_plan_service::plan_workspace_stub_refresh;
 use crate::services::workspace_symbol_resolution_service::{
     resolve_workspace_symbols, resolve_workspace_symbols_for_paths,
@@ -30,18 +35,32 @@ pub fn replace_all_stub_rows(
     file_paths: &[String],
     indexed_generation: u64,
 ) -> Result<(), String> {
-    delete_all_stub_rows(connection, root_key)?;
-    insert_stub_rows_for_files(
-        connection,
+    let stubs = parse_stub_files(
         root_key,
         file_paths,
         indexed_generation,
         WorkspaceIndexTaskPriority::FullRefresh,
-    )?;
+    );
+    replace_all_stub_rows_with_parsed(connection, root_key, file_paths, &stubs, indexed_generation)
+}
+
+pub(crate) fn replace_all_stub_rows_with_parsed(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    stubs: &[ArkTsFileStub],
+    indexed_generation: u64,
+) -> Result<(), String> {
+    clear_semantic_layers(connection, root_key)?;
+    delete_all_stub_rows(connection, root_key)?;
+    insert_parsed_stub_rows(connection, root_key, stubs, indexed_generation)?;
+    publish_syntax_layers(connection, root_key, file_paths, indexed_generation)?;
     rebuild_dependency_graph(connection, root_key, file_paths)?;
+    publish_project_model_layers(connection, root_key, file_paths, indexed_generation)?;
     resolve_workspace_symbols(connection, root_key, indexed_generation)?;
+    publish_definition_layers(connection, root_key, file_paths, indexed_generation)?;
     replace_workspace_references(connection, root_key, file_paths, indexed_generation)?;
-    Ok(())
+    publish_layer_generation(connection, root_key, STUB_LAYER, indexed_generation)
 }
 
 #[cfg(test)]
@@ -185,15 +204,45 @@ pub fn replace_changed_stub_rows(
     indexed_generation: u64,
     priority: WorkspaceIndexTaskPriority,
 ) -> Result<(), String> {
-    let plan = plan_workspace_stub_refresh(changed_paths, removed_paths);
+    let prepared = prepare_changed_stub_rows(
+        root_key,
+        changed_paths,
+        removed_paths,
+        indexed_generation,
+        priority,
+    );
+    replace_changed_stub_rows_with_parsed(
+        connection,
+        root_key,
+        file_paths,
+        &prepared,
+        indexed_generation,
+    )
+}
 
+pub(crate) fn replace_changed_stub_rows_with_parsed(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    prepared: &PreparedWorkspaceStubRefresh,
+    indexed_generation: u64,
+) -> Result<(), String> {
+    let plan = &prepared.plan;
+
+    mark_semantic_layers_stale(
+        connection,
+        root_key,
+        &plan.affected_paths,
+        indexed_generation,
+    )?;
+    remove_semantic_layers(connection, root_key, &plan.removed_paths)?;
     delete_stub_rows_for_paths(connection, root_key, &plan.affected_paths)?;
-    insert_stub_rows_for_files(
+    insert_parsed_stub_rows(connection, root_key, &prepared.stubs, indexed_generation)?;
+    publish_syntax_layers(
         connection,
         root_key,
         &plan.indexed_paths,
         indexed_generation,
-        priority,
     )?;
     update_dependency_graph_for_paths(
         connection,
@@ -202,11 +251,23 @@ pub fn replace_changed_stub_rows(
         &plan.indexed_paths,
         &plan.removed_paths,
     )?;
+    publish_project_model_layers(
+        connection,
+        root_key,
+        &plan.indexed_paths,
+        indexed_generation,
+    )?;
     resolve_workspace_symbols_for_paths(
         connection,
         root_key,
         &plan.indexed_paths,
         &plan.removed_paths,
+        indexed_generation,
+    )?;
+    publish_definition_layers(
+        connection,
+        root_key,
+        &plan.indexed_paths,
         indexed_generation,
     )?;
     replace_workspace_references_for_paths(
@@ -216,24 +277,7 @@ pub fn replace_changed_stub_rows(
         &plan.removed_paths,
         indexed_generation,
     )?;
-    Ok(())
-}
-
-fn insert_stub_rows_for_files(
-    connection: &Connection,
-    root_key: &str,
-    file_paths: &[String],
-    indexed_generation: u64,
-    priority: WorkspaceIndexTaskPriority,
-) -> Result<(), String> {
-    insert_stub_rows_for_files_profiled(
-        connection,
-        root_key,
-        file_paths,
-        indexed_generation,
-        priority,
-        None,
-    )
+    publish_layer_generation(connection, root_key, STUB_LAYER, indexed_generation)
 }
 
 fn insert_stub_rows_for_files_profiled(
@@ -254,53 +298,6 @@ fn insert_stub_rows_for_files_profiled(
         profile.write_duration += write_profile.write_duration;
     }
     Ok(())
-}
-
-fn parse_stub_files(
-    root_key: &str,
-    file_paths: &[String],
-    indexed_generation: u64,
-    priority: WorkspaceIndexTaskPriority,
-) -> Vec<ArkTsFileStub> {
-    let jobs = parse_jobs_for_paths(root_key, file_paths, indexed_generation, priority);
-    let performance_config = resolve_performance_config(&PerformanceUserSettings::default());
-    let pool = WorkspaceIndexParsePool::arkts_stub_pool_from_config(&performance_config);
-    let mut stubs = pool
-        .parse_batch(jobs)
-        .into_iter()
-        .filter_map(|result| result.parsed.map(|parsed| parsed.stub))
-        .collect::<Vec<_>>();
-    stubs.sort_by(|left, right| left.path.cmp(&right.path));
-    stubs
-}
-
-fn parse_jobs_for_paths(
-    root_key: &str,
-    file_paths: &[String],
-    indexed_generation: u64,
-    priority: WorkspaceIndexTaskPriority,
-) -> Vec<WorkspaceIndexParseJob> {
-    file_paths
-        .iter()
-        .map(|path| normalize_index_path(path))
-        .filter(|path| is_source_file(path))
-        .map(|path| WorkspaceIndexParseJob {
-            root_path: root_key.to_string(),
-            path,
-            priority,
-            generation: indexed_generation,
-        })
-        .collect()
-}
-
-#[cfg(test)]
-pub(crate) fn stub_parse_jobs_for_paths_for_test(
-    root_key: &str,
-    file_paths: &[String],
-    indexed_generation: u64,
-    priority: WorkspaceIndexTaskPriority,
-) -> Vec<WorkspaceIndexParseJob> {
-    parse_jobs_for_paths(root_key, file_paths, indexed_generation, priority)
 }
 
 fn delete_all_stub_rows(connection: &Connection, root_key: &str) -> Result<(), String> {
@@ -334,15 +331,13 @@ fn delete_stub_rows_for_paths(
     Ok(())
 }
 
-fn is_source_file(path: &str) -> bool {
-    path.ends_with(".ets") || path.ends_with(".ts") || path.ends_with(".d.ts")
-}
-
 pub(crate) fn normalize_index_path(path: &str) -> String {
     path.replace('/', "\\")
 }
 
 const STUB_TABLES: &[&str] = &[
+    "workspace_symbol_trigrams",
+    "workspace_symbol_postings",
     "workspace_stub_files",
     "workspace_stub_declarations",
     "workspace_stub_imports",

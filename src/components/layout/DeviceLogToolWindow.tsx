@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { DeviceFaultLogPanel } from "@/components/layout/DeviceFaultLogPanel";
 import { DeviceHiLogPanel } from "@/components/layout/DeviceHiLogPanel";
 import type { DeviceLogDevice, WorkspaceApi } from "@/features/workspace/workspace-api";
@@ -11,7 +11,7 @@ type DeviceLogToolWindowProps = {
 
 type DeviceLogWorkbenchTab = "hilog" | "faultLog";
 
-export function DeviceLogToolWindow({
+export const DeviceLogToolWindow = memo(function DeviceLogToolWindow({
   active,
   workspaceApi,
   onStatusChange,
@@ -86,7 +86,7 @@ export function DeviceLogToolWindow({
           Fault Log
         </button>
       </div>
-      <div hidden={activeTab !== "hilog"} aria-hidden={activeTab !== "hilog"}>
+      <div className="device-log-tool-window__content" hidden={activeTab !== "hilog"} aria-hidden={activeTab !== "hilog"}>
         <DeviceHiLogPanel
           active={active && activeTab === "hilog"}
           deviceId={selectedDeviceId}
@@ -94,7 +94,7 @@ export function DeviceLogToolWindow({
           onStatusChange={handlePanelStatusChange}
         />
       </div>
-      <div hidden={activeTab !== "faultLog"} aria-hidden={activeTab !== "faultLog"}>
+      <div className="device-log-tool-window__content" hidden={activeTab !== "faultLog"} aria-hidden={activeTab !== "faultLog"}>
         <DeviceFaultLogPanel
           active={active && activeTab === "faultLog"}
           deviceId={selectedDeviceId}
@@ -104,4 +104,4 @@ export function DeviceLogToolWindow({
       </div>
     </section>
   );
-}
+});

@@ -15,18 +15,13 @@ export function getOutputSummary({ target, platform = process.platform } = {}) {
   const resolvedTarget = resolveTarget(target);
 
   if (resolvedTarget === "windows-portable") {
-    const binaryPath = platform === "win32"
-      ? "src-tauri/target/release/arkline.exe"
-      : `src-tauri/target/${WINDOWS_TARGET}/release/arkline.exe`;
-
     return [
       "",
-      "Portable executable output:",
-      `  ${binaryPath}`,
+      "Portable bundle output:",
+      "  dist/ArkLine-windows-x64.zip",
       "",
-      platform === "win32"
-        ? "Note: the target machine still needs Microsoft WebView2 Runtime."
-        : "Note: on macOS or Linux this build cross-compiles a Windows .exe with cargo-xwin.",
+      "The archive contains ArkLine.exe plus semantic and indexer sidecars.",
+      platform === "win32" ? "" : "This build cross-compiles Windows binaries with cargo-xwin.",
     ].join("\n");
   }
 
@@ -41,7 +36,7 @@ export function getOutputSummary({ target, platform = process.platform } = {}) {
   return [
     "",
     "Installer output:",
-    "  src-tauri/target/release/bundle/nsis/",
+    `  src-tauri/target/${WINDOWS_TARGET}/release/bundle/nsis/`,
     "",
     "Note: the target machine still needs Microsoft WebView2 Runtime.",
   ].join("\n");
@@ -56,6 +51,8 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
   }
 
   if (resolvedTarget === "mac") {
+    steps.push({ command: "node", args: ["scripts/build-semantic-sidecar.mjs"] });
+    steps.push({ command: "node", args: ["scripts/build-indexer-sidecar.mjs"] });
     steps.push({
       command: "pnpm",
       args: ["tauri", "build", "--no-bundle"],
@@ -65,14 +62,35 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
 
   if (resolvedTarget === "windows-portable") {
     steps.push({
+      command: "node",
+      args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", WINDOWS_TARGET],
+    });
+    steps.push({
+      command: "node",
+      args: hostPlatform === "win32"
+        ? ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET]
+        : ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET, "--runner", "cargo-xwin"],
+    });
+    steps.push({
       command: "pnpm",
       args: hostPlatform === "win32"
         ? ["tauri", "build", "--target", WINDOWS_TARGET, "--no-bundle"]
         : ["tauri", "build", "--runner", "cargo-xwin", "--target", WINDOWS_TARGET, "--no-bundle"],
     });
+    steps.push({ command: "node", args: ["scripts/stage-windows-portable.mjs"] });
     return steps;
   }
 
+  steps.push({
+    command: "node",
+    args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", WINDOWS_TARGET],
+  });
+  steps.push({
+    command: "node",
+    args: hostPlatform === "win32"
+      ? ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET]
+      : ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET, "--runner", "cargo-xwin"],
+  });
   steps.push({
     command: "pnpm",
     args: hostPlatform === "win32"

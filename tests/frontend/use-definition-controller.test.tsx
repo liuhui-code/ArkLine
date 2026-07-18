@@ -14,8 +14,7 @@ describe("useDefinitionController", () => {
   });
 
   it("opens indexed resolved definition targets", async () => {
-    const openFile = vi.fn(async () => undefined);
-    const setSelectionTarget = vi.fn();
+    const navigateToLocation = vi.fn(async () => undefined);
     const onStatusChange = vi.fn();
     const { result } = renderHook(() => useDefinitionController(options({
       workspaceApi: workspaceApi({
@@ -24,8 +23,7 @@ describe("useDefinitionController", () => {
           readiness: readiness("ready"),
         })),
       }),
-      openFile,
-      setSelectionTarget,
+      navigateToLocation,
       onStatusChange,
     })));
 
@@ -33,8 +31,7 @@ describe("useDefinitionController", () => {
       await result.current.goToDefinitionFromEditor();
     });
 
-    expect(openFile).toHaveBeenCalledWith("/workspace/B.ets");
-    expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 8, column: 2 }));
+    expect(navigateToLocation).toHaveBeenCalledWith({ path: "/workspace/B.ets", line: 8, column: 2 }, "Definition");
     expect(languageQuerySnapshotStore.snapshot()[0]).toMatchObject({
       kind: "definition",
       path: "/workspace/A.ets",
@@ -101,13 +98,10 @@ describe("useDefinitionController", () => {
     }));
   });
 
-  it("schedules foreground navigation indexing before querying definition candidates", async () => {
-    const events: string[] = [];
-    const scheduleForegroundNavigationIndex = vi.fn(async () => {
-      events.push("schedule-navigation-index");
-    });
+  it("does not wait for foreground navigation indexing before querying definition candidates", async () => {
+    const foregroundIndex = createDeferred<void>();
+    const scheduleForegroundNavigationIndex = vi.fn(() => foregroundIndex.promise);
     const queryDefinitionCandidatesWithReadiness = vi.fn(async () => {
-      events.push("query-definition");
       return {
         items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
         readiness: readiness("ready"),
@@ -121,11 +115,13 @@ describe("useDefinitionController", () => {
     })));
 
     await act(async () => {
-      await result.current.goToDefinitionFromEditor();
+      void result.current.goToDefinitionFromEditor();
+      await Promise.resolve();
     });
 
     expect(scheduleForegroundNavigationIndex).toHaveBeenCalledWith("/workspace", ["/workspace/A.ets"]);
-    expect(events.slice(0, 2)).toEqual(["schedule-navigation-index", "query-definition"]);
+    expect(queryDefinitionCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+    foregroundIndex.resolve();
   });
 
   it("deduplicates rapid foreground navigation indexing for the same file", async () => {
@@ -150,11 +146,9 @@ describe("useDefinitionController", () => {
     expect(queryDefinitionCandidatesWithReadiness).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the latest resolved definition target when an older file open finishes later", async () => {
-    const firstOpen = createDeferred<void>();
-    const secondOpen = createDeferred<void>();
-    const openFile = vi.fn((path: string) => path.endsWith("B.ets") ? firstOpen.promise : secondOpen.promise);
-    const setSelectionTarget = vi.fn();
+  it("cancels a superseded definition before it starts navigation", async () => {
+    const secondNavigation = createDeferred<void>();
+    const navigateToLocation = vi.fn(() => secondNavigation.promise);
     const queryDefinitionCandidatesWithReadiness = vi.fn(async (_rootPath: string, request: { line: number }) => ({
       items: request.line === 4
         ? [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }]
@@ -163,8 +157,7 @@ describe("useDefinitionController", () => {
     }));
     const { result } = renderHook(() => useDefinitionController(options({
       workspaceApi: workspaceApi({ queryDefinitionCandidatesWithReadiness }),
-      openFile,
-      setSelectionTarget,
+      navigateToLocation,
     })));
 
     void act(() => {
@@ -172,18 +165,13 @@ describe("useDefinitionController", () => {
       void result.current.goToDefinitionFromEditor({ line: 5, column: 2 });
     });
     await act(async () => {
-      secondOpen.resolve();
+      secondNavigation.resolve();
       await Promise.resolve();
     });
 
-    expect(setSelectionTarget).toHaveBeenLastCalledWith(expect.objectContaining({ line: 12, column: 4 }));
+    expect(navigateToLocation).toHaveBeenLastCalledWith({ path: "/workspace/C.ets", line: 12, column: 4 }, "Definition");
 
-    await act(async () => {
-      firstOpen.resolve();
-      await Promise.resolve();
-    });
-
-    expect(setSelectionTarget).toHaveBeenCalledTimes(1);
+    expect(navigateToLocation).toHaveBeenCalledTimes(1);
   });
 
   it("uses one active content snapshot for same-file fallback definition", async () => {
@@ -195,7 +183,7 @@ describe("useDefinitionController", () => {
       "  }",
       "}",
     ].join("\n"));
-    const setSelectionTarget = vi.fn();
+    const navigateToLocation = vi.fn(async () => undefined);
     const { result } = renderHook(() => useDefinitionController(options({
       workspaceApi: workspaceApi({
         gotoDefinition: vi.fn(async () => null),
@@ -206,7 +194,7 @@ describe("useDefinitionController", () => {
       },
       editorSelection: { line: 4, column: 11 },
       getActiveContent,
-      setSelectionTarget,
+      navigateToLocation,
     })));
 
     await act(async () => {
@@ -214,7 +202,7 @@ describe("useDefinitionController", () => {
     });
 
     expect(getActiveContent).toHaveBeenCalledTimes(1);
-    expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 2, column: 3 }));
+    expect(navigateToLocation).toHaveBeenCalledWith({ path: "/workspace/A.ets", line: 2, column: 3 }, "Definition");
   });
 
   it("skips legacy definition fallback for oversized requests after indexed miss", async () => {
@@ -254,10 +242,7 @@ function options(overrides: Partial<Parameters<typeof useDefinitionController>[0
     openEditorQueryPanel: vi.fn(),
     setUsageSearch: vi.fn(),
     rememberCurrentLocation: vi.fn(),
-    openFile: vi.fn(async () => undefined),
-    setSelectionTarget: vi.fn(),
-    bumpEditorFocusToken: vi.fn(),
-    focusEditorSoon: vi.fn(),
+    navigateToLocation: vi.fn(async () => undefined),
     explainIndexMiss: vi.fn(async () => null),
     recordRecentQueryExplain: vi.fn(),
     onStatusChange: vi.fn(),

@@ -42,9 +42,21 @@ fn discovery_continues_until_pending_cursor_is_empty() {
     assert!(first_batch
         .iter()
         .any(|result| result.reason == "workspace-discovery" && result.status == "partial"));
-    assert!(second_batch
-        .iter()
-        .any(|result| result.reason == "workspace-discovery" && result.status == "ready"));
+    assert!(
+        second_batch
+            .iter()
+            .any(|result| result.reason == "workspace-discovery" && result.status == "ready"),
+        "second batch states: {:?}",
+        second_batch
+            .iter()
+            .map(|result| (
+                &result.kind,
+                &result.reason,
+                &result.status,
+                result.generation
+            ))
+            .collect::<Vec<_>>()
+    );
     assert_eq!(discovered_files.len(), 1025);
 
     fs::remove_dir_all(root).unwrap();

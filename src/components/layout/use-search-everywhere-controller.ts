@@ -37,14 +37,13 @@ import { createSearchControllerContext } from "@/components/layout/search-contro
 import { createSearchOverlayCommandActions } from "@/components/layout/search-overlay-command-actions";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
-const SEARCH_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = { searchEverywhere: 140, find: 260, replace: 260 };
 const SEARCH_PREVIEW_DEBOUNCE_MS = 200;
 
 export type UseSearchEverywhereControllerOptions = {
   workspaceApi: WorkspaceApi;
   workspace: WorkspaceViewModel | null;
   activePath: string | null;
-  editorSelectedText: string;
+  getEditorSelectedText: () => string;
   quickOpenQuery: string;
   activeOverlay: OverlayKey;
   indexVersionKey: string;
@@ -64,13 +63,14 @@ export type UseSearchEverywhereControllerOptions = {
   recordRecentQueryExplain: (entry: QueryExplainRecordInput) => void;
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   onStatusChange: (message: string) => void;
+  loadFileContent?: (path: string) => Promise<string>;
 };
 
 export function useSearchEverywhereController({
   workspaceApi,
   workspace,
   activePath,
-  editorSelectedText,
+  getEditorSelectedText,
   quickOpenQuery,
   activeOverlay,
   indexVersionKey,
@@ -90,6 +90,7 @@ export function useSearchEverywhereController({
   recordRecentQueryExplain,
   recordUiInteraction,
   onStatusChange,
+  loadFileContent,
 }: UseSearchEverywhereControllerOptions) {
   const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
   const [searchEverywhereScope, setSearchEverywhereScope] = useState<WorkspaceIndexQueryScope>("all");
@@ -119,7 +120,6 @@ export function useSearchEverywhereController({
     activeOverlay,
     quickOpenQuery,
     mode: searchEverywhereMode,
-    debounceMs: SEARCH_DEBOUNCE_MS,
     navigationCloseHandledRef,
     invalidateSearchSession,
   });
@@ -127,7 +127,7 @@ export function useSearchEverywhereController({
     activePath,
     getOpenDocumentContent,
     getActiveContent,
-    openFile: workspaceApi.openFile,
+    openFile: loadFileContent ?? workspaceApi.openFile,
   });
   const searchContext = createSearchControllerContext({
     getMode: () => searchEverywhereMode,
@@ -198,7 +198,7 @@ export function useSearchEverywhereController({
   });
   const searchOverlayCommands = createSearchOverlayCommandActions({
     mode: searchEverywhereMode,
-    editorSelectedText,
+    getEditorSelectedText,
     invalidateSearchSession,
     resetDebouncedSearchQuery,
     patchSearchSession: searchSessionStoreRef.current.patch,
@@ -216,6 +216,10 @@ export function useSearchEverywhereController({
 
   function handleOverlayQueryChange(value: string) {
     searchOverlayCommands.handleOverlayQueryChange(value);
+  }
+
+  function handleOverlayQueryDraftChange(_value: string) {
+    interactionRuntimeRef.current.invalidateForeground({ cancelActive: true });
   }
 
   function resetSearchOverlayState() {
@@ -321,7 +325,7 @@ export function useSearchEverywhereController({
 
   return buildSearchEverywhereControllerResult({
     state: { searchEverywhereMode, searchEverywhereScope, searchEverywhereReplaceQuery, searchEverywhereOptions },
-    actions: { setSearchEverywhereScope, setSearchEverywhereReplaceQuery, setSearchEverywhereSelectedIndex, openSearchOverlay, handleOverlayQueryChange, resetSearchOverlayState, moveSearchEverywhereSelection, openSearchEverywhereResult, openSearchEverywhereCandidate, openSelectedSearchEverywhereResult, loadNextSearchEverywherePage, toggleSearchEverywhereCaseSensitive, toggleSearchEverywhereWholeWord },
+    actions: { setSearchEverywhereScope, setSearchEverywhereReplaceQuery, setSearchEverywhereSelectedIndex, openSearchOverlay, handleOverlayQueryChange, handleOverlayQueryDraftChange, resetSearchOverlayState, moveSearchEverywhereSelection, openSearchEverywhereResult, openSearchEverywhereCandidate, openSelectedSearchEverywhereResult, loadNextSearchEverywherePage, toggleSearchEverywhereCaseSensitive, toggleSearchEverywhereWholeWord },
     searchSessionStore: searchSessionStoreRef.current,
   });
 }

@@ -15,6 +15,7 @@ import type { RecentQueryExplain } from "@/features/workspace/workspace-query-ex
 import type { UiLatencySample } from "@/features/performance/ui-latency-monitor";
 import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
+import type { StatusMessageStore } from "@/features/status/status-message-store";
 
 export type AppShellIndexAndStatusSurfacesProps = {
   activeBottomTool: BottomToolKey;
@@ -49,7 +50,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   onConfigureSdkFromDiagnostics: () => void;
   semanticState: SemanticState;
   semanticCapability: SemanticCapabilityState;
-  statusText: string;
+  statusMessageStore: StatusMessageStore;
   workspaceName: string | null;
   workspaceScanText: string | null;
   workspaceIndexText: string;
@@ -99,7 +100,7 @@ export function AppShellIndexAndStatusSurfaces({
   onConfigureSdkFromDiagnostics,
   semanticState,
   semanticCapability,
-  statusText,
+  statusMessageStore,
   workspaceName,
   workspaceScanText,
   workspaceIndexText,
@@ -156,6 +157,7 @@ export function AppShellIndexAndStatusSurfaces({
         renderPressureSamples={renderPressureSamples}
         ipcLatencySamples={ipcLatencySamples}
         taskStatuses={workspaceIndexTaskStatuses}
+        semanticState={semanticState}
         onClose={onCloseIndexDiagnostics}
         onRefresh={onRefreshIndexDiagnostics}
         onResumeIndexing={onResumeIndexingFromDiagnostics}
@@ -169,7 +171,7 @@ export function AppShellIndexAndStatusSurfaces({
         activePath={activePath}
         semanticState={semanticState}
         semanticCapability={semanticCapability}
-        statusText={statusText}
+        statusMessageStore={statusMessageStore}
         workspaceName={workspaceName}
         workspaceScanText={workspaceScanText}
         workspaceIndexText={workspaceIndexText}

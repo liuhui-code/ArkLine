@@ -25,6 +25,7 @@ describe("useWorkspaceResetController", () => {
     expect(actions.resetCompletion).toHaveBeenCalledTimes(1);
     expect(actions.resetUsageSearch).toHaveBeenCalledTimes(1);
     expect(actions.resetEditorState).toHaveBeenCalledTimes(1);
+    expect(actions.resetDocumentCache).toHaveBeenCalledTimes(1);
     expect(actions.showBottomContent).toHaveBeenCalledTimes(1);
     expect(actions.onStatusChange).toHaveBeenCalledWith("Workspace ready: Demo");
   });
@@ -45,6 +46,7 @@ function resetActions(): WorkspaceResetControllerActions {
     resetCompletion: vi.fn(),
     resetUsageSearch: vi.fn(),
     resetEditorState: vi.fn(),
+    resetDocumentCache: vi.fn(),
     showBottomContent: vi.fn(),
     onStatusChange: vi.fn(),
   };

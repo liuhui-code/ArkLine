@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use crate::services::workspace_index_schema_service::{
     ensure_workspace_index_schema, load_workspace_index_schema_versions,
 };
+use crate::services::workspace_index_schema_version_service::WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT;
 
 #[test]
 fn migrates_workspace_index_schema_and_records_domain_versions() {
@@ -12,10 +13,10 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     ensure_workspace_index_schema(&connection).unwrap();
     let versions = load_workspace_index_schema_versions(&connection).unwrap();
 
-    assert_eq!(versions.get("catalog"), Some(&1));
-    assert_eq!(versions.get("content"), Some(&1));
-    assert_eq!(versions.get("symbol"), Some(&1));
-    assert_eq!(versions.get("stub"), Some(&1));
+    assert_eq!(versions.get("catalog"), Some(&2));
+    assert_eq!(versions.get("content"), Some(&4));
+    assert_eq!(versions.get("symbol"), Some(&3));
+    assert_eq!(versions.get("stub"), Some(&2));
     assert_eq!(versions.get("dependency"), Some(&1));
     assert_eq!(versions.get("fingerprint"), Some(&1));
     assert_eq!(versions.get("sdk"), Some(&1));
@@ -26,6 +27,7 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     assert_eq!(versions.get("symbol_resolution"), Some(&1));
     assert_eq!(versions.get("reference"), Some(&1));
     assert_eq!(versions.get("discovery"), Some(&1));
+    assert_eq!(versions.get("semantic_layer"), Some(&1));
 
     let catalog_count: i64 = connection
         .query_row(
@@ -61,6 +63,15 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(resume_table_count, 1);
+    let posting_table_count: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table'
+             and name = 'workspace_symbol_postings'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(posting_table_count, 1);
     let symbol_path_index_count: i64 = connection
         .query_row(
             "select count(*) from sqlite_master where type = 'index' and name = 'workspace_symbols_path_lookup'",
@@ -70,5 +81,14 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(symbol_path_index_count, 1);
-    assert_eq!(schema_count, 14);
+    let semantic_layer_table_count: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table'
+             and name = 'workspace_semantic_file_layers'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(semantic_layer_table_count, 1);
+    assert_eq!(schema_count as usize, WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT);
 }

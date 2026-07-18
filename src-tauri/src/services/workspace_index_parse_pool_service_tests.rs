@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -36,6 +36,98 @@ fn parse_pool_runs_jobs_concurrently() {
     assert_eq!(results.len(), 2);
     assert!(max_active.load(Ordering::SeqCst) >= 2);
     assert!(results.iter().all(|result| result.parsed.is_some()));
+}
+
+#[test]
+fn parse_pool_reuses_named_workers_across_batches() {
+    let worker_ids = Arc::new(Mutex::new(Vec::new()));
+    let worker_names = Arc::new(Mutex::new(Vec::new()));
+    let parser_ids = worker_ids.clone();
+    let parser_names = worker_names.clone();
+    let pool = WorkspaceIndexParsePool::new(1, move |job| {
+        parser_ids
+            .lock()
+            .expect("worker id lock")
+            .push(thread::current().id());
+        parser_names
+            .lock()
+            .expect("worker name lock")
+            .push(thread::current().name().unwrap_or_default().to_string());
+        Ok(parsed(job))
+    });
+
+    pool.parse_batch(vec![job(
+        "first.ets",
+        WorkspaceIndexTaskPriority::ChangedFiles,
+        1,
+    )]);
+    pool.parse_batch(vec![job(
+        "second.ets",
+        WorkspaceIndexTaskPriority::ChangedFiles,
+        2,
+    )]);
+
+    let ids = worker_ids.lock().expect("worker id lock");
+    let names = worker_names.lock().expect("worker name lock");
+    assert_eq!(ids.len(), 2);
+    assert_eq!(ids[0], ids[1]);
+    assert!(names
+        .iter()
+        .all(|name| name.starts_with("arkline-index-parse-")));
+}
+
+#[test]
+fn parse_pool_reserves_capacity_for_foreground_work() {
+    let release = Arc::new((Mutex::new(false), Condvar::new()));
+    let parser_release = release.clone();
+    let (background_started_tx, background_started_rx) = mpsc::channel();
+    let pool = WorkspaceIndexParsePool::new_with_foreground_reserve(2, true, move |job| {
+        if job.path == "background.ets" {
+            background_started_tx.send(()).expect("background started");
+            let (lock, signal) = &*parser_release;
+            let released = lock.lock().expect("release lock");
+            drop(
+                signal
+                    .wait_while(released, |released| !*released)
+                    .expect("release wait"),
+            );
+        }
+        Ok(parsed(job))
+    });
+    let background_pool = pool.clone();
+    let background = thread::spawn(move || {
+        background_pool.parse_batch(vec![job(
+            "background.ets",
+            WorkspaceIndexTaskPriority::FullRefresh,
+            1,
+        )])
+    });
+    background_started_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("background worker should start");
+
+    let foreground_pool = pool.clone();
+    let (foreground_tx, foreground_rx) = mpsc::channel();
+    let foreground = thread::spawn(move || {
+        let result = foreground_pool.parse_batch(vec![job(
+            "foreground.ets",
+            WorkspaceIndexTaskPriority::ForegroundNavigation,
+            2,
+        )]);
+        let _ = foreground_tx.send(result);
+    });
+    let foreground_result = foreground_rx.recv_timeout(Duration::from_millis(50));
+    let (lock, signal) = &*release;
+    *lock.lock().expect("release lock") = true;
+    signal.notify_all();
+    foreground.join().expect("foreground batch");
+    assert_eq!(background.join().expect("background batch").len(), 1);
+    assert_eq!(
+        foreground_result
+            .expect("foreground parse should use reserved capacity within 50ms")
+            .len(),
+        1
+    );
 }
 
 #[test]
@@ -147,7 +239,7 @@ fn arkts_stub_pool_uses_effective_config_worker_budget() {
     );
 
     assert_eq!(results.len(), 6);
-    assert_eq!(max_active.load(Ordering::SeqCst), 6);
+    assert_eq!(max_active.load(Ordering::SeqCst), 5);
 }
 
 #[test]

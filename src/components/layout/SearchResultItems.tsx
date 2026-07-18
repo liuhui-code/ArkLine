@@ -2,9 +2,9 @@ import type {
   WorkspaceTextSearchMatch,
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { memo, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 
-type ResultRef = (node: HTMLButtonElement | null) => void;
+type ResultRef = (index: number, node: HTMLButtonElement | null) => void;
 
 type SearchCandidateResultItemProps = {
   item: SearchCandidate;
@@ -13,9 +13,9 @@ type SearchCandidateResultItemProps = {
   query: string;
   resultRef: ResultRef;
   onSelect: (index: number) => void;
-  onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: SearchCandidate) => void;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: SearchCandidate) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: SearchCandidate) => void;
 };
 
 type TextSearchResultItemProps = {
@@ -25,12 +25,12 @@ type TextSearchResultItemProps = {
   query: string;
   resultRef: ResultRef;
   onSelect: (index: number) => void;
-  onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
+  onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
 };
 
-export function SearchCandidateResultItem({
+export const SearchCandidateResultItem = memo(function SearchCandidateResultItem({
   item,
   index,
   selected,
@@ -41,17 +41,21 @@ export function SearchCandidateResultItem({
   onClick,
   onContextMenu,
 }: SearchCandidateResultItemProps) {
+  const setResultRef = useCallback((node: HTMLButtonElement | null) => {
+    resultRef(index, node);
+  }, [index, resultRef]);
+
   return (
     <button
-      ref={resultRef}
+      ref={setResultRef}
       type="button"
       className={`search-result search-result--match${selected ? " search-result--selected" : ""}`}
       aria-label={`${item.source} ${item.title} ${item.subtitle}`}
       aria-selected={selected}
       onMouseEnter={() => onSelect(index)}
-      onMouseDown={onMouseDown}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
+      onMouseDown={(event) => onMouseDown(event, index, item)}
+      onClick={(event) => onClick(event, index, item)}
+      onContextMenu={(event) => onContextMenu(event, index, item)}
     >
       <span className={`search-result__kind-badge search-result__kind-badge--${item.source}`}>
         {candidateBadge(item)}
@@ -67,9 +71,9 @@ export function SearchCandidateResultItem({
       </span>
     </button>
   );
-}
+});
 
-export function TextSearchResultItem({
+export const TextSearchResultItem = memo(function TextSearchResultItem({
   item,
   index,
   selected,
@@ -80,21 +84,24 @@ export function TextSearchResultItem({
   onClick,
   onContextMenu,
 }: TextSearchResultItemProps) {
+  const setResultRef = useCallback((node: HTMLButtonElement | null) => {
+    resultRef(index, node);
+  }, [index, resultRef]);
   const contextBefore = selected ? item.contextBefore.slice(-1) : [];
   const contextAfter = selected ? item.contextAfter.slice(0, 1) : [];
   const hitText = selected ? item.preview : item.summary;
 
   return (
     <button
-      ref={resultRef}
+      ref={setResultRef}
       type="button"
       className={`search-result search-result--match${selected ? " search-result--selected" : ""}`}
       aria-label={`${item.relativePath}:${item.line}:${item.column} ${item.summary}`}
       aria-selected={selected}
       onMouseEnter={() => onSelect(index)}
-      onMouseDown={onMouseDown}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
+      onMouseDown={(event) => onMouseDown(event, index, item)}
+      onClick={(event) => onClick(event, index, item)}
+      onContextMenu={(event) => onContextMenu(event, index, item)}
     >
       {contextBefore.map((line) => (
         <CodeContextLine key={`before:${line.line}`} line={line.line} text={line.text} />
@@ -110,7 +117,7 @@ export function TextSearchResultItem({
       ))}
     </button>
   );
-}
+});
 
 function CodeContextLine({ line, text }: { line: number; text: string }) {
   return (

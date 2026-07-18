@@ -14,6 +14,7 @@ import { WorkspaceEditPreview } from "@/components/layout/WorkspaceEditPreview";
 import type { ProjectMutationDialogState } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { CommandPaletteItem } from "@/components/layout/search-overlay-model";
+import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
 type AppShellOverlaysProps = {
   selectedBlameAttribution: ComponentProps<typeof GitBlameCard>["attribution"] | null;
@@ -77,6 +78,7 @@ export function AppShellOverlays({
   openProjectDecisionDialogProps,
   settingsDialogProps,
 }: AppShellOverlaysProps) {
+  recordRenderPressure("AppShell/Overlays");
   return (
     <>
       {selectedBlameAttribution ? (

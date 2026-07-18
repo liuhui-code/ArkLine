@@ -115,11 +115,8 @@ describe("useSearchEverywhereController pagination", () => {
       workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
     });
 
-    act(() => {
-      result.current.search.openSearchOverlay("searchEverywhere");
-      result.current.search.handleOverlayQueryChange("Alpha");
-    });
     await flushSearchDebounce();
+    expect(result.current.search.searchEverywhereCandidates).toHaveLength(24);
     act(() => result.current.search.setSearchEverywhereSelectedIndex(49));
     await act(async () => {
       result.current.search.moveSearchEverywhereSelection(1);
@@ -134,6 +131,8 @@ describe("useSearchEverywhereController pagination", () => {
       24,
       24,
       { activePath: "/workspace/a.ets", recentPaths: [], openedPaths: [] },
+      expect.any(Number),
+      250,
     );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(25);
     expect(result.current.search.searchEverywhereSelectedIndex).toBe(24);
@@ -148,7 +147,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       workspaceApi: overrides.workspaceApi ?? workspaceApi({}),
       workspace: workspace(),
       activePath: "/workspace/a.ets",
-      editorSelectedText: "",
+      getEditorSelectedText: () => "",
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",

@@ -1,13 +1,14 @@
-import type { DefinitionHoverState, EditorCaretRect, EditorContextMenuRequest, EditorLineColumn } from "@/editor/editor-events";
+import type { EditorCaretRect, EditorContextMenuRequest, EditorLineColumn } from "@/editor/editor-events";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import { useState, type MouseEvent as ReactMouseEvent, type MutableRefObject, type RefObject } from "react";
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
 import { EditorCrashBoundary } from "@/components/layout/EditorCrashBoundary";
-import { useActiveDocumentContent } from "@/components/layout/use-active-document-content";
+import { useActiveDocumentText } from "@/components/layout/use-active-document-content";
 import { LazyArkTsEditor } from "@/editor/LazyArkTsEditor";
 import type { DocumentRuntimeStore } from "@/features/documents/document-runtime-store";
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
 import type { EditorAppearance } from "@/types/editor";
+import type { Text } from "@codemirror/state";
 
 export type EditorSelectionTarget = {
   line: number;
@@ -38,16 +39,15 @@ type EditorSurfaceProps = {
   workspaceName: string | null;
   surfaceRef: RefObject<HTMLElement | null>;
   onChange: (value: string) => void;
+  onDocumentChange?: (document: Text) => void;
   onSelectionChange: (selection: { line: number; column: number; selectedText?: string }) => void;
   onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
-  onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
-  definitionHoverActive?: boolean;
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   onCloseOtherTabs: (path: string) => void;
@@ -71,16 +71,15 @@ export function EditorSurface({
   workspaceName,
   surfaceRef,
   onChange,
+  onDocumentChange,
   onSelectionChange,
   onCaretRectChange,
   onDefinitionTrigger,
-  onDefinitionHoverChange,
   onTypingCompletionTrigger,
   blameAttributions = [],
   gitBlameVisible = false,
   selectedBlameLine = null,
   onGitTraceLineClick,
-  definitionHoverActive = false,
   onSelectTab,
   onCloseTab,
   onCloseOtherTabs,
@@ -94,7 +93,7 @@ export function EditorSurface({
 }: EditorSurfaceProps) {
   const surfaceStateClass = activePath ? "editor-surface--active" : "editor-surface--empty";
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const content = useActiveDocumentContent({ documentsRef, activePath });
+  const document = useActiveDocumentText({ documentsRef, activePath });
 
   function openTabContextMenu(event: ReactMouseEvent<HTMLButtonElement>, tab: EditorTab, index: number) {
     event.preventDefault();
@@ -140,7 +139,7 @@ export function EditorSurface({
   return (
     <main
       aria-label="Editor"
-      className={`editor-surface ${surfaceStateClass}${definitionHoverActive ? " editor-surface--definition-hover" : ""}`}
+      className={`editor-surface ${surfaceStateClass}`}
       ref={surfaceRef}
       tabIndex={-1}
     >
@@ -179,11 +178,11 @@ export function EditorSurface({
             insertTextTarget={insertTextTarget}
             path={activePath}
             selectionTarget={selectionTarget}
-            value={content}
+            document={document}
             onChange={onChange}
+            onDocumentChange={onDocumentChange}
             onCaretRectChange={onCaretRectChange}
             onDefinitionTrigger={onDefinitionTrigger}
-            onDefinitionHoverChange={onDefinitionHoverChange}
             onSelectionChange={onSelectionChange}
             onTypingCompletionTrigger={onTypingCompletionTrigger}
             onContextMenu={openEditorContextMenu}

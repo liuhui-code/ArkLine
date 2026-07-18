@@ -28,6 +28,13 @@ export function IndexDiagnosticsCurrentFileSection({
         <IndexDiagnosticsMetric label="SymbolIndex" value={fileReadiness?.symbolIndex ?? "unknown"} />
         <IndexDiagnosticsMetric label="Parser" value={fileReadiness?.parserStatus ?? "unknown"} />
         <IndexDiagnosticsMetric label="Generation" value={String(fileReadiness?.indexedGeneration ?? "none")} />
+        {(fileReadiness?.semanticLayers ?? []).map((layer) => (
+          <IndexDiagnosticsMetric
+            key={layer.layer}
+            label={semanticLayerLabel(layer.layer)}
+            value={semanticLayerValue(layer.status, layer.sourceGeneration, layer.resultCount)}
+          />
+        ))}
         <IndexDiagnosticsMetric label="Editor dirty" value={currentFileDirty ? "newer than index" : "clean"} />
         <IndexDiagnosticsMetric label="Ctrl+Click" value={fileReadiness?.definitionAvailable ? "available" : "blocked"} />
         <IndexDiagnosticsMetric label="Completion" value={fileReadiness?.completionAvailable ? "available" : "blocked"} />
@@ -36,4 +43,13 @@ export function IndexDiagnosticsCurrentFileSection({
       </div>
     </section>
   );
+}
+
+function semanticLayerLabel(layer: string) {
+  return `Semantic ${layer}`;
+}
+
+function semanticLayerValue(status: string, generation: number | null, resultCount: number) {
+  const generationText = generation === null ? "" : ` g${generation}`;
+  return `${status}${generationText} (${resultCount})`;
 }

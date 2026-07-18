@@ -79,7 +79,7 @@ rl.on("line", (line) => {{
   const request = JSON.parse(line);
   let payload = {{}};
   if (request.method === "health") {{
-    payload = {{ health: {{ status: "ok" }} }};
+    payload = {{ health: {{ status: "ok", protocolVersion: 3 }} }};
   }} else if (request.method === "gotoDefinition") {{
     const definition = definitionPath ? {{ path: definitionPath, line: 1, column: 17 }} : null;
     payload = {{ definition, definitionCandidates: definition ? [definition] : [] }};

@@ -4,6 +4,10 @@ use rusqlite::{params, Connection, Statement};
 
 use crate::models::workspace::{ArkTsDeclarationStub, ArkTsFileStub};
 use crate::services::workspace_stub_index_service::ARKTS_STUB_PARSER_VERSION;
+use crate::services::workspace_symbol_posting_service::{
+    insert_symbol_posting_with_statement, source_for_kind, symbol_posting_insert_statement,
+    symbol_trigram_insert_statement,
+};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct WorkspaceStubWriteProfile {
@@ -18,6 +22,8 @@ pub(crate) fn insert_parsed_stub_rows(
 ) -> Result<WorkspaceStubWriteProfile, String> {
     let mut file_statement = stub_file_insert_statement(connection)?;
     let mut declaration_statement = stub_declaration_insert_statement(connection)?;
+    let mut posting_statement = symbol_posting_insert_statement(connection)?;
+    let mut trigram_statement = symbol_trigram_insert_statement(connection)?;
     let mut import_statement = stub_import_insert_statement(connection)?;
     let mut export_statement = stub_export_insert_statement(connection)?;
     let mut error_statement = stub_parse_error_insert_statement(connection)?;
@@ -29,6 +35,8 @@ pub(crate) fn insert_parsed_stub_rows(
         for declaration in &stub.declarations {
             insert_stub_declaration(
                 &mut declaration_statement,
+                &mut posting_statement,
+                &mut trigram_statement,
                 root_key,
                 &stub.path,
                 declaration,
@@ -103,17 +111,20 @@ fn insert_stub_file(
 
 fn insert_stub_declaration(
     statement: &mut Statement<'_>,
+    posting_statement: &mut Statement<'_>,
+    trigram_statement: &mut Statement<'_>,
     root_key: &str,
     path: &str,
     declaration: &ArkTsDeclarationStub,
 ) -> Result<(), String> {
     let modifiers_json = json_string_array(&declaration.modifiers)?;
     let decorators_json = json_string_array(&declaration.decorators)?;
+    let entity_id = stub_entity_id(path, declaration);
     statement
         .execute(params![
             root_key,
             path,
-            stub_entity_id(path, declaration),
+            entity_id,
             declaration.kind,
             declaration.name,
             declaration.qualified_name,
@@ -128,7 +139,16 @@ fn insert_stub_declaration(
             decorators_json,
         ])
         .map_err(|error| error.to_string())?;
-    Ok(())
+    insert_symbol_posting_with_statement(
+        posting_statement,
+        trigram_statement,
+        root_key,
+        "stub",
+        &entity_id,
+        path,
+        source_for_kind(&declaration.kind),
+        &declaration.name,
+    )
 }
 
 fn json_string_array(values: &[String]) -> Result<String, String> {

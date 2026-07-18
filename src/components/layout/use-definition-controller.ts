@@ -32,6 +32,7 @@ import { createLanguageSessionStore, languageRequestTimeout } from "@/features/l
 import type { UsageSearchState } from "@/features/workspace/usage-search";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
+import type { NavigationStatusPrefix } from "@/components/layout/use-editor-navigation";
 
 const DEFINITION_TIMEOUT_MS = 3500;
 
@@ -47,10 +48,10 @@ export type UseDefinitionControllerOptions = {
   openEditorQueryPanel: () => void;
   setUsageSearch: Dispatch<SetStateAction<UsageSearchState>>;
   rememberCurrentLocation: () => void;
-  openFile: (path: string) => Promise<void>;
-  setSelectionTarget: (target: { line: number; column: number; nonce: number } | null) => void;
-  bumpEditorFocusToken: () => void;
-  focusEditorSoon: () => void;
+  navigateToLocation: (
+    location: { path: string; line: number; column: number },
+    statusPrefix?: NavigationStatusPrefix,
+  ) => Promise<void>;
   explainIndexMiss: (
     kind: "definition",
     query: string,
@@ -79,10 +80,7 @@ export function useDefinitionController({
   openEditorQueryPanel,
   setUsageSearch,
   rememberCurrentLocation,
-  openFile,
-  setSelectionTarget,
-  bumpEditorFocusToken,
-  focusEditorSoon,
+  navigateToLocation,
   explainIndexMiss,
   recordRecentQueryExplain,
   onStatusChange,
@@ -161,14 +159,12 @@ export function useDefinitionController({
       readinessState?: DefinitionReadinessState,
     ) => {
       rememberCurrentLocation();
-      if (normalizePath(target.path) !== normalizePath(activePath)) await openFile(target.path);
-      if (isStaleRequest()) return;
-      setSelectionTarget({
+      await navigateToLocation({
+        path: target.path,
         line: target.line,
         column: target.column,
-        nonce: Date.now(),
-      });
-      bumpEditorFocusToken();
+      }, "Definition");
+      if (isStaleRequest()) return;
       const targetBasename = getPathBasename(target.path);
       onStatusChange(formatDefinitionResolvedStatus(target, targetBasename, resolvedSource));
       const resolvedDebugMessage = formatDefinitionResolvedDebugMessage(
@@ -179,7 +175,6 @@ export function useDefinitionController({
         readinessState,
       );
       if (resolvedDebugMessage) setDefinitionDebug(resolvedDebugMessage);
-      focusEditorSoon();
     };
 
     let indexedDefinitionExplain: string[] | undefined;
@@ -203,7 +198,7 @@ export function useDefinitionController({
     };
 
     if (workspace?.rootPath && workspaceApi.queryDefinitionCandidatesWithReadiness) {
-      await scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
+      void scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       if (isStaleRequest()) return;
       let envelope;
       try {

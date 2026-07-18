@@ -29,6 +29,15 @@ pub fn replace_discovered_file_chunk(
     }
     let connection = open_index_store(root_path)?;
     ensure_workspace_index_schema(&connection)?;
+    replace_discovered_file_chunk_in_connection(&connection, root_path, generation, files)
+}
+
+pub(crate) fn replace_discovered_file_chunk_in_connection(
+    connection: &Connection,
+    root_path: &str,
+    generation: i64,
+    files: &[WorkspaceDiscoveredFile],
+) -> Result<(), String> {
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -63,6 +72,13 @@ pub fn update_discovery_state(state: &WorkspaceDiscoveryState) -> Result<(), Str
     }
     let connection = open_index_store(&state.root_path)?;
     ensure_workspace_index_schema(&connection)?;
+    update_discovery_state_in_connection(&connection, state)
+}
+
+pub(crate) fn update_discovery_state_in_connection(
+    connection: &Connection,
+    state: &WorkspaceDiscoveryState,
+) -> Result<(), String> {
     let cursor_json = state
         .cursor
         .as_ref()
@@ -178,12 +194,96 @@ pub fn load_discovery_cursor(root_path: &str) -> Result<Option<WorkspaceDiscover
     }))
 }
 
+pub fn load_discovery_state(root_path: &str) -> Result<Option<WorkspaceDiscoveryState>, String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(None);
+    }
+    let connection = open_index_store(root_path)?;
+    ensure_workspace_index_schema(&connection)?;
+    load_discovery_state_in_connection(&connection, root_path)
+}
+
+pub(crate) fn load_discovery_state_in_connection(
+    connection: &Connection,
+    root_path: &str,
+) -> Result<Option<WorkspaceDiscoveryState>, String> {
+    let root_key = normalize_index_path(root_path);
+    connection
+        .query_row(
+            "select generation, status, discovered_count, excluded_count, cursor_json, error
+             from workspace_discovery_state where root_path = ?1",
+            params![root_key],
+            |row| {
+                let cursor_json = row.get::<_, Option<String>>(4)?;
+                let cursor = cursor_json
+                    .map(|value| serde_json::from_str::<Vec<String>>(&value))
+                    .transpose()
+                    .map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            4,
+                            rusqlite::types::Type::Text,
+                            Box::new(error),
+                        )
+                    })?
+                    .filter(|paths| !paths.is_empty())
+                    .map(|pending_directories| WorkspaceDiscoveryCursor {
+                        pending_directories,
+                    });
+                Ok(WorkspaceDiscoveryState {
+                    root_path: root_path.to_string(),
+                    generation: row.get(0)?,
+                    status: row.get(1)?,
+                    discovered_count: row.get::<_, i64>(2)? as usize,
+                    excluded_count: row.get::<_, i64>(3)? as usize,
+                    cursor,
+                    error: row.get(5)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())
+}
+
+pub fn prune_discovered_files_except_generation(
+    root_path: &str,
+    generation: i64,
+) -> Result<(), String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(());
+    }
+    let connection = open_index_store(root_path)?;
+    ensure_workspace_index_schema(&connection)?;
+    prune_discovered_files_except_generation_in_connection(&connection, root_path, generation)
+}
+
+pub(crate) fn prune_discovered_files_except_generation_in_connection(
+    connection: &Connection,
+    root_path: &str,
+    generation: i64,
+) -> Result<(), String> {
+    connection
+        .execute(
+            "delete from workspace_discovered_files
+             where root_path = ?1 and generation <> ?2",
+            params![normalize_index_path(root_path), generation],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
 pub fn count_discovered_files(root_path: &str) -> Result<usize, String> {
     if !Path::new(root_path).is_dir() {
         return Ok(0);
     }
     let connection = open_index_store(root_path)?;
     ensure_workspace_index_schema(&connection)?;
+    count_discovered_files_in_connection(&connection, root_path)
+}
+
+pub(crate) fn count_discovered_files_in_connection(
+    connection: &Connection,
+    root_path: &str,
+) -> Result<usize, String> {
     connection
         .query_row(
             "select count(*)

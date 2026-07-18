@@ -78,6 +78,7 @@ fn readiness(
         parser_status: parser_status.to_string(),
         parser_error: None,
         indexed_generation: None,
+        semantic_layers: Vec::new(),
         definition_available: false,
         completion_available: false,
         usages_available: false,

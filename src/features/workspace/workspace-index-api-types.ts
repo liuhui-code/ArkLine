@@ -22,6 +22,7 @@ export type WorkspaceIndexDiagnostics = {
   discoveryExcludedCount: number;
   discoveryHasMore: boolean;
   dbSizeBytes: number;
+  writerMetrics?: WorkspaceIndexWriterMetrics;
   queuePressure: WorkspaceIndexQueuePressure;
   activeSdkPath: string | null;
   activeSdkVersion: string | null;
@@ -34,6 +35,46 @@ export type WorkspaceIndexDiagnostics = {
   unresolvedImports: WorkspaceIndexUnresolvedImport[];
   recentEvents: WorkspaceIndexEvent[];
   timeline: WorkspaceIndexTimelineItem[];
+  indexerHost?: WorkspaceIndexerHostSnapshot;
+};
+
+export type WorkspaceIndexWriterMetrics = {
+  sampleCount: number;
+  activeWriterCount: number;
+  queuedWriterCount: number;
+  failureCount: number;
+  waitP50Us: number;
+  waitP95Us: number;
+  waitP99Us: number;
+  waitMaxUs: number;
+  holdP50Us: number;
+  holdP95Us: number;
+  holdP99Us: number;
+  holdMaxUs: number;
+  lastWaitUs: number;
+  lastHoldUs: number;
+};
+
+export type WorkspaceIndexerHostSnapshot = {
+  enabled: boolean;
+  status: string;
+  processId: number | null;
+  discoveryProcessId: number | null;
+  contentProcessId: number | null;
+  stubProcessId: number | null;
+  discoveryWriterMetrics?: WorkspaceIndexWriterMetrics | null;
+  contentWriterMetrics?: WorkspaceIndexWriterMetrics | null;
+  stubWriterMetrics?: WorkspaceIndexWriterMetrics | null;
+  completedDiscoveryChunks: number;
+  completedContentRefreshChunks: number;
+  cancelledContentRefreshChunks: number;
+  completedStubRefreshChunks: number;
+  cancelledStubRefreshChunks: number;
+  fallbackCount: number;
+  restartCount: number;
+  consecutiveFailureCount: number;
+  backoffRemainingMs: number | null;
+  lastError: string | null;
 };
 
 export type WorkspaceIndexSchemaVersionAction = {
@@ -116,11 +157,23 @@ export type WorkspaceIndexFileReadiness = {
   parserStatus: "ready" | "failed" | "unknown" | string;
   parserError: string | null;
   indexedGeneration: number | null;
+  semanticLayers: WorkspaceSemanticLayerReadiness[];
   definitionAvailable: boolean;
   completionAvailable: boolean;
   usagesAvailable: boolean;
   searchAvailable: boolean;
   reason: string;
+};
+
+export type WorkspaceSemanticLayerReadiness = {
+  layer: "syntax" | "editorSyntax" | "projectModel" | "definitions" | "editorDefinitions" | "types" | "editorTypes" | "references" | string;
+  status: "ready" | "partial" | "stale" | "failed" | "building" | "missing" | string;
+  sourceGeneration: number | null;
+  dependencyGeneration: number | null;
+  producerVersion: number | null;
+  resultCount: number;
+  error: string | null;
+  updatedAt: number | null;
 };
 
 export type WorkspaceIndexLayerStatus = "ready" | "partial" | "stale" | "failed" | "missing" | string;
@@ -220,7 +273,7 @@ export type WorkspaceIndexQueryEnvelope<T> = {
 
 export type WorkspaceIndexExplainRequest = {
   rootPath: string;
-  kind: "search" | "definition" | "symbol" | "completion" | "api";
+  kind: "search" | "definition" | "symbol" | "completion" | "usage" | "usages" | "api";
   query: string;
   path?: string | null;
   line?: number | null;
@@ -233,8 +286,8 @@ export type WorkspaceIndexExplainFact = {
 };
 
 export type WorkspaceIndexExplainResult = {
-  status: "found" | "notIndexed" | "excluded" | "stale" | "partial" | "sdkNotReady" | "parserFailed" | "unsupported";
+  status: "found" | "notFound" | "notIndexed" | "excluded" | "stale" | "partial" | "sdkNotReady" | "parserFailed" | "semanticFailed" | "unsupported";
   message: string;
   facts: WorkspaceIndexExplainFact[];
-  recommendedAction?: "wait" | "rebuildIndex" | "configureSdk" | "openFile" | "reportBug" | null;
+  recommendedAction?: "wait" | "rebuildIndex" | "indexCurrentFile" | "configureSdk" | "openFile" | "reportBug" | null;
 };

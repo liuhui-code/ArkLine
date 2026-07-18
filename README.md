@@ -58,7 +58,7 @@ This is the main target platform.
 
 #### Fastest way for users
 
-1. Download either the packaged ArkLine installer or the portable `ArkLine.exe` from the GitHub release or CI artifact.
+1. Download either the packaged ArkLine installer or `ArkLine-windows-x64.zip` from the GitHub release or CI artifact. Keep all three files in the portable archive together.
 2. Install Microsoft WebView2 Runtime if the machine does not already have it.
 3. Launch ArkLine.
 4. Use `File -> Open Project...` to select an ArkTS workspace folder.
@@ -66,7 +66,7 @@ This is the main target platform.
 #### Build a downloadable Windows exe from GitHub
 
 The repository includes a manual GitHub Actions workflow that cross-compiles a
-portable Windows executable from a macOS runner.
+portable Windows bundle from a macOS runner.
 
 To create a downloadable artifact:
 
@@ -75,12 +75,16 @@ To create a downloadable artifact:
 3. Select `macos-windows-exe`.
 4. Click `Run workflow`.
 5. Leave `release_tag` empty for a workflow artifact only, or enter a tag such as
-   `v0.1.0` to also upload the executable to a GitHub Release.
+   `v0.1.0` to also upload the bundle to a GitHub Release.
 6. After the run finishes, download the `ArkLine-windows-x64` artifact, or open
    the matching release if a tag was provided.
 
-The generated file is named `ArkLine-windows-x64.exe`. It is a portable Windows
-application; the target machine still needs Microsoft WebView2 Runtime.
+The generated file is `ArkLine-windows-x64.zip`. It contains `ArkLine.exe`,
+`arkline-semantic.exe`, and `arkline-indexer.exe`; all three must remain in the
+same directory. The semantic sidecar serves completion and navigation. The
+indexer sidecar is packaged for the staged process-isolation rollout and is
+currently opt-in through `ARKLINE_INDEXER_ENABLED=1`. The target machine still
+needs Microsoft WebView2 Runtime.
 
 #### Publish a Windows exe to GitHub Releases
 
@@ -100,7 +104,7 @@ Publish from the GitHub UI:
 1. Open `Actions -> macos-windows-exe -> Run workflow`.
 2. Set `release_tag` to the new tag, such as `v0.1.1`.
 3. Start the workflow and wait for the `build-windows-exe` job to finish.
-4. Open `Releases`, verify `ArkLine-windows-x64.exe` is attached to the tag,
+4. Open `Releases`, verify `ArkLine-windows-x64.zip` is attached to the tag,
    and download it once before announcing the release.
 
 The equivalent GitHub CLI command is:
@@ -112,7 +116,7 @@ gh run watch <run-id> --exit-status
 gh release view v0.1.1 --json tagName,assets,url
 ```
 
-The workflow also uploads `ArkLine-windows-x64.exe` as a temporary Actions
+The workflow also uploads `ArkLine-windows-x64.zip` as a temporary Actions
 artifact. A successful workflow is required before treating the Release as
 downloadable. On the target Windows machine, install WebView2 if it is absent,
 then launch the executable and verify project opening, editor input, Ctrl+F,
@@ -183,12 +187,31 @@ pnpm build
 pnpm package:windows
 ```
 
-Build a portable `.exe` that can be launched directly:
+Build a portable ZIP with the app, semantic sidecar, and indexer sidecar:
 
 ```powershell
 pnpm build
 pnpm package:windows:portable
 ```
+
+Build and smoke-test only the native indexer sidecar:
+
+```bash
+pnpm build:indexer-sidecar
+```
+
+For development diagnostics, `ARKLINE_INDEXER_PATH` may point at an explicit
+indexer executable. Protocol v4 isolates discovery plus bounded background
+content and ArkTS stub refresh. Content input is capped at 4 MiB per file and
+32 MiB per chunk; publication atomically updates ordinary, FTS5, trigram,
+per-file readiness, and root-generation rows. Removed paths and ordinary watcher
+deltas use the same process route, while foreground navigation stays on the
+Host. Content and stub preparation use two bounded process lanes, with SQLite
+publication still serialized by one writer. Do not enable the process route by
+default until the packaged Windows crash-recovery, cancellation, hard-resource,
+and equivalence gates in the
+[long-term architecture plan](docs/superpowers/plans/2026-07-17-mature-ide-responsiveness-architecture.md)
+pass.
 
 Build a native macOS binary:
 
@@ -199,9 +222,8 @@ pnpm package:mac
 
 Output paths on Windows:
 
-- Installer: `src-tauri/target/release/bundle/nsis/`
-- Portable executable on Windows host: `src-tauri/target/release/arkline.exe`
-- Portable executable when cross-compiled from macOS/Linux: `src-tauri/target/x86_64-pc-windows-msvc/release/arkline.exe`
+- Installer: `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`
+- Portable bundle: `dist/ArkLine-windows-x64.zip`
 - Native macOS binary: `src-tauri/target/release/arkline`
 
 Run a Windows dependency check plus build flow:

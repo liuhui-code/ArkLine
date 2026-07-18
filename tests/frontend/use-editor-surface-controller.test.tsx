@@ -2,6 +2,8 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useEditorSurfaceController } from "@/components/layout/use-editor-surface-controller";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import { createDocumentLoadCoordinator } from "@/features/documents/document-load-coordinator";
+import { Text } from "@codemirror/state";
 
 describe("useEditorSurfaceController", () => {
   it("keeps the latest opened file active when older file loads finish later", async () => {
@@ -49,6 +51,103 @@ describe("useEditorSurfaceController", () => {
     });
 
     expect(onStatusChange).toHaveBeenCalledWith("Opening A.ets...");
+  });
+
+  it("coalesces concurrent reads for the same unopened file", async () => {
+    const pending = createDeferred<string>();
+    const openFile = vi.fn(() => pending.promise);
+    const { result } = renderHarness({ workspaceApi: { openFile } as unknown as WorkspaceApi });
+
+    void act(() => {
+      void result.current.openFile("/workspace/A.ets");
+      void result.current.openFile("/workspace/A.ets");
+    });
+
+    expect(openFile).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      pending.resolve("A content");
+      await Promise.resolve();
+    });
+  });
+
+  it("opens a file from the shared preview cache without another backend read", async () => {
+    const coordinator = createDocumentLoadCoordinator();
+    const openFile = vi.fn(async () => "prefetched content");
+    await coordinator.load("/workspace/A.ets", openFile);
+    openFile.mockClear();
+    const setActiveDocument = vi.fn();
+    const { result } = renderHarness({
+      workspaceApi: { openFile } as unknown as WorkspaceApi,
+      documentLoadCoordinator: coordinator,
+      setActiveDocument,
+    });
+
+    await act(async () => {
+      await result.current.openFile("/workspace/A.ets");
+    });
+
+    expect(openFile).not.toHaveBeenCalled();
+    expect(setActiveDocument).toHaveBeenCalledWith("/workspace/A.ets");
+  });
+
+  it("yields before activating a document from the shared preview cache", async () => {
+    const coordinator = createDocumentLoadCoordinator();
+    const events: string[] = [];
+    const openFile = vi.fn(async () => "prefetched content");
+    await coordinator.load("/workspace/A.ets", openFile);
+    const { result } = renderHarness({
+      workspaceApi: { openFile } as unknown as WorkspaceApi,
+      documentLoadCoordinator: coordinator,
+      scheduleActivation: vi.fn(async (request) => {
+        events.push(`yield:${request.cached}`);
+      }),
+      documentsRef: {
+        current: {
+          getDocument: () => undefined,
+          openDocument: () => {
+            events.push("openDocument");
+          },
+          updateDocument: () => ({ dirtyChanged: false }),
+        },
+      },
+      setActiveDocument: () => {
+        events.push("activate");
+      },
+    });
+
+    await act(async () => {
+      await result.current.openFile("/workspace/A.ets");
+    });
+
+    expect(events).toEqual(["yield:true", "openDocument", "activate"]);
+  });
+
+  it("stores the prepared Text document without rebuilding file content", async () => {
+    const prepared = Text.of(["prepared"]);
+    const openDocument = vi.fn();
+    const openDocumentText = vi.fn();
+    const prepareDocumentText = vi.fn(async () => prepared);
+    const { result } = renderHarness({
+      workspaceApi: { openFile: vi.fn(async () => "prepared") } as unknown as WorkspaceApi,
+      scheduleActivation: vi.fn(async () => undefined),
+      prepareDocumentText,
+      documentsRef: {
+        current: {
+          getDocument: () => undefined,
+          openDocument,
+          openDocumentText,
+          updateDocument: () => ({ dirtyChanged: false }),
+        },
+      },
+    });
+
+    await act(async () => {
+      await result.current.openFile("/workspace/A.ets");
+    });
+
+    expect(prepareDocumentText).toHaveBeenCalledWith("prepared");
+    expect(openDocumentText).toHaveBeenCalledWith("/workspace/A.ets", "prepared", prepared);
+    expect(openDocument).not.toHaveBeenCalled();
   });
 
   it("activates an already loaded document without reading it again", async () => {
@@ -229,6 +328,49 @@ describe("useEditorSurfaceController", () => {
     expect(setActiveDocument).toHaveBeenCalledWith("/workspace/File19.ets");
   });
 
+  it("does not activate an older file superseded during document preparation", async () => {
+    const firstDocument = createDeferred<Text>();
+    const openDocument = vi.fn();
+    const setActiveDocument = vi.fn();
+    const prepareDocumentText = vi.fn((content: string) => (
+      content.length === 70_000 ? firstDocument.promise : Promise.resolve(Text.of([content]))
+    ));
+    const openFile = vi.fn(async (path: string) => (
+      path.endsWith("A.ets") ? "A".repeat(70_000) : "B"
+    ));
+    const { result } = renderHarness({
+      workspaceApi: { openFile } as unknown as WorkspaceApi,
+      scheduleActivation: vi.fn(async () => undefined),
+      prepareDocumentText,
+      documentsRef: {
+        current: {
+          getDocument: () => undefined,
+          openDocument,
+          updateDocument: () => ({ dirtyChanged: false }),
+        },
+      },
+      setActiveDocument,
+    });
+
+    let firstOpen!: Promise<void>;
+    await act(async () => {
+      firstOpen = result.current.openFile("/workspace/A.ets");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await result.current.openFile("/workspace/B.ets");
+    });
+    await act(async () => {
+      firstDocument.resolve(Text.of(["A".repeat(70_000)]));
+      await firstOpen;
+    });
+
+    expect(openDocument).toHaveBeenCalledTimes(1);
+    expect(openDocument).toHaveBeenCalledWith("/workspace/B.ets", "B");
+    expect(setActiveDocument).toHaveBeenCalledTimes(1);
+    expect(setActiveDocument).toHaveBeenCalledWith("/workspace/B.ets");
+  });
+
   it("keeps typing updates in the document store without syncing root editor content", () => {
     const documents = new Map<string, { currentContent: string; originalContent: string; isDirty: boolean }>();
     documents.set("/workspace/A.ets", {
@@ -305,7 +447,6 @@ function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceCont
     resetCompletionAnchor: vi.fn(),
     resetCodeActionSession: vi.fn(),
     setEditorSelection: vi.fn(),
-    setEditorSelectedText: vi.fn(),
     setInsertTextTarget: vi.fn(),
     setSelectionTarget: vi.fn(),
     setActiveOverlay: vi.fn(),

@@ -127,6 +127,34 @@ fn failed_sdk_indexing_does_not_leave_partial_symbols() {
     fs::remove_dir_all(workspace).unwrap();
 }
 
+#[test]
+fn corrupt_shared_sdk_artifact_falls_back_to_workspace_snapshot() {
+    let workspace = unique_temp_dir("corrupt-shared-fallback");
+    let sdk_root = workspace.join("openharmony");
+    fs::create_dir_all(sdk_root.join("ets")).unwrap();
+    fs::write(
+        sdk_root.join("ets").join("common.d.ts"),
+        "declare class TextAttribute {\n  width(value: Length): TextAttribute;\n}\n",
+    )
+    .unwrap();
+    let workspace_path = workspace.to_string_lossy().to_string();
+    index_workspace_sdk_symbols(&workspace_path, &sdk_root.to_string_lossy(), "test-sdk").unwrap();
+    let shared_path = workspace
+        .join(".arkline")
+        .join("index")
+        .join("shared-sdk-artifacts.sqlite");
+    rusqlite::Connection::open(shared_path)
+        .unwrap()
+        .execute("drop table shared_sdk_symbols", [])
+        .unwrap();
+
+    let matches = query_workspace_sdk_symbols(&workspace_path, "width", 8).unwrap();
+
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].title, "width");
+    fs::remove_dir_all(workspace).unwrap();
+}
+
 fn count_persisted_sdk_symbols(workspace: &Path) -> i64 {
     let connection = open_index_connection(workspace);
     connection

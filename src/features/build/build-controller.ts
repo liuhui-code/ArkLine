@@ -2,6 +2,7 @@ import { planHarmonyBuildCommand } from "@/features/build/build-command-planner"
 import { extractBuildArtifacts } from "@/features/build/build-artifacts";
 import { parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
+import { createBuildToolchainEnvironment } from "@/features/build/build-toolchain-environment";
 import type { BuildPlan, BuildResult, BuildState, HarmonyBuildProject } from "@/features/build/build-model";
 import { createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import type { AppSettings } from "@/features/settings/settings-store";
@@ -38,11 +39,13 @@ export async function executeHarmonyBuildPlan(input: {
   settings?: AppSettings["sdk"] | null;
   diagnosticMatchers?: BuildDiagnosticMatcher[];
 }): Promise<BuildResult> {
+  const toolchain = createBuildToolchainEnvironment(input.settings);
   const terminalResult = await input.runTerminalCommand({
     runId: input.runId,
     command: input.plan.command,
     cwd: input.plan.cwd,
     source: "preset",
+    ...toolchain,
   });
   const output = [terminalResult.stdout, terminalResult.stderr].filter(Boolean).join("\n");
   const problems = parseBuildDiagnostics(output, input.diagnosticMatchers);

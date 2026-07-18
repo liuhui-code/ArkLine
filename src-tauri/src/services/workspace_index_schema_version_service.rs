@@ -3,11 +3,11 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection};
 
 const SCHEMA_DOMAINS: &[(&str, i64)] = &[
-    ("catalog", 1),
-    ("content", 1),
+    ("catalog", 2),
+    ("content", 4),
     ("entity", 1),
-    ("symbol", 1),
-    ("stub", 1),
+    ("symbol", 3),
+    ("stub", 2),
     ("dependency", 1),
     ("symbol_resolution", 1),
     ("reference", 1),
@@ -17,6 +17,7 @@ const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("event", 1),
     ("resume", 1),
     ("discovery", 1),
+    ("semantic_layer", 1),
 ];
 
 #[cfg(test)]

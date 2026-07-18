@@ -21,6 +21,7 @@ import { useDeviceLogQueryController } from "@/features/device-log/use-device-lo
 import { useDeviceLogQueryWorkerEvents } from "@/features/device-log/use-device-log-query-worker-events";
 import { useDeviceLogQueryWorkerStats } from "@/features/device-log/use-device-log-query-worker-stats";
 import type { DeviceLogRuntimeStats, WorkspaceApi } from "@/features/workspace/workspace-api";
+import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
 const QUERY_RECENT_WINDOW_MS = 60_000;
 const LIVE_VIEW_CAPACITY = 10_000;
@@ -53,6 +54,7 @@ export function DeviceHiLogPanel({
   workspaceApi,
   onStatusChange,
 }: DeviceHiLogPanelProps) {
+  recordRenderPressure("DeviceLog/HiLogPanel");
   const [streamId, setStreamId] = useState<string | null>(null);
   const [streamStatus, setStreamStatus] = useState<DeviceLogStreamStatus>("idle");
   const [filter, setFilter] = useState(initialFilter);
@@ -62,6 +64,12 @@ export function DeviceHiLogPanel({
   const streamIdRef = useRef<string | null>(null);
   const startRequestVersionRef = useRef(0);
   const entriesRef = useRef<HTMLDivElement | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const pendingScrollRef = useRef<{
+    followingTail: boolean;
+    scrollTop: number;
+    viewportHeight: number;
+  } | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(260);
   const [followingTail, setFollowingTail] = useState(true);
@@ -80,7 +88,11 @@ export function DeviceHiLogPanel({
   } = useDeviceLogLiveBuffer({ deviceId, store });
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
   const queryActive = hasActiveDeviceLogFilter(filter);
-  const backendQueryActive = queryActive && streamId != null && compiledFilter.valid && workspaceApi.queryDeviceLogs != null;
+  const backendQueryActive = active
+    && streamStatus === "running"
+    && streamId != null
+    && compiledFilter.valid
+    && workspaceApi.queryDeviceLogs != null;
   const query = useDeviceLogQueryController({
     active: backendQueryActive,
     deviceId,
@@ -288,6 +300,12 @@ export function DeviceHiLogPanel({
     setScrollTop(element.scrollTop);
   }, [followingTail, visibleEntries.length]);
 
+  useEffect(() => () => {
+    if (scrollFrameRef.current != null) {
+      window.cancelAnimationFrame(scrollFrameRef.current);
+    }
+  }, []);
+
   async function startStream(options?: { force?: boolean; preserveRetryBudget?: boolean }) {
     if (
       !deviceId
@@ -308,6 +326,8 @@ export function DeviceHiLogPanel({
         await workspaceApi.stopDeviceLogStream(stream.streamId).catch(() => undefined);
         return;
       }
+      // Store this before React renders so an early output event is not discarded.
+      streamIdRef.current = stream.streamId;
       setStreamId(stream.streamId);
       setStreamStatus("running");
       if (!options?.preserveRetryBudget) {
@@ -352,9 +372,21 @@ export function DeviceHiLogPanel({
 
   function handleEntriesScroll(event: UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
-    setScrollTop(element.scrollTop);
-    setViewportHeight(element.clientHeight || viewportHeight);
-    setFollowingTail(element.scrollHeight - element.scrollTop - element.clientHeight < LOG_ROW_HEIGHT * 2);
+    pendingScrollRef.current = {
+      scrollTop: element.scrollTop,
+      viewportHeight: element.clientHeight || viewportHeight,
+      followingTail: element.scrollHeight - element.scrollTop - element.clientHeight < LOG_ROW_HEIGHT * 2,
+    };
+    if (scrollFrameRef.current != null) return;
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const pending = pendingScrollRef.current;
+      pendingScrollRef.current = null;
+      if (!pending) return;
+      setScrollTop((current) => current === pending.scrollTop ? current : pending.scrollTop);
+      setViewportHeight((current) => current === pending.viewportHeight ? current : pending.viewportHeight);
+      setFollowingTail((current) => current === pending.followingTail ? current : pending.followingTail);
+    });
   }
 
   function followTail() {

@@ -3,6 +3,7 @@ import type { WorkspaceIndexExplainResult } from "@/features/workspace/workspace
 const actionLabels: Record<NonNullable<WorkspaceIndexExplainResult["recommendedAction"]>, string> = {
   wait: "Wait for indexing",
   rebuildIndex: "Rebuild Index",
+  indexCurrentFile: "Index Current File",
   configureSdk: "Configure SDK",
   openFile: "Open File",
   reportBug: "Report Bug",

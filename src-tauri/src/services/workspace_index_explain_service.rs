@@ -10,6 +10,7 @@ use crate::models::workspace::{
 use crate::services::workspace_index_event_service::store_index_event;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_task_status_service::current_time_millis;
+use crate::services::workspace_semantic_layer_state_service::load_semantic_layers;
 use crate::services::workspace_service::should_exclude;
 
 #[allow(dead_code)]
@@ -47,6 +48,8 @@ pub fn explain_workspace_index_query(
     let connection = open_index_store(&request.root_path)?;
     ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(&request.root_path);
+    let mut semantic_evidence = Vec::new();
+    let mut semantic_layer_observed = false;
 
     if let Some(path) = request.path.as_deref() {
         let path_key = normalize_index_path(path);
@@ -75,7 +78,34 @@ pub fn explain_workspace_index_query(
                 Some("reportBug"),
             ));
         }
-        if needs_symbol_layer(&request.kind)
+        if let Some(layer_name) = semantic_layer_for_query(&request.kind) {
+            let layers = load_semantic_layers(&connection, &root_key, &path_key)?;
+            if let Some(layer) = layers.iter().find(|layer| layer.layer == layer_name) {
+                semantic_layer_observed = layer.source_generation.is_some();
+                if semantic_layer_observed {
+                    semantic_evidence.push(fact(
+                        "semanticLayer",
+                        format!(
+                            "{}={} generation={} results={}",
+                            layer.layer,
+                            layer.status,
+                            layer.source_generation.unwrap_or_default(),
+                            layer.result_count
+                        ),
+                    ));
+                    if !matches!(layer.status.as_str(), "ready" | "partial") {
+                        return Ok(result(
+                            semantic_explain_status(&layer.status),
+                            "Required per-file semantic layer is not ready",
+                            semantic_evidence,
+                            Some("indexCurrentFile"),
+                        ));
+                    }
+                }
+            }
+        }
+        if !semantic_layer_observed
+            && needs_symbol_layer(&request.kind)
             && !has_symbol_layer(&connection, &root_key, &path_key)?
         {
             return Ok(result(
@@ -103,7 +133,8 @@ pub fn explain_workspace_index_query(
                 Some("rebuildIndex"),
             ));
         }
-        if needs_reference_layer(&request.kind)
+        if !semantic_layer_observed
+            && needs_reference_layer(&request.kind)
             && !has_row(
                 &connection,
                 "workspace_symbol_references",
@@ -142,6 +173,15 @@ pub fn explain_workspace_index_query(
             "Latest workspace index task failed",
             vec![fact("task", error)],
             Some("rebuildIndex"),
+        ));
+    }
+
+    if semantic_layer_observed {
+        return Ok(result(
+            "notFound",
+            "Required semantic layer was ready but no indexed target matched",
+            semantic_evidence,
+            None,
         ));
     }
 
@@ -247,6 +287,23 @@ fn needs_content_layer(kind: &str) -> bool {
 
 fn needs_reference_layer(kind: &str) -> bool {
     matches!(kind, "usage" | "usages")
+}
+
+fn semantic_layer_for_query(kind: &str) -> Option<&'static str> {
+    match kind {
+        "completion" => Some("syntax"),
+        "definition" | "symbol" => Some("definitions"),
+        "usage" | "usages" => Some("references"),
+        _ => None,
+    }
+}
+
+fn semantic_explain_status(status: &str) -> &'static str {
+    if status == "failed" {
+        "semanticFailed"
+    } else {
+        "partial"
+    }
 }
 
 fn has_symbol_layer(

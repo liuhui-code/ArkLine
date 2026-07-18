@@ -20,9 +20,49 @@ pub fn load_candidate_lines(
         if !fts_lines.is_empty() {
             return Ok(fts_lines);
         }
+        if query.chars().count() >= 3 {
+            return load_trigram_candidate_lines(connection, root_key, query, limit, offset);
+        }
     }
 
     load_like_candidate_lines(connection, root_key, query, case_sensitive, limit, offset)
+}
+
+fn load_trigram_candidate_lines(
+    connection: &Connection,
+    root_key: &str,
+    query: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<Vec<IndexedLine>, String> {
+    if query.chars().count() < 3 {
+        return Ok(Vec::new());
+    }
+    let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
+    let mut statement = connection
+        .prepare(
+            "select path, line, text
+             from workspace_content_trigram_fts
+             where root_path = ?1 and workspace_content_trigram_fts match ?2
+             order by rowid
+             limit ?3 offset ?4",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(
+            params![root_key, fts_query, limit as i64, offset as i64],
+            |row| {
+                let line_number: i64 = row.get(1)?;
+                Ok(IndexedLine {
+                    path: row.get(0)?,
+                    line_number: usize::try_from(line_number).unwrap_or_default(),
+                    text: row.get(2)?,
+                })
+            },
+        )
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 fn load_fts_candidate_lines(
@@ -40,7 +80,7 @@ fn load_fts_candidate_lines(
             "select path, line, text
              from workspace_content_fts
              where root_path = ?1 and workspace_content_fts match ?2
-             order by bm25(workspace_content_fts), path, line
+             order by rowid
              limit ?3 offset ?4",
         )
         .map_err(|error| error.to_string())?;

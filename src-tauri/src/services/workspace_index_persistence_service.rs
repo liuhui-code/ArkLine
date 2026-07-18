@@ -6,8 +6,13 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexedSymbol, WorkspaceSnapshot};
+use crate::services::workspace_file_identity_service::ensure_workspace_file_id;
 use crate::services::workspace_index_cache_path_service::{
     catalog_cache_path, normalized_root_key, sqlite_catalog_cache_path,
+};
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, optimize_workspace_index_store,
+    with_workspace_index_writer,
 };
 use crate::services::workspace_index_entity_persistence_service::{
     insert_legacy_symbol, insert_symbol_entity,
@@ -20,7 +25,8 @@ use crate::services::workspace_index_incremental_persistence_service::{
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_structured_restore_service::restore_structured_sqlite_catalog_cache;
-use crate::services::workspace_stub_index_service::replace_all_stub_rows;
+use crate::services::workspace_stub_index_service::replace_all_stub_rows_with_parsed;
+use crate::services::workspace_stub_prepare_service::parse_stub_files;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,17 +45,6 @@ pub fn persist_catalog_cache(
 
     persist_json_index_state(&snapshot.root_path, state)
         .and_then(|_| persist_sqlite_index_state(&snapshot.root_path, state))
-}
-
-pub fn persist_catalog_cache_for_open(
-    snapshot: &WorkspaceSnapshot,
-    state: &WorkspaceIndexState,
-) -> Result<(), String> {
-    if !Path::new(&snapshot.root_path).is_dir() {
-        return Ok(());
-    }
-
-    persist_sqlite_index_state_for_open(&snapshot.root_path, state)
 }
 
 #[allow(dead_code)]
@@ -172,13 +167,6 @@ fn persist_sqlite_index_state(root_path: &str, state: &WorkspaceIndexState) -> R
     persist_sqlite_index_state_with_mode(root_path, state, true)
 }
 
-fn persist_sqlite_index_state_for_open(
-    root_path: &str,
-    state: &WorkspaceIndexState,
-) -> Result<(), String> {
-    persist_sqlite_index_state_with_mode(root_path, state, false)
-}
-
 fn persist_sqlite_index_state_with_mode(
     root_path: &str,
     state: &WorkspaceIndexState,
@@ -193,24 +181,32 @@ fn persist_sqlite_index_state_with_mode(
     };
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
 
-    let mut connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
-    ensure_schema(&connection)?;
-
     let root_key = state
         .root_path
         .clone()
         .unwrap_or_else(|| normalized_root_key(root_path));
     let state_json = serde_json::to_string(state).map_err(|error| error.to_string())?;
     let updated_at = now_epoch_ms()? as i64;
+    let generation = indexed_generation(state);
+    let parsed_stubs = include_deep_rows.then(|| {
+        parse_stub_files(
+            &root_key,
+            &state.file_paths,
+            generation,
+            WorkspaceIndexTaskPriority::FullRefresh,
+        )
+    });
 
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    persist_catalog_row(&transaction, &root_key, &state_json, updated_at)?;
-    persist_structured_index_rows(&transaction, &root_key, state, include_deep_rows)?;
-    transaction.commit().map_err(|error| error.to_string())?;
-
-    Ok(())
+    with_workspace_index_writer(root_path, |connection| {
+        ensure_schema(connection)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        persist_catalog_row(&transaction, &root_key, &state_json, updated_at)?;
+        persist_structured_index_rows(&transaction, &root_key, state, parsed_stubs.as_deref())?;
+        transaction.commit().map_err(|error| error.to_string())?;
+        optimize_workspace_index_store(connection)
+    })
 }
 
 fn persist_catalog_row(
@@ -242,8 +238,12 @@ fn restore_sqlite_catalog_cache(root_path: &str) -> Result<WorkspaceIndexState, 
         ));
     }
 
-    let connection = Connection::open(&cache_path).map_err(|error| error.to_string())?;
-    ensure_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Err(format!(
+            "Workspace SQLite catalog cache does not exist: {}",
+            cache_path.display()
+        ));
+    };
     let root_key = normalized_root_key(root_path);
     if let Ok(state) = restore_structured_sqlite_catalog_cache(&connection, &root_key) {
         return Ok(state);
@@ -287,7 +287,7 @@ fn persist_structured_index_rows(
     connection: &Connection,
     root_key: &str,
     state: &WorkspaceIndexState,
-    include_deep_rows: bool,
+    parsed_stubs: Option<&[crate::models::workspace::ArkTsFileStub]>,
 ) -> Result<(), String> {
     connection
         .execute(
@@ -304,6 +304,18 @@ fn persist_structured_index_rows(
     connection
         .execute(
             "delete from workspace_symbol_entities where root_path = ?1",
+            params![root_key],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "delete from workspace_symbol_trigrams where root_path = ?1",
+            params![root_key],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "delete from workspace_symbol_postings where root_path = ?1",
             params![root_key],
         )
         .map_err(|error| error.to_string())?;
@@ -328,6 +340,7 @@ fn persist_structured_index_rows(
         .map_err(|error| error.to_string())?;
 
     for path in &state.file_paths {
+        ensure_workspace_file_id(connection, root_key, path)?;
         connection
             .execute(
                 "insert into workspace_files (root_path, path) values (?1, ?2)",
@@ -340,11 +353,12 @@ fn persist_structured_index_rows(
         insert_legacy_symbol(connection, root_key, symbol)?;
         insert_symbol_entity(connection, root_key, symbol)?;
     }
-    if include_deep_rows {
-        replace_all_stub_rows(
+    if let Some(parsed_stubs) = parsed_stubs {
+        replace_all_stub_rows_with_parsed(
             connection,
             root_key,
             &state.file_paths,
+            parsed_stubs,
             indexed_generation(state),
         )?;
     }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ArkTsEditor } from "@/editor/ArkTsEditor";
 import { arkLineHighlightStyle } from "@/editor/theme";
@@ -37,6 +37,101 @@ describe("ArkTsEditor", () => {
     await user.keyboard("{End}\n// edit");
 
     expect(changes.at(-1)).toContain("// edit");
+  });
+
+  it("renders editable text before enabling structural language enhancements", () => {
+    let idleCallback: (() => void) | null = null;
+    const requestIdleCallback = vi.fn((callback: () => void) => {
+      idleCallback = callback;
+      return 1;
+    });
+    const cancelIdleCallback = vi.fn();
+    Object.defineProperty(window, "requestIdleCallback", {
+      value: requestIdleCallback,
+      configurable: true,
+    });
+    Object.defineProperty(window, "cancelIdleCallback", {
+      value: cancelIdleCallback,
+      configurable: true,
+    });
+
+    const { container, unmount } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"struct Entry {\n  build() {}\n}"}
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("build() {}");
+    expect(container.querySelector(".cm-foldGutter")).toBeNull();
+    act(() => idleCallback?.());
+    expect(container.querySelector(".cm-foldGutter")).not.toBeNull();
+
+    unmount();
+    Reflect.deleteProperty(window, "requestIdleCallback");
+    Reflect.deleteProperty(window, "cancelIdleCallback");
+  });
+
+  it("cancels stale enhancement work when navigation switches files", () => {
+    const callbacks = new Map<number, () => void>();
+    let nextHandle = 0;
+    const requestIdleCallback = vi.fn((callback: () => void) => {
+      nextHandle += 1;
+      callbacks.set(nextHandle, callback);
+      return nextHandle;
+    });
+    const cancelIdleCallback = vi.fn();
+    Object.defineProperty(window, "requestIdleCallback", {
+      value: requestIdleCallback,
+      configurable: true,
+    });
+    Object.defineProperty(window, "cancelIdleCallback", {
+      value: cancelIdleCallback,
+      configurable: true,
+    });
+    const appearance = defaultSettings().editor;
+    const { container, rerender, unmount } = render(
+      <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" value="struct A {}" onChange={() => undefined} />,
+    );
+
+    rerender(
+      <ArkTsEditor appearance={appearance} path="C:/demo/B.ets" value="struct B {}" onChange={() => undefined} />,
+    );
+    expect(cancelIdleCallback).toHaveBeenCalledWith(1);
+    act(() => callbacks.get(1)?.());
+    expect(container.querySelector(".cm-foldGutter")).toBeNull();
+    act(() => callbacks.get(2)?.());
+    expect(container.querySelector(".cm-foldGutter")).not.toBeNull();
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("struct B {}");
+
+    unmount();
+    Reflect.deleteProperty(window, "requestIdleCallback");
+    Reflect.deleteProperty(window, "cancelIdleCallback");
+  });
+
+  it("publishes persistent documents without creating string snapshots", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onDocumentChange = vi.fn();
+
+    render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value="A"
+        onChange={onChange}
+        onDocumentChange={onDocumentChange}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Editor Content"));
+    await user.keyboard("{End}B");
+
+    expect(onDocumentChange).toHaveBeenCalled();
+    expect(onDocumentChange.mock.lastCall?.[0].toString()).toBe("AB");
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("accepts external value updates without losing content", () => {
@@ -90,6 +185,92 @@ describe("ArkTsEditor", () => {
 
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("ABCD12");
     expect(screen.getByLabelText("Editor Content").closest(".cm-editor")).toBe(initialEditorRoot);
+  });
+
+  it("switches files in one persistent view with isolated undo history", async () => {
+    const user = userEvent.setup();
+    let activePath = "C:/demo/A.ets";
+    let activeValue = "A";
+    const values = new Map([[activePath, activeValue], ["C:/demo/B.ets", "B"]]);
+    const onChange = (value: string) => {
+      activeValue = value;
+      values.set(activePath, value);
+    };
+    const { rerender } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path={activePath}
+        value={activeValue}
+        onChange={onChange}
+      />,
+    );
+    const initialRoot = screen.getByLabelText("Editor Content").closest(".cm-editor");
+
+    await user.click(screen.getByLabelText("Editor Content"));
+    await user.keyboard("{End}1");
+    activePath = "C:/demo/B.ets";
+    activeValue = values.get(activePath)!;
+    rerender(
+      <ArkTsEditor appearance={defaultSettings().editor} path={activePath} value={activeValue} onChange={onChange} />,
+    );
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("B");
+    expect(screen.getByLabelText("Editor Content").closest(".cm-editor")).toBe(initialRoot);
+
+    await user.keyboard("{End}2{Control>}z{/Control}");
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("B");
+    activePath = "C:/demo/A.ets";
+    activeValue = values.get(activePath)!;
+    rerender(
+      <ArkTsEditor appearance={defaultSettings().editor} path={activePath} value={activeValue} onChange={onChange} />,
+    );
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("A1");
+
+    await user.keyboard("{Control>}z{/Control}");
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("A");
+  });
+
+  it("survives repeated cross-file switches without replacing the editor view", () => {
+    const appearance = defaultSettings().editor;
+    const { rerender } = render(
+      <ArkTsEditor appearance={appearance} path="C:/demo/File0.ets" value="file 0" onChange={() => undefined} />,
+    );
+    const initialRoot = screen.getByLabelText("Editor Content").closest(".cm-editor");
+
+    for (let index = 1; index <= 20; index += 1) {
+      rerender(
+        <ArkTsEditor
+          appearance={appearance}
+          path={`C:/demo/File${index}.ets`}
+          value={`file ${index}`}
+          onChange={() => undefined}
+        />,
+      );
+    }
+
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("file 20");
+    expect(screen.getByLabelText("Editor Content").closest(".cm-editor")).toBe(initialRoot);
+  });
+
+  it("restores the scroll position for each file session", async () => {
+    const appearance = defaultSettings().editor;
+    const { rerender } = render(
+      <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" value="A" onChange={() => undefined} />,
+    );
+    const root = screen.getByLabelText("Editor Content").closest(".cm-editor");
+    const view = EditorView.findFromDOM(root as HTMLElement)!;
+    view.scrollDOM.scrollTop = 120;
+    view.scrollDOM.scrollLeft = 18;
+
+    rerender(
+      <ArkTsEditor appearance={appearance} path="C:/demo/B.ets" value="B" onChange={() => undefined} />,
+    );
+    view.scrollDOM.scrollTop = 36;
+    rerender(
+      <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" value="A" onChange={() => undefined} />,
+    );
+
+    await waitFor(() => expect(view.scrollDOM.scrollTop).toBe(120));
+    expect(view.scrollDOM.scrollLeft).toBe(18);
   });
 
   it("replaces the current selection and supports undo redo history", async () => {
@@ -301,6 +482,7 @@ describe("ArkTsEditor", () => {
       clientX: 24,
       clientY: 24,
     });
+    expect(editor).toHaveStyle({ cursor: "pointer" });
     fireEvent.mouseLeave(editor);
 
     expect(onDefinitionHoverChange).toHaveBeenNthCalledWith(
@@ -311,6 +493,30 @@ describe("ArkTsEditor", () => {
       }),
     );
     expect(onDefinitionHoverChange).toHaveBeenLastCalledWith({ active: false });
+    expect(editor).not.toHaveStyle({ cursor: "pointer" });
+    posAtCoords.mockRestore();
+  });
+
+  it("owns definition hover cursor state without a React callback", () => {
+    const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(7);
+
+    render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"@Entry\nstruct Index {}"}
+        onChange={() => undefined}
+      />,
+    );
+
+    const editor = screen.getByLabelText("Editor Content");
+    fireEvent.mouseMove(editor, {
+      ctrlKey: true,
+      clientX: 24,
+      clientY: 24,
+    });
+
+    expect(editor).toHaveStyle({ cursor: "pointer" });
     posAtCoords.mockRestore();
   });
 
@@ -359,6 +565,29 @@ describe("ArkTsEditor", () => {
 
     expect(scrollIntoView).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ y: "center" }));
     scrollIntoView.mockRestore();
+  });
+
+  it("switches navigation targets without remounting the editor view", () => {
+    const { rerender } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/source.ets"
+        value={"const source = 1;"}
+        onChange={() => undefined}
+      />,
+    );
+
+    rerender(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/target.ets"
+        value={"declare class Target {\n  width(value: number): void;\n}"}
+        selectionTarget={{ line: 2, column: 3, nonce: 1 }}
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("width(value: number): void");
   });
 
   it("does not crash when a jump target contains non-finite coordinates", () => {

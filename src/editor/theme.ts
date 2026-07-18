@@ -71,6 +71,8 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
     ".cm-scroller": {
       fontFamily: appearance.fontFamily,
       overflow: "auto",
+      overflowAnchor: "none",
+      overscrollBehavior: "contain",
       backgroundColor: editorPalette.background,
       scrollbarColor: "rgba(139, 148, 158, 0.38) transparent",
       scrollbarWidth: "thin",
@@ -95,7 +97,7 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       caretColor: editorPalette.cursor,
       padding: "0 22px 0 0",
       letterSpacing: `${appearance.letterSpacing}px`,
-      minWidth: "max-content",
+      minWidth: "100%",
       outline: "none",
       userSelect: "text",
       WebkitUserSelect: "text",

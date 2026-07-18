@@ -189,6 +189,15 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+    const LARGE_OPEN_THRESHOLD_MS: u128 = 1_500;
+    const LARGE_QUICK_OPEN_THRESHOLD_MS: u128 = 100;
+
+    fn strict_perf_enabled() -> bool {
+        std::env::var("ARKLINE_STRICT_PERF")
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    }
+
     fn unique_temp_dir(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -346,7 +355,24 @@ mod tests {
 
         assert_eq!(state.file_paths.len(), usize::min(file_count, 20_000));
         assert!(quick_open_hits > 0);
+        let mut violations = Vec::new();
+        if strict_perf_enabled() {
+            if index_duration.as_millis() > LARGE_OPEN_THRESHOLD_MS {
+                violations.push(format!(
+                    "open {index_duration:?} > {LARGE_OPEN_THRESHOLD_MS}ms"
+                ));
+            }
+            if query_duration.as_millis() > LARGE_QUICK_OPEN_THRESHOLD_MS {
+                violations.push(format!(
+                    "Quick Open {query_duration:?} > {LARGE_QUICK_OPEN_THRESHOLD_MS}ms"
+                ));
+            }
+        }
         fs::remove_dir_all(root).unwrap();
+        assert!(
+            violations.is_empty(),
+            "large workspace performance violations: {violations:?}"
+        );
     }
 
     #[test]
@@ -414,13 +440,21 @@ mod tests {
             .unwrap()
             .len();
         let quick_open_duration = quick_open_start.elapsed();
+        let indexer = manager.indexer_snapshot();
 
         eprintln!(
-            "Large fixture open+background profile: files={file_count}, first_tick={first_tick_duration:?}, total={total_duration:?}, ticks={ticks}, results={result_count}, partials={partial_count}, quick_open={quick_open_duration:?}, tick_durations={tick_durations:?}, tick_kinds={tick_kinds:?}"
+            "Large fixture open+background profile: files={file_count}, first_tick={first_tick_duration:?}, total={total_duration:?}, ticks={ticks}, results={result_count}, partials={partial_count}, quick_open={quick_open_duration:?}, indexer={indexer:?}, tick_durations={tick_durations:?}, tick_kinds={tick_kinds:?}"
         );
 
         assert!(result_count >= 2);
         assert!(quick_open_hits > 0);
+        if indexer.enabled {
+            assert!(indexer.completed_discovery_chunks > 0);
+            assert!(indexer.completed_content_refresh_chunks > 0);
+            assert!(indexer.completed_stub_refresh_chunks > 0);
+            assert_eq!(indexer.cancelled_content_refresh_chunks, 0);
+            assert_eq!(indexer.fallback_count, 0);
+        }
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -59,6 +59,8 @@ describe("useSearchEverywhereController", () => {
       25,
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
+      expect.any(Number),
+      250,
     );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(1);
 
@@ -74,7 +76,7 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.overlay).toBe("none");
   });
 
-  it("does not rerun stale backend search while typing before debounce settles", async () => {
+  it("cancels on draft changes and starts the committed query immediately", async () => {
     vi.useFakeTimers();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
       items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
@@ -90,10 +92,10 @@ describe("useSearchEverywhereController", () => {
     await flushSearchDebounce();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
 
-    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
+    act(() => result.current.search.handleOverlayQueryDraftChange("EntryA"));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
 
-    await flushSearchDebounce();
+    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(2);
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "/workspace",
@@ -102,6 +104,8 @@ describe("useSearchEverywhereController", () => {
       25,
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
+      expect.any(Number),
+      250,
     );
   });
 
@@ -141,7 +145,7 @@ describe("useSearchEverywhereController", () => {
     await flushSearchDebounce();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
 
-    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
+    act(() => result.current.search.handleOverlayQueryDraftChange("EntryA"));
     await act(async () => {
       slowSearch.resolve({
         items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
@@ -167,13 +171,13 @@ describe("useSearchEverywhereController", () => {
       workspaceApi: workspaceApi({ cancelWorkspaceSearch, queryWorkspaceCandidatesWithReadiness }),
     });
 
-    act(() => result.current.search.handleOverlayQueryChange("EntryA"));
+    act(() => result.current.search.handleOverlayQueryDraftChange("EntryA"));
 
     expect(cancelWorkspaceSearch).toHaveBeenCalledWith("/workspace", "searchEverywhere", expect.any(Number));
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalledWith("/workspace", "EntryA", "all", 25);
   });
 
-  it("coalesces rapid typing and deleting into only the latest debounced query", async () => {
+  it("keeps rapid drafts off the backend and runs only the committed query", async () => {
     vi.useFakeTimers();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
       items: [candidate({ title: "EntryAbility", path: "/workspace/EntryAbility.ets" })],
@@ -188,13 +192,13 @@ describe("useSearchEverywhereController", () => {
 
     act(() => {
       for (const query of rapidSearchQueries("EntryAbility")) {
-        result.current.search.handleOverlayQueryChange(query);
+        result.current.search.handleOverlayQueryDraftChange(query);
       }
     });
 
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
 
-    await flushSearchDebounce();
+    act(() => result.current.search.handleOverlayQueryChange("EntryAbility"));
 
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
@@ -204,6 +208,8 @@ describe("useSearchEverywhereController", () => {
       25,
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
+      expect.any(Number),
+      250,
     );
   });
 
@@ -224,6 +230,7 @@ describe("useSearchEverywhereController", () => {
     await flushSearchDebounce();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
 
+    act(() => result.current.search.handleOverlayQueryDraftChange(""));
     act(() => result.current.search.handleOverlayQueryChange(""));
     await flushSearchDebounce();
     expect(result.current.search.searchEverywhereCandidates).toEqual([]);

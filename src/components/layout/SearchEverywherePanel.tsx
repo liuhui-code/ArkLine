@@ -3,7 +3,8 @@ import { englishQueryInputProps } from "@/components/layout/query-input-props";
 import { SearchCandidateResultItem, TextSearchResultItem } from "@/components/layout/SearchResultItems";
 import { buildSearchEverywherePanelViewModel } from "@/components/layout/search-everywhere-panel-model";
 import { SearchPreviewPane } from "@/components/layout/SearchPreviewPane";
-import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
+import { SearchSessionQueryInput } from "@/components/layout/SearchSessionQueryInput";
+import { useLatestCallback } from "@/components/layout/use-latest-callback";
 import type {
   WorkspaceTextSearchMatch,
   WorkspaceTextSearchOptions,
@@ -11,7 +12,7 @@ import type {
 } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type WheelEvent } from "react";
 
 type SearchEverywherePanelProps = {
   mode: SearchEverywhereMode;
@@ -27,6 +28,7 @@ type SearchEverywherePanelProps = {
   pageLoading: boolean;
   partialNotice?: string | null;
   onChangeQuery: (value: string) => void;
+  onDraftQueryChange: (value: string) => void;
   onChangeScope: (scope: WorkspaceIndexQueryScope) => void;
   onChangeReplaceQuery: (value: string) => void;
   onMoveSelection: (direction: 1 | -1) => void;
@@ -64,6 +66,7 @@ export function SearchEverywherePanel({
   pageLoading,
   partialNotice,
   onChangeQuery,
+  onDraftQueryChange,
   onChangeScope,
   onChangeReplaceQuery,
   onMoveSelection,
@@ -77,11 +80,13 @@ export function SearchEverywherePanel({
   onCloseOverlay,
 }: SearchEverywherePanelProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const viewModel = buildSearchEverywherePanelViewModel({ mode, result, candidates, selectedIndex });
+  const viewModel = useMemo(
+    () => buildSearchEverywherePanelViewModel({ mode, result, candidates, selectedIndex }),
+    [candidates, mode, result, selectedIndex],
+  );
   const { regexMode, presentation, textGroups, candidateGroups, resultsLabel, resultCount, selectedTextMatch } = viewModel;
   const pointerOpenRef = useRef(0);
   const resultRefs = useRef(new Map<number, HTMLButtonElement>());
-  const { draftQuery, setDraftQuery } = useSearchSessionInput(query, mode, onChangeQuery);
 
   useEffect(() => {
     const selectedResult = resultRefs.current.get(selectedIndex);
@@ -90,10 +95,42 @@ export function SearchEverywherePanel({
     }
   }, [mode, resultCount, selectedIndex]);
 
-  function registerResultRef(index: number, node: HTMLButtonElement | null) {
+  const registerResultRef = useCallback((index: number, node: HTMLButtonElement | null) => {
     if (node) resultRefs.current.set(index, node);
     else resultRefs.current.delete(index);
-  }
+  }, []);
+
+  const selectResult = useLatestCallback(onSelectResult);
+  const handleCandidateMouseDown = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
+    item: SearchCandidate,
+  ) => openByMouseDown(event, index, () => onOpenCandidate(item)));
+  const handleCandidateClick = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
+    item: SearchCandidate,
+  ) => openByClick(event, index, () => onOpenCandidate(item)));
+  const handleCandidateContextMenu = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
+    item: SearchCandidate,
+  ) => openCandidateContextMenu(event, item, index));
+  const handleTextMouseDown = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
+    item: WorkspaceTextSearchMatch,
+  ) => openByMouseDown(event, index, () => onOpenResult(item)));
+  const handleTextClick = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
+    item: WorkspaceTextSearchMatch,
+  ) => openByClick(event, index, () => onOpenResult(item)));
+  const handleTextContextMenu = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
+    item: WorkspaceTextSearchMatch,
+  ) => openTextResultContextMenu(event, item, index));
 
   function handlePanelKeyDownCapture(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "ArrowDown" && resultCount > 0) {
@@ -196,19 +233,13 @@ export function SearchEverywherePanel({
         </button>
       </div>
       <div className="search-everywhere__toolbar">
-        <input
-          aria-label={`${presentation.title} Query`}
-          autoFocus
-          className="panel-input"
-          {...englishQueryInputProps}
-          value={draftQuery}
+        <SearchSessionQueryInput
+          label={`${presentation.title} Query`}
+          mode={mode}
+          query={query}
           placeholder={presentation.searchPlaceholder}
-          onChange={(event) => setDraftQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === "Escape") {
-              event.preventDefault();
-            }
-          }}
+          onDraftChange={onDraftQueryChange}
+          onCommit={onChangeQuery}
         />
         {mode === "replace" ? (
           <input
@@ -289,11 +320,11 @@ export function SearchEverywherePanel({
                       index={index}
                       selected={index === selectedIndex}
                       query={query}
-                      resultRef={(node) => registerResultRef(index, node)}
-                      onSelect={onSelectResult}
-                      onMouseDown={(event) => openByMouseDown(event, index, () => onOpenCandidate(item))}
-                      onClick={(event) => openByClick(event, index, () => onOpenCandidate(item))}
-                      onContextMenu={(event) => openCandidateContextMenu(event, item, index)}
+                      resultRef={registerResultRef}
+                      onSelect={selectResult}
+                      onMouseDown={handleCandidateMouseDown}
+                      onClick={handleCandidateClick}
+                      onContextMenu={handleCandidateContextMenu}
                     />
                   ))}
                 </div>
@@ -326,11 +357,11 @@ export function SearchEverywherePanel({
                     index={index}
                     selected={index === selectedIndex}
                     query={query}
-                    resultRef={(node) => registerResultRef(index, node)}
-                    onSelect={onSelectResult}
-                    onMouseDown={(event) => openByMouseDown(event, index, () => onOpenResult(item))}
-                    onClick={(event) => openByClick(event, index, () => onOpenResult(item))}
-                    onContextMenu={(event) => openTextResultContextMenu(event, item, index)}
+                    resultRef={registerResultRef}
+                    onSelect={selectResult}
+                    onMouseDown={handleTextMouseDown}
+                    onClick={handleTextClick}
+                    onContextMenu={handleTextContextMenu}
                   />
                 ))}
               </div>

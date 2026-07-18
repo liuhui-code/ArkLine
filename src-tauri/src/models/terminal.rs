@@ -45,6 +45,10 @@ pub struct TerminalRunRequest {
     pub command: String,
     pub cwd: Option<String>,
     pub source: String,
+    #[serde(default)]
+    pub path_entries: Vec<String>,
+    #[serde(default)]
+    pub environment: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

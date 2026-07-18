@@ -4,6 +4,7 @@ use rusqlite::{params, Connection};
 
 use crate::models::language::{DefinitionCandidate, LanguageQueryRequest};
 use crate::services::workspace_reference_index_service::query_reference_at_position;
+use crate::services::workspace_sdk_shared_bridge_service::query_shared_sdk_symbol_by_id;
 use crate::services::workspace_symbol_identity_merge_service::query_merged_symbol_ids;
 use crate::services::workspace_symbol_resolution_query_service::query_resolved_symbol_by_id;
 
@@ -59,6 +60,19 @@ fn query_sdk_definition_by_symbol_id(
     root_path: &str,
     symbol_id: &str,
 ) -> Result<Vec<DefinitionCandidate>, String> {
+    if let Ok(Some(symbol)) = query_shared_sdk_symbol_by_id(root_path, symbol_id) {
+        return Ok(vec![DefinitionCandidate {
+            path: denormalize_index_path(&symbol.path),
+            line: u32::try_from(symbol.line).unwrap_or_default(),
+            column: u32::try_from(symbol.column).unwrap_or_default(),
+            preview: symbol.signature.unwrap_or_else(|| {
+                symbol
+                    .container
+                    .map(|container| format!("{container}.{}", symbol.name))
+                    .unwrap_or(symbol.name)
+            }),
+        }]);
+    }
     let connection = open_index_store(root_path)?;
     let root_key = normalize_index_path(root_path);
     let mut statement = connection

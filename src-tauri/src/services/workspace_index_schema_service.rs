@@ -1,17 +1,21 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_discovery_schema_service::create_discovery_tables;
+use crate::services::workspace_file_identity_service::create_workspace_file_identity_table;
+use crate::services::workspace_index_connection_service::with_workspace_index_writer;
 use crate::services::workspace_index_event_service::create_index_event_tables;
+use crate::services::workspace_index_layer_generation_service::create_layer_generation_table;
 pub use crate::services::workspace_index_schema_version_service::load_workspace_index_schema_versions;
 use crate::services::workspace_index_schema_version_service::{
     create_workspace_index_schema_version_table, record_workspace_index_schema_versions,
 };
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
 use crate::services::workspace_sdk_schema_service::create_sdk_tables;
+use crate::services::workspace_semantic_layer_state_service::create_semantic_layer_tables;
+use crate::services::workspace_symbol_posting_service::create_symbol_posting_tables;
 use crate::services::workspace_symbol_resolution_schema_service::create_symbol_resolution_tables;
 
 pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
@@ -19,23 +23,19 @@ pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace SQLite index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let connection = Connection::open(cache_path).map_err(|error| error.to_string())?;
-    ensure_workspace_index_schema(&connection)
+    with_workspace_index_writer(root_path, |connection| {
+        ensure_workspace_index_schema(connection)
+    })
 }
 
 pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), String> {
     create_workspace_index_schema_version_table(connection)?;
     create_catalog_tables(connection)?;
+    create_workspace_file_identity_table(connection)?;
+    create_layer_generation_table(connection)?;
     create_entity_tables(connection)?;
     create_stub_tables(connection)?;
+    create_symbol_posting_tables(connection)?;
     create_content_tables(connection)?;
     create_fingerprint_tables(connection)?;
     create_sdk_tables(connection)?;
@@ -46,6 +46,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_dependency_graph_tables(connection)?;
     create_symbol_resolution_tables(connection)?;
     create_reference_index_tables(connection)?;
+    create_semantic_layer_tables(connection)?;
     record_workspace_index_schema_versions(connection)
 }
 
@@ -119,10 +120,27 @@ fn create_catalog_tables(connection: &Connection) -> Result<(), String> {
 
 fn create_content_tables(connection: &Connection) -> Result<(), String> {
     connection
+        .execute_batch(
+            "create table if not exists workspace_content_files (
+                root_path text not null,
+                path text not null,
+                indexed_generation integer not null,
+                line_count integer not null,
+                status text not null,
+                error text,
+                updated_at integer not null,
+                primary key (root_path, path)
+            );
+            create index if not exists workspace_content_files_generation
+                on workspace_content_files(root_path, indexed_generation);",
+        )
+        .map_err(|error| error.to_string())?;
+    connection
         .execute(
             "create table if not exists workspace_content_lines (
                 root_path text not null,
                 path text not null,
+                file_id integer,
                 line integer not null,
                 text text not null,
                 primary key (root_path, path, line)
@@ -130,6 +148,12 @@ fn create_content_tables(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| error.to_string())?;
+    ensure_column(
+        connection,
+        "workspace_content_lines",
+        "file_id",
+        "alter table workspace_content_lines add column file_id integer",
+    )?;
     connection
         .execute(
             "create index if not exists workspace_content_lines_lookup
@@ -137,12 +161,46 @@ fn create_content_tables(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create virtual table if not exists workspace_content_fts
-             using fts5(root_path unindexed, path unindexed, line unindexed, text)",
-            [],
+    ensure_content_fts_table(
+        connection,
+        "workspace_content_fts",
+        "create virtual table workspace_content_fts
+         using fts5(root_path unindexed, path unindexed, file_id unindexed,
+                    line unindexed, text)",
+    )?;
+    ensure_content_fts_table(
+        connection,
+        "workspace_content_trigram_fts",
+        "create virtual table workspace_content_trigram_fts
+         using fts5(root_path unindexed, path unindexed, file_id unindexed,
+                    line unindexed, text, tokenize='trigram')",
+    )?;
+    Ok(())
+}
+
+fn ensure_content_fts_table(
+    connection: &Connection,
+    table: &str,
+    create_sql: &str,
+) -> Result<(), String> {
+    let existing_sql = connection
+        .query_row(
+            "select sql from sqlite_master where type = 'table' and name = ?1",
+            [table],
+            |row| row.get::<_, String>(0),
         )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some(existing_sql) = existing_sql {
+        if existing_sql.to_lowercase().contains("file_id") {
+            return Ok(());
+        }
+        connection
+            .execute(&format!("drop table {table}"), [])
+            .map_err(|error| error.to_string())?;
+    }
+    connection
+        .execute(create_sql, [])
         .map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -406,11 +464,4 @@ fn create_resume_tables(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
     Ok(())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }

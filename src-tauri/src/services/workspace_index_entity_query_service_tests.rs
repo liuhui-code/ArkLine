@@ -151,6 +151,39 @@ fn search_scopes_prefer_stub_declarations_without_legacy_symbols() {
 }
 
 #[test]
+fn queries_bounded_symbol_postings_with_camel_case_acronyms() {
+    let root = unique_temp_dir("workspace-symbol-postings");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("HomeUserApi.ets"),
+        "class HomeUserApi {\n  fetchHomeUser() {}\n}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let candidates =
+        query_workspace_entities(&root_path, "hua", WorkspaceEntityQueryScope::Classes, 8).unwrap();
+    let posting_count: i64 = Connection::open(sqlite_path(&root))
+        .unwrap()
+        .query_row(
+            "select count(*) from workspace_symbol_postings where acronym = 'hua'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate.title == "HomeUserApi"));
+    assert_eq!(posting_count, 1);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn file_symbols_use_stub_source_order_without_legacy_symbols() {
     let root = unique_temp_dir("workspace-stub-file-symbols");
     let source_dir = root.join("entry").join("src").join("main").join("ets");

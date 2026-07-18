@@ -1,7 +1,18 @@
 import { createDocumentStore } from "@/features/documents/document-store";
+import { Text } from "@codemirror/state";
 import { vi } from "vitest";
 
 describe("document store safety", () => {
+  it("opens a prebuilt editor document without reconstructing its text", () => {
+    const store = createDocumentStore();
+    const document = Text.of(["first", "second"]);
+
+    store.openDocumentText("C:/work/main.ets", "first\nsecond", document);
+
+    expect(store.getDocumentText("C:/work/main.ets")).toBe(document);
+    expect(store.getDocument("C:/work/main.ets")?.currentContent).toBe("first\nsecond");
+  });
+
   it("keeps a dirty buffer when the file changes externally", () => {
     const store = createDocumentStore();
     store.openDocument("C:/work/main.ets", "original");
@@ -78,5 +89,66 @@ describe("document store safety", () => {
 
     expect(store.applyExternalChange("C:/work/A.ets", "disk A 2")).toBe("updated");
     expect(store.hasDirtyDocuments()).toBe(false);
+  });
+
+  it("applies persistent editor text without publishing a content replacement", async () => {
+    const store = createDocumentStore();
+    const listener = vi.fn();
+    store.openDocument("C:/work/A.ets", "A");
+    await Promise.resolve();
+    const normalizedPath = store.getDocument("C:/work/A.ets")!.path;
+    store.subscribe(listener);
+
+    const result = store.applyEditorDocument("C:/work/A.ets", Text.of(["A changed"]));
+
+    expect(result).toEqual({ dirtyChanged: true });
+    expect(store.getDocument("C:/work/A.ets")?.currentContent).toBe("A changed");
+    await Promise.resolve();
+    expect(listener).toHaveBeenCalledWith(
+      normalizedPath,
+      expect.objectContaining({ isDirty: true }),
+      "metadata",
+    );
+  });
+
+  it("does not notify React subscribers for each editor transaction after becoming dirty", async () => {
+    const store = createDocumentStore();
+    const listener = vi.fn();
+    store.openDocument("C:/work/A.ets", "A");
+    await Promise.resolve();
+    store.subscribe(listener);
+
+    store.applyEditorDocument("C:/work/A.ets", Text.of(["AB"]));
+    await Promise.resolve();
+    listener.mockClear();
+    store.applyEditorDocument("C:/work/A.ets", Text.of(["ABC"]));
+    store.applyEditorDocument("C:/work/A.ets", Text.of(["ABCD"]));
+    await Promise.resolve();
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(store.getDocument("C:/work/A.ets")?.currentContent).toBe("ABCD");
+  });
+
+  it("publishes metadata when undo returns the editor document to its saved state", async () => {
+    const store = createDocumentStore();
+    const listener = vi.fn();
+    store.openDocument("C:/work/A.ets", "A");
+    await Promise.resolve();
+    const normalizedPath = store.getDocument("C:/work/A.ets")!.path;
+    store.subscribe(listener);
+    store.applyEditorDocument("C:/work/A.ets", Text.of(["AB"]));
+    await Promise.resolve();
+    listener.mockClear();
+
+    const result = store.applyEditorDocument("C:/work/A.ets", Text.of(["A"]));
+    await Promise.resolve();
+
+    expect(result).toEqual({ dirtyChanged: true });
+    expect(store.hasDirtyDocuments()).toBe(false);
+    expect(listener).toHaveBeenCalledWith(
+      normalizedPath,
+      expect.objectContaining({ isDirty: false }),
+      "metadata",
+    );
   });
 });

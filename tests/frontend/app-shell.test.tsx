@@ -428,6 +428,7 @@ describe("App shell", () => {
         parserStatus: "ready",
         parserError: null,
         indexedGeneration: 18,
+        semanticLayers: [],
         definitionAvailable: false,
         completionAvailable: true,
         usagesAvailable: false,
@@ -1078,12 +1079,14 @@ describe("App shell", () => {
 
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "all",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "all",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
     const results = screen.getByRole("list", { name: "Search Everywhere Results" });
     await waitFor(() => expect(within(results).getByText("Classes")).toBeVisible());
     const classResult = within(results).getByRole("button", { name: /class LoginController/ });
@@ -1313,12 +1316,14 @@ describe("App shell", () => {
     expect(await screen.findByLabelText("Search Everywhere Query")).toHaveValue("LoginController");
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       expect.stringMatching(/DemoWorkspace$/),
-      "LoginController",
-      "all",
+     "LoginController",
+     "all",
+     expect.any(Number),
+     null,
+     expect.any(Object),
       expect.any(Number),
-      null,
-      expect.any(Object),
-    ));
+      250,
+   ));
   });
 
   it("opens the visually selected Search Everywhere candidate with Enter after grouping", async () => {
@@ -1451,12 +1456,14 @@ describe("App shell", () => {
     await user.type(screen.getByLabelText("Search Everywhere Query"), "login");
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "all",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "all",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
   });
 
   it("shows truncation metadata when Search Everywhere has more results than the display cap", async () => {
@@ -1519,12 +1526,14 @@ describe("App shell", () => {
 
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "all",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "all",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
   });
 
@@ -1582,24 +1591,28 @@ describe("App shell", () => {
 
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "all",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "all",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
     expect(await screen.findByRole("button", { name: /api loginAction/ })).toBeVisible();
 
     await user.click(screen.getByRole("tab", { name: "Classes" }));
 
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "classes",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "classes",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
     expect(screen.getByRole("tab", { name: "Classes", selected: true })).toBeVisible();
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /api loginAction/ })).not.toBeInTheDocument();
@@ -1664,24 +1677,28 @@ describe("App shell", () => {
 
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "all",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "all",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
     expect(await screen.findByRole("button", { name: /class LoginController/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /text Text\("Login"\)/ })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Classes" }));
     await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
       "C:\\samples\\DemoWorkspace",
-      "login",
-      "classes",
-      25,
-      null,
-      expect.any(Object),
-    ));
+     "login",
+     "classes",
+     25,
+     null,
+     expect.any(Object),
+      expect.any(Number),
+      250,
+   ));
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
   });
 
@@ -2221,7 +2238,11 @@ describe("App shell", () => {
       "C:\\samples\\DemoWorkspace",
       "bundle",
       "text",
-      60,
+      50,
+      null,
+      undefined,
+      expect.any(Number),
+      1_500,
     ));
     expect(searchWorkspaceText).not.toHaveBeenCalled();
     expect(within(screen.getByRole("list", { name: "Find in Files Results" })).getByRole("button", {

@@ -14,6 +14,7 @@ export type WorkspaceResetControllerActions = {
   resetCompletion: () => void;
   resetUsageSearch: () => void;
   resetEditorState: () => void;
+  resetDocumentCache: () => void;
   showBottomContent: () => void;
   onStatusChange: (message: string) => void;
 };
@@ -33,6 +34,7 @@ export function useWorkspaceResetController(actions: WorkspaceResetControllerAct
     actions.resetCompletion();
     actions.resetUsageSearch();
     actions.resetEditorState();
+    actions.resetDocumentCache();
     actions.showBottomContent();
     actions.onStatusChange(`Workspace ready: ${rootName}`);
   }, [actions]);

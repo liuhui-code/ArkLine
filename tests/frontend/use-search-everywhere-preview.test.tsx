@@ -13,7 +13,7 @@ describe("useSearchEverywhereController preview loading", () => {
     Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   });
 
-  it("does not read unopened files only to render a selected result preview", async () => {
+  it("prefetches an unopened selected file after the preview delay", async () => {
     vi.useFakeTimers();
     Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {}, configurable: true });
     const openFile = vi.fn(async () => "struct Other {\n  width(100)\n}");
@@ -57,8 +57,8 @@ describe("useSearchEverywhereController preview loading", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(openFile).not.toHaveBeenCalled();
-    expect(result.current.search.searchEverywherePreviewContent).toBeNull();
+    expect(openFile).toHaveBeenCalledTimes(1);
+    expect(result.current.search.searchEverywherePreviewContent).toContain("width");
   });
 
   it("uses already loaded document content for selected result preview", async () => {
@@ -99,7 +99,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       workspaceApi: stableWorkspaceApi,
       workspace: stableWorkspace,
       activePath: overrides.activePath ?? "/workspace/Entry.ets",
-      editorSelectedText: "",
+      getEditorSelectedText: () => "",
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",

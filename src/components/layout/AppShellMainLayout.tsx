@@ -14,6 +14,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import type { ProjectMutationRequest } from "@/components/layout/ProjectToolWindow";
 import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { WorkspaceDirectoryEntry } from "@/features/workspace/workspace-api";
+import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
 type AppShellMainLayoutProps = {
   topBar: {
@@ -59,6 +60,7 @@ type AppShellMainLayoutProps = {
 };
 
 export function AppShellMainLayout({ topBar, sidebar, editor }: AppShellMainLayoutProps) {
+  recordRenderPressure("AppShell/MainLayout");
   return (
     <>
       <TopBar {...topBar} />

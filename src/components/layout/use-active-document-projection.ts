@@ -9,9 +9,6 @@ import {
 type UseActiveDocumentProjectionOptions = {
   documentsRef: MutableRefObject<DocumentRuntimeStore>;
   activePath: string | null;
-  line: number;
-  column: number;
-  selectedText: string;
 };
 
 export function useActiveDocumentProjection(options: UseActiveDocumentProjectionOptions): ActiveDocumentProjection {
@@ -26,7 +23,7 @@ export function useActiveDocumentProjection(options: UseActiveDocumentProjection
     return options.documentsRef.current.subscribe((path) => {
       if (path === options.activePath) updateProjection();
     });
-  }, [options.activePath, options.column, options.documentsRef, options.line, options.selectedText]);
+  }, [options.activePath, options.documentsRef]);
 
   return projection;
 }

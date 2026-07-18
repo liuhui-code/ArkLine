@@ -113,6 +113,26 @@ fn keeps_empty_discovery_tasks_because_they_start_root_enumeration() {
 }
 
 #[test]
+fn preserves_discovery_generation_for_cursor_continuations() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    let mut initial = changed_task("/workspace", &[]);
+    initial.priority = WorkspaceIndexTaskPriority::VisibleFiles;
+    initial.reason = "workspace-discovery".to_string();
+    scheduler.schedule(initial);
+    let initial = scheduler.drain_ready().remove(0);
+
+    scheduler.schedule(changed_task("/other-workspace", &["Other.ets"]));
+    scheduler.drain_ready();
+
+    let mut continuation = initial.clone();
+    continuation.changed_paths = vec!["/workspace/entry".to_string()];
+    scheduler.schedule(continuation);
+    let continuation = scheduler.drain_ready().remove(0);
+
+    assert_eq!(continuation.generation, initial.generation);
+}
+
+#[test]
 fn keeps_changed_path_tasks_for_different_roots_separate() {
     let mut scheduler = WorkspaceIndexScheduler::default();
 

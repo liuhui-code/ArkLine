@@ -55,11 +55,39 @@ pub fn create_sdk_tables(connection: &Connection) -> Result<(), String> {
                 root_path text primary key,
                 sdk_path text not null,
                 sdk_version text not null,
+                artifact_key text,
+                manifest_fingerprint text,
+                parser_version text,
+                shared_status text,
                 indexed_at integer not null
             )",
             [],
         )
         .map_err(|error| error.to_string())?;
+    ensure_column(
+        connection,
+        "workspace_sdk_index_metadata",
+        "artifact_key",
+        "alter table workspace_sdk_index_metadata add column artifact_key text",
+    )?;
+    ensure_column(
+        connection,
+        "workspace_sdk_index_metadata",
+        "manifest_fingerprint",
+        "alter table workspace_sdk_index_metadata add column manifest_fingerprint text",
+    )?;
+    ensure_column(
+        connection,
+        "workspace_sdk_index_metadata",
+        "parser_version",
+        "alter table workspace_sdk_index_metadata add column parser_version text",
+    )?;
+    ensure_column(
+        connection,
+        "workspace_sdk_index_metadata",
+        "shared_status",
+        "alter table workspace_sdk_index_metadata add column shared_status text",
+    )?;
     Ok(())
 }
 

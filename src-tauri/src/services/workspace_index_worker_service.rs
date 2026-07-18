@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use crate::indexer_host::IndexerHostRuntime;
+use crate::indexer_sidecar::IndexerTaskKey;
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
 use crate::services::workspace_dependency_graph_service::{
     has_graph_affecting_config_change, mark_dependency_graph_stale,
@@ -18,7 +20,12 @@ use crate::services::workspace_index_continuation_task_service::{
     continuation_phase, continuation_phase_label, is_full_refresh_continuation_reason,
     WorkspaceIndexContinuationPhase,
 };
-use crate::services::workspace_index_discovery_result_service::discovery_task_result;
+use crate::services::workspace_index_deep_sidecar_service::{
+    update_background_deep_layer, WorkspaceDeepLayerUpdate,
+};
+use crate::services::workspace_index_discovery_result_service::{
+    discovery_task_result, discovery_task_result_from_counts,
+};
 use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind,
@@ -76,8 +83,28 @@ where
 pub fn run_index_tasks_with_cancellation_and_ui_activity<F, G>(
     index_runtime: &WorkspaceIndexRuntime,
     tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
+    on_status: F,
+    is_ui_latency_sensitive: G,
+) -> Result<Vec<WorkspaceIndexTaskResult>, String>
+where
+    F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
+    G: FnMut() -> bool,
+{
+    run_index_tasks_with_cancellation_and_ui_activity_and_indexer(
+        index_runtime,
+        tasks,
+        on_status,
+        is_ui_latency_sensitive,
+        None,
+    )
+}
+
+pub fn run_index_tasks_with_cancellation_and_ui_activity_and_indexer<F, G>(
+    index_runtime: &WorkspaceIndexRuntime,
+    tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
     mut on_status: F,
     mut is_ui_latency_sensitive: G,
+    indexer: Option<&IndexerHostRuntime>,
 ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
 where
     F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
@@ -108,6 +135,7 @@ where
             token,
             started_at,
             is_ui_latency_sensitive(),
+            indexer,
         ) {
             Ok(Some(result)) => results.push(result),
             Ok(None) => {}
@@ -127,7 +155,17 @@ fn is_superseded_by_later_batch_task(
         candidate.0.root_path == task.root_path
             && candidate.0.generation > task.generation
             && task_kind_replaces_pending(&candidate.0.kind, &task.kind)
+            && changed_path_reasons_match(&candidate.0, task)
     })
+}
+
+fn changed_path_reasons_match(
+    new_task: &WorkspaceIndexTask,
+    existing: &WorkspaceIndexTask,
+) -> bool {
+    new_task.kind != WorkspaceIndexTaskKind::ChangedPaths
+        || existing.kind != WorkspaceIndexTaskKind::ChangedPaths
+        || new_task.reason == existing.reason
 }
 
 fn run_index_task(
@@ -136,6 +174,7 @@ fn run_index_task(
     token: &WorkspaceIndexCancellationToken,
     started_at: u128,
     ui_latency_sensitive: bool,
+    indexer: Option<&IndexerHostRuntime>,
 ) -> Result<Option<WorkspaceIndexTaskResult>, (WorkspaceIndexTask, String)> {
     run_index_task_inner(
         index_runtime,
@@ -143,6 +182,7 @@ fn run_index_task(
         token,
         started_at,
         ui_latency_sensitive,
+        indexer,
     )
     .map_err(|error| (task, error))
 }
@@ -153,6 +193,7 @@ fn run_index_task_inner(
     token: &WorkspaceIndexCancellationToken,
     started_at: u128,
     ui_latency_sensitive: bool,
+    indexer: Option<&IndexerHostRuntime>,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     match task.kind.clone() {
         WorkspaceIndexTaskKind::ChangedPaths => {
@@ -161,6 +202,28 @@ fn run_index_task_inner(
                     return Ok(Some(superseded_task_result_from_task(task)));
                 }
                 let cursor = workspace_discovery_task_cursor(task);
+                if let Some(result) = indexer.and_then(|runtime| {
+                    runtime.discover_workspace_chunk(
+                        IndexerTaskKey {
+                            root_path: task.root_path.clone(),
+                            kind: "discovery".to_string(),
+                            generation: task.generation,
+                            reason: task.reason.clone(),
+                        },
+                        cursor
+                            .as_ref()
+                            .map(|value| value.pending_directories.clone()),
+                        WORKSPACE_DISCOVERY_CHUNK_SIZE,
+                    )
+                }) {
+                    return Ok(Some(discovery_task_result_from_counts(
+                        task,
+                        result.chunk_file_count,
+                        result.excluded_count,
+                        result.has_more,
+                        started_at,
+                    )));
+                }
                 let chunk = run_workspace_discovery_chunk(
                     Path::new(&task.root_path),
                     cursor,
@@ -175,6 +238,7 @@ fn run_index_task_inner(
                 }
                 let Some(result) = refresh_full_refresh_continuation_chunk(
                     index_runtime,
+                    indexer,
                     task,
                     token,
                     task.changed_paths.clone(),
@@ -227,7 +291,7 @@ fn run_index_task_inner(
                 return Ok(Some(superseded_task_result_from_task(task)));
             }
             let Some(refresh_result) =
-                refresh_changed_path_chunks(index_runtime, task, token, changed_paths)?
+                refresh_changed_path_chunks(index_runtime, indexer, task, token, changed_paths)?
             else {
                 return Ok(Some(superseded_task_result_from_task(task)));
             };
@@ -301,6 +365,7 @@ fn is_full_refresh_continuation(task: &WorkspaceIndexTask) -> bool {
 
 fn refresh_full_refresh_continuation_chunk(
     index_runtime: &WorkspaceIndexRuntime,
+    indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     changed_paths: Vec<String>,
@@ -338,14 +403,26 @@ fn refresh_full_refresh_continuation_chunk(
     let state = match phase {
         WorkspaceIndexContinuationPhase::FileLayer => index_runtime
             .update_workspace_file_symbol_layer(&task.root_path, &selected_paths, &[])?,
-        WorkspaceIndexContinuationPhase::DeepLayer | WorkspaceIndexContinuationPhase::Legacy => {
-            index_runtime.update_workspace_deep_layer_with_priority(
+        WorkspaceIndexContinuationPhase::DeepLayer => {
+            match update_background_deep_layer(
+                index_runtime,
+                indexer,
+                task,
+                token,
+                &selected_paths,
+                &[],
+            )? {
+                WorkspaceDeepLayerUpdate::Applied(state) => state,
+                WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
+            }
+        }
+        WorkspaceIndexContinuationPhase::Legacy => index_runtime
+            .update_workspace_deep_layer_with_priority(
                 &task.root_path,
                 &selected_paths,
                 &[],
                 task.priority,
-            )?
-        }
+            )?,
     };
     let processed_count = selected_paths.len();
     let refresh_result = WorkspaceIndexRefreshResult {

@@ -42,6 +42,7 @@ pub(crate) fn count_rows(
         .map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 pub(crate) fn count_distinct_paths(
     connection: &Connection,
     table_name: &str,

@@ -3,7 +3,7 @@ use crate::models::workspace::{
     WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
-use crate::services::workspace_content_index_service::search_indexed_workspace_content;
+use crate::services::workspace_content_index_service::search_indexed_workspace_content_with_cancellation;
 use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
 };
@@ -161,7 +161,7 @@ pub(crate) fn query_facade_text_search_with_cancellation<F>(
     is_cancelled: F,
 ) -> Result<WorkspaceIndexFacadeEnvelope, String>
 where
-    F: FnMut() -> bool,
+    F: FnMut() -> bool + Send + 'static,
 {
     let mut readiness = crate::services::workspace_index_query_service::readiness_for_index_state(
         &index_runtime.get_index_state(&request.root_path)?,
@@ -258,10 +258,10 @@ fn raw_text_search_result_with_cancellation<F>(
     is_cancelled: F,
 ) -> Result<WorkspaceTextSearchResult, String>
 where
-    F: FnMut() -> bool,
+    F: FnMut() -> bool + Send + 'static,
 {
     if should_use_indexed_text_search(&request) && !text_index_missing_for_request(&request)? {
-        return search_indexed_workspace_content(&request);
+        return search_indexed_workspace_content_with_cancellation(&request, is_cancelled);
     }
 
     let index_state = index_runtime.get_index_state(&request.root_path)?;

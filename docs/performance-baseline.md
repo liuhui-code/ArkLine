@@ -99,27 +99,41 @@ Record the JSON output here for every release candidate. The scripts are model-l
 checks; they do not replace packaged app profiling, but they catch large regressions
 in search input and file switch projections before release.
 
-Latest local headless run on 2026-07-08:
+Latest local product-runtime headless run on 2026-07-17:
 
 ```json
 {
-  "searchInput": {
-    "fileCount": 5000,
+  "searchTypeDeleteClose": {
+    "projectFileCount": 5000,
     "operations": 100,
+    "candidateCount": 50,
+    "commitCount": 2,
+    "cancelCount": 102,
+    "staleApplyCount": 0,
+    "renderCommits": 110,
     "targetP95Ms": 50,
-    "p50Ms": 0.246,
-    "p95Ms": 0.867,
-    "maxMs": 2.479,
-    "pass": true
+    "p50Ms": 0.317,
+    "p95Ms": 0.696,
+    "p99Ms": 1.022,
+    "maxMs": 3.81
   },
-  "fileSwitch": {
+  "fileSwitchJump": {
     "fileCount": 5000,
     "switches": 50,
+    "jumpCount": 50,
+    "cacheEntries": 16,
+    "pendingLoads": 0,
+    "staleJumpCount": 49,
+    "appliedJumpCount": 1,
     "targetP95Ms": 300,
-    "p50Ms": 0.005,
-    "p95Ms": 0.012,
-    "maxMs": 0.076,
-    "pass": true
+    "switchP50Ms": 0.083,
+    "switchP95Ms": 0.172,
+    "switchP99Ms": 1.532,
+    "jumpDispatchP95Ms": 0.01
   }
 }
 ```
+
+This replaces the 2026-07-08 benchmark-only string scan and projection numbers.
+The current fixture exercises production runtime modules, but remains a
+headless model-level gate rather than packaged WebView evidence.

@@ -33,7 +33,12 @@ import { IndexDiagnosticsLayersSection } from "@/components/layout/IndexDiagnost
 import { IndexDiagnosticsPerformanceTimelineSection } from "@/components/layout/IndexDiagnosticsPerformanceTimelineSection";
 import { IndexDiagnosticsProcessesSection } from "@/components/layout/IndexDiagnosticsProcessesSection";
 import { IndexDiagnosticsQueryExplainSection } from "@/components/layout/IndexDiagnosticsQueryExplainSection";
+import { IndexDiagnosticsSemanticHostSection } from "@/components/layout/IndexDiagnosticsSemanticHostSection";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
+import {
+  defaultSemanticState,
+  type SemanticState,
+} from "@/features/semantic/semantic-store";
 import "./index-diagnostics-center.css";
 
 type IndexDiagnosticsCenterProps = {
@@ -50,6 +55,7 @@ type IndexDiagnosticsCenterProps = {
   uiLatencySamples?: UiLatencySample[];
   ipcLatencySamples?: IpcLatencySample[];
   renderPressureSamples?: RenderPressureSample[];
+  semanticState?: SemanticState;
   onClose: () => void;
   onRefresh: () => void;
   onResumeIndexing: () => void;
@@ -73,6 +79,7 @@ export function IndexDiagnosticsCenter({
   uiLatencySamples = [],
   ipcLatencySamples = [],
   renderPressureSamples = [],
+  semanticState = defaultSemanticState,
   onClose,
   onRefresh,
   onResumeIndexing,
@@ -223,6 +230,7 @@ export function IndexDiagnosticsCenter({
         <div className="index-diagnostics__body">
           <aside className="index-diagnostics__nav" aria-label="Index Diagnostics Sections">
             <a href="#index-diagnostics-processes">Processes</a>
+            <a href="#index-diagnostics-semantic-host">Semantic Host</a>
             <a href="#index-diagnostics-current-file">Current File</a>
             <a href="#index-diagnostics-layers">Layers</a>
             <a href="#index-diagnostics-query-explain">Query Explain</a>
@@ -235,6 +243,8 @@ export function IndexDiagnosticsCenter({
             {loading ? <div className="index-diagnostics__notice">Loading index diagnostics...</div> : null}
 
             <IndexDiagnosticsProcessesSection queuePressure={queuePressure} taskStatuses={taskStatuses} />
+
+            <IndexDiagnosticsSemanticHostSection semanticState={semanticState} />
 
             <IndexDiagnosticsCurrentFileSection
               activePath={activePath}

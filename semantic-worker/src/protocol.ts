@@ -3,10 +3,43 @@ export interface SemanticDocumentPosition {
   line: number
   column: number
   content?: string
+  contentGeneration?: number
+  workspaceRoot?: string
 }
+
+export interface SemanticReplayDocument {
+  path: string
+  content: string
+  contentGeneration: number
+}
+
+export interface SemanticResponseState {
+  path: string
+  contentGeneration: number
+  dependencyGeneration: number
+  documentCacheHit: boolean
+  queryCacheHit: boolean
+  loadedDocumentCount: number
+  syntaxReady: boolean
+  typeStatus?: "ready" | "partial" | "unsupported"
+  typeEngine?: string
+  typeEngineVersion?: string
+  typeGeneration?: number
+}
+
+export interface SemanticRuntimeState {
+  rssBytes: number
+  heapUsedBytes: number
+  heapTotalBytes: number
+  externalBytes: number
+  uptimeMs: number
+}
+
+export const SEMANTIC_PROTOCOL_VERSION = 3
 
 export type SemanticRequestMethod =
   | "health"
+  | "restoreDocuments"
   | "gotoDefinition"
   | "completion"
   | "listCodeActions"
@@ -20,6 +53,7 @@ export interface SemanticRequest {
   position?: SemanticDocumentPosition
   action?: SemanticCodeActionRequest
   newName?: string
+  documents?: SemanticReplayDocument[]
 }
 
 export interface SemanticCompletionItem {
@@ -29,7 +63,7 @@ export interface SemanticCompletionItem {
   insertText?: string
   filterText?: string
   sortText?: string
-  source?: "workspace" | "arkts" | "arkui" | "sdk" | "fallback"
+  source?: "workspace" | "arkts" | "arkui" | "sdk" | "type" | "fallback"
   documentation?: string
   replacementRange?: SemanticTextRange
   commitCharacters?: string[]
@@ -121,7 +155,8 @@ export interface SemanticUnsupportedResult {
 }
 
 export type SemanticResponsePayload =
-  | { status: "ready" }
+  | { status: "ready"; protocolVersion: number; capabilities: string[] }
+  | { restoredDocumentCount: number }
   | SemanticDefinitionTarget
   | { definition: SemanticDefinitionTarget | null; definitionCandidates?: SemanticDefinitionCandidate[] }
   | SemanticCompletionItem[]
@@ -135,5 +170,7 @@ export interface SemanticResponse {
   id: string
   ok: boolean
   payload: SemanticResponsePayload
+  state?: SemanticResponseState
+  runtime?: SemanticRuntimeState
   error?: string
 }

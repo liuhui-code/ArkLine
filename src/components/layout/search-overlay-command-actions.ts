@@ -14,7 +14,7 @@ import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-ap
 
 export type SearchOverlayCommandActionsOptions = {
   mode: SearchEverywhereMode;
-  editorSelectedText: string;
+  getEditorSelectedText: () => string;
   invalidateSearchSession: () => void;
   resetDebouncedSearchQuery: () => void;
   patchSearchSession: (patch: Partial<SearchSessionSnapshot>) => void;

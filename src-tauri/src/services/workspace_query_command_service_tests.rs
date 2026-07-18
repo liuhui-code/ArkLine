@@ -8,11 +8,14 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir,
 };
+use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
 use crate::services::workspace_query_command_service::{
-    query_workspace_candidates_facade_blocking, query_workspace_file_symbols_facade_blocking,
+    query_workspace_candidates_brokered_blocking, query_workspace_candidates_facade_blocking,
+    query_workspace_file_symbols_facade_blocking,
     query_workspace_search_everywhere_compat_blocking,
 };
 use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
+use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 
 #[test]
 fn legacy_search_everywhere_command_returns_facade_items() {
@@ -91,6 +94,31 @@ fn candidate_command_returns_facade_envelope() {
     assert_eq!(command.items, facade.items);
     assert_eq!(command.readiness.state, facade.readiness.state);
     assert_eq!(command.explain, facade.explain);
+}
+
+#[test]
+fn brokered_candidate_command_rejects_a_superseded_generation() {
+    let sessions = WorkspaceSearchSessionRuntime::default();
+    let broker = WorkspaceQueryBrokerRuntime::new(sessions);
+    broker
+        .begin("/workspace", "searchEverywhere", Some(2), 1_000)
+        .unwrap();
+
+    let error = tauri::async_runtime::block_on(query_workspace_candidates_brokered_blocking(
+        WorkspaceIndexRuntime::default(),
+        broker,
+        "/workspace".to_string(),
+        "Entry".to_string(),
+        WorkspaceIndexQueryScope::All,
+        8,
+        None,
+        WorkspaceSearchRankingContext::default(),
+        Some(1),
+        Some(1_000),
+    ))
+    .unwrap_err();
+
+    assert_eq!(error, "Workspace query superseded");
 }
 
 #[test]

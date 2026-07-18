@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexTaskStatus};
+use crate::services::workspace_index_connection_service::with_workspace_index_transaction;
 use crate::services::workspace_index_event_service::{
-    event_from_task_status, store_index_event, store_index_event_in_connection,
+    event_from_task_status, store_index_event_in_connection,
 };
 use crate::services::workspace_index_retry_policy_service::retry_backoff_for_failed_statuses;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
@@ -21,8 +22,17 @@ pub fn store_task_status_with_events(
     if !Path::new(root_path).is_dir() {
         return Ok(Vec::new());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        let events = store_task_status_in_connection(transaction, root_path, status)?;
+        Ok(events)
+    })
+}
+
+pub(crate) fn store_task_status_in_connection(
+    connection: &Connection,
+    root_path: &str,
+    status: &WorkspaceIndexTaskStatus,
+) -> Result<Vec<WorkspaceIndexEvent>, String> {
     let root_key = normalize_index_path(root_path);
     connection
         .execute(
@@ -66,7 +76,7 @@ pub fn store_task_status_with_events(
         )
         .map_err(|error| error.to_string())?;
     let event = event_from_task_status(root_path, status);
-    store_index_event(root_path, &event)?;
+    store_index_event_in_connection(connection, &event)?;
     let mut events = vec![event];
     if let Some(backoff_event) = store_retry_backoff_event(&connection, &root_key, status)? {
         events.push(backoff_event);

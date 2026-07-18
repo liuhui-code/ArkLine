@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  createSearchPreviewDocument,
   createSearchPreviewWindow,
+  createSearchPreviewWindowFromDocument,
   createSearchPreviewWindowFromContent,
 } from "@/features/search/search-preview-window";
 
@@ -68,5 +70,18 @@ describe("createSearchPreviewWindow", () => {
       totalLines: 1,
       lines: [{ lineNumber: 1, text: "" }],
     });
+  });
+
+  it("reuses one line index for multiple hit windows in the same file", () => {
+    const content = Array.from({ length: 200 }, (_, index) => `line ${index + 1}`).join("\n");
+    const document = createSearchPreviewDocument(content);
+
+    const first = createSearchPreviewWindowFromDocument(document, 40, 1);
+    const second = createSearchPreviewWindowFromDocument(document, 160, 1);
+
+    expect(document.content).toBe(content);
+    expect(document.lineStarts).toHaveLength(200);
+    expect(first.lines.map((line) => line.lineNumber)).toEqual([39, 40, 41]);
+    expect(second.lines.map((line) => line.lineNumber)).toEqual([159, 160, 161]);
   });
 });

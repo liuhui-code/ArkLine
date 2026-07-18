@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::workspace::WorkspaceIndexFileReadiness;
+use crate::services::workspace_content_readiness_store_service::load_content_file_state;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_semantic_layer_state_service::load_semantic_layers;
 
 pub fn get_workspace_index_file_readiness(
     root_path: &str,
@@ -30,13 +32,15 @@ pub fn get_workspace_index_file_readiness(
         &root_key,
         &path_key,
     )?;
-    let content_ready = has_row(
-        &connection,
-        "workspace_content_lines",
-        "root_path = ?1 and path = ?2",
-        &root_key,
-        &path_key,
-    )?;
+    let content_state = load_content_file_state(&connection, &root_key, &path_key)?;
+    let content_status = content_state
+        .as_ref()
+        .map(|state| state.status.as_str())
+        .unwrap_or("missing");
+    let content_error = content_state
+        .as_ref()
+        .and_then(|state| state.error.as_deref());
+    let content_ready = content_status == "ready";
     let declaration_ready = has_row(
         &connection,
         "workspace_symbol_entities",
@@ -61,6 +65,10 @@ pub fn get_workspace_index_file_readiness(
     let symbol_ready = declaration_ready || reference_ready || stub_ready;
     let parser_error = parser_error_for_path(&connection, &root_key, &path_key)?;
     let indexed_generation = indexed_generation_for_path(&connection, &root_key, &path_key)?;
+    let semantic_layers = load_semantic_layers(&connection, &root_key, &path_key)?;
+    let has_semantic_evidence = semantic_layers
+        .iter()
+        .any(|layer| layer.source_generation.is_some());
     let parser_status = if parser_error.is_some() {
         "failed"
     } else if indexed_generation.is_some() {
@@ -68,9 +76,25 @@ pub fn get_workspace_index_file_readiness(
     } else {
         "unknown"
     };
-    let definition_available = file_ready && symbol_ready && parser_error.is_none();
-    let completion_available = file_ready && parser_error.is_none();
-    let usages_available = file_ready && symbol_ready && parser_error.is_none();
+    let syntax_available = semantic_layer_available(&semantic_layers, "syntax");
+    let definitions_ready = semantic_layer_available(&semantic_layers, "definitions");
+    let references_ready = semantic_layer_available(&semantic_layers, "references");
+    let definition_available = file_ready
+        && parser_error.is_none()
+        && if has_semantic_evidence {
+            definitions_ready
+        } else {
+            symbol_ready
+        };
+    let completion_available =
+        file_ready && parser_error.is_none() && (!has_semantic_evidence || syntax_available);
+    let usages_available = file_ready
+        && parser_error.is_none()
+        && if has_semantic_evidence {
+            references_ready
+        } else {
+            symbol_ready
+        };
     let search_available = content_ready || Path::new(file_path).is_file();
 
     Ok(WorkspaceIndexFileReadiness {
@@ -79,11 +103,12 @@ pub fn get_workspace_index_file_readiness(
         file_name: file_name.to_string(),
         discovery_index: layer_status(discovery_ready),
         file_index: layer_status(file_ready),
-        content_index: layer_status(content_ready),
+        content_index: content_status.to_string(),
         symbol_index: layer_status(symbol_ready),
         parser_status: parser_status.to_string(),
         parser_error,
         indexed_generation,
+        semantic_layers,
         definition_available,
         completion_available,
         usages_available,
@@ -92,11 +117,21 @@ pub fn get_workspace_index_file_readiness(
             &file_name,
             discovery_ready,
             file_ready,
-            content_ready,
+            content_status,
+            content_error,
             symbol_ready,
             parser_status,
         ),
     })
+}
+
+fn semantic_layer_available(
+    layers: &[crate::models::workspace_semantic_layer::WorkspaceSemanticLayerReadiness],
+    name: &str,
+) -> bool {
+    layers
+        .iter()
+        .any(|layer| layer.layer == name && matches!(layer.status.as_str(), "ready" | "partial"))
 }
 
 fn has_row(
@@ -158,7 +193,8 @@ fn readiness_reason(
     file_name: &str,
     discovery_ready: bool,
     file_ready: bool,
-    content_ready: bool,
+    content_status: &str,
+    content_error: Option<&str>,
     symbol_ready: bool,
     parser_status: &str,
 ) -> String {
@@ -177,10 +213,16 @@ fn readiness_reason(
             "{file_name} is not indexed because it has not completed foreground indexing."
         );
     }
+    if content_status == "failed" {
+        return format!(
+            "{file_name} text content indexing failed: {}.",
+            content_error.unwrap_or("unknown read error")
+        );
+    }
     if !symbol_ready {
         return format!("{file_name} is in the file index but symbol data is not ready yet.");
     }
-    if !content_ready {
+    if content_status != "ready" {
         return format!("{file_name} is in the file index but text search rows are not ready yet.");
     }
     format!("{file_name} is indexed and semantic navigation can use the workspace index.")

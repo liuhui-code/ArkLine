@@ -261,12 +261,13 @@ describe("semantic worker code actions", () => {
       method: "unknownMethod",
     } as never)
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       id: "unsupported-1",
       ok: false,
       payload: null,
       error: "Unsupported method: unknownMethod",
     })
+    expect(response.runtime?.rssBytes).toBeGreaterThan(0)
   })
 
   it("does not write files when listing or resolving code actions", () => {

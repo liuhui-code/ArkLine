@@ -1,4 +1,5 @@
 pub mod build_configuration_store;
+pub mod build_project_service;
 pub mod device_fault_log_service;
 pub mod device_log_buffer_service;
 pub mod device_log_export_service;
@@ -44,6 +45,8 @@ pub mod git_command_service;
 pub mod git_trace_service;
 pub mod language_client_runtime_service;
 pub mod language_command_service;
+#[cfg(test)]
+mod language_runtime_concurrency_tests;
 pub mod language_service;
 #[cfg(test)]
 mod language_service_tests;
@@ -62,9 +65,13 @@ mod workspace_arkts_stub_parser_service_tests;
 pub mod workspace_completion_expected_type_service;
 pub mod workspace_completion_item_service;
 pub mod workspace_completion_parser_service;
+pub(crate) mod workspace_completion_sdk_service;
 pub mod workspace_completion_semantic_service;
 #[cfg(test)]
 mod workspace_completion_semantic_service_tests;
+pub(crate) mod workspace_content_chunk_plan_service;
+#[cfg(test)]
+mod workspace_content_index_profile_tests;
 pub mod workspace_content_index_service;
 #[cfg(test)]
 mod workspace_content_index_service_tests;
@@ -72,6 +79,11 @@ pub(crate) mod workspace_content_match_service;
 #[cfg(test)]
 mod workspace_content_match_service_tests;
 pub mod workspace_content_query_service;
+pub(crate) mod workspace_content_readiness_store_service;
+pub(crate) mod workspace_content_refresh_chunk_service;
+#[cfg(test)]
+mod workspace_content_refresh_chunk_service_tests;
+pub(crate) mod workspace_content_refresh_service;
 pub(crate) mod workspace_definition_candidate_query_service;
 #[cfg(test)]
 mod workspace_definition_member_query_tests;
@@ -127,6 +139,10 @@ mod workspace_edit_test_fixture_service;
 pub mod workspace_file_fingerprint_service;
 #[cfg(test)]
 mod workspace_file_fingerprint_service_tests;
+pub(crate) mod workspace_file_identity_service;
+mod workspace_file_search_index_service;
+#[cfg(test)]
+mod workspace_file_search_index_service_tests;
 pub(crate) mod workspace_incremental_path_plan_service;
 #[cfg(test)]
 mod workspace_incremental_path_plan_service_tests;
@@ -143,10 +159,14 @@ pub(crate) mod workspace_index_changed_path_worker_service;
 pub mod workspace_index_chunk_service;
 #[cfg(test)]
 mod workspace_index_chunk_service_tests;
+pub(crate) mod workspace_index_connection_service;
+#[cfg(test)]
+mod workspace_index_connection_service_tests;
 pub mod workspace_index_continuation_task_service;
 #[cfg(test)]
 mod workspace_index_continuation_task_service_tests;
 pub mod workspace_index_deep_layer_service;
+pub(crate) mod workspace_index_deep_sidecar_service;
 #[cfg(test)]
 mod workspace_index_dependency_expansion_service_tests;
 #[cfg(test)]
@@ -209,6 +229,7 @@ mod workspace_index_health_service_tests;
 pub mod workspace_index_incremental_persistence_service;
 #[cfg(test)]
 mod workspace_index_incremental_persistence_service_tests;
+pub(crate) mod workspace_index_layer_generation_service;
 pub mod workspace_index_layer_readiness_service;
 #[cfg(test)]
 mod workspace_index_layer_readiness_service_tests;
@@ -329,6 +350,8 @@ pub mod workspace_index_worker_service;
 #[cfg(test)]
 mod workspace_index_worker_service_tests;
 #[cfg(test)]
+mod workspace_index_worker_sidecar_fallback_tests;
+#[cfg(test)]
 mod workspace_interaction_perf_fixture_tests;
 #[cfg(test)]
 pub mod workspace_large_fixture_service;
@@ -341,6 +364,9 @@ pub mod workspace_open_command_service;
 pub mod workspace_performance_config_service;
 #[cfg(test)]
 mod workspace_performance_config_service_tests;
+pub(crate) mod workspace_query_broker_service;
+#[cfg(test)]
+mod workspace_query_broker_service_tests;
 pub(crate) mod workspace_query_command_service;
 #[cfg(test)]
 mod workspace_query_command_service_tests;
@@ -378,6 +404,7 @@ mod workspace_sdk_api_cache_service_tests;
 pub mod workspace_sdk_api_scan_plan_service;
 #[cfg(test)]
 mod workspace_sdk_api_scan_plan_service_tests;
+pub(crate) mod workspace_sdk_binding_service;
 pub mod workspace_sdk_index_service;
 #[cfg(test)]
 mod workspace_sdk_index_service_tests;
@@ -390,6 +417,7 @@ mod workspace_sdk_persistence_service_tests;
 pub mod workspace_sdk_schema_service;
 #[cfg(test)]
 mod workspace_sdk_search_facade_tests;
+pub(crate) mod workspace_sdk_shared_bridge_service;
 #[cfg(test)]
 mod workspace_search_everywhere_service_tests;
 pub mod workspace_search_ranking_service;
@@ -398,11 +426,24 @@ mod workspace_search_ranking_service_tests;
 pub(crate) mod workspace_search_session_service;
 #[cfg(test)]
 mod workspace_search_session_service_tests;
+pub(crate) mod workspace_semantic_layer_readiness_service;
+pub(crate) mod workspace_semantic_layer_state_service;
+#[cfg(test)]
+mod workspace_semantic_layer_state_service_tests;
 pub mod workspace_service;
+pub mod workspace_shared_sdk_artifact_service;
+#[cfg(test)]
+mod workspace_shared_sdk_artifact_service_tests;
+pub(crate) mod workspace_shared_sdk_path_service;
+pub(crate) mod workspace_shared_sdk_posting_service;
+pub(crate) mod workspace_shared_sdk_query_service;
+pub(crate) mod workspace_shared_sdk_schema_service;
 pub mod workspace_stub_index_service;
 #[cfg(test)]
 mod workspace_stub_index_service_tests;
 pub(crate) mod workspace_stub_index_writer_service;
+pub(crate) mod workspace_stub_prepare_service;
+pub(crate) mod workspace_stub_refresh_chunk_service;
 pub(crate) mod workspace_stub_refresh_plan_service;
 #[cfg(test)]
 mod workspace_stub_refresh_plan_service_tests;
@@ -412,6 +453,7 @@ mod workspace_symbol_hierarchy_service_tests;
 pub mod workspace_symbol_identity_merge_service;
 pub mod workspace_symbol_identity_service;
 pub mod workspace_symbol_index_service;
+pub(crate) mod workspace_symbol_posting_service;
 pub mod workspace_symbol_resolution_alias_service;
 pub mod workspace_symbol_resolution_declaration_service;
 pub mod workspace_symbol_resolution_insert_service;

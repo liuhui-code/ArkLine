@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useGitAndDiffController } from "@/components/layout/use-git-and-diff-controller";
+import { createEditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
 import { createDefaultGitTraceState, type GitBlameAttribution, type GitTraceState } from "@/features/git/git-trace-model";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
@@ -101,6 +102,54 @@ describe("useGitAndDiffController", () => {
 
     expect(onStatusChange).toHaveBeenCalledWith("Git Blame unavailable: no active file");
   });
+
+  it("does not materialize editor text while blame and trace are closed", () => {
+    const getActiveText = vi.fn(() => "content");
+    const getBaseText = vi.fn(() => "content");
+
+    renderHook(() => useGitAndDiffController({
+      workspaceRootPath: "/project",
+      workspaceApi: workspaceApi({}),
+      activePath: "/project/main.ets",
+      editorSelectionRuntime: createEditorSelectionRuntime(),
+      getActiveText,
+      getBaseText,
+      gitToolVisible: true,
+      showGit: vi.fn(),
+      setEditorSelection: vi.fn(),
+      focusEditor: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    expect(getActiveText).not.toHaveBeenCalled();
+    expect(getBaseText).not.toHaveBeenCalled();
+  });
+
+  it("subscribes to current-line changes only while blame is active", () => {
+    const editorSelectionRuntime = createEditorSelectionRuntime();
+    gitTraceState.current = traceState({
+      blameAttributions: [
+        blame({ bufferLine: 1, author: "Ada" }),
+        blame({ bufferLine: 2, author: "Grace" }),
+      ],
+    });
+    const { result } = renderHarness({ editorSelectionRuntime });
+
+    act(() => {
+      editorSelectionRuntime.update({ line: 2, column: 1 });
+    });
+    expect(result.current.currentLineBlame).toBe("Blame: Ada, 2 days ago");
+
+    act(() => {
+      result.current.toggleGitBlame();
+    });
+    expect(result.current.currentLineBlame).toBe("Blame: Grace, 2 days ago");
+
+    act(() => {
+      editorSelectionRuntime.update({ line: 1, column: 1 });
+    });
+    expect(result.current.currentLineBlame).toBe("Blame: Ada, 2 days ago");
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -109,14 +158,16 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   const setEditorSelection = overrides.setEditorSelection ?? vi.fn();
   const focusEditor = overrides.focusEditor ?? vi.fn();
   const onStatusChange = overrides.onStatusChange ?? vi.fn();
+  const editorSelectionRuntime = overrides.editorSelectionRuntime
+    ?? createEditorSelectionRuntime({ line: overrides.activeLine ?? 1, column: 1, selectedText: "" });
 
   return renderHook(() => useGitAndDiffController({
     workspaceRootPath: "workspaceRootPath" in overrides ? overrides.workspaceRootPath ?? null : "/project",
     workspaceApi: workspaceApiValue,
     activePath: "activePath" in overrides ? overrides.activePath ?? null : "/project/entry/src/main.ets",
-    activeLine: overrides.activeLine ?? 1,
-    activeText: overrides.activeText ?? "content",
-    baseText: overrides.baseText ?? "content",
+    editorSelectionRuntime,
+    getActiveText: () => overrides.activeText ?? "content",
+    getBaseText: () => overrides.baseText ?? "content",
     gitToolVisible: overrides.gitToolVisible ?? true,
     showGit,
     setEditorSelection,
@@ -130,6 +181,7 @@ type HarnessOptions = {
   workspaceApi: WorkspaceApi;
   activePath: string | null;
   activeLine: number;
+  editorSelectionRuntime: ReturnType<typeof createEditorSelectionRuntime>;
   activeText: string;
   baseText: string;
   gitToolVisible: boolean;

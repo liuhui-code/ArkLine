@@ -5,6 +5,7 @@ import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
 import { SemanticWorkerSession } from "../session.js"
+import { createArkuiSdkFixture } from "./semantic-sdk-fixture.js"
 
 const tempRoots: string[] = []
 const previousSdkPath = process.env.ARKLINE_HARMONY_SDK_PATH
@@ -36,43 +37,6 @@ function createWorkspaceFixture(name: string): {
   return { indexPath, sharedPath }
 }
 
-function createArkuiSdkFixture(root: string): {
-  sdkRoot: string
-  commonPath: string
-} {
-  const sdkRoot = path.join(root, "sdk", "openharmony")
-  const componentDir = path.join(sdkRoot, "ets", "component")
-  const componentsDir = path.join(sdkRoot, "ets", "build-tools", "ets-loader", "components")
-  fs.mkdirSync(componentDir, { recursive: true })
-  fs.mkdirSync(componentsDir, { recursive: true })
-  fs.mkdirSync(path.join(sdkRoot, "ets"), { recursive: true })
-  fs.mkdirSync(path.join(sdkRoot, "toolchains"), { recursive: true })
-
-  const commonPath = path.join(componentDir, "common.d.ts")
-  fs.writeFileSync(
-    commonPath,
-    [
-      "declare class CommonMethod<T> {",
-      "    /** Sets the width of the component. */",
-      "    width(value: Length): T;",
-      "    /** Sets the height of the component. */",
-      "    height(value: Length): T;",
-      "}",
-      "",
-    ].join("\n"),
-  )
-  fs.writeFileSync(
-    path.join(componentsDir, "common_attrs.json"),
-    JSON.stringify({ attrs: ["width", "height"] }),
-  )
-  fs.writeFileSync(
-    path.join(componentsDir, "column.json"),
-    JSON.stringify({ name: "Column", attrs: ["justifyContent"] }),
-  )
-
-  return { sdkRoot, commonPath }
-}
-
 afterEach(() => {
   for (const root of tempRoots.splice(0, tempRoots.length)) {
     fs.rmSync(root, { recursive: true, force: true })
@@ -94,7 +58,13 @@ describe("semantic worker lifecycle", () => {
     })
 
     expect(response.ok).toBe(true)
-    expect(response.payload).toEqual({ status: "ready" })
+    expect(response.payload).toEqual({
+      status: "ready",
+      protocolVersion: 3,
+      capabilities: ["completion", "definition", "typeReadiness", "generations", "documentReplay"],
+    })
+    expect(response.runtime?.rssBytes).toBeGreaterThan(0)
+    expect(response.runtime?.uptimeMs).toBeGreaterThanOrEqual(0)
   })
 
   it("returns a null definition placeholder by default", () => {
@@ -169,7 +139,7 @@ describe("semantic worker lifecycle", () => {
     })
   })
 
-  it("returns multiple candidate definitions when the workspace has ambiguous cross-file matches", () => {
+  it("limits semantic fallback definitions to the imported dependency closure", () => {
     const session = new SemanticWorkerSession()
     const { indexPath, sharedPath } = createWorkspaceFixture("ambiguous-cross-file-definition")
     const duplicatePath = path.join(path.dirname(sharedPath), "Duplicate.ets")
@@ -191,23 +161,9 @@ describe("semantic worker lifecycle", () => {
 
     expect(response.ok).toBe(true)
     expect(response.payload).toEqual({
-      definition: {
-        path: sharedPath,
-        line: 1,
-        column: 17,
-      },
-      definitionCandidates: [
-        {
-          path: sharedPath,
-          line: 1,
-          column: 17,
-        },
-        {
-          path: duplicatePath,
-          line: 1,
-          column: 17,
-        },
-      ],
+      path: sharedPath,
+      line: 1,
+      column: 17,
     })
   })
 

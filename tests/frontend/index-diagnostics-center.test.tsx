@@ -10,12 +10,97 @@ describe("IndexDiagnosticsCenter", () => {
     languageQuerySnapshotStore.clear();
   });
 
+  it("renders semantic supervisor health and memory evidence", () => {
+    render(
+      <IndexDiagnosticsCenter
+        open
+        loading={false}
+        activePath="C:/workspace/src/Entry.ets"
+        currentFileDirty={false}
+        diagnostics={null}
+        fileReadiness={null}
+        layerReadiness={null}
+        recentQueryExplains={[]}
+        taskStatuses={[]}
+        semanticState={{
+          provider: "semantic-host",
+          mode: "semantic",
+          detail: "ready",
+          supervisor: {
+            status: "running",
+            restartCount: 3,
+            restoredDocumentCount: 12,
+            consecutiveFailures: 0,
+            lastHeartbeatEpochMs: Date.now(),
+            retryAfterMs: 0,
+            lastError: null,
+            runtime: {
+              rssBytes: 128 * 1024 * 1024,
+              heapUsedBytes: 64 * 1024 * 1024,
+              heapTotalBytes: 96 * 1024 * 1024,
+              externalBytes: 1024,
+              uptimeMs: 4200,
+            },
+            memoryBudgetBytes: 1024 * 1024 * 1024,
+          },
+        }}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onResumeIndexing={vi.fn()}
+        onRebuildProjectIndex={vi.fn()}
+        onRebuildSdkIndex={vi.fn()}
+        onConfigureSdk={vi.fn()}
+      />,
+    );
+
+    const semantic = screen.getByRole("region", { name: "Semantic Host" });
+    expect(within(semantic).getByText("running")).toBeVisible();
+    expect(within(semantic).getByText("128 MiB")).toBeVisible();
+    expect(within(semantic).getByText("1024 MiB")).toBeVisible();
+    expect(within(semantic).getByText("12")).toBeVisible();
+  });
+
   it("renders discovery progress facts in health storage", () => {
     const diagnostics = diagnosticsWithBackendQueryEvent();
     diagnostics.discoveryStatus = "running";
     diagnostics.discoveredFileCount = 2048;
     diagnostics.discoveryExcludedCount = 12;
     diagnostics.discoveryHasMore = true;
+    diagnostics.writerMetrics = {
+      sampleCount: 128,
+      activeWriterCount: 1,
+      queuedWriterCount: 2,
+      failureCount: 3,
+      waitP50Us: 500,
+      waitP95Us: 2_500,
+      waitP99Us: 4_000,
+      waitMaxUs: 8_000,
+      holdP50Us: 4_000,
+      holdP95Us: 12_000,
+      holdP99Us: 16_000,
+      holdMaxUs: 20_000,
+      lastWaitUs: 1_000,
+      lastHoldUs: 6_000,
+    };
+    diagnostics.indexerHost = {
+      enabled: true,
+      status: "running",
+      processId: 4312,
+      discoveryProcessId: 4312,
+      contentProcessId: 4313,
+      stubProcessId: 4314,
+      stubWriterMetrics: diagnostics.writerMetrics,
+      completedDiscoveryChunks: 7,
+      completedContentRefreshChunks: 6,
+      cancelledContentRefreshChunks: 1,
+      completedStubRefreshChunks: 5,
+      cancelledStubRefreshChunks: 2,
+      fallbackCount: 1,
+      restartCount: 2,
+      consecutiveFailureCount: 1,
+      backoffRemainingMs: 250,
+      lastError: null,
+    };
 
     render(
       <IndexDiagnosticsCenter
@@ -38,14 +123,26 @@ describe("IndexDiagnosticsCenter", () => {
     );
 
     const health = screen.getByRole("region", { name: "Health / Storage" });
+    expect(within(health).getByText("1 active / 2 queued")).toBeVisible();
+    expect(within(health).getByText("Writer wait p95 / max").nextElementSibling).toHaveTextContent("2.50 ms / 8.00 ms");
+    expect(within(health).getByText("Writer hold p95 / max").nextElementSibling).toHaveTextContent("12.0 ms / 20.0 ms");
+    expect(within(health).getByText("Writer samples / failures").nextElementSibling).toHaveTextContent("128 / 3");
+    expect(within(health).getByText("Indexer writer wait worst p95 / max").nextElementSibling).toHaveTextContent("2.50 ms / 8.00 ms");
+    expect(within(health).getByText("Indexer writer hold worst p95 / max").nextElementSibling).toHaveTextContent("12.0 ms / 20.0 ms");
+    expect(within(health).getByText("Indexer writer samples / failures").nextElementSibling).toHaveTextContent("128 / 3");
+
     expect(within(health).getByText("Discovery")).toBeVisible();
-    expect(within(health).getByText("running")).toBeVisible();
+    expect(within(health).getAllByText("running")).toHaveLength(2);
+    expect(within(health).getByText("4312")).toBeVisible();
+    expect(within(health).getByText("7")).toBeVisible();
+    expect(within(health).getByText("Content chunks").nextElementSibling).toHaveTextContent("6");
     expect(within(health).getByText("Discovered files")).toBeVisible();
     expect(within(health).getByText("2,048")).toBeVisible();
     expect(within(health).getByText("Excluded entries")).toBeVisible();
     expect(within(health).getByText("12")).toBeVisible();
     expect(within(health).getByText("Discovery cursor")).toBeVisible();
     expect(within(health).getByText("has more")).toBeVisible();
+    expect(within(health).getByText("Cancelled chunks").nextElementSibling).toHaveTextContent("2");
   });
 
   it("renders index layer freshness evidence in health storage", () => {
@@ -243,6 +340,7 @@ describe("IndexDiagnosticsCenter", () => {
           parserStatus: "unknown",
           parserError: null,
           indexedGeneration: null,
+          semanticLayers: [],
           definitionAvailable: false,
           completionAvailable: false,
           usagesAvailable: false,

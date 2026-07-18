@@ -10,7 +10,7 @@ import { type SearchSessionStore, useSearchSessionSnapshot } from "@/features/se
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
 
-type SearchOverlayContentProps = {
+export type SearchOverlayContentProps = {
   activeOverlay: OverlayKey;
   commandPaletteItems: CommandPaletteItem[];
   quickOpenQuery: string;
@@ -24,6 +24,7 @@ type SearchOverlayContentProps = {
   searchSessionStore: SearchSessionStore;
   workspacePartialNotice: string | null;
   onChangeQuery: (value: string) => void;
+  onDraftQueryChange: (value: string) => void;
   onChangeSearchEverywhereScope: (scope: WorkspaceIndexQueryScope) => void;
   onChangeSearchEverywhereReplaceQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
@@ -54,6 +55,7 @@ export function SearchOverlayContent({
   searchSessionStore,
   workspacePartialNotice,
   onChangeQuery,
+  onDraftQueryChange,
   onChangeSearchEverywhereScope,
   onChangeSearchEverywhereReplaceQuery,
   onOpenFile,
@@ -210,6 +212,7 @@ export function SearchOverlayContent({
         pageLoading={searchSession.textPageLoading}
         partialNotice={searchSession.truncationNotice ?? workspacePartialNotice}
         onChangeQuery={onChangeQuery}
+        onDraftQueryChange={onDraftQueryChange}
         onChangeScope={onChangeSearchEverywhereScope}
         onChangeReplaceQuery={onChangeSearchEverywhereReplaceQuery}
         onMoveSelection={onMoveSearchEverywhereSelection}

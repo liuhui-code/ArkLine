@@ -13,6 +13,7 @@ const content = [
   "  }",
   "}",
 ].join("\n");
+const getDefaultEditorLine = () => 3;
 
 describe("useCurrentFileSymbolsController", () => {
   it("reports unavailable when no file is active", () => {
@@ -203,7 +204,7 @@ function options(overrides: Partial<Parameters<typeof useCurrentFileSymbolsContr
     workspaceApi: workspaceApi({}),
     rootPath: null,
     activePath: "/workspace/A.ets",
-    editorLine: 3,
+    getEditorLine: getDefaultEditorLine,
     getActiveContent: () => content,
     onBeforeShow: vi.fn(),
     rememberCurrentLocation: vi.fn(),

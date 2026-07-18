@@ -12,7 +12,7 @@ describe("useSearchEverywhereController navigation isolation", () => {
     vi.useRealTimers();
   });
 
-  it("cancels pending search work before navigating from a selected candidate", async () => {
+  it("does not issue a redundant backend cancel after a completed search", async () => {
     const events: string[] = [];
     const cancelWorkspaceSearch = vi.fn(async () => {
       events.push("cancel");
@@ -38,8 +38,8 @@ describe("useSearchEverywhereController navigation isolation", () => {
       await result.current.search.openSelectedSearchEverywhereResult();
     });
 
-    expect(events).toEqual(["cancel", "navigate"]);
-    expect(cancelWorkspaceSearch).toHaveBeenCalledWith("/workspace", "searchEverywhere", expect.any(Number));
+    expect(events).toEqual(["navigate"]);
+    expect(cancelWorkspaceSearch).not.toHaveBeenCalled();
   });
 
   it("records close latency evidence", async () => {
@@ -99,8 +99,8 @@ describe("useSearchEverywhereController navigation isolation", () => {
 
     act(() => {
       for (let index = 0; index < 100; index += 1) {
-        result.current.search.handleOverlayQueryChange(`Entry${index}`);
-        result.current.search.handleOverlayQueryChange("");
+        result.current.search.handleOverlayQueryDraftChange(`Entry${index}`);
+        result.current.search.handleOverlayQueryDraftChange("");
       }
     });
     await flushSearchDebounce();
@@ -122,6 +122,8 @@ describe("useSearchEverywhereController navigation isolation", () => {
         recentPaths: [],
         openedPaths: ["/workspace/Opened.ets", "/workspace/Entry.ets"],
       },
+      expect.any(Number),
+      250,
     );
   });
 
@@ -140,6 +142,7 @@ describe("useSearchEverywhereController navigation isolation", () => {
     });
 
     await flushSearchDebounce();
+    act(() => result.current.search.handleOverlayQueryDraftChange("Final"));
     act(() => result.current.search.handleOverlayQueryChange("Final"));
     await flushSearchDebounce();
     await act(async () => {
@@ -197,7 +200,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       workspaceApi: stableWorkspaceApi,
       workspace: stableWorkspace,
       activePath: "/workspace/Entry.ets",
-      editorSelectedText: "",
+      getEditorSelectedText: () => "",
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",

@@ -42,7 +42,16 @@ describe("search text runner", () => {
       }));
     });
 
-    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith("/workspace", "width", "text", 50);
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
+      "/workspace",
+      "width",
+      "text",
+      50,
+      null,
+      undefined,
+      8,
+      1_500,
+    );
     expect(replaceQueryReadiness).toHaveBeenCalledWith(envelope.readiness);
     expect(runFallback).not.toHaveBeenCalled();
   });

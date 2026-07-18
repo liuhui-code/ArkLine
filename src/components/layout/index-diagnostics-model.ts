@@ -306,6 +306,9 @@ function formatCurrentFileEvidence(fileReadiness: WorkspaceIndexFileReadiness | 
     `contentIndex: ${fileReadiness.contentIndex}`,
     `symbolIndex: ${fileReadiness.symbolIndex}`,
     `parser: ${fileReadiness.parserStatus}`,
+    ...fileReadiness.semanticLayers.map((layer) => (
+      `semantic.${layer.layer}: ${layer.status}, generation=${layer.sourceGeneration ?? "none"}, results=${layer.resultCount}${layer.error ? `, error=${layer.error}` : ""}`
+    )),
     `definition: ${fileReadiness.definitionAvailable ? "available" : "unavailable"}`,
     `completion: ${fileReadiness.completionAvailable ? "available" : "unavailable"}`,
     `usages: ${fileReadiness.usagesAvailable ? "available" : "unavailable"}`,

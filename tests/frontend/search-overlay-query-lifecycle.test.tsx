@@ -1,10 +1,9 @@
-import { act, renderHook } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useSearchOverlayDebouncedQuery } from "@/components/layout/search-overlay-query-lifecycle";
 
 describe("search overlay query lifecycle", () => {
-  it("debounces active search overlay query changes", () => {
-    vi.useFakeTimers();
+  it("uses the query already committed by the isolated input", () => {
     const invalidateSearchSession = vi.fn();
     const navigationCloseHandledRef = { current: false };
 
@@ -13,18 +12,14 @@ describe("search overlay query lifecycle", () => {
         activeOverlay: "searchEverywhere",
         quickOpenQuery: query,
         mode: "searchEverywhere",
-        debounceMs: { searchEverywhere: 140, find: 260, replace: 260 },
         navigationCloseHandledRef,
         invalidateSearchSession,
       }),
       { initialProps: { query: "Ent" } },
     );
 
-    expect(result.current.debouncedSearchQuery).toBe("");
+    expect(result.current.debouncedSearchQuery).toBe("Ent");
     rerender({ query: "Entry" });
-    act(() => vi.advanceTimersByTime(139));
-    expect(result.current.debouncedSearchQuery).toBe("");
-    act(() => vi.advanceTimersByTime(1));
     expect(result.current.debouncedSearchQuery).toBe("Entry");
     expect(invalidateSearchSession).not.toHaveBeenCalled();
   });
@@ -37,7 +32,6 @@ describe("search overlay query lifecycle", () => {
       activeOverlay: "none",
       quickOpenQuery: "Entry",
       mode: "searchEverywhere",
-      debounceMs: { searchEverywhere: 140, find: 260, replace: 260 },
       navigationCloseHandledRef,
       invalidateSearchSession,
     }));
@@ -54,7 +48,6 @@ describe("search overlay query lifecycle", () => {
       activeOverlay: "none",
       quickOpenQuery: "Entry",
       mode: "searchEverywhere",
-      debounceMs: { searchEverywhere: 140, find: 260, replace: 260 },
       navigationCloseHandledRef,
       invalidateSearchSession,
     }));

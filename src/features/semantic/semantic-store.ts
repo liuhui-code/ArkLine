@@ -6,12 +6,14 @@ export type SemanticState = {
   provider: string;
   mode: SemanticMode;
   detail: string;
+  supervisor?: LanguageServiceReport["supervisor"];
 };
 
 export const defaultSemanticState: SemanticState = {
   provider: "unknown",
   mode: "unavailable",
   detail: "Semantic provider state has not been loaded yet.",
+  supervisor: undefined,
 };
 
 export async function loadSemanticState(workspaceApi: WorkspaceApi): Promise<SemanticState> {
@@ -20,6 +22,7 @@ export async function loadSemanticState(workspaceApi: WorkspaceApi): Promise<Sem
       provider: "unavailable",
       mode: "unavailable",
       detail: "Language service inspection is unavailable in this shell.",
+      supervisor: undefined,
     };
   }
 
@@ -28,6 +31,7 @@ export async function loadSemanticState(workspaceApi: WorkspaceApi): Promise<Sem
     provider: report.provider,
     mode: report.mode,
     detail: report.detail,
+    supervisor: report.supervisor,
   };
 }
 

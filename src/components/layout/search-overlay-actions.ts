@@ -11,7 +11,7 @@ import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-ap
 
 export type OpenSearchOverlayActionInput = {
   mode: SearchEverywhereMode;
-  editorSelectedText: string;
+  getEditorSelectedText: () => string;
   setSearchEverywhereMode: Dispatch<SetStateAction<SearchEverywhereMode>>;
   setSearchEverywhereScope: Dispatch<SetStateAction<WorkspaceIndexQueryScope>>;
   setQuickOpenQuery: (query: string) => void;
@@ -41,12 +41,13 @@ export type CloseSearchOverlayForNavigationActionInput = {
 
 export function openSearchOverlayAction({
   mode,
-  editorSelectedText,
+  getEditorSelectedText,
   setSearchEverywhereMode,
   setSearchEverywhereScope,
   setQuickOpenQuery,
   setActiveOverlay,
 }: OpenSearchOverlayActionInput) {
+  const editorSelectedText = getEditorSelectedText();
   setSearchEverywhereMode(mode);
   if (mode === "searchEverywhere") {
     setSearchEverywhereScope("all");

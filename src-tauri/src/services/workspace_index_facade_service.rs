@@ -206,7 +206,7 @@ pub fn query_facade_text_search_result_with_cancellation<F>(
     is_cancelled: F,
 ) -> Result<WorkspaceTextSearchResult, String>
 where
-    F: FnMut() -> bool,
+    F: FnMut() -> bool + Send + 'static,
 {
     let root_path = request.root_path.clone();
     let envelope =

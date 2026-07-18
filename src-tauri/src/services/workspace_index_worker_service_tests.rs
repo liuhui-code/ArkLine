@@ -1,7 +1,5 @@
 use std::fs;
 
-use rusqlite::Connection;
-
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
@@ -38,24 +36,14 @@ fn worker_open_workspace_uses_lightweight_index_before_deep_refresh() {
     assert_eq!(results[0].kind, "open-workspace");
     assert_eq!(results[0].status, "ready");
     assert_eq!(
-        runtime
-            .query_quick_open(&root_path, "OpenLight", 8)
-            .unwrap()[0]
-            .title,
+        runtime.query_quick_open(&root_path, "Index", 8).unwrap()[0].title,
         "Index.ets"
     );
-    let connection = Connection::open(
-        root.join(".arkline")
-            .join("index")
-            .join("workspace-catalog.sqlite"),
-    )
-    .unwrap();
-    let stub_count: i64 = connection
-        .query_row("select count(*) from workspace_stub_files", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    assert_eq!(stub_count, 0);
+    assert!(!root
+        .join(".arkline")
+        .join("index")
+        .join("workspace-catalog.sqlite")
+        .exists());
 
     fs::remove_dir_all(root).unwrap();
 }

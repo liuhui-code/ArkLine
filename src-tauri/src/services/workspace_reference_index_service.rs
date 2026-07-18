@@ -28,6 +28,7 @@ pub use crate::services::workspace_reference_query_service::{
 use crate::services::workspace_reference_refresh_plan_service::{
     plan_reference_refresh_content, plan_reference_refresh_paths,
 };
+use crate::services::workspace_semantic_layer_state_service::publish_reference_layers;
 
 pub fn create_reference_index_tables(connection: &Connection) -> Result<(), String> {
     connection
@@ -139,6 +140,13 @@ pub fn replace_workspace_references_for_paths(
         &declarations,
         &content_plan.contents,
         member_context.as_ref(),
+    )?;
+    publish_reference_layers(
+        connection,
+        root_key,
+        indexed_paths,
+        &content_plan.skipped_oversized_paths,
+        indexed_generation,
     )
 }
 
@@ -274,6 +282,13 @@ fn replace_workspace_references_internal(
         &declarations,
         &content_plan.contents,
         member_context.as_ref(),
+    )?;
+    publish_reference_layers(
+        connection,
+        root_key,
+        file_paths,
+        &content_plan.skipped_oversized_paths,
+        indexed_generation,
     )
 }
 

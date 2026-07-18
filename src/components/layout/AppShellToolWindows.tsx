@@ -16,6 +16,7 @@ import type { DiffFile } from "@/features/diff/unified-diff";
 import type { GitTraceState } from "@/features/git/git-trace-model";
 import type { ProblemItem } from "@/features/problems/problems-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
 type AppShellToolWindowsProps = {
   bottomToolWindowRef: RefObject<HTMLElement | null>;
@@ -96,6 +97,7 @@ export function AppShellToolWindows({
   onStatusChange,
   indexAndStatus,
 }: AppShellToolWindowsProps) {
+  recordRenderPressure("AppShell/ToolWindows");
   return (
     <>
       <BottomToolWindow

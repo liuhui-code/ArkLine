@@ -1,11 +1,14 @@
-import type { MutableRefObject, RefObject } from "react";
+import { memo, type MutableRefObject, type RefObject } from "react";
 import { EditorQueryPanel } from "@/components/layout/EditorQueryPanel";
 import { EditorSurface } from "@/components/layout/EditorSurface";
-import type { DefinitionHoverState, EditorCaretRect, EditorLineColumn } from "@/editor/editor-events";
+import { useLatestCallback } from "@/components/layout/use-latest-callback";
+import type { EditorCaretRect, EditorLineColumn } from "@/editor/editor-events";
 import type { DocumentRuntimeStore } from "@/features/documents/document-runtime-store";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { UsageResult, UsageSearchState } from "@/features/workspace/usage-search";
 import type { EditorAppearance } from "@/types/editor";
+import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
+import type { Text } from "@codemirror/state";
 
 export type AppShellEditorWorkbenchProps = {
   queryPanelVisible: boolean;
@@ -22,16 +25,15 @@ export type AppShellEditorWorkbenchProps = {
   workspaceName: string | null;
   surfaceRef: RefObject<HTMLElement | null>;
   onChange: (content: string) => void;
+  onDocumentChange?: (document: Text) => void;
   onSelectionChange: (selection: { line: number; column: number; selectedText?: string }) => void;
   onCaretRectChange: (rect: EditorCaretRect) => void;
   onDefinitionTrigger: (selection?: EditorLineColumn) => void;
-  onDefinitionHoverChange: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger: (selection: EditorLineColumn) => void;
   blameAttributions: GitBlameAttribution[];
   gitBlameVisible: boolean;
   selectedBlameLine: number | null;
   onGitTraceLineClick: (line: number) => void;
-  definitionHoverActive: boolean;
   onSelectTab: (path: string) => void;
   onCloseTab: (path: string) => void;
   onCloseOtherTabs: (path: string) => void;
@@ -44,7 +46,28 @@ export type AppShellEditorWorkbenchProps = {
   onToggleGitBlame: () => void;
 };
 
+const MemoEditorSurface = memo(EditorSurface);
+
 export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
+  recordRenderPressure("AppShell/EditorWorkbench");
+  const onChange = useLatestCallback(props.onChange);
+  const onDocumentChange = useLatestCallback((document: Text) => props.onDocumentChange?.(document));
+  const onSelectionChange = useLatestCallback(props.onSelectionChange);
+  const onCaretRectChange = useLatestCallback(props.onCaretRectChange);
+  const onDefinitionTrigger = useLatestCallback(props.onDefinitionTrigger);
+  const onTypingCompletionTrigger = useLatestCallback(props.onTypingCompletionTrigger);
+  const onGitTraceLineClick = useLatestCallback(props.onGitTraceLineClick);
+  const onSelectTab = useLatestCallback(props.onSelectTab);
+  const onCloseTab = useLatestCallback(props.onCloseTab);
+  const onCloseOtherTabs = useLatestCallback(props.onCloseOtherTabs);
+  const onCloseTabsToRight = useLatestCallback(props.onCloseTabsToRight);
+  const onCopyTabPath = useLatestCallback(props.onCopyTabPath);
+  const onEditorGoToDefinition = useLatestCallback(props.onEditorGoToDefinition);
+  const onEditorFindUsages = useLatestCallback(props.onEditorFindUsages);
+  const onEditorFormatDocument = useLatestCallback(props.onEditorFormatDocument);
+  const onEditorCopyPath = useLatestCallback(props.onEditorCopyPath);
+  const onToggleGitBlame = useLatestCallback(props.onToggleGitBlame);
+
   return (
     <div className="editor-workbench">
       {props.queryPanelVisible ? (
@@ -54,7 +77,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
           onOpenUsage={props.onOpenUsage}
         />
       ) : null}
-      <EditorSurface
+      <MemoEditorSurface
         activePath={props.activePath}
         documentsRef={props.documentsRef}
         openTabs={props.openTabs}
@@ -64,27 +87,26 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         selectionTarget={props.selectionTarget}
         workspaceName={props.workspaceName}
         surfaceRef={props.surfaceRef}
-        onChange={props.onChange}
-        onSelectionChange={props.onSelectionChange}
-        onCaretRectChange={props.onCaretRectChange}
-        onDefinitionTrigger={props.onDefinitionTrigger}
-        onDefinitionHoverChange={props.onDefinitionHoverChange}
-        onTypingCompletionTrigger={props.onTypingCompletionTrigger}
+        onChange={onChange}
+        onDocumentChange={props.onDocumentChange ? onDocumentChange : undefined}
+        onSelectionChange={onSelectionChange}
+        onCaretRectChange={onCaretRectChange}
+        onDefinitionTrigger={onDefinitionTrigger}
+        onTypingCompletionTrigger={onTypingCompletionTrigger}
         blameAttributions={props.blameAttributions}
         gitBlameVisible={props.gitBlameVisible}
         selectedBlameLine={props.selectedBlameLine}
-        onGitTraceLineClick={props.onGitTraceLineClick}
-        definitionHoverActive={props.definitionHoverActive}
-        onSelectTab={props.onSelectTab}
-        onCloseTab={props.onCloseTab}
-        onCloseOtherTabs={props.onCloseOtherTabs}
-        onCloseTabsToRight={props.onCloseTabsToRight}
-        onCopyTabPath={props.onCopyTabPath}
-        onEditorGoToDefinition={props.onEditorGoToDefinition}
-        onEditorFindUsages={props.onEditorFindUsages}
-        onEditorFormatDocument={props.onEditorFormatDocument}
-        onEditorCopyPath={props.onEditorCopyPath}
-        onToggleGitBlame={props.onToggleGitBlame}
+        onGitTraceLineClick={onGitTraceLineClick}
+        onSelectTab={onSelectTab}
+        onCloseTab={onCloseTab}
+        onCloseOtherTabs={onCloseOtherTabs}
+        onCloseTabsToRight={onCloseTabsToRight}
+        onCopyTabPath={onCopyTabPath}
+        onEditorGoToDefinition={onEditorGoToDefinition}
+        onEditorFindUsages={onEditorFindUsages}
+        onEditorFormatDocument={onEditorFormatDocument}
+        onEditorCopyPath={onEditorCopyPath}
+        onToggleGitBlame={onToggleGitBlame}
       />
     </div>
   );

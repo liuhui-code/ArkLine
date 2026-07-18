@@ -3,7 +3,6 @@
 use std::path::Path;
 
 use rusqlite::{params, Connection};
-use serde_json::json;
 
 use crate::models::language::{CompletionItem, LanguageQueryRequest};
 use crate::models::workspace::{
@@ -16,8 +15,10 @@ use crate::services::workspace_completion_item_service::{
 use crate::services::workspace_completion_parser_service::{
     completion_prefix, local_function_name, local_variable_name, member_owner_at_position,
 };
+use crate::services::workspace_completion_sdk_service::{
+    sdk_member_completion_items, sdk_symbol_completion_items,
+};
 use crate::services::workspace_index_readiness_service::readiness_for_query;
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_reference_receiver_type_service::receiver_type_map;
 
@@ -74,7 +75,7 @@ pub fn query_semantic_completions(
         }
     }
     items.extend(project_symbol_items(root_path, &prefix, limit)?);
-    items.extend(sdk_symbol_items(root_path, &prefix, limit)?);
+    items.extend(sdk_symbol_completion_items(root_path, &prefix, limit)?);
     items.extend(snippet_items(&prefix));
     apply_expected_type_boost(&mut items, request);
     Ok(dedupe_completion_items(items, limit))
@@ -195,7 +196,8 @@ fn member_items(
         resolved_import_target_name(&connection, &root_key, &path_key, &receiver_type)?
             .unwrap_or(receiver_type);
     let mut items = project_member_items(&connection, &root_key, &receiver_type, &prefix)?;
-    items.extend(sdk_member_items(
+    items.extend(sdk_member_completion_items(
+        root_path,
         &connection,
         &root_key,
         &receiver_type,
@@ -230,58 +232,6 @@ fn project_member_items(
             params![root_key, receiver_type, suffix, pattern, 50_i64],
             |row| symbol_completion_from_row(row, "workspace", true),
         )
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
-}
-
-fn sdk_member_items(
-    connection: &Connection,
-    root_key: &str,
-    receiver_type: &str,
-    prefix: &str,
-) -> Result<Vec<CompletionItem>, String> {
-    ensure_workspace_index_schema(connection)?;
-    let pattern = format!("{}%", escape_like_pattern(prefix));
-    let suffix = format!("%.{}", receiver_type);
-    let mut statement = connection
-        .prepare(
-            "select symbol.name, symbol.kind, symbol.signature, symbol.path, symbol.line, symbol.column,
-                    symbol.symbol_id
-             from workspace_sdk_symbols symbol
-             inner join workspace_sdk_index_metadata metadata
-                on metadata.root_path = symbol.root_path
-               and metadata.sdk_path = symbol.sdk_path
-               and metadata.sdk_version = symbol.sdk_version
-             where symbol.root_path = ?1
-               and symbol.container is not null
-               and (symbol.container = ?2 or symbol.container like ?3)
-               and symbol.name like ?4
-             order by symbol.name, symbol.kind, symbol.path, symbol.line
-             limit 50",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params![root_key, receiver_type, suffix, pattern], |row| {
-            let path: String = row.get(3)?;
-            let line: i64 = row.get(4)?;
-            let column: i64 = row.get(5)?;
-            let symbol_id: String = row.get(6)?;
-            Ok(completion_item(
-                &row.get::<_, String>(0)?,
-                &row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?
-                    .as_deref()
-                    .unwrap_or("SDK API"),
-                "sdk",
-                Some(json!({
-                    "symbolId": symbol_id,
-                    "importPath": path,
-                    "line": line,
-                    "column": column,
-                })),
-            ))
-        })
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -323,61 +273,6 @@ fn project_symbol_items(
     let rows = statement
         .query_map(params![root_key, pattern, bounded_limit(limit)], |row| {
             symbol_completion_from_row(row, "workspace", true)
-        })
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
-}
-
-fn sdk_symbol_items(
-    root_path: &str,
-    prefix: &str,
-    limit: usize,
-) -> Result<Vec<CompletionItem>, String> {
-    if prefix.is_empty() {
-        return Ok(Vec::new());
-    }
-    if !index_store_exists(root_path) {
-        return Ok(Vec::new());
-    }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    let root_key = normalize_index_path(root_path);
-    let pattern = format!("{}%", escape_like_pattern(prefix));
-    let mut statement = connection
-        .prepare(
-            "select symbol.name, symbol.kind, symbol.signature, symbol.path, symbol.line, symbol.column,
-                    symbol.symbol_id
-             from workspace_sdk_symbols symbol
-             inner join workspace_sdk_index_metadata metadata
-                on metadata.root_path = symbol.root_path
-               and metadata.sdk_path = symbol.sdk_path
-               and metadata.sdk_version = symbol.sdk_version
-             where symbol.root_path = ?1 and symbol.name like ?2
-             order by symbol.name, symbol.kind, symbol.path, symbol.line
-             limit ?3",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params![root_key, pattern, bounded_limit(limit)], |row| {
-            let path: String = row.get(3)?;
-            let line: i64 = row.get(4)?;
-            let column: i64 = row.get(5)?;
-            let symbol_id: String = row.get(6)?;
-            Ok(completion_item(
-                &row.get::<_, String>(0)?,
-                &row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?
-                    .as_deref()
-                    .unwrap_or("SDK API"),
-                "sdk",
-                Some(json!({
-                    "symbolId": symbol_id,
-                    "importPath": path,
-                    "line": line,
-                    "column": column,
-                })),
-            ))
         })
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()

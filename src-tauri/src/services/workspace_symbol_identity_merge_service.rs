@@ -1,6 +1,10 @@
 use rusqlite::params;
 
 use crate::services::workspace_index_query_path_service::{normalize_index_path, open_index_store};
+use crate::services::workspace_sdk_shared_bridge_service::{
+    query_shared_sdk_exact_symbols, query_shared_sdk_symbol_by_id,
+};
+use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
 use crate::services::workspace_symbol_resolution_query_service::query_resolved_symbol_by_id;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +57,13 @@ fn query_sdk_key_by_id(
     root_path: &str,
     symbol_id: &str,
 ) -> Result<Option<SymbolIdentityKey>, String> {
+    if let Ok(Some(symbol)) = query_shared_sdk_symbol_by_id(root_path, symbol_id) {
+        return Ok(Some(SymbolIdentityKey {
+            kind: symbol.kind,
+            name: symbol.name,
+            container: symbol.container,
+        }));
+    }
     let connection = open_index_store(root_path)?;
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
@@ -80,6 +91,27 @@ fn query_sdk_key_by_id(
 }
 
 fn query_sdk_ids_by_key(root_path: &str, key: &SymbolIdentityKey) -> Result<Vec<String>, String> {
+    if let Ok(Some(symbols)) = query_shared_sdk_exact_symbols(
+        root_path,
+        &key.kind,
+        &key.name,
+        key.container.as_deref(),
+        16,
+    ) {
+        return Ok(symbols
+            .into_iter()
+            .map(|symbol| {
+                sdk_symbol_id(
+                    &symbol.path,
+                    &symbol.kind,
+                    symbol.container.as_deref(),
+                    &symbol.name,
+                    symbol.line as i64,
+                    symbol.column as i64,
+                )
+            })
+            .collect());
+    }
     let connection = open_index_store(root_path)?;
     let root_key = normalize_index_path(root_path);
     let mut statement = connection

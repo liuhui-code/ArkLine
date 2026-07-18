@@ -1,5 +1,5 @@
 use crate::models::workspace::WorkspaceIndexState;
-use crate::services::workspace_content_index_service::update_workspace_content;
+use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
 use crate::services::workspace_index_persistence_service::persist_incremental_deep_index_state_with_priority;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -28,7 +28,12 @@ impl WorkspaceIndexRuntime {
         priority: WorkspaceIndexTaskPriority,
     ) -> Result<WorkspaceIndexState, String> {
         let state = self.get_index_state(root_path)?;
-        update_workspace_content(root_path, changed_paths, removed_paths)?;
+        update_workspace_content_at_generation(
+            root_path,
+            changed_paths,
+            removed_paths,
+            state.indexed_at.unwrap_or_default() as u64,
+        )?;
         persist_incremental_deep_index_state_with_priority(
             root_path,
             &state,

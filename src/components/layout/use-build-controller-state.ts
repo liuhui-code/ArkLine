@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
-import type { BuildState, BuildTarget } from "@/features/build/build-model";
+import type { BuildState, BuildTarget, HarmonyBuildProject } from "@/features/build/build-model";
 import { parseBuildProfileProducts } from "@/features/build/build-profile-parser";
 import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
 import { preflightHarmonyBuild } from "@/features/build/build-preflight";
@@ -8,7 +8,6 @@ import { createBuildStore } from "@/features/build/build-store";
 import type { ProblemItem } from "@/features/problems/problems-store";
 import type { AppSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
-import { getPathBasename } from "@/features/workspace/workspace-store";
 
 export type UseBuildControllerStateOptions = {
   workspace: WorkspaceViewModel | null;
@@ -34,14 +33,41 @@ export function useBuildControllerState({
   const buildStoreRef = useRef(createBuildStore());
   const buildRunCounterRef = useRef(0);
   const [buildState, setBuildState] = useState(() => ({ ...buildStoreRef.current.state }));
-  const buildProject = useMemo(
+  const visibleBuildProject = useMemo(
     () => workspace ? detectHarmonyBuildProject(workspace.rootPath, workspace.visibleFiles) : null,
     [workspace],
   );
+  const [inspectedBuildProject, setInspectedBuildProject] = useState<HarmonyBuildProject | null>(null);
+  const buildProject = inspectedBuildProject?.rootPath === workspace?.rootPath
+    ? inspectedBuildProject
+    : visibleBuildProject;
   const buildProfilePath = useMemo(
-    () => workspace?.visibleFiles.find((path) => getPathBasename(path) === "build-profile.json5") ?? null,
-    [workspace],
+    () => buildProject?.hasBuildProfile ? `${buildProject.rootPath}/build-profile.json5` : null,
+    [buildProject],
   );
+
+  useEffect(() => {
+    if (!workspace?.rootPath || !workspaceApi.inspectHarmonyBuildProject) {
+      setInspectedBuildProject(null);
+      return;
+    }
+
+    let cancelled = false;
+    void workspaceApi.inspectHarmonyBuildProject(workspace.rootPath)
+      .then((project) => {
+        if (!cancelled) {
+          setInspectedBuildProject(project.isHarmonyProject || !visibleBuildProject?.isHarmonyProject ? project : null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInspectedBuildProject(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleBuildProject?.isHarmonyProject, workspace?.rootPath, workspaceApi]);
 
   function syncBuildState() {
     setBuildState({ ...buildStoreRef.current.state });
@@ -148,9 +174,17 @@ export function useBuildControllerState({
       return;
     }
 
+    const project = workspaceApi.inspectHarmonyBuildProject
+      ? await resolveBuildProject(workspace.rootPath)
+      : buildProject;
+    const currentState = buildStoreRef.current.state;
+    if (currentState.lastTarget !== "app" && !project?.modules.includes(currentState.moduleName) && project?.defaultModule) {
+      buildStoreRef.current.configure({ moduleName: project.defaultModule });
+      syncBuildState();
+    }
     const state = buildStoreRef.current.state;
     const preflight = preflightHarmonyBuild({
-      project: buildProject,
+      project,
       settings: sdkSettings,
       target: state.lastTarget,
       moduleName: state.lastTarget === "app" ? null : state.moduleName,
@@ -167,7 +201,7 @@ export function useBuildControllerState({
       rootPath: workspace.rootPath,
       state,
       clean,
-      project: buildProject,
+      project,
     });
     buildRunCounterRef.current += 1;
     const runId = `build-${buildRunCounterRef.current}`;
@@ -204,6 +238,22 @@ export function useBuildControllerState({
 
     await workspaceApi.stopTerminalCommand(runId);
     onStatusChange("Stopping build");
+  }
+
+  async function resolveBuildProject(rootPath: string) {
+    if (!workspaceApi.inspectHarmonyBuildProject) {
+      return buildProject;
+    }
+    try {
+      const project = await workspaceApi.inspectHarmonyBuildProject(rootPath);
+      if (project.isHarmonyProject || !buildProject?.isHarmonyProject) {
+        setInspectedBuildProject(project);
+        return project;
+      }
+      return buildProject;
+    } catch {
+      return buildProject;
+    }
   }
 
   return {

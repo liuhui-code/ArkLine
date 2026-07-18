@@ -1,4 +1,4 @@
-import type { BuildConfiguration } from "@/features/build/build-model";
+import type { BuildConfiguration, HarmonyBuildProject } from "@/features/build/build-model";
 import type {
   CodeAction,
   EditConflict,
@@ -166,6 +166,8 @@ export type TerminalRunRequest = {
   command: string;
   cwd: string | null;
   source: "preset" | "manual";
+  pathEntries?: string[];
+  environment?: Record<string, string>;
 };
 
 export type TerminalRunResult = {
@@ -210,6 +212,24 @@ export type LanguageQueryRequest = {
   content?: string;
 };
 
+export type SemanticSupervisorSnapshot = {
+  status: string;
+  restartCount: number;
+  restoredDocumentCount: number;
+  consecutiveFailures: number;
+  lastHeartbeatEpochMs: number | null;
+  retryAfterMs: number;
+  lastError: string | null;
+  runtime: {
+    rssBytes: number;
+    heapUsedBytes: number;
+    heapTotalBytes: number;
+    externalBytes: number;
+    uptimeMs: number;
+  } | null;
+  memoryBudgetBytes: number;
+};
+
 export type LanguageServiceReport = {
   provider: string;
   mode: "semantic" | "fallback" | "unavailable";
@@ -220,6 +240,7 @@ export type LanguageServiceReport = {
   documentSymbols: boolean;
   findUsages: boolean;
   detail: string;
+  supervisor?: SemanticSupervisorSnapshot;
 };
 
 export type HoverResponse = {
@@ -384,7 +405,7 @@ export type WorkspaceApi = {
   indexWorkspaceSdkSymbols?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceSdkIndexSummary>;
   submitWorkspaceSdkIndex?(rootPath: string, sdkPath: string, sdkVersion: string): Promise<WorkspaceIndexTaskStatus>;
   queryWorkspaceQuickOpen?(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceCandidatesWithReadiness?(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext, generation?: number, deadlineMs?: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbolsWithReadiness?(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
   queryUsagesWithReadiness?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<UsageResult>>;
@@ -427,6 +448,7 @@ export type WorkspaceApi = {
   saveSettings(settings: AppSettings): Promise<void>;
   loadBuildConfigurations?(rootPath: string): Promise<BuildConfiguration[]>;
   saveBuildConfigurations?(rootPath: string, configurations: BuildConfiguration[]): Promise<void>;
+  inspectHarmonyBuildProject?(rootPath: string): Promise<HarmonyBuildProject>;
   createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionSummary>;
   listTerminalSessions(): Promise<TerminalSessionSummary[]>;
   writeTerminalInput(request: TerminalInputWriteRequest): Promise<void>;

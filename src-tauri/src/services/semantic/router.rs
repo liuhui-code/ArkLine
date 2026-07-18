@@ -3,6 +3,9 @@ use std::sync::Arc;
 use super::arkts_lsp_provider::ArkTsLspProvider;
 use super::provider::{FallbackProvider, SemanticProvider};
 use crate::services::semantic_host::config::SemanticHostConfig;
+use crate::services::semantic_host::launcher::{
+    direct_semantic_worker_launcher, SharedSemanticWorkerLauncher,
+};
 use crate::services::semantic_host::manager::SemanticHostReadiness;
 
 pub struct SemanticRouter {
@@ -18,7 +21,15 @@ impl Default for SemanticRouter {
 
 impl SemanticRouter {
     pub fn new(config: SemanticHostConfig) -> Self {
-        let readiness = SemanticHostReadiness::discover(config.clone());
+        Self::new_with_launcher(config, direct_semantic_worker_launcher())
+    }
+
+    pub fn new_with_launcher(
+        config: SemanticHostConfig,
+        launcher: SharedSemanticWorkerLauncher,
+    ) -> Self {
+        let readiness =
+            SemanticHostReadiness::discover_with_launcher(config.clone(), launcher.clone());
         let fallback_detail = if readiness.is_ready() {
             format!(
                 "Fallback semantic provider stays available for symbol search and degraded-mode recovery: {}",
@@ -31,12 +42,14 @@ impl SemanticRouter {
             )
         };
         let fallback: Arc<dyn SemanticProvider> = Arc::new(FallbackProvider::new(fallback_detail));
-        let semantic = ArkTsLspProvider::discover(config).ok().map(|provider| {
-            Arc::new(CompositeSemanticProvider::new(
-                fallback.clone(),
-                Arc::new(provider),
-            )) as Arc<dyn SemanticProvider>
-        });
+        let semantic = ArkTsLspProvider::discover_with_launcher(config, launcher)
+            .ok()
+            .map(|provider| {
+                Arc::new(CompositeSemanticProvider::new(
+                    fallback.clone(),
+                    Arc::new(provider),
+                )) as Arc<dyn SemanticProvider>
+            });
 
         Self { fallback, semantic }
     }

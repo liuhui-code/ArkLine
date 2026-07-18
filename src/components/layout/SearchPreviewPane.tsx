@@ -1,14 +1,25 @@
-import { createSearchPreviewWindowFromContent } from "@/features/search/search-preview-window";
+import {
+  createSearchPreviewDocument,
+  createSearchPreviewWindowFromDocument,
+} from "@/features/search/search-preview-window";
 import type { WorkspaceTextSearchMatch } from "@/features/search/workspace-text-search";
+import { memo, useMemo } from "react";
 
 type SearchPreviewPaneProps = {
   match: WorkspaceTextSearchMatch;
   content: string | null;
 };
 
-export function SearchPreviewPane({ match, content }: SearchPreviewPaneProps) {
+export const SearchPreviewPane = memo(function SearchPreviewPane({ match, content }: SearchPreviewPaneProps) {
   const hitLine = highlightPreview(match.preview, match.previewStart, match.previewEnd);
-  const previewWindow = content != null ? createSearchPreviewWindowFromContent(content, match.line) : null;
+  const previewDocument = useMemo(
+    () => content != null ? createSearchPreviewDocument(content) : null,
+    [content],
+  );
+  const previewWindow = useMemo(
+    () => previewDocument ? createSearchPreviewWindowFromDocument(previewDocument, match.line) : null,
+    [match.line, previewDocument],
+  );
 
   return (
     <section aria-label="Search result file preview">
@@ -54,7 +65,7 @@ export function SearchPreviewPane({ match, content }: SearchPreviewPaneProps) {
       </pre>
     </section>
   );
-}
+});
 
 function highlightPreview(line: string, start: number, end: number) {
   return (

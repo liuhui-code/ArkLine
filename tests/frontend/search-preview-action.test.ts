@@ -38,7 +38,7 @@ describe("search preview action", () => {
     schedulePreview(0);
     await vi.runAllTimersAsync();
 
-    expect(readFile).toHaveBeenCalledWith("/workspace/Entry.ets", false);
+    expect(readFile).toHaveBeenCalledWith("/workspace/Entry.ets", true);
     expect(store.getSnapshot().previewContent).toBe("preview content");
     vi.useRealTimers();
   });

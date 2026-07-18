@@ -1,4 +1,5 @@
 import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexWriterMetrics } from "@/features/workspace/workspace-index-api-types";
 import type { ActiveProjectTaskSummary } from "@/components/layout/index-diagnostics-model";
 import { buildRepairActionEvidence, formatRepairAction } from "@/components/layout/index-diagnostics-model";
 import { IndexDiagnosticsHealthTaskSummary } from "@/components/layout/IndexDiagnosticsHealthTaskSummary";
@@ -36,6 +37,13 @@ export function IndexDiagnosticsHealthSection({
   onInspectUnresolvedImports,
 }: IndexDiagnosticsHealthSectionProps) {
   const repairEvidence = buildRepairActionEvidence(diagnostics);
+  const indexerWriterMetrics = collectIndexerWriterMetrics(diagnostics);
+  const indexerWriterSamples = indexerWriterMetrics.reduce((total, item) => total + item.sampleCount, 0);
+  const indexerWriterFailures = indexerWriterMetrics.reduce((total, item) => total + item.failureCount, 0);
+  const indexerWriterWaitP95 = maximumMetric(indexerWriterMetrics, "waitP95Us");
+  const indexerWriterWaitMax = maximumMetric(indexerWriterMetrics, "waitMaxUs");
+  const indexerWriterHoldP95 = maximumMetric(indexerWriterMetrics, "holdP95Us");
+  const indexerWriterHoldMax = maximumMetric(indexerWriterMetrics, "holdMaxUs");
 
   return (
     <section className="index-diagnostics__section" id="index-diagnostics-health" aria-label="Health / Storage">
@@ -55,10 +63,96 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
         <IndexDiagnosticsMetric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
         <IndexDiagnosticsMetric label="DB size" value={dbSize} />
+        <IndexDiagnosticsMetric
+          label="Writer queue"
+          value={`${diagnostics?.writerMetrics?.activeWriterCount ?? 0} active / ${diagnostics?.writerMetrics?.queuedWriterCount ?? 0} queued`}
+        />
+        <IndexDiagnosticsMetric
+          label="Writer wait p95 / max"
+          value={`${formatWriterMicros(diagnostics?.writerMetrics?.waitP95Us)} / ${formatWriterMicros(diagnostics?.writerMetrics?.waitMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Writer hold p95 / max"
+          value={`${formatWriterMicros(diagnostics?.writerMetrics?.holdP95Us)} / ${formatWriterMicros(diagnostics?.writerMetrics?.holdMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Writer samples / failures"
+          value={`${diagnostics?.writerMetrics?.sampleCount ?? 0} / ${diagnostics?.writerMetrics?.failureCount ?? 0}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer writer wait worst p95 / max"
+          value={`${formatWriterMicros(indexerWriterWaitP95)} / ${formatWriterMicros(indexerWriterWaitMax)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer writer hold worst p95 / max"
+          value={`${formatWriterMicros(indexerWriterHoldP95)} / ${formatWriterMicros(indexerWriterHoldMax)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer writer samples / failures"
+          value={`${indexerWriterSamples} / ${indexerWriterFailures}`}
+        />
         <IndexDiagnosticsMetric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
         <IndexDiagnosticsMetric
           label="Retry backoff"
           value={diagnostics?.latestRetryBackoff ?? (diagnostics?.retryBackoffCount ? `${diagnostics.retryBackoffCount} active` : "none")}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer process"
+          value={diagnostics?.indexerHost?.enabled ? diagnostics.indexerHost.status : "local"}
+        />
+        <IndexDiagnosticsMetric
+          label="Discovery PID"
+          value={diagnostics?.indexerHost?.discoveryProcessId?.toString() ?? "none"}
+        />
+        <IndexDiagnosticsMetric
+          label="Content PID"
+          value={diagnostics?.indexerHost?.contentProcessId?.toString() ?? "none"}
+        />
+        <IndexDiagnosticsMetric
+          label="Stub PID"
+          value={diagnostics?.indexerHost?.stubProcessId?.toString() ?? "none"}
+        />
+        <IndexDiagnosticsMetric
+          label="Discovery chunks"
+          value={String(diagnostics?.indexerHost?.completedDiscoveryChunks ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Content chunks"
+          value={String(diagnostics?.indexerHost?.completedContentRefreshChunks ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Cancelled content"
+          value={String(diagnostics?.indexerHost?.cancelledContentRefreshChunks ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Stub chunks"
+          value={String(diagnostics?.indexerHost?.completedStubRefreshChunks ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Cancelled chunks"
+          value={String(diagnostics?.indexerHost?.cancelledStubRefreshChunks ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Sidecar fallbacks"
+          value={String(diagnostics?.indexerHost?.fallbackCount ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer restarts"
+          value={String(diagnostics?.indexerHost?.restartCount ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Consecutive failures"
+          value={String(diagnostics?.indexerHost?.consecutiveFailureCount ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer backoff"
+          value={diagnostics?.indexerHost?.backoffRemainingMs != null
+            ? `${diagnostics.indexerHost.backoffRemainingMs} ms`
+            : "none"}
+        />
+        <IndexDiagnosticsMetric
+          label="Indexer error"
+          value={diagnostics?.indexerHost?.lastError ?? "none"}
         />
         <IndexDiagnosticsMetric label="Last error" value={diagnostics?.lastError ?? "none"} />
       </div>
@@ -162,4 +256,27 @@ export function IndexDiagnosticsHealthSection({
       ) : null}
     </section>
   );
+}
+
+function formatWriterMicros(value: number | undefined) {
+  const micros = value ?? 0;
+  if (micros < 1_000) return `${micros} us`;
+  return `${(micros / 1_000).toFixed(micros < 10_000 ? 2 : 1)} ms`;
+}
+
+function collectIndexerWriterMetrics(
+  diagnostics: WorkspaceIndexDiagnostics | null,
+): WorkspaceIndexWriterMetrics[] {
+  return [
+    diagnostics?.indexerHost?.discoveryWriterMetrics,
+    diagnostics?.indexerHost?.contentWriterMetrics,
+    diagnostics?.indexerHost?.stubWriterMetrics,
+  ].filter((value): value is WorkspaceIndexWriterMetrics => value != null);
+}
+
+function maximumMetric(
+  metrics: WorkspaceIndexWriterMetrics[],
+  key: "waitP95Us" | "waitMaxUs" | "holdP95Us" | "holdMaxUs",
+) {
+  return metrics.reduce((maximum, item) => Math.max(maximum, item[key]), 0);
 }

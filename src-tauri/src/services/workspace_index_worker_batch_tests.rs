@@ -103,6 +103,49 @@ fn worker_skips_narrow_tasks_superseded_by_later_tasks_in_the_same_batch() {
 }
 
 #[test]
+fn worker_keeps_changed_path_tasks_with_different_reasons() {
+    let root = create_empty_workspace("worker-batch-independent-reasons");
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = root
+        .join("entry/src/main/ets/Index.ets")
+        .to_string_lossy()
+        .to_string();
+    let mut first = changed_paths_task(&root_path, &source_path, 1, "visible-file");
+    first.priority = WorkspaceIndexTaskPriority::VisibleFiles;
+    let second = changed_paths_task(&root_path, &source_path, 2, "watcher");
+
+    let results = run_index_tasks(
+        &WorkspaceIndexRuntime::default(),
+        vec![first, second],
+        |_| Ok(()),
+    )
+    .unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|result| result.status != "superseded"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+fn changed_paths_task(
+    root_path: &str,
+    source_path: &str,
+    generation: u64,
+    reason: &str,
+) -> WorkspaceIndexTask {
+    WorkspaceIndexTask {
+        root_path: root_path.to_string(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Normal,
+        changed_paths: vec![source_path.to_string()],
+        sdk_path: None,
+        sdk_version: None,
+        generation,
+        reason: reason.to_string(),
+    }
+}
+
+#[test]
 fn worker_skips_old_sdk_task_superseded_by_later_sdk_in_the_same_batch() {
     let root = create_empty_workspace("worker-batch-sdk-superseded");
     let old_sdk = root.join("old-sdk");

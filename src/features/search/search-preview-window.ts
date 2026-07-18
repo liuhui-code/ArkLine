@@ -8,6 +8,19 @@ export type SearchPreviewWindow = {
   totalLines: number;
 };
 
+export type SearchPreviewDocument = {
+  content: string;
+  lineStarts: number[];
+};
+
+export function createSearchPreviewDocument(content: string): SearchPreviewDocument {
+  const lineStarts = [0];
+  for (let index = 0; index < content.length; index += 1) {
+    if (content.charCodeAt(index) === 10) lineStarts.push(index + 1);
+  }
+  return { content, lineStarts };
+}
+
 export function createSearchPreviewWindow(
   lines: string[],
   hitLine: number,
@@ -33,37 +46,45 @@ export function createSearchPreviewWindowFromContent(
   hitLine: number,
   radius = 80,
 ): SearchPreviewWindow {
-  const totalLines = countContentLines(content);
+  return createSearchPreviewWindowFromDocument(
+    createSearchPreviewDocument(content),
+    hitLine,
+    radius,
+  );
+}
+
+export function createSearchPreviewWindowFromDocument(
+  document: SearchPreviewDocument,
+  hitLine: number,
+  radius = 80,
+): SearchPreviewWindow {
+  const totalLines = document.lineStarts.length;
   const selected = Math.min(Math.max(hitLine, 1), totalLines);
   const start = Math.max(1, selected - radius);
   const end = Math.min(totalLines, selected + radius);
   return {
     totalLines,
-    lines: collectContentLines(content, start, end),
+    lines: collectDocumentLines(document, start, end),
   };
 }
 
-function countContentLines(content: string) {
-  let total = 1;
-  for (let index = 0; index < content.length; index += 1) {
-    if (content.charCodeAt(index) === 10) total += 1;
-  }
-  return total;
-}
-
-function collectContentLines(content: string, startLine: number, endLine: number) {
+function collectDocumentLines(
+  document: SearchPreviewDocument,
+  startLine: number,
+  endLine: number,
+) {
   const lines: SearchPreviewLine[] = [];
-  let lineNumber = 1;
-  let lineStart = 0;
-  for (let index = 0; index <= content.length; index += 1) {
-    if (index < content.length && content.charCodeAt(index) !== 10) continue;
-    if (lineNumber >= startLine && lineNumber <= endLine) {
-      const lineEnd = index > lineStart && content.charCodeAt(index - 1) === 13 ? index - 1 : index;
-      lines.push({ lineNumber, text: content.slice(lineStart, lineEnd) });
+  for (let lineNumber = startLine; lineNumber <= endLine; lineNumber += 1) {
+    const lineStart = document.lineStarts[lineNumber - 1] ?? document.content.length;
+    const nextLineStart = document.lineStarts[lineNumber];
+    let lineEnd = nextLineStart == null ? document.content.length : nextLineStart - 1;
+    if (lineEnd > lineStart && document.content.charCodeAt(lineEnd - 1) === 13) {
+      lineEnd -= 1;
     }
-    lineNumber += 1;
-    lineStart = index + 1;
-    if (lineNumber > endLine) break;
+    lines.push({
+      lineNumber,
+      text: document.content.slice(lineStart, lineEnd),
+    });
   }
   return lines;
 }

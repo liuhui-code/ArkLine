@@ -3,7 +3,7 @@ import { json } from "@codemirror/lang-json";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { openSearchPanel, searchKeymap } from "@codemirror/search";
-import { Compartment, Extension } from "@codemirror/state";
+import { Compartment, Extension, type Text } from "@codemirror/state";
 import {
   dropCursor,
   EditorView,
@@ -103,7 +103,11 @@ export function createEditorExtensions(
   path: string,
   appearance: EditorAppearance,
   onChange: (value: string) => void,
-  onSelectionChange?: (selection: { line: number; column: number; selectedText?: string }) => void,
+  onDocumentChange?: (document: Text) => void,
+  onSelectionChange?: (
+    selection: { line: number; column: number; selectedText?: string },
+    shouldMeasureCaret: boolean,
+  ) => void,
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void,
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void,
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,
@@ -113,9 +117,11 @@ export function createEditorExtensions(
     selectedLine: number | null;
     onSelectLine?: (line: number) => void;
   },
-  largeDocumentMode = false,
+  reducedPerformanceMode = false,
+  deferEnhancements = false,
 ): Extension[] {
-  const keymaps = largeDocumentMode
+  const deferDocumentExtensions = reducedPerformanceMode || deferEnhancements;
+  const keymaps = reducedPerformanceMode
     ? [indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, { key: "Mod-r", run: openReplacePanel, scope: "editor search-panel" }]
     : [indentWithTab, ...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, { key: "Mod-r", run: openReplacePanel, scope: "editor search-panel" }];
 
@@ -131,19 +137,19 @@ export function createEditorExtensions(
     history(),
     highlightActiveLine(),
     jumpRevealDecorationField,
-    ...(largeDocumentMode ? [] : [definitionHoverDecorationField]),
+    ...(reducedPerformanceMode ? [] : [definitionHoverDecorationField]),
     keymap.of(keymaps),
     searchPanelEnhancement,
-    createDocumentChangeListener(onChange, largeDocumentMode),
+    createDocumentChangeListener(onChange, onDocumentChange, reducedPerformanceMode),
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),
-    ...(!largeDocumentMode && onDefinitionHoverChange ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
-    ...(!largeDocumentMode && onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
+    ...(!reducedPerformanceMode ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
+    ...(!reducedPerformanceMode && onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
     ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
-    editorStructureCompartment.of(structureExtensionForDocument(largeDocumentMode)),
-    languageCompartment.of(languageExtensionForPath(path, largeDocumentMode)),
-    gitTraceCompartment.of(gitTrace && !largeDocumentMode ? createGitTraceGutter(gitTrace) : []),
+    editorStructureCompartment.of(structureExtensionForDocument(deferDocumentExtensions)),
+    languageCompartment.of(languageExtensionForPath(path, deferDocumentExtensions)),
+    gitTraceCompartment.of(gitTrace && !reducedPerformanceMode ? createGitTraceGutter(gitTrace) : []),
   ];
 }

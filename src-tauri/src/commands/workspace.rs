@@ -29,9 +29,9 @@ use crate::services::workspace_index_ui_activity_service::{
 };
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
 use crate::services::workspace_open_command_service::open_workspace_through_manager_blocking;
+use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
 use crate::services::workspace_query_command_service::search_workspace_text_blocking;
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
-use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 use crate::services::workspace_service::list_workspace_directory as list_workspace_directory_service;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
@@ -83,7 +83,9 @@ pub fn inspect_workspace_index(
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<WorkspaceIndexDiagnostics, String> {
     let queue_pressure = index_manager.get_queue_pressure(&root_path)?;
-    inspect_workspace_index_service(&root_path, queue_pressure)
+    let mut diagnostics = inspect_workspace_index_service(&root_path, queue_pressure)?;
+    diagnostics.indexer_host = Some(index_manager.indexer_snapshot());
+    Ok(diagnostics)
 }
 
 #[tauri::command]
@@ -247,10 +249,10 @@ pub fn cancel_workspace_search(
     root_path: String,
     kind: String,
     generation: u64,
-    search_session: State<'_, WorkspaceSearchSessionRuntime>,
+    query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
     text_search_cancellation: State<'_, WorkspaceTextSearchCancellationRuntime>,
 ) -> Result<(), String> {
-    search_session.cancel_generation(&root_path, &kind, generation)?;
+    query_broker.cancel(&root_path, &kind, generation)?;
     if kind == "text" || kind == "find" || kind == "replace" {
         text_search_cancellation.register_generation(&root_path, generation.saturating_add(1))?;
     }
@@ -262,13 +264,13 @@ pub async fn search_workspace_text(
     request: WorkspaceTextSearchRequest,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     text_search_cancellation: State<'_, WorkspaceTextSearchCancellationRuntime>,
-    search_session: State<'_, WorkspaceSearchSessionRuntime>,
+    query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<WorkspaceTextSearchResult, String> {
     search_workspace_text_blocking(
         index_runtime.inner().clone(),
         text_search_cancellation.inner().clone(),
-        search_session.inner().clone(),
+        query_broker.inner().clone(),
         ui_activity.inner().clone(),
         request,
     )

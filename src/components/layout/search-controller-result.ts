@@ -19,6 +19,7 @@ export type SearchControllerActions = {
   setSearchEverywhereSelectedIndex: (selectedIndex: number) => void;
   openSearchOverlay: (mode: SearchEverywhereMode) => void;
   handleOverlayQueryChange: (value: string) => void;
+  handleOverlayQueryDraftChange: (value: string) => void;
   resetSearchOverlayState: () => void;
   moveSearchEverywhereSelection: (direction: 1 | -1) => void;
   openSearchEverywhereResult: (path: string, line: number, column: number) => Promise<void>;

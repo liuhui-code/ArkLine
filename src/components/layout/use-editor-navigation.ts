@@ -1,6 +1,9 @@
 import { useRef, type RefObject } from "react";
 import type { NavigationLocation } from "@/components/layout/app-shell-types";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
+import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
+
+export type NavigationStatusPrefix = "Back" | "Definition" | "Usage" | "Line";
 
 export type UseEditorNavigationOptions = {
   activePath: string | null;
@@ -10,6 +13,7 @@ export type UseEditorNavigationOptions = {
   setSelectionTarget: (target: { line: number; column: number; nonce: number } | null) => void;
   bumpEditorFocusToken: () => void;
   onStatusChange: (message: string) => void;
+  recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
 };
 
 export function useEditorNavigation({
@@ -20,6 +24,7 @@ export function useEditorNavigation({
   setSelectionTarget,
   bumpEditorFocusToken,
   onStatusChange,
+  recordUiInteraction,
 }: UseEditorNavigationOptions) {
   const navigationHistoryRef = useRef<NavigationLocation[]>([]);
   const navigationRequestRef = useRef(0);
@@ -68,8 +73,9 @@ export function useEditorNavigation({
 
   async function navigateToLocation(
     location: NavigationLocation,
-    statusPrefix: "Back" | "Definition" | "Usage" | "Line" = "Definition",
+    statusPrefix: NavigationStatusPrefix = "Definition",
   ) {
+    const startedAt = Date.now();
     const requestId = navigationRequestRef.current + 1;
     navigationRequestRef.current = requestId;
     if (normalizePath(location.path) !== normalizePath(activePath ?? "")) {
@@ -85,6 +91,7 @@ export function useEditorNavigation({
     });
     bumpEditorFocusToken();
     onStatusChange(`${statusPrefix}: ${getPathBasename(location.path)}:${location.line}:${location.column}`);
+    recordUiInteraction?.(statusPrefix === "Definition" ? "goToDefinition" : "openFile", getPathBasename(location.path), startedAt, Date.now());
     focusEditorSoon();
   }
 

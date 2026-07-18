@@ -136,3 +136,44 @@ fn background_worker_processes_task_scheduled_before_start() {
 
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn background_worker_is_reused_after_the_old_idle_window() {
+    let (root, root_path, sdk_path) = create_sdk_fixture("workspace-index-manager-persistent");
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    let worker_observed = observed.clone();
+    assert!(manager
+        .start_background_worker_with_events(index_runtime.clone(), move |status, _events| {
+            worker_observed.lock().unwrap().push(status.status);
+        })
+        .unwrap());
+
+    thread::sleep(Duration::from_millis(350));
+    manager
+        .schedule_sdk_index(&root_path, &sdk_path, "test-sdk")
+        .unwrap();
+
+    assert!(!manager
+        .start_background_worker_with_events(index_runtime, |_, _| {})
+        .unwrap());
+    for _ in 0..80 {
+        if observed
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|status| status == "ready")
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    assert!(observed
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|status| status == "ready"));
+
+    fs::remove_dir_all(root).unwrap();
+}

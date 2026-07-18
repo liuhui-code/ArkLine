@@ -4,6 +4,7 @@ import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/feat
 import { defaultBuildDiagnosticMatchers, parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
+import { createBuildToolchainEnvironment } from "@/features/build/build-toolchain-environment";
 import { assessBuildFreshness } from "@/features/build/build-freshness";
 import { parseBuildProblems } from "@/features/build/build-output-parser";
 import { preflightHarmonyBuild } from "@/features/build/build-preflight";
@@ -13,6 +14,21 @@ import { createBuildStore } from "@/features/build/build-store";
 import { createProblemsStore } from "@/features/problems/problems-store";
 
 describe("build run model", () => {
+  it("prepends the configured Node directory and exposes the Harmony SDK to Hvigor", () => {
+    expect(createBuildToolchainEnvironment({
+      harmonySdkPath: "/sdk/harmony",
+      semanticWorkerPath: "",
+      nodePath: "/tools/node",
+      autoDetect: false,
+    })).toEqual({
+      pathEntries: ["/tools/node"],
+      environment: {
+        HARMONY_SDK_HOME: "/sdk/harmony",
+        OHOS_SDK_HOME: "/sdk/harmony",
+      },
+    });
+  });
+
   it("normalizes UI build choices into a durable build intent", () => {
     const intent = createBuildIntent({
       rootPath: "/workspace/Demo",

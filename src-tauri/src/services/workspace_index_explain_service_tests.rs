@@ -13,6 +13,7 @@ use crate::services::workspace_index_explain_service::{
     explain_workspace_index_query,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_semantic_layer_state_service::publish_semantic_layer;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -372,6 +373,83 @@ fn explains_indexed_file_missing_reference_layer_for_usage_query() {
         .iter()
         .any(|fact| { fact.category == "layer" && fact.evidence == "references=missing" }));
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn explains_ready_zero_result_semantic_layer_as_not_found() {
+    let root = unique_temp_dir("explain-semantic-ready-zero");
+    let source_dir = root.join("src");
+    fs::create_dir_all(&source_dir).unwrap();
+    let path = source_dir.join("Empty.ets");
+    fs::write(&path, "export const value = 1\n").unwrap();
+    let connection = index_connection(&root);
+    let root_key = root.to_string_lossy().replace('/', "\\");
+    let path_key = path.to_string_lossy().replace('/', "\\");
+    insert_fingerprint(&connection, &root_key, &path_key);
+    publish_semantic_layer(
+        &connection,
+        &root_key,
+        &path_key,
+        "definitions",
+        "ready",
+        12,
+        0,
+        None,
+    )
+    .unwrap();
+
+    let result = explain_workspace_index_query(&request(
+        &root,
+        "definition",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+
+    assert_eq!(result.status, "notFound");
+    assert_eq!(result.recommended_action, None);
+    assert!(result.facts.iter().any(|fact| {
+        fact.category == "semanticLayer"
+            && fact.evidence == "definitions=ready generation=12 results=0"
+    }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn explains_stale_semantic_generation_with_current_file_action() {
+    let root = unique_temp_dir("explain-semantic-stale");
+    let source_dir = root.join("src");
+    fs::create_dir_all(&source_dir).unwrap();
+    let path = source_dir.join("Stale.ets");
+    fs::write(&path, "export class Stale {}\n").unwrap();
+    let connection = index_connection(&root);
+    let root_key = root.to_string_lossy().replace('/', "\\");
+    let path_key = path.to_string_lossy().replace('/', "\\");
+    insert_fingerprint(&connection, &root_key, &path_key);
+    publish_semantic_layer(
+        &connection,
+        &root_key,
+        &path_key,
+        "definitions",
+        "stale",
+        13,
+        1,
+        None,
+    )
+    .unwrap();
+
+    let result = explain_workspace_index_query(&request(
+        &root,
+        "definition",
+        Some(path.to_string_lossy().to_string()),
+    ))
+    .unwrap();
+
+    assert_eq!(result.status, "partial");
+    assert_eq!(
+        result.recommended_action.as_deref(),
+        Some("indexCurrentFile")
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

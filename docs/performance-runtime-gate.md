@@ -28,8 +28,17 @@ node scripts/perf-search-input.mjs --files=5000 --strict
 node scripts/perf-file-switch.mjs --files=5000 --switches=50 --strict
 ```
 
-The scripts print JSON with p50, p95, max, and pass/fail status. Use the same
-machine, Node version, fixture size, and command flags when comparing runs.
+The scripts execute `tests/frontend/runtime-interaction-soak.test.tsx` through
+Vitest and print `ARKLINE_PERF` JSON records. They import ArkLine's production
+search input, search generation runtime, search session store, document load
+coordinator, persistent document store, chunked text builder, and navigation
+transaction runtime. They do not use a second benchmark-only search or file
+switch implementation.
+
+Reported evidence includes p50/p95/p99, React render commits, bounded candidate
+count, cancellation and stale-result counts, document cache and pending-load
+counts, notifications, and heap delta. Use the same machine, Node version,
+fixture size, and command flags when comparing runs.
 
 ## Release Policy
 
@@ -41,5 +50,8 @@ machine, Node version, fixture size, and command flags when comparing runs.
 
 ## Current Gate Status
 
-Phase 8 starts with headless model-level smoke scripts. Browser-level and packaged
-app checks should be added after the runtime scripts are stable in CI.
+The current command is a deterministic headless product-runtime gate. It proves
+local input, cancellation, stale-result rejection, document preparation, and
+latest-navigation behavior, but it does not measure Tauri IPC, native WebView
+painting, SQLite lock wait, or packaged process memory. Browser-level and
+packaged Windows soak gates remain required.

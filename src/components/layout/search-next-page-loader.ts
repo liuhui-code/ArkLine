@@ -31,6 +31,8 @@ export type SearchNextPageLoaderInput = {
     limit: number,
     cursor: number,
     context?: WorkspaceSearchRankingContext,
+    generation?: number,
+    deadlineMs?: number,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   runTextPage: (
     query: string,
@@ -72,6 +74,8 @@ export async function loadNextSearchPage({
       displayLimit,
       session.entityNextCursor,
       rankingContext,
+      requestId,
+      250,
     );
     if (!isCurrentQuery(requestId)) return;
     patchSearchSession(buildSearchEntityAppendPatch(

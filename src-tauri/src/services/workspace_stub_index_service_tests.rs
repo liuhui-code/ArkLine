@@ -6,7 +6,7 @@ use rusqlite::Connection;
 
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
-use crate::services::workspace_stub_index_service::stub_parse_jobs_for_paths_for_test;
+use crate::services::workspace_stub_prepare_service::stub_parse_jobs_for_paths_for_test;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -130,6 +130,8 @@ fn parser_error_persists_without_blocking_other_files() {
     assert_eq!(stub_declaration_count(&sqlite_path, "Broken"), 1);
     assert_eq!(stub_parse_error_count(&sqlite_path, "Unclosed block"), 1);
     assert_eq!(stub_file_status_count(&sqlite_path, "error"), 1);
+    assert_eq!(semantic_syntax_status(&sqlite_path, "Broken.ets"), "failed");
+    assert_eq!(semantic_syntax_status(&sqlite_path, "Good.ets"), "ready");
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -245,6 +247,18 @@ fn stub_file_status_count(sqlite_path: &PathBuf, parse_status: &str) -> i64 {
         .query_row(
             "select count(*) from workspace_stub_files where parse_status = ?1",
             [parse_status],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+
+fn semantic_syntax_status(sqlite_path: &PathBuf, file_name: &str) -> String {
+    Connection::open(sqlite_path)
+        .unwrap()
+        .query_row(
+            "select status from workspace_semantic_file_layers
+             where layer = 'syntax' and path like '%' || ?1",
+            [file_name],
             |row| row.get(0),
         )
         .unwrap()

@@ -14,6 +14,7 @@ export function useSemanticState(workspaceApi: WorkspaceApi) {
         provider: "error",
         mode: "unavailable",
         detail,
+        supervisor: undefined,
       });
       if (options.throwOnError) {
         throw new Error(detail);

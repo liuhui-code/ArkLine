@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::language::CodeActionResolveRequest;
 
+pub const SEMANTIC_PROTOCOL_VERSION: u64 = 3;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticDocumentPosition {
@@ -10,6 +12,16 @@ pub struct SemanticDocumentPosition {
     pub column: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_generation: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticReplayDocument {
+    pub path: String,
+    pub content: String,
+    pub content_generation: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,6 +33,8 @@ pub struct SemanticRequest {
     pub position: Option<SemanticDocumentPosition>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<CodeActionResolveRequest>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub documents: Option<Vec<SemanticReplayDocument>>,
 }
 
 impl SemanticRequest {
@@ -34,8 +48,10 @@ impl SemanticRequest {
                 line,
                 column,
                 content: None,
+                content_generation: None,
             }),
             action: None,
+            documents: None,
         }
     }
 }

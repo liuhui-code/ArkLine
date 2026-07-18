@@ -58,6 +58,6 @@ export function scheduleSelectedSearchPreviewWithReader({
     delayMs,
     sessionStore,
     interactionRuntime,
-    readFile: (path) => readFile(path, false),
+    readFile: (path) => readFile(path, true),
   });
 }

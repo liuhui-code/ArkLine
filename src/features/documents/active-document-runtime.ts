@@ -7,6 +7,8 @@ export type ActiveDocumentRuntime = {
 type DocumentLookupRef = {
   current: {
     getDocument(path: string): { currentContent: string } | undefined;
+    getDocumentLength?(path: string): number | undefined;
+    getDocumentSlice?(path: string, start: number, end: number): string | undefined;
   };
 };
 
@@ -19,9 +21,19 @@ export function createActiveDocumentRuntime(
     return activePath ? documentsRef.current.getDocument(activePath)?.currentContent ?? "" : "";
   }
 
+  function getCurrentPath() {
+    return getActivePath();
+  }
+
   return {
     getActiveContent: getCurrentContent,
-    getActiveContentLength: () => getCurrentContent().length,
-    getActiveContentSlice: (start, end) => getCurrentContent().slice(start, end),
+    getActiveContentLength: () => {
+      const path = getCurrentPath();
+      return path ? documentsRef.current.getDocumentLength?.(path) ?? getCurrentContent().length : 0;
+    },
+    getActiveContentSlice: (start, end) => {
+      const path = getCurrentPath();
+      return path ? documentsRef.current.getDocumentSlice?.(path, start, end) ?? getCurrentContent().slice(start, end) : "";
+    },
   };
 }

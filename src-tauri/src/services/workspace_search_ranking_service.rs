@@ -243,18 +243,30 @@ pub fn lexical_match_score(value: &str, query: &str) -> Option<f64> {
     }
 
     let lowered = value.to_lowercase();
-    let mut score = fuzzy_score(&lowered, &trimmed)?;
+    let acronym = camel_case_acronym(value);
+    lexical_match_score_prepared(&lowered, acronym.as_deref(), &trimmed)
+}
 
-    if lowered == trimmed {
+pub(crate) fn lexical_match_score_prepared(
+    lowered: &str,
+    acronym: Option<&str>,
+    normalized_query: &str,
+) -> Option<f64> {
+    if normalized_query.is_empty() {
+        return None;
+    }
+    let mut score = fuzzy_score(lowered, normalized_query)?;
+
+    if lowered == normalized_query {
         score += 120.0;
-    } else if lowered.starts_with(&trimmed) {
+    } else if lowered.starts_with(normalized_query) {
         score += 95.0;
-    } else if lowered.contains(&trimmed) {
+    } else if lowered.contains(normalized_query) {
         score += 75.0;
-    } else if let Some(acronym) = camel_case_acronym(value) {
-        if acronym == trimmed {
+    } else if let Some(acronym) = acronym {
+        if acronym == normalized_query {
             score += 65.0;
-        } else if acronym.starts_with(&trimmed) {
+        } else if acronym.starts_with(normalized_query) {
             score += 55.0;
         }
     }
@@ -264,29 +276,29 @@ pub fn lexical_match_score(value: &str, query: &str) -> Option<f64> {
 
 fn fuzzy_score(value: &str, query: &str) -> Option<f64> {
     let mut score = 0.0;
-    let mut query_index = 0;
-    let query_chars = query.chars().collect::<Vec<_>>();
+    let mut query_chars = query.chars();
+    let mut expected = query_chars.next();
     let mut run_length = 0.0;
 
     for character in value.chars() {
-        if query_index >= query_chars.len() {
+        let Some(expected_character) = expected else {
             break;
-        }
+        };
 
-        if character != query_chars[query_index] {
+        if character != expected_character {
             run_length = 0.0;
             continue;
         }
 
         score += 4.0;
         run_length += 1.0;
-        query_index += 1;
+        expected = query_chars.next();
         if run_length > 1.0 {
             score += 2.0;
         }
     }
 
-    if query_index != query_chars.len() {
+    if expected.is_some() {
         return None;
     }
 
@@ -297,7 +309,7 @@ fn file_name(path: &str) -> String {
     path.rsplit(['\\', '/']).next().unwrap_or(path).to_string()
 }
 
-fn camel_case_acronym(value: &str) -> Option<String> {
+pub(crate) fn camel_case_acronym(value: &str) -> Option<String> {
     let mut acronym = String::new();
     let mut previous_was_separator = true;
     for character in value.chars() {

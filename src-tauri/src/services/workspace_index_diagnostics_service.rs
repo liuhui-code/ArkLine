@@ -9,6 +9,7 @@ use crate::models::workspace::{
     WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexQueuePressure,
     WorkspaceIndexSchemaVersionAction, WorkspaceIndexTimelineItem,
 };
+use crate::services::workspace_index_connection_service::workspace_index_writer_metrics;
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_freshness_service::load_index_freshness_layers;
 use crate::services::workspace_index_repair_action_service::{
@@ -24,6 +25,7 @@ use crate::services::workspace_index_schema_service::{
 use crate::services::workspace_index_schema_version_service::{
     plan_workspace_index_schema_version_actions, WorkspaceIndexSchemaVersionStatus,
 };
+use crate::services::workspace_sdk_shared_bridge_service::count_shared_sdk_symbols;
 
 const DIAGNOSTICS_PARSER_FAILURE_LIMIT: usize = 5;
 const DIAGNOSTICS_UNRESOLVED_IMPORT_LIMIT: usize = 5;
@@ -46,7 +48,8 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let unresolved_import_count =
         count_rows(&connection, "workspace_unresolved_imports", &root_key)?;
     let parser_error_count = count_rows(&connection, "workspace_stub_parse_errors", &root_key)?;
-    let sdk_symbol_count = count_sdk_symbols(&connection, &root_key, active_sdk.as_ref())?;
+    let sdk_symbol_count =
+        count_sdk_symbols(root_path, &connection, &root_key, active_sdk.as_ref())?;
     let health_status = workspace_index_health_status(&index_status, sdk_symbol_count);
     let schema_versions = load_workspace_index_schema_versions(&connection)?;
     let schema_version_actions = diagnostics_schema_version_actions(&schema_versions);
@@ -84,6 +87,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         discovery_excluded_count: discovery.excluded_count,
         discovery_has_more: discovery.has_more,
         db_size_bytes: db_size_bytes(&cache_path)?,
+        writer_metrics: workspace_index_writer_metrics(root_path),
         queue_pressure: empty_queue_pressure(&root_key),
         active_sdk_path: active_sdk
             .as_ref()
@@ -101,6 +105,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         )?,
         recent_events,
         timeline,
+        indexer_host: None,
     })
 }
 
@@ -248,10 +253,14 @@ fn count_rows(connection: &Connection, table_name: &str, root_key: &str) -> Resu
 }
 
 fn count_sdk_symbols(
+    root_path: &str,
     connection: &Connection,
     root_key: &str,
     active_sdk: Option<&ActiveSdkMetadata>,
 ) -> Result<i64, String> {
+    if let Ok(Some(count)) = count_shared_sdk_symbols(root_path) {
+        return Ok(count);
+    }
     let Some(active_sdk) = active_sdk else {
         return count_rows(connection, "workspace_sdk_symbols", root_key);
     };

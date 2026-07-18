@@ -1,4 +1,4 @@
-import type { BuildConfiguration } from "@/features/build/build-model";
+import type { BuildConfiguration, HarmonyBuildProject } from "@/features/build/build-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
 import {
@@ -45,6 +45,22 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
         return;
       }
       browserBuildConfigurationStore.set(normalizePath(rootPath), configurations);
+    },
+    async inspectHarmonyBuildProject(rootPath) {
+      if (hasTauriRuntime()) {
+        return invoke<HarmonyBuildProject>("inspect_harmony_build_project_command", { rootPath });
+      }
+      return {
+        rootPath: normalizePath(rootPath),
+        isHarmonyProject: false,
+        hasHvigorWrapper: false,
+        hvigorWrapperCommand: null,
+        hasHvigorFile: false,
+        hasBuildProfile: false,
+        hasOhPackage: false,
+        modules: [],
+        defaultModule: null,
+      };
     },
     async createTerminalSession(request) {
       if (hasTauriRuntime()) {

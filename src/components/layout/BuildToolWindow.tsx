@@ -70,27 +70,8 @@ export function BuildToolWindow({
   return (
     <section aria-label="Build Panel" className="build-tool-window">
       <div className="build-tool-window__toolbar">
-        <label className="build-tool-window__field build-tool-window__field--configuration">
-          <span>Configuration</span>
-          <select aria-label="Build Configuration" value={state.activeConfigurationId ?? ""} disabled={running} onChange={(event) => onSelectConfiguration(event.target.value)}>
-            <option value="">Current settings</option>
-            {state.configurations.map((configuration) => (
-              <option key={configuration.id} value={configuration.id}>{configuration.name}</option>
-            ))}
-          </select>
-        </label>
-        <button type="button" className="build-tool-window__button" disabled={!hasWorkspace || running} onClick={onSaveConfiguration}>
-          Save Config
-        </button>
-        <button type="button" className="build-tool-window__button" disabled={!activeConfiguration || running} onClick={onCopyConfiguration}>
-          Copy Config
-        </button>
-        <button type="button" className="build-tool-window__button" disabled={!activeConfiguration || running} onClick={onDeleteConfiguration}>
-          Delete Config
-        </button>
-        {configurationModified ? <span className="build-tool-window__badge">Modified</span> : null}
         <button type="button" aria-label="Run Build Configuration" className="build-tool-window__button build-tool-window__button--primary" disabled={!hasWorkspace || running} onClick={onRunBuild}>
-          Run
+          Build
         </button>
         <button type="button" className="build-tool-window__button" disabled={!hasWorkspace || running} onClick={onRunCleanBuild}>
           Clean Build
@@ -98,42 +79,27 @@ export function BuildToolWindow({
         <button type="button" className="build-tool-window__button" aria-label="Stop Build" disabled={!running} onClick={onStopBuild}>
           Stop
         </button>
-        <label className="build-tool-window__field">
-          <span>Target</span>
-          <select value={state.lastTarget} disabled={running} onChange={changeTarget}>
-            <option value="hap">HAP</option>
-            <option value="app">APP</option>
-            <option value="har">HAR</option>
-            <option value="hsp">HSP</option>
-          </select>
-        </label>
-        <label className="build-tool-window__field">
-          <span>Module</span>
-          <select aria-label="Build Module" value={state.moduleName} disabled={running || state.lastTarget === "app"} onChange={(event) => onChangeModuleName(event.target.value)}>
-            {moduleOptions.map((moduleName) => (
-              <option key={moduleName} value={moduleName}>{moduleName}</option>
-            ))}
-          </select>
-        </label>
-        <label className="build-tool-window__field">
-          <span>Product</span>
-          <select aria-label="Build Product" value={state.product} disabled={running} onChange={(event) => onChangeProduct(event.target.value)}>
-            {productOptions.map((product) => (
-              <option key={product} value={product}>{product}</option>
-            ))}
-          </select>
-        </label>
-        <label className="build-tool-window__field">
-          <span>Mode</span>
-          <select aria-label="Build Mode" value={state.buildMode} disabled={running} onChange={changeBuildMode}>
-            <option value="debug">Debug</option>
-            <option value="release">Release</option>
-          </select>
-        </label>
-        <label className="build-tool-window__toggle">
-          <input type="checkbox" checked={state.fastMode} disabled={running} onChange={(event) => onChangeFastMode(event.target.checked)} />
-          <span>Fast mode</span>
-        </label>
+        <span className="build-tool-window__preset">{state.moduleName || "entry"} · {state.product || "default"} · {state.buildMode}</span>
+        <details className="build-tool-window__options">
+          <summary>Build Options{configurationModified ? " · Modified" : ""}</summary>
+          <div className="build-tool-window__options-content">
+            <label className="build-tool-window__field build-tool-window__field--configuration">
+              <span>Configuration</span>
+              <select aria-label="Build Configuration" value={state.activeConfigurationId ?? ""} disabled={running} onChange={(event) => onSelectConfiguration(event.target.value)}>
+                <option value="">Current settings</option>
+                {state.configurations.map((configuration) => <option key={configuration.id} value={configuration.id}>{configuration.name}</option>)}
+              </select>
+            </label>
+            <button type="button" className="build-tool-window__button" disabled={!hasWorkspace || running} onClick={onSaveConfiguration}>Save</button>
+            <button type="button" className="build-tool-window__button" disabled={!activeConfiguration || running} onClick={onCopyConfiguration}>Duplicate</button>
+            <button type="button" className="build-tool-window__button" disabled={!activeConfiguration || running} onClick={onDeleteConfiguration}>Delete</button>
+            <label className="build-tool-window__field"><span>Target</span><select value={state.lastTarget} disabled={running} onChange={changeTarget}><option value="hap">HAP</option><option value="app">APP</option><option value="har">HAR</option><option value="hsp">HSP</option></select></label>
+            <label className="build-tool-window__field"><span>Module</span><select aria-label="Build Module" value={state.moduleName} disabled={running || state.lastTarget === "app"} onChange={(event) => onChangeModuleName(event.target.value)}>{moduleOptions.map((moduleName) => <option key={moduleName} value={moduleName}>{moduleName}</option>)}</select></label>
+            <label className="build-tool-window__field"><span>Product</span><select aria-label="Build Product" value={state.product} disabled={running} onChange={(event) => onChangeProduct(event.target.value)}>{productOptions.map((product) => <option key={product} value={product}>{product}</option>)}</select></label>
+            <label className="build-tool-window__field"><span>Mode</span><select aria-label="Build Mode" value={state.buildMode} disabled={running} onChange={changeBuildMode}><option value="debug">Debug</option><option value="release">Release</option></select></label>
+            <label className="build-tool-window__toggle"><input type="checkbox" checked={state.fastMode} disabled={running} onChange={(event) => onChangeFastMode(event.target.checked)} /><span>Fast mode</span></label>
+          </div>
+        </details>
       </div>
       <div className="build-tool-window__summary">
         <strong>{state.message}</strong>

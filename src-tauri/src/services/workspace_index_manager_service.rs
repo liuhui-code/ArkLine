@@ -5,6 +5,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
+use crate::indexer_host::{IndexerHostRuntime, IndexerHostSnapshot};
 use crate::models::workspace::{
     WorkspaceIndexEvent, WorkspaceIndexQueuePressure, WorkspaceIndexRefreshResult,
     WorkspaceIndexTaskStatus,
@@ -37,9 +38,9 @@ use crate::services::workspace_index_task_status_service::{
     current_time_millis, task_status_from_publishable_result, task_status_from_task,
     WorkspaceIndexTaskResult,
 };
-use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity;
+use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity_and_indexer;
 
-const BACKGROUND_WORKER_IDLE_TIMEOUT_MS: u64 = 250;
+const BACKGROUND_WORKER_IDLE_RETIRE_MS: u64 = 30_000;
 pub const WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE: usize = 8;
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndexManagerRuntime {
@@ -48,8 +49,14 @@ pub struct WorkspaceIndexManagerRuntime {
     recent_statuses: Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
     worker_running: Arc<AtomicBool>,
     worker_signal: Arc<(Mutex<u64>, Condvar)>,
+    indexer: Arc<IndexerHostRuntime>,
 }
 impl WorkspaceIndexManagerRuntime {
+    #[allow(dead_code)]
+    pub fn indexer_snapshot(&self) -> IndexerHostSnapshot {
+        self.indexer.snapshot()
+    }
+
     #[allow(dead_code)]
     pub fn open_workspace_index(&self, root_path: &str) -> Result<(), String> {
         self.schedule_workspace_task(
@@ -300,7 +307,7 @@ impl WorkspaceIndexManagerRuntime {
             .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
             .drain_ready_batch(WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE);
         let (guarded_tasks, tokens) = start_cancellable_tasks(&self.cancellations, tasks)?;
-        let results = run_index_tasks_with_cancellation_and_ui_activity(
+        let results = run_index_tasks_with_cancellation_and_ui_activity_and_indexer(
             index_runtime,
             guarded_tasks,
             |running_status| {
@@ -309,6 +316,7 @@ impl WorkspaceIndexManagerRuntime {
                 Ok::<(), String>(())
             },
             is_ui_latency_sensitive,
+            Some(self.indexer.as_ref()),
         );
         finish_cancellable_tasks(&self.cancellations, &tokens)?;
         let results = results?;
@@ -355,19 +363,25 @@ impl WorkspaceIndexManagerRuntime {
         }
 
         let manager = self.clone();
-        thread::spawn(move || {
-            loop {
-                let _ = manager.run_index_worker_once_with_events_and_ui_activity(
-                    &index_runtime,
-                    |status, events| on_status(status, events),
-                    &mut is_ui_latency_sensitive,
-                );
-                if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
-                    break;
+        thread::Builder::new()
+            .name("arkline-index-manager".to_string())
+            .spawn(move || {
+                loop {
+                    let _ = manager.run_index_worker_once_with_events_and_ui_activity(
+                        &index_runtime,
+                        |status, events| on_status(status, events),
+                        &mut is_ui_latency_sensitive,
+                    );
+                    if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
+                        break;
+                    }
                 }
-            }
-            manager.worker_running.store(false, Ordering::SeqCst);
-        });
+                manager.worker_running.store(false, Ordering::SeqCst);
+            })
+            .map_err(|error| {
+                self.worker_running.store(false, Ordering::SeqCst);
+                format!("Failed to start index manager worker: {error}")
+            })?;
         Ok(true)
     }
 
@@ -397,7 +411,7 @@ impl WorkspaceIndexManagerRuntime {
         signal
             .wait_timeout_while(
                 generation,
-                Duration::from_millis(BACKGROUND_WORKER_IDLE_TIMEOUT_MS),
+                Duration::from_millis(BACKGROUND_WORKER_IDLE_RETIRE_MS),
                 |current_generation| *current_generation == observed_generation,
             )
             .map(|(_, timeout)| timeout.timed_out())

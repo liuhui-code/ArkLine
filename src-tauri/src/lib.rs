@@ -1,5 +1,6 @@
 mod commands {
     pub mod build_configurations;
+    pub mod build_project;
     pub mod code_actions;
     pub mod device_log;
     pub mod documents;
@@ -20,6 +21,7 @@ mod commands {
 }
 
 mod models {
+    pub mod build_project;
     pub mod device_log;
     pub mod device_log_query;
     pub mod diagnostics;
@@ -31,21 +33,41 @@ mod models {
     #[cfg(test)]
     mod workspace_index_diagnostics_tests;
     pub mod workspace_index_layer;
+    pub mod workspace_semantic_layer;
 }
 
 mod platform;
 
+pub mod indexer_host;
+pub mod indexer_sidecar;
 mod services;
+
+use std::sync::Arc;
+use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let search_sessions =
+        services::workspace_search_session_service::WorkspaceSearchSessionRuntime::default();
+    let query_broker = services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime::new(
+        search_sessions.clone(),
+    );
     tauri::Builder::default()
-        .setup(|_| {
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
             platform::apply_app_icon();
+            if let Ok(resource_dir) = app.path().resource_dir() {
+                services::semantic_host::process::register_resource_dir(resource_dir);
+            }
+            let launcher = Arc::new(
+                services::semantic_host::launcher::TauriSemanticWorkerLauncher::new(
+                    app.handle().clone(),
+                ),
+            );
+            app.manage(services::language_service::LanguageRuntime::new(launcher));
             Ok(())
         })
-        .plugin(tauri_plugin_dialog::init())
-        .manage(services::language_service::LanguageRuntime::default())
         .manage(commands::windowing::LaunchWorkspaceState::default())
         .manage(services::terminal_service::TerminalRuntime::default())
         .manage(services::device_log_service::DeviceLogRuntime::default())
@@ -54,8 +76,9 @@ pub fn run() {
         .manage(services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime::default())
         .manage(services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default())
         .manage(services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime::default())
-        .manage(services::workspace_search_session_service::WorkspaceSearchSessionRuntime::default())
+        .manage(query_broker)
         .invoke_handler(tauri::generate_handler![
+            commands::build_project::inspect_harmony_build_project_command,
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,
             commands::workspace::get_workspace_index_state,

@@ -41,10 +41,10 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     let diagnostics = inspect_workspace_index(&root_path).unwrap();
 
     assert_eq!(diagnostics.status, "ready");
-    assert_eq!(diagnostics.schema_versions.get("catalog"), Some(&1));
-    assert_eq!(diagnostics.schema_versions.get("content"), Some(&1));
-    assert_eq!(diagnostics.schema_versions.get("symbol"), Some(&1));
-    assert_eq!(diagnostics.schema_versions.get("stub"), Some(&1));
+    assert_eq!(diagnostics.schema_versions.get("catalog"), Some(&2));
+    assert_eq!(diagnostics.schema_versions.get("content"), Some(&4));
+    assert_eq!(diagnostics.schema_versions.get("symbol"), Some(&3));
+    assert_eq!(diagnostics.schema_versions.get("stub"), Some(&2));
     assert_eq!(diagnostics.schema_versions.get("dependency"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("fingerprint"), Some(&1));
     assert_eq!(diagnostics.schema_versions.get("sdk"), Some(&1));

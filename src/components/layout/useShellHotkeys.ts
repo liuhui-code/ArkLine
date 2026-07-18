@@ -14,11 +14,16 @@ export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOpti
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) {
+        return;
+      }
+
       if (isBareShift(event)) {
         const now = Date.now();
         if (now - lastShiftAtRef.current <= DOUBLE_SHIFT_WINDOW_MS) {
           lastShiftAtRef.current = 0;
           event.preventDefault();
+          event.stopPropagation();
           onCommand("openSearchEverywhere");
           return;
         }
@@ -33,10 +38,11 @@ export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOpti
       }
 
       event.preventDefault();
+      event.stopPropagation();
       onCommand(command);
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [context, onCommand]);
 }

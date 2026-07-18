@@ -30,7 +30,7 @@ export function renderSearchHarness(overrides: Partial<SearchHarnessOptions> = {
       workspaceApi: stableWorkspaceApi,
       workspace: stableWorkspace,
       activePath: overrides.activePath ?? "/workspace/Entry.ets",
-      editorSelectedText: overrides.editorSelectedText ?? "",
+      getEditorSelectedText: () => overrides.editorSelectedText ?? "",
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",

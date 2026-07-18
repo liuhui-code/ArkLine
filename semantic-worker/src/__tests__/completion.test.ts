@@ -25,7 +25,7 @@ function createWorkspaceFixture(name: string): string {
   const indexPath = path.join(pagesDir, "Index.ets")
   fs.writeFileSync(
     indexPath,
-    "@Entry\n@Component\nstruct Index {}\n",
+    "import { sharedSubmit } from '../components/Shared';\n\n@Entry\n@Component\nstruct Index {}\n",
   )
 
   return indexPath

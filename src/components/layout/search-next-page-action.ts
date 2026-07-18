@@ -26,6 +26,8 @@ export type SearchNextPageActionOptions = {
     limit: number,
     cursor: number,
     context?: WorkspaceSearchRankingContext,
+    generation?: number,
+    deadlineMs?: number,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   runTextPage: (
     query: string,

@@ -28,6 +28,8 @@ export type SearchEntityWorkspaceApi = {
     limit: number,
     cursor?: number | null,
     context?: WorkspaceSearchRankingContext,
+    generation?: number,
+    deadlineMs?: number,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
 };
 
@@ -90,6 +92,8 @@ export function runSearchEntityQuery({
           limit,
           null,
           rankingContext,
+          requestId,
+          250,
         )
         : undefined,
       runLocal: queryIndexCandidates,

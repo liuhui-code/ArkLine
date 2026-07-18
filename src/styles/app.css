@@ -1290,9 +1290,6 @@ button:disabled {
   background: #1f2329;
 }
 
-.editor-surface--definition-hover .cm-content {
-  cursor: pointer;
-}
 
 .editor-codemirror .cm-editor,
 .editor-codemirror .cm-scroller,
@@ -1307,6 +1304,7 @@ button:disabled {
 
 .editor-codemirror .cm-content {
   line-height: 1.8;
+  min-width: 100%;
 }
 
 .editor-codemirror .cm-gutters {
@@ -1672,6 +1670,31 @@ button:disabled {
 
 .build-tool-window__toolbar {
   flex-wrap: wrap;
+}
+
+.build-tool-window__preset {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.build-tool-window__options {
+  position: relative;
+}
+
+.build-tool-window__options summary {
+  min-height: 26px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 26px;
+}
+
+.build-tool-window__options-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
 }
 
 .build-tool-window__summary {
@@ -2375,6 +2398,18 @@ button:disabled {
   min-height: 34px;
   padding: 4px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.device-log-tool-window__content,
+.device-log-tool-window__body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.device-log-tool-window__body {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: 100%;
 }
 
 .device-log-tool-window__toolbar select,

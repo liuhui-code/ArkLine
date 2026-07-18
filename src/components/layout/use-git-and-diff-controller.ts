@@ -1,17 +1,20 @@
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { GitToolView } from "@/components/layout/GitToolWindow";
 import { useGitTrace } from "@/components/layout/use-git-trace";
 import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { EditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
+
+const subscribeDisabled = () => () => {};
 
 export type UseGitAndDiffControllerOptions = {
   workspaceRootPath: string | null;
   workspaceApi: WorkspaceApi;
   activePath: string | null;
-  activeLine: number;
-  activeText: string;
-  baseText: string;
+  editorSelectionRuntime: EditorSelectionRuntime;
+  getActiveText: () => string;
+  getBaseText: () => string;
   gitToolVisible: boolean;
   showGit: () => void;
   setEditorSelection: (selection: { line: number; column: number }) => void;
@@ -23,9 +26,9 @@ export function useGitAndDiffController({
   workspaceRootPath,
   workspaceApi,
   activePath,
-  activeLine,
-  activeText,
-  baseText,
+  editorSelectionRuntime,
+  getActiveText,
+  getBaseText,
   gitToolVisible,
   showGit,
   setEditorSelection,
@@ -38,12 +41,20 @@ export function useGitAndDiffController({
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
   const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
+  const traceVisible = gitToolVisible && gitToolView === "trace";
+  const gitTraceEnabled = gitBlameVisible || traceVisible;
+  const activeLine = useSyncExternalStore(
+    gitTraceEnabled ? editorSelectionRuntime.subscribe : subscribeDisabled,
+    () => editorSelectionRuntime.getSnapshot().line,
+    () => editorSelectionRuntime.getSnapshot().line,
+  );
   const { gitTraceState } = useGitTrace({
     activeLine,
     activePath,
-    activeText,
-    baseText,
-    traceVisible: gitToolVisible && gitToolView === "trace",
+    activeText: gitTraceEnabled ? getActiveText() : "",
+    baseText: gitTraceEnabled ? getBaseText() : "",
+    enabled: gitTraceEnabled,
+    traceVisible,
     refreshToken: gitBlameRefreshToken,
     workspaceApi,
   });

@@ -16,14 +16,16 @@ fn schema_versions_record_all_known_domains_idempotently() {
     let versions = load_workspace_index_schema_versions(&connection).unwrap();
 
     assert_eq!(versions.len(), WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT);
-    assert_eq!(versions.get("catalog"), Some(&1));
-    assert_eq!(versions.get("content"), Some(&1));
+    assert_eq!(versions.get("catalog"), Some(&2));
+    assert_eq!(versions.get("content"), Some(&4));
     assert_eq!(versions.get("entity"), Some(&1));
-    assert_eq!(versions.get("stub"), Some(&1));
+    assert_eq!(versions.get("symbol"), Some(&3));
+    assert_eq!(versions.get("stub"), Some(&2));
     assert_eq!(versions.get("dependency"), Some(&1));
     assert_eq!(versions.get("symbol_resolution"), Some(&1));
     assert_eq!(versions.get("reference"), Some(&1));
     assert_eq!(versions.get("discovery"), Some(&1));
+    assert_eq!(versions.get("semantic_layer"), Some(&1));
 }
 
 #[test]
@@ -97,7 +99,7 @@ fn schema_version_actions_report_missing_and_incompatible_domains() {
         .find(|action| action.domain == "sdk")
         .expect("sdk action should exist");
 
-    assert_eq!(catalog.expected_version, 1);
+    assert_eq!(catalog.expected_version, 2);
     assert_eq!(catalog.persisted_version, Some(0));
     assert_eq!(
         catalog.status,

@@ -7,7 +7,10 @@ use crate::services::workspace_index_task_status_service::{
 use crate::services::workspace_sdk_api_scan_plan_service::{
     plan_sdk_api_scan, sdk_api_scan_chunks,
 };
-use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbol_chunk;
+use crate::services::workspace_sdk_index_service::{
+    index_workspace_sdk_symbol_chunk, mark_workspace_sdk_artifact_ready,
+};
+use crate::services::workspace_sdk_shared_bridge_service::try_reuse_ready_shared_sdk_artifact;
 
 pub const WORKSPACE_SDK_API_INDEX_CHUNK_SIZE: usize = 128;
 
@@ -26,6 +29,23 @@ pub fn run_sdk_index_task(
         .unwrap_or_else(|| "unknown".to_string());
     if token.is_cancelled() {
         return Ok(superseded_task_result_from_task(task));
+    }
+    if task.changed_paths.is_empty() {
+        if let Some(symbol_count) =
+            try_reuse_ready_shared_sdk_artifact(&task.root_path, &sdk_path, &sdk_version)?
+        {
+            let mut result = sdk_task_result(
+                task,
+                sdk_path,
+                sdk_version,
+                symbol_count,
+                Vec::new(),
+                1,
+                started_at,
+            );
+            result.message = Some("Reused shared SDK artifact".to_string());
+            return Ok(result);
+        }
     }
 
     let files = sdk_task_files(task, &sdk_path)?;
@@ -55,6 +75,9 @@ pub fn run_sdk_index_task(
     )?;
     let total_chunks = chunks.len();
     let remaining_files = chunks.drain(1..).flatten().collect::<Vec<_>>();
+    if remaining_files.is_empty() {
+        mark_workspace_sdk_artifact_ready(&task.root_path)?;
+    }
     Ok(sdk_task_result(
         task,
         sdk_path,

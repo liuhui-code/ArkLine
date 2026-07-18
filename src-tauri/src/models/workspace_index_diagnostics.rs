@@ -61,6 +61,25 @@ pub struct WorkspaceIndexFreshnessLayerSummary {
     pub expected_version: i64,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexWriterMetrics {
+    pub sample_count: u64,
+    pub active_writer_count: usize,
+    pub queued_writer_count: usize,
+    pub failure_count: u64,
+    pub wait_p50_us: u64,
+    pub wait_p95_us: u64,
+    pub wait_p99_us: u64,
+    pub wait_max_us: u64,
+    pub hold_p50_us: u64,
+    pub hold_p95_us: u64,
+    pub hold_p99_us: u64,
+    pub hold_max_us: u64,
+    pub last_wait_us: u64,
+    pub last_hold_us: u64,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexDiagnostics {
@@ -85,6 +104,8 @@ pub struct WorkspaceIndexDiagnostics {
     pub discovery_excluded_count: i64,
     pub discovery_has_more: bool,
     pub db_size_bytes: u64,
+    #[serde(default)]
+    pub writer_metrics: WorkspaceIndexWriterMetrics,
     pub queue_pressure: WorkspaceIndexQueuePressure,
     pub active_sdk_path: Option<String>,
     pub active_sdk_version: Option<String>,
@@ -97,6 +118,41 @@ pub struct WorkspaceIndexDiagnostics {
     pub unresolved_imports: Vec<WorkspaceIndexUnresolvedImport>,
     pub recent_events: Vec<WorkspaceIndexEvent>,
     pub timeline: Vec<WorkspaceIndexTimelineItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub indexer_host: Option<WorkspaceIndexerHostSnapshot>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceIndexerHostSnapshot {
+    pub enabled: bool,
+    pub status: String,
+    pub process_id: Option<u32>,
+    #[serde(default)]
+    pub discovery_process_id: Option<u32>,
+    #[serde(default)]
+    pub content_process_id: Option<u32>,
+    #[serde(default)]
+    pub stub_process_id: Option<u32>,
+    #[serde(default)]
+    pub discovery_writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    #[serde(default)]
+    pub content_writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    #[serde(default)]
+    pub stub_writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    pub completed_discovery_chunks: u64,
+    pub completed_content_refresh_chunks: u64,
+    pub cancelled_content_refresh_chunks: u64,
+    pub completed_stub_refresh_chunks: u64,
+    pub cancelled_stub_refresh_chunks: u64,
+    pub fallback_count: u64,
+    #[serde(default)]
+    pub restart_count: u64,
+    #[serde(default)]
+    pub consecutive_failure_count: u32,
+    #[serde(default)]
+    pub backoff_remaining_ms: Option<u64>,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

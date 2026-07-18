@@ -52,6 +52,8 @@ describe("search run actions", () => {
       26,
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
+      3,
+      250,
     );
   });
 

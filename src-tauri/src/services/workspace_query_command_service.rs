@@ -21,8 +21,10 @@ use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_index_ui_activity_service::{
     WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
 };
+use crate::services::workspace_query_broker_service::{
+    WorkspaceQueryBrokerRuntime, CONTENT_QUERY_DEADLINE_MS, ENTITY_QUERY_DEADLINE_MS,
+};
 use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
-use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
 pub async fn query_workspace_candidates_facade_blocking(
@@ -56,6 +58,55 @@ pub async fn query_workspace_candidates_facade_blocking(
         )?;
         record_facade_query_event(&root_path, "searchEverywhere", &envelope)?;
         Ok(search_query_envelope(envelope))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub async fn query_workspace_candidates_brokered_blocking(
+    index_runtime: WorkspaceIndexRuntime,
+    query_broker: WorkspaceQueryBrokerRuntime,
+    root_path: String,
+    query: String,
+    scope: WorkspaceIndexQueryScope,
+    limit: usize,
+    cursor: Option<usize>,
+    context: WorkspaceSearchRankingContext,
+    generation: Option<u64>,
+    deadline_ms: Option<u64>,
+) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
+    let ticket = query_broker.begin(
+        &root_path,
+        "searchEverywhere",
+        generation,
+        deadline_ms.unwrap_or(ENTITY_QUERY_DEADLINE_MS),
+    )?;
+    spawn_blocking(move || {
+        ticket.check()?;
+        let result = if cursor.is_none() {
+            query_facade_search_everywhere_with_readiness_context(
+                &index_runtime,
+                &root_path,
+                &query,
+                scope,
+                limit,
+                &context,
+            )
+        } else {
+            let envelope = query_facade_search_everywhere_page_with_context(
+                &index_runtime,
+                &root_path,
+                &query,
+                scope,
+                limit,
+                cursor,
+                &context,
+            )?;
+            record_facade_query_event(&root_path, "searchEverywhere", &envelope)?;
+            Ok(search_query_envelope(envelope))
+        }?;
+        ticket.check()?;
+        Ok(result)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -120,7 +171,7 @@ pub async fn query_workspace_file_symbols_facade_blocking(
 pub async fn search_workspace_text_blocking(
     index_runtime: WorkspaceIndexRuntime,
     text_search_cancellation: WorkspaceTextSearchCancellationRuntime,
-    search_session: WorkspaceSearchSessionRuntime,
+    query_broker: WorkspaceQueryBrokerRuntime,
     ui_activity: WorkspaceIndexUiActivityRuntime,
     request: WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceTextSearchResult, String> {
@@ -132,22 +183,27 @@ pub async fn search_workspace_text_blocking(
     )?;
     if let Some(generation) = generation {
         text_search_cancellation.register_generation(&root_path, generation)?;
-        search_session.register_generation(&root_path, "text", generation)?;
     }
+    let ticket = query_broker.begin(&root_path, "text", generation, CONTENT_QUERY_DEADLINE_MS)?;
 
     spawn_blocking(move || {
-        query_facade_text_search_result_with_cancellation(&index_runtime, request, move || {
-            generation
-                .map(|value| {
-                    text_search_cancellation
-                        .is_generation_stale(&root_path, value)
+        let cancellation_ticket = ticket.clone();
+        let result = query_facade_text_search_result_with_cancellation(
+            &index_runtime,
+            request,
+            move || {
+                cancellation_ticket.should_cancel()
+                    || generation
+                        .map(|value| {
+                            text_search_cancellation
+                                .is_generation_stale(&root_path, value)
+                                .unwrap_or(false)
+                        })
                         .unwrap_or(false)
-                        || search_session
-                            .is_generation_stale(&root_path, "text", value)
-                            .unwrap_or(false)
-                })
-                .unwrap_or(false)
-        })
+            },
+        )?;
+        ticket.ensure_current()?;
+        Ok(result)
     })
     .await
     .map_err(|error| error.to_string())?

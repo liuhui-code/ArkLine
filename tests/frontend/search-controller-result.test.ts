@@ -25,6 +25,7 @@ describe("search controller result", () => {
         setSearchEverywhereSelectedIndex: vi.fn(),
         openSearchOverlay,
         handleOverlayQueryChange: vi.fn(),
+        handleOverlayQueryDraftChange: vi.fn(),
         resetSearchOverlayState: vi.fn(),
         moveSearchEverywhereSelection: vi.fn(),
         openSearchEverywhereResult: vi.fn(),

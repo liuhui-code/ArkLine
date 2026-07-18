@@ -2,10 +2,26 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { vi } from "vitest";
 import { ArkTsEditor } from "@/editor/ArkTsEditor";
-import { LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD } from "@/editor/editor-document-budget";
+import {
+  EDITOR_REDUCED_RENDER_LINE_THRESHOLD,
+  LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD,
+} from "@/editor/editor-document-budget";
 import { defaultSettings } from "@/features/settings/settings-store";
 
 describe("ArkTsEditor large document mode", () => {
+  it("uses the reduced editor extension set for line-dense files", () => {
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/line-dense.ets"
+        value={"const value = 1;\n".repeat(EDITOR_REDUCED_RENDER_LINE_THRESHOLD - 1)}
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector(".cm-foldGutter")).toBeNull();
+  });
+
   it("skips modifier-hover decorations for large files", () => {
     const onDefinitionHoverChange = vi.fn();
     const posAtCoords = vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(1);

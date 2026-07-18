@@ -3,19 +3,19 @@ import { collectCompletionCandidateResult } from "@/components/layout/completion
 import { createCompletionHistoryStore } from "@/components/layout/completion-history-store";
 import { buildCompletionInsertTarget, normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
-import { clampNumber, getCompletionPopupPosition } from "@/components/layout/app-shell-model";
+import { clampNumber } from "@/components/layout/app-shell-model";
 import { extractCompletionPrefix, getLineTextBeforeCursor } from "@/components/layout/app-shell-helpers";
 import { buildLanguageQuerySnapshot } from "@/components/layout/language-query-request-model";
 import { decideLanguageQuerySync, formatLanguageQuerySyncBlockedMessage } from "@/components/layout/language-query-policy-guard";
 import { languageQuerySnapshotStore } from "@/components/layout/language-query-snapshot-store";
 import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
+import { createCompletionAnchorStore } from "@/features/editor/completion-anchor-store";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
-import type { EditorCaretRect } from "@/editor/editor-events";
 
 const COMPLETION_TIMEOUT_MS = 2500;
 
@@ -60,7 +60,8 @@ export function useCompletionController({
   recordRecentQueryExplain,
   onStatusChange,
 }: UseCompletionControllerOptions) {
-  const [completionAnchor, setCompletionAnchor] = useState<EditorCaretRect | null>(null);
+  const completionAnchorStore = useMemo(() => createCompletionAnchorStore(), []);
+  const setCompletionAnchor = completionAnchorStore.setAnchor;
   const [completionItems, setCompletionItems] = useState<LanguageCompletionItem[]>([]);
   const [completionReplacePrefix, setCompletionReplacePrefix] = useState("");
   const [completionSelectedIndex, setCompletionSelectedIndex] = useState(0);
@@ -294,14 +295,14 @@ export function useCompletionController({
 
   const completionPresentationContext = useMemo(() => {
     const acceptedLabels = completionHistoryStore.acceptedLabels();
-    const activeContent = getActiveContent();
+    const activeContent = completionItems.length > 0 ? getActiveContent() : "";
     return {
       prefix: quickOpenQuery.trim() || completionReplacePrefix,
       lineTextBeforeCursor: getLineTextBeforeCursor(activeContent, editorSelection.line, editorSelection.column),
       trigger: completionTrigger,
       acceptedLabels,
     } as const;
-  }, [completionHistoryStore, completionHistoryVersion, completionReplacePrefix, completionTrigger, editorSelection.column, editorSelection.line, getActiveContent, quickOpenQuery]);
+  }, [completionHistoryStore, completionHistoryVersion, completionItems.length, completionReplacePrefix, completionTrigger, editorSelection.column, editorSelection.line, getActiveContent, quickOpenQuery]);
 
   const completionPresentationResults = rankCompletionItems(
     normalizeCompletionItems(completionItems, completionPresentationContext).filter((item) => {
@@ -318,7 +319,6 @@ export function useCompletionController({
   ] ?? null;
   const completionPopupVisible = activeOverlay === "completion"
     && (completionPresentationResults.length > 0 || completionTrigger === "manual" || completionStatus === "error");
-  const completionPopupPosition = getCompletionPopupPosition(completionAnchor);
 
   useEffect(() => {
     setCompletionSelectedIndex((current) => {
@@ -335,12 +335,6 @@ export function useCompletionController({
   useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
       if (activeOverlay !== "completion" || !isEditorFocused()) return;
-      if ((event.ctrlKey || event.metaKey) && event.code === "Space") {
-        event.preventDefault();
-        event.stopPropagation();
-        void openCompletionFromEditor();
-        return;
-      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -383,7 +377,7 @@ export function useCompletionController({
   }, [activeOverlay, completionPresentationResults.length, selectedCompletionPresentation]);
 
   return {
-    completionAnchor,
+    completionAnchorStore,
     setCompletionAnchor,
     completionSelectedIndex,
     setCompletionSelectedIndex,
@@ -392,7 +386,6 @@ export function useCompletionController({
     completionPresentationResults,
     selectedCompletionPresentation,
     completionPopupVisible,
-    completionPopupPosition,
     clearTypingCompletionTimer,
     clearCompletionSession,
     resetCompletion,

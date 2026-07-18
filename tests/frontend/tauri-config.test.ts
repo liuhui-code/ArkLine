@@ -2,6 +2,21 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 describe("tauri bundle icon config", () => {
+  it("bundles the standalone semantic worker as an external binary", () => {
+    const configPath = resolve(process.cwd(), "src-tauri/tauri.conf.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+      bundle?: { externalBin?: string[]; resources?: Record<string, string> };
+    };
+
+    expect(config.bundle?.externalBin).toEqual([
+      "binaries/arkline-semantic",
+      "binaries/arkline-indexer",
+    ]);
+    expect(config.bundle?.resources ?? {}).not.toHaveProperty(
+      "../semantic-worker/bundle/semantic-worker.cjs",
+    );
+  });
+
   it("declares the generated desktop icon assets explicitly", () => {
     const configPath = resolve(process.cwd(), "src-tauri/tauri.conf.json");
     const config = JSON.parse(readFileSync(configPath, "utf8")) as {

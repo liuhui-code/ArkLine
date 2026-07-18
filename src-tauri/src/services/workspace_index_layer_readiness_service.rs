@@ -3,9 +3,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::models::workspace_index_layer::{
     WorkspaceIndexLayerReadiness, WorkspaceIndexLayerReadinessReport, WorkspaceIndexLayerStatus,
 };
+use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_layer_readiness_store_service::{
-    count_distinct_paths, count_rows, normalize_layer_index_path as normalize_index_path,
+    count_rows, normalize_layer_index_path as normalize_index_path,
     open_layer_readiness_store as open_index_store, row_exists,
 };
 use crate::services::workspace_index_layer_reason_service::enrich_layer_reason;
@@ -14,6 +15,8 @@ use crate::services::workspace_index_layer_status_service::{
     status_from_text, status_with_failures,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_sdk_shared_bridge_service::count_shared_sdk_symbols;
+use crate::services::workspace_semantic_layer_readiness_service::semantic_layer_readiness;
 
 pub fn get_workspace_index_layer_readiness(
     root_path: &str,
@@ -62,6 +65,11 @@ pub fn get_workspace_index_layer_readiness(
         )?,
         sdk_layer(&connection, &root_key)?,
     ]);
+    layers.extend(semantic_layer_readiness(
+        &connection,
+        &root_key,
+        current_file_path,
+    )?);
 
     Ok(WorkspaceIndexLayerReadinessReport {
         root_path: root_key.clone(),
@@ -139,7 +147,7 @@ fn project_deep_layer(
     current_file_path: Option<&str>,
     file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
-    let content_count = count_distinct_paths(connection, "workspace_content_lines", root_key)?;
+    let content = load_content_layer_summary(connection, root_key)?;
     let reference_count = count_rows(connection, "workspace_symbol_references", root_key)?;
     let dependency_count = count_rows(connection, "workspace_dependency_edges", root_key)?;
     let current = file_readiness
@@ -147,10 +155,10 @@ fn project_deep_layer(
         .or_else(|| current_file_path.map(|_| WorkspaceIndexLayerStatus::Missing));
     Ok(layer_with_current(
         "projectDeep",
-        aggregate_count_status(&[content_count, reference_count, dependency_count]),
+        aggregate_count_status(&[content.ready_count, reference_count, dependency_count]),
         current,
-        content_count + reference_count + dependency_count,
-        0,
+        content.ready_count + reference_count + dependency_count,
+        content.failed_count,
         0,
         Some("wait"),
     ))
@@ -160,7 +168,7 @@ fn sdk_api_layer(
     connection: &Connection,
     root_key: &str,
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
-    let count = count_rows(connection, "workspace_sdk_symbols", root_key)?;
+    let count = sdk_symbol_count(connection, root_key)?;
     Ok(layer(
         "sdkApi",
         status_from_count(count),
@@ -262,13 +270,13 @@ fn content_layer(
     root_key: &str,
     file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
-    let count = count_distinct_paths(connection, "workspace_content_lines", root_key)?;
+    let summary = load_content_layer_summary(connection, root_key)?;
     Ok(layer_with_current(
         "content",
-        status_from_count(count),
+        status_with_failures(summary.ready_count, summary.failed_count),
         file_readiness.map(|readiness| status_from_text(&readiness.content_index)),
-        count,
-        0,
+        summary.ready_count,
+        summary.failed_count,
         0,
         None,
     ))
@@ -327,7 +335,7 @@ fn sdk_layer(
     connection: &Connection,
     root_key: &str,
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
-    let count = count_rows(connection, "workspace_sdk_symbols", root_key)?;
+    let count = sdk_symbol_count(connection, root_key)?;
     Ok(layer(
         "sdk",
         status_from_count(count),
@@ -336,6 +344,14 @@ fn sdk_layer(
         0,
         Some("configureSdk"),
     ))
+}
+
+fn sdk_symbol_count(connection: &Connection, root_key: &str) -> Result<i64, String> {
+    let root_path = root_key.replace('\\', "/");
+    if let Ok(Some(count)) = count_shared_sdk_symbols(&root_path) {
+        return Ok(count);
+    }
+    count_rows(connection, "workspace_sdk_symbols", root_key)
 }
 
 fn discovery_current_file_status(
