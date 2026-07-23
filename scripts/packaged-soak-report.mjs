@@ -10,12 +10,19 @@ import {
 } from "./packaged-soak-model.mjs";
 import { telemetryDurations } from "./packaged-soak-telemetry.mjs";
 
+const MEMORY_WARMUP_SAMPLE_COUNT = 4;
+
 export function buildPackagedSoakReport(input) {
-  const interactions = summarizeSamples(input.interactionSamples);
+  const automationDispatch = summarizeSamples(
+    input.automationDispatchSamples ?? input.interactionSamples ?? [],
+  );
   const searchReady = summarizeSamples(input.searchReadySamples);
   const jumps = summarizeSamples(input.jumpSamples);
-  const rssSamples = numericSamples(input.processSamples, "rssBytes");
-  const privateSamples = numericSamples(input.processSamples, "privateBytes");
+  const validProcessSamples = input.processSamples.filter(
+    (sample) => sample.processCount > 0,
+  );
+  const rssSamples = numericSamples(validProcessSamples, "rssBytes");
+  const privateSamples = numericSamples(validProcessSamples, "privateBytes");
   const usedHeapSamples = input.heapSamples
     .filter((sample) => sample.supported)
     .map((sample) => sample.usedBytes);
@@ -25,15 +32,19 @@ export function buildPackagedSoakReport(input) {
     .reverse()
     .find((item) => !item.error) ?? {};
   const eventTimings = summarizeSamples(telemetry.eventTimings);
+  const interactionTimings = summarizeSamples(telemetry.interactionTimings);
+  const steadyRssSamples = steadySamples(rssSamples);
+  const steadyPrivateSamples = steadySamples(privateSamples);
+  const steadyHeapSamples = steadySamples(usedHeapSamples);
   const verdictMetrics = {
-    interactionP95Ms: interactions.p95Ms,
-    interactionP99Ms: interactions.p99Ms,
+    rendererSearchP95Ms: searchReady.p95Ms,
+    rendererJumpP95Ms: jumps.p95Ms,
     crashCount: input.counters.crashCount,
     unresponsiveCount: input.counters.unresponsiveCount,
     pendingLoads: lastDiagnostics.queuePending ?? 0,
     staleApplyCount: input.counters.staleApplyCount,
-    rssGrowthBytes: growth(rssSamples),
-    privateGrowthBytes: growth(privateSamples),
+    rssGrowthBytes: growth(steadyRssSamples),
+    privateGrowthBytes: growth(steadyPrivateSamples),
     walGrowthBytes: fieldGrowth(
       firstDiagnostics,
       lastDiagnostics,
@@ -55,18 +66,20 @@ export function buildPackagedSoakReport(input) {
     longAnimationFrameSupported: Boolean(
       input.telemetry.capabilities?.longAnimationFrame,
     ),
-    eventTimingCount: input.telemetry.eventTimingCount ?? 0,
-    eventTimingP95Ms: eventTimings.p95Ms,
-    jsHeapGrowthBytes: growth(usedHeapSamples),
-    processTreeSampleCount: input.processSamples.filter(
-      (sample) => sample.processCount > 0,
-    ).length,
+    interactionTimingCount: interactionTimings.count,
+    interactionTimingP95Ms: interactionTimings.p95Ms,
+    jsHeapGrowthBytes: growth(steadyHeapSamples),
+    processTreeSampleCount: validProcessSamples.length,
+    steadyProcessSampleCount: Math.min(
+      steadyRssSamples.length,
+      steadyPrivateSamples.length,
+    ),
   };
   const verdict = input.options.mode === "smoke"
     ? evaluateSmokeReport(verdictMetrics)
     : evaluateSoakReport(verdictMetrics);
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     mode: input.options.mode ?? "soak",
     platform: platformEvidence(),
     ci: ciEvidence(),
@@ -76,16 +89,25 @@ export function buildPackagedSoakReport(input) {
     finishedAt: Date.now(),
     durationMs: Date.now() - input.startedAt,
     counters: input.counters,
-    interactions,
+    automationDispatch,
     searchReady,
     jumps,
-    telemetry: telemetryEvidence(input.telemetry, telemetry, eventTimings),
+    telemetry: telemetryEvidence(
+      input.telemetry,
+      telemetry,
+      eventTimings,
+      interactionTimings,
+    ),
     diagnostics: input.diagnostics,
     processSamples: input.processSamples,
     heapSamples: input.heapSamples,
     searchEvidence: input.searchEvidence ?? [],
     summary: {
       ...verdictMetrics,
+      coldRssGrowthBytes: growth(rssSamples),
+      coldPrivateGrowthBytes: growth(privateSamples),
+      coldJsHeapGrowthBytes: growth(usedHeapSamples),
+      memoryWarmupSampleCount: MEMORY_WARMUP_SAMPLE_COUNT,
       maxRssBytes: maximum(rssSamples),
       maxPrivateBytes: maximum(privateSamples),
       maxProcessCount: maximum(numericSamples(input.processSamples, "processCount")),
@@ -98,7 +120,7 @@ export function buildPackagedSoakReport(input) {
 
 export function buildPackagedSoakFailureReport(input) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     mode: input.options.mode ?? "soak",
     platform: platformEvidence(),
     ci: ciEvidence(),
@@ -139,11 +161,17 @@ export async function inspectFixture(fixturePath) {
   }
 }
 
-function telemetryEvidence(snapshot, durations, eventTimings) {
+function telemetryEvidence(
+  snapshot,
+  durations,
+  eventTimings,
+  interactionTimings,
+) {
   return {
     errors: snapshot.errors,
     capabilities: snapshot.capabilities,
     eventTimingSummary: eventTimings,
+    interactionTimingSummary: interactionTimings,
     frameGapSummary: summarizeSamples(snapshot.frameGaps),
     longAnimationFrameSummary: summarizeSamples(durations.longAnimationFrames),
     longAnimationFrameBlockingSummary: summarizeSamples(
@@ -188,6 +216,10 @@ function fieldGrowth(first, last, key) {
 function growth(samples) {
   if (samples.length < 2) return 0;
   return Math.max(0, samples.at(-1) - samples[0]);
+}
+
+function steadySamples(samples) {
+  return samples.slice(MEMORY_WARMUP_SAMPLE_COUNT);
 }
 
 function maximum(samples) {

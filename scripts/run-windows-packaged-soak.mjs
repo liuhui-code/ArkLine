@@ -15,7 +15,7 @@ import {
 import {
   DIAGNOSTICS_SCRIPT,
   HEAP_SNAPSHOT_SCRIPT,
-  RENDERER_NOW_SCRIPT,
+  INTERACTION_START_SCRIPT,
   STABLE_FRAME_SCRIPT,
   TELEMETRY_INSTALL_SCRIPT,
   TELEMETRY_SNAPSHOT_SCRIPT,
@@ -107,7 +107,7 @@ async function runSoak(driver, options) {
   const telemetryCapabilities = await driver.execute(TELEMETRY_INSTALL_SCRIPT);
   const startedAt = Date.now();
   const deadline = startedAt + options.durationMs;
-  const interactionSamples = [];
+  const automationDispatchSamples = [];
   const searchReadySamples = [];
   const jumpSamples = [];
   const diagnostics = [];
@@ -140,7 +140,7 @@ async function runSoak(driver, options) {
       await exerciseFindInFiles(
         driver,
         counters.cycles,
-        interactionSamples,
+        automationDispatchSamples,
         searchReadySamples,
         searchEvidence,
       );
@@ -179,7 +179,7 @@ async function runSoak(driver, options) {
     options,
     startedAt,
     counters,
-    interactionSamples,
+    automationDispatchSamples,
     searchReadySamples,
     jumpSamples,
     diagnostics,
@@ -193,11 +193,10 @@ async function runSoak(driver, options) {
 async function exerciseFindInFiles(
   driver,
   cycle,
-  interactionSamples,
+  automationDispatchSamples,
   readySamples,
   searchEvidence,
 ) {
-  const openedAt = await driver.execute(RENDERER_NOW_SCRIPT);
   await driver.keyChord([
     WEBDRIVER_KEYS.control,
     WEBDRIVER_KEYS.shift,
@@ -205,9 +204,11 @@ async function exerciseFindInFiles(
   ]);
   const input = await driver.waitForSelector('[aria-label="Find in Files Query"]');
   const query = `arklineSearchNeedle${cycle % 1000}`;
-  for (const character of query) {
-    interactionSamples.push(await timed(() => driver.sendKeys(input, character)));
-  }
+  automationDispatchSamples.push(await timed(() => driver.sendKeys(input, query)));
+  const searchStarted = await rendererInteractionStart(
+    driver,
+    "input:Find in Files Query",
+  );
   await captureSearchEvidence(
     driver,
     "find-typed",
@@ -217,7 +218,7 @@ async function exerciseFindInFiles(
   );
   const resultSelector = '[aria-label="Find in Files Results"] button';
   if (await waitForOptionalSelector(driver, resultSelector, 5_000)) {
-    readySamples.push(await stableRendererDuration(driver, openedAt));
+    readySamples.push(await stableRendererDuration(driver, searchStarted));
     await captureSearchEvidence(
       driver,
       "find-ready",
@@ -235,18 +236,15 @@ async function exerciseFindInFiles(
       searchEvidence,
     );
   }
-  for (let index = 0; index < 6; index += 1) {
-    interactionSamples.push(
-      await timed(() => driver.sendToActive(WEBDRIVER_KEYS.backspace)),
-    );
-  }
+  automationDispatchSamples.push(await timed(
+    () => driver.sendToActive(WEBDRIVER_KEYS.backspace.repeat(6)),
+  ));
   await driver.keyChord([WEBDRIVER_KEYS.escape]);
 }
 
 async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvidence) {
   const pageIndex = (cycle * 97) % 1000;
   const pageName = `Page${String(pageIndex).padStart(6, "0")}`;
-  const started = await driver.execute(RENDERER_NOW_SCRIPT);
   await driver.keyChord([WEBDRIVER_KEYS.control, "p"]);
   const input = await driver.waitForSelector('[aria-label="Quick Open Query"]');
   await driver.sendKeys(input, pageName);
@@ -278,6 +276,10 @@ async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvi
     searchEvidence,
   );
   await driver.keyChord([WEBDRIVER_KEYS.enter]);
+  const started = await rendererInteractionStart(
+    driver,
+    "enter:Quick Open Query",
+  );
   let activeTab;
   try {
     activeTab = await waitForActiveTab(driver, pageName, 10_000);
@@ -437,6 +439,14 @@ async function inspectHeap(driver) {
 async function stableRendererDuration(driver, startedAt) {
   const finishedAt = await driver.executeAsync(STABLE_FRAME_SCRIPT);
   return Math.max(0, finishedAt - startedAt);
+}
+
+async function rendererInteractionStart(driver, key) {
+  const startedAt = await driver.execute(INTERACTION_START_SCRIPT, [key]);
+  if (!Number.isFinite(startedAt)) {
+    throw new Error(`Renderer interaction start was not captured: ${key}`);
+  }
+  return startedAt;
 }
 
 async function timed(operation) {

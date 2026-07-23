@@ -13,7 +13,7 @@ export const TELEMETRY_INSTALL_SCRIPT = `
       errors: [], eventTimings: [], frameGaps: [], longAnimationFrames: [],
       longTasks: [], frames: 0, errorCount: 0,
       eventTimingCount: 0, frameGapCount: 0, longAnimationFrameCount: 0,
-      longTaskCount: 0
+      longTaskCount: 0, interactionStarts: {}
     };
     const retain = (items, value, limit = ${SAMPLE_LIMIT}) => {
       if (items.length < limit) items.push(value);
@@ -71,6 +71,16 @@ export const TELEMETRY_INSTALL_SCRIPT = `
     };
     addEventListener("error", (event) => recordError(event.error || event.message));
     addEventListener("unhandledrejection", (event) => recordError(event.reason));
+    addEventListener("beforeinput", (event) => {
+      const label = event.target?.getAttribute?.("aria-label");
+      if (label) state.interactionStarts["input:" + label] = performance.now();
+    }, true);
+    addEventListener("keydown", (event) => {
+      const label = event.target?.getAttribute?.("aria-label");
+      if (label && event.key === "Enter") {
+        state.interactionStarts["enter:" + label] = performance.now();
+      }
+    }, true);
     window.__arklinePackagedSoak = state;
   }
   return window.__arklinePackagedSoak.capabilities;
@@ -108,7 +118,10 @@ export const HEAP_SNAPSHOT_SCRIPT = `
   };
 `;
 
-export const RENDERER_NOW_SCRIPT = "return performance.now();";
+export const INTERACTION_START_SCRIPT = `
+  const state = window.__arklinePackagedSoak || {};
+  return state.interactionStarts?.[arguments[0]] ?? null;
+`;
 
 export const STABLE_FRAME_SCRIPT = `
   const done = arguments[arguments.length - 1];
@@ -128,9 +141,22 @@ export const DIAGNOSTICS_SCRIPT = `
 export function telemetryDurations(snapshot) {
   return {
     eventTimings: (snapshot.eventTimings ?? []).map((entry) => entry.duration),
+    interactionTimings: interactionTimingDurations(snapshot.eventTimings ?? []),
     longAnimationFrames: (snapshot.longAnimationFrames ?? [])
       .map((entry) => entry.duration),
     longAnimationFrameBlocking: (snapshot.longAnimationFrames ?? [])
       .map((entry) => entry.blockingDuration),
   };
+}
+
+export function interactionTimingDurations(entries) {
+  const interactions = new Map();
+  for (const entry of entries) {
+    if (!(entry.interactionId > 0) || !Number.isFinite(entry.duration)) continue;
+    interactions.set(
+      entry.interactionId,
+      Math.max(interactions.get(entry.interactionId) ?? 0, entry.duration),
+    );
+  }
+  return [...interactions.values()];
 }

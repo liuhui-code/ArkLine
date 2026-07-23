@@ -1,13 +1,14 @@
 import path from "node:path";
 
 export const PACKAGED_SOAK_LIMITS = Object.freeze({
-  interactionP95Ms: 100,
-  interactionP99Ms: 250,
-  eventTimingP95Ms: 100,
+  rendererSearchP95Ms: 300,
+  rendererJumpP95Ms: 300,
+  interactionTimingP95Ms: 100,
   rssGrowthBytes: 512 * 1024 * 1024,
   privateGrowthBytes: 512 * 1024 * 1024,
   jsHeapGrowthBytes: 256 * 1024 * 1024,
   walGrowthBytes: 128 * 1024 * 1024,
+  minimumSteadyMemorySamples: 5,
 });
 
 export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
@@ -56,18 +57,21 @@ export function evaluateSoakReport(metrics, limits = PACKAGED_SOAK_LIMITS) {
   if (metrics.pendingLoads > 0) failures.push("pending-document-loads");
   if (metrics.staleApplyCount > 0) failures.push("stale-result-applied");
   if (metrics.workerRestartGrowth > 0) failures.push("worker-restart");
-  if (metrics.interactionP95Ms > limits.interactionP95Ms) {
-    failures.push("interaction-p95");
+  if (metrics.rendererSearchP95Ms > limits.rendererSearchP95Ms) {
+    failures.push("renderer-search-p95");
   }
-  if (metrics.interactionP99Ms > limits.interactionP99Ms) {
-    failures.push("interaction-p99");
+  if (metrics.rendererJumpP95Ms > limits.rendererJumpP95Ms) {
+    failures.push("renderer-jump-p95");
   }
   if (!metrics.eventTimingSupported) failures.push("missing-event-timing");
   if (!metrics.longAnimationFrameSupported) {
     failures.push("missing-long-animation-frame");
   }
-  if (metrics.eventTimingP95Ms > limits.eventTimingP95Ms) {
-    failures.push("event-timing-p95");
+  if (!(metrics.interactionTimingCount > 0)) {
+    failures.push("no-interaction-timing-evidence");
+  }
+  if (metrics.interactionTimingP95Ms > limits.interactionTimingP95Ms) {
+    failures.push("interaction-timing-p95");
   }
   if (metrics.rssGrowthBytes > limits.rssGrowthBytes) failures.push("rss-growth");
   if (metrics.privateGrowthBytes > limits.privateGrowthBytes) {
@@ -84,6 +88,9 @@ export function evaluateSoakReport(metrics, limits = PACKAGED_SOAK_LIMITS) {
   if (metrics.successfulJumpCount === 0) failures.push("no-navigation");
   if (metrics.processTreeSampleCount === 0) {
     failures.push("no-process-tree-evidence");
+  }
+  if (!(metrics.steadyProcessSampleCount >= limits.minimumSteadyMemorySamples)) {
+    failures.push("insufficient-steady-memory-evidence");
   }
   return { passed: failures.length === 0, failures, limits };
 }

@@ -90,7 +90,7 @@ describe("packaged Windows soak foundation", () => {
     ])).toThrow("mode");
   });
 
-  it("uses p95/p99 evidence and blocks crashes, pending work, and growth", () => {
+  it("gates renderer evidence while keeping automation transport diagnostic", () => {
     expect(summarizeSamples([1, 2, 3, 4, 100])).toEqual({
       count: 5,
       p50Ms: 3,
@@ -99,105 +99,50 @@ describe("packaged Windows soak foundation", () => {
       maxMs: 100,
     });
 
-    const result = evaluateSoakReport({
-      interactionP95Ms: 42,
-      interactionP99Ms: 80,
-      crashCount: 0,
-      unresponsiveCount: 0,
-      pendingLoads: 0,
-      staleApplyCount: 0,
-      rssGrowthBytes: 8 * 1024 * 1024,
-      privateGrowthBytes: 8 * 1024 * 1024,
-      walGrowthBytes: 2 * 1024 * 1024,
-      sharedSdkWalGrowthBytes: 0,
-      workerRestartGrowth: 0,
-      successfulSearchCount: 4,
-      successfulJumpCount: 4,
-      eventTimingSupported: true,
-      longAnimationFrameSupported: true,
-      eventTimingCount: 20,
-      eventTimingP95Ms: 40,
-      jsHeapGrowthBytes: 4 * 1024 * 1024,
-      processTreeSampleCount: 2,
-    });
+    const result = evaluateSoakReport(passingSoakMetrics());
     expect(result.passed).toBe(true);
 
-    expect(evaluateSoakReport({
-      interactionP95Ms: 42,
-      interactionP99Ms: 80,
+    expect(evaluateSoakReport(passingSoakMetrics({
       crashCount: 1,
-      unresponsiveCount: 0,
-      pendingLoads: 0,
-      staleApplyCount: 0,
-      rssGrowthBytes: 8 * 1024 * 1024,
-      privateGrowthBytes: 8 * 1024 * 1024,
-      walGrowthBytes: 2 * 1024 * 1024,
-      sharedSdkWalGrowthBytes: 0,
-      workerRestartGrowth: 0,
-      successfulSearchCount: 4,
-      successfulJumpCount: 4,
-      eventTimingSupported: true,
-      longAnimationFrameSupported: true,
-      eventTimingCount: 20,
-      eventTimingP95Ms: 40,
-      jsHeapGrowthBytes: 4 * 1024 * 1024,
-      processTreeSampleCount: 2,
-    })).toMatchObject({
+    }))).toMatchObject({
       passed: false,
       failures: expect.arrayContaining(["app-or-editor-crash"]),
     });
 
-    expect(evaluateSoakReport({
-      interactionP95Ms: 1,
-      interactionP99Ms: 2,
-      crashCount: 0,
-      unresponsiveCount: 0,
-      pendingLoads: 0,
-      staleApplyCount: 0,
-      rssGrowthBytes: 0,
-      privateGrowthBytes: 0,
-      walGrowthBytes: 0,
-      sharedSdkWalGrowthBytes: 0,
-      workerRestartGrowth: 0,
+    expect(evaluateSoakReport(passingSoakMetrics({
       successfulSearchCount: 0,
       successfulJumpCount: 0,
-      eventTimingSupported: true,
-      longAnimationFrameSupported: true,
-      eventTimingCount: 20,
-      eventTimingP95Ms: 20,
-      jsHeapGrowthBytes: 0,
-      processTreeSampleCount: 2,
-    })).toMatchObject({
+    }))).toMatchObject({
       passed: false,
       failures: expect.arrayContaining(["no-search-result", "no-navigation"]),
     });
 
-    expect(evaluateSoakReport({
-      interactionP95Ms: 1,
-      interactionP99Ms: 2,
-      crashCount: 0,
-      unresponsiveCount: 0,
-      pendingLoads: 0,
-      staleApplyCount: 0,
-      rssGrowthBytes: 0,
-      privateGrowthBytes: 0,
-      walGrowthBytes: 0,
-      sharedSdkWalGrowthBytes: 0,
-      workerRestartGrowth: 0,
-      successfulSearchCount: 1,
-      successfulJumpCount: 1,
+    expect(evaluateSoakReport(passingSoakMetrics({
       eventTimingSupported: false,
       longAnimationFrameSupported: false,
-      eventTimingCount: 0,
-      eventTimingP95Ms: 0,
-      jsHeapGrowthBytes: 0,
+      interactionTimingCount: 0,
       processTreeSampleCount: 0,
-    })).toMatchObject({
+      steadyProcessSampleCount: 0,
+    }))).toMatchObject({
       passed: false,
       failures: expect.arrayContaining([
         "missing-event-timing",
         "missing-long-animation-frame",
+        "no-interaction-timing-evidence",
         "no-process-tree-evidence",
+        "insufficient-steady-memory-evidence",
+      ]),
+    });
+
+    expect(evaluateSoakReport(passingSoakMetrics({
+      rendererSearchP95Ms: 301,
+      rendererJumpP95Ms: 301,
+      interactionTimingP95Ms: 101,
+    }))).toMatchObject({
+      failures: expect.arrayContaining([
+        "renderer-search-p95",
+        "renderer-jump-p95",
+        "interaction-timing-p95",
       ]),
     });
   });
@@ -208,14 +153,22 @@ describe("packaged Windows soak foundation", () => {
       'supported.has("long-animation-frame")',
     );
     expect(TELEMETRY_INSTALL_SCRIPT).toContain("items.length < limit");
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain('addEventListener("beforeinput"');
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain('event.key === "Enter"');
     expect(telemetryDurations({
-      eventTimings: [{ duration: 18 }, { duration: 42 }],
+      eventTimings: [
+        { duration: 18, interactionId: 0 },
+        { duration: 42, interactionId: 7 },
+        { duration: 30, interactionId: 7 },
+        { duration: 24, interactionId: 8 },
+      ],
       longAnimationFrames: [
         { duration: 80, blockingDuration: 12 },
         { duration: 120, blockingDuration: 40 },
       ],
     })).toEqual({
-      eventTimings: [18, 42],
+      eventTimings: [18, 42, 30, 24],
+      interactionTimings: [42, 24],
       longAnimationFrames: [80, 120],
       longAnimationFrameBlocking: [12, 40],
     });
@@ -325,7 +278,7 @@ describe("packaged Windows soak foundation", () => {
     });
 
     expect(report).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: "smoke",
       durationMs: 100,
       fatalError: {
@@ -380,7 +333,7 @@ describe("packaged Windows soak foundation", () => {
         unresponsiveCount: 0,
         staleApplyCount: 0,
       },
-      interactionSamples: [10, 20],
+      automationDispatchSamples: [5_000],
       searchReadySamples: [80],
       jumpSamples: [90],
       diagnostics: [
@@ -392,18 +345,21 @@ describe("packaged Windows soak foundation", () => {
           queuePending: 0,
         },
       ],
-      processSamples: [
-        { processCount: 4, rssBytes: 100, privateBytes: 80, handleCount: 10, threadCount: 5 },
-        { processCount: 4, rssBytes: 140, privateBytes: 100, handleCount: 12, threadCount: 6 },
-      ],
-      heapSamples: [
-        { supported: true, usedBytes: 40 },
-        { supported: true, usedBytes: 60 },
-      ],
+      processSamples: Array.from({ length: 9 }, (_, index) => ({
+        processCount: 4,
+        rssBytes: 100 + index * 10,
+        privateBytes: 80 + index * 5,
+        handleCount: 10 + index,
+        threadCount: 5,
+      })),
+      heapSamples: Array.from({ length: 9 }, (_, index) => ({
+        supported: true,
+        usedBytes: 40 + index * 5,
+      })),
       telemetry: {
         capabilities: { eventTiming: true, longAnimationFrame: true },
         errors: [],
-        eventTimings: [{ duration: 20 }],
+        eventTimings: [{ duration: 20, interactionId: 1 }],
         frameGaps: [],
         longAnimationFrames: [],
         longTasks: [],
@@ -412,13 +368,16 @@ describe("packaged Windows soak foundation", () => {
       },
     });
 
-    expect(report.schemaVersion).toBe(2);
+    expect(report.schemaVersion).toBe(3);
+    expect(report.automationDispatch).toMatchObject({ p95Ms: 5_000 });
     expect(report.searchReady).toMatchObject({ count: 1, p95Ms: 80 });
     expect(report.summary).toMatchObject({
       maxProcessCount: 4,
       rssGrowthBytes: 40,
       privateGrowthBytes: 20,
       jsHeapGrowthBytes: 20,
+      coldRssGrowthBytes: 80,
+      steadyProcessSampleCount: 5,
     });
     expect(report.verdict.passed).toBe(true);
   });
@@ -438,3 +397,29 @@ describe("packaged Windows soak foundation", () => {
     expect(workflow).toContain("arkline-packaged-soak-evidence");
   });
 });
+
+function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
+  return {
+    rendererSearchP95Ms: 42,
+    rendererJumpP95Ms: 80,
+    crashCount: 0,
+    unresponsiveCount: 0,
+    pendingLoads: 0,
+    staleApplyCount: 0,
+    rssGrowthBytes: 8 * 1024 * 1024,
+    privateGrowthBytes: 8 * 1024 * 1024,
+    walGrowthBytes: 2 * 1024 * 1024,
+    sharedSdkWalGrowthBytes: 0,
+    workerRestartGrowth: 0,
+    successfulSearchCount: 4,
+    successfulJumpCount: 4,
+    eventTimingSupported: true,
+    longAnimationFrameSupported: true,
+    interactionTimingCount: 20,
+    interactionTimingP95Ms: 40,
+    jsHeapGrowthBytes: 4 * 1024 * 1024,
+    processTreeSampleCount: 9,
+    steadyProcessSampleCount: 5,
+    ...overrides,
+  };
+}
