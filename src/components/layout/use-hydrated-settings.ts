@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { MutableRefObject } from "react";
 import type { AppSettings } from "@/features/settings/settings-store";
 import type { createSettingsStore } from "@/features/settings/settings-store";
@@ -17,6 +17,9 @@ export function useHydratedSettings({
   settingsRef,
   onHydrated,
 }: UseHydratedSettingsArgs) {
+  const onHydratedRef = useRef(onHydrated);
+  onHydratedRef.current = onHydrated;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -44,17 +47,17 @@ export function useHydratedSettings({
         JSON.stringify(current.workspaceSessions) === JSON.stringify(settings.workspaceSessions);
 
       if (unchanged) {
-        onHydrated(settings);
+        onHydratedRef.current(settings);
         return;
       }
 
       settingsRef.current.replace(settings);
-      onHydrated(settings);
+      onHydratedRef.current(settings);
     }
 
     void hydrateSettings();
     return () => {
       cancelled = true;
     };
-  }, [onHydrated, settingsRef, workspaceApi]);
+  }, [settingsRef, workspaceApi]);
 }
