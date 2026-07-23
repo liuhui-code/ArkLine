@@ -194,6 +194,7 @@ function telemetryEvidence(
       .sort((left, right) => right.totalDuration - left.totalDuration)
       .slice(0, 20),
     renderPressure: snapshot.renderPressure ?? null,
+    ipcLatencySamples: snapshot.ipcLatencySamples ?? [],
   };
 }
 

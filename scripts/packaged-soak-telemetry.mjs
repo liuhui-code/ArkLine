@@ -114,7 +114,8 @@ export const TELEMETRY_SNAPSHOT_SCRIPT = `
     longAnimationFrameCount: state.longAnimationFrameCount || 0,
     longTaskCount: state.longTaskCount || 0,
     scriptAttributions: Object.values(state.scriptAttributions || {}),
-    renderPressure: window.__arklineRenderPressure || null
+    renderPressure: window.__arklineRenderPressure || null,
+    ipcLatencySamples: window.__arklineIpcLatencySamples || []
   };
 `;
 
