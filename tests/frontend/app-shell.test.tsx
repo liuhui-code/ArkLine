@@ -2008,13 +2008,14 @@ describe("App shell", () => {
     const queryWorkspaceQuickOpen = vi.fn(async () => [{
       id: `file:${filePath}`,
       source: "file" as const,
-      kind: "file",
+      kind: "file" as const,
       title: "Page000000.ets",
       subtitle: filePath,
       path: filePath,
       line: 1,
       column: 1,
       score: 100,
+      freshness: "ready" as const,
     }]);
 
     render(
