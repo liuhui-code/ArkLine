@@ -411,6 +411,9 @@ describe("packaged Windows soak foundation", () => {
     expect(workflow).toContain('default: "30"');
     expect(workflow).toContain("pnpm perf:packaged:windows");
     expect(workflow).toContain("--mode=smoke");
+    expect(workflow).toContain("Test-Path -LiteralPath $driverPath");
+    expect(workflow).toContain("ARKLINE_EDGEDRIVER=$driverPath");
+    expect(workflow).toContain('--driver="$env:ARKLINE_EDGEDRIVER"');
     expect(workflow).toContain("packaged-smoke-report.json");
     expect(workflow).toContain("arkline-packaged-soak-evidence");
   });

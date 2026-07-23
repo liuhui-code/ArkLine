@@ -65,7 +65,11 @@ jobs:
         run: |
           cargo install --git https://github.com/chippers/msedgedriver-tool
           & "$HOME/.cargo/bin/msedgedriver-tool.exe"
-          $PWD.Path >> $env:GITHUB_PATH
+          $driverPath = Join-Path $PWD.Path "msedgedriver.exe"
+          if (-not (Test-Path -LiteralPath $driverPath)) {
+            throw "Edge driver was not installed at $driverPath"
+          }
+          "ARKLINE_EDGEDRIVER=$driverPath" >> $env:GITHUB_ENV
 
       - name: Build release portable application
         run: pnpm package:windows:portable
@@ -85,6 +89,7 @@ jobs:
           pnpm perf:packaged:windows -- `
             --mode=smoke `
             --application=dist/ArkLine-windows-x64/ArkLine.exe `
+            --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/packaged-smoke-fixture `
             --report=artifacts/packaged-smoke-report.json
 
@@ -103,6 +108,7 @@ jobs:
           pnpm perf:packaged:windows -- `
             --mode=soak `
             --application=dist/ArkLine-windows-x64/ArkLine.exe `
+            --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/packaged-soak-fixture `
             --duration-minutes=${{ inputs.duration_minutes }} `
             --report=artifacts/packaged-soak-report.json
