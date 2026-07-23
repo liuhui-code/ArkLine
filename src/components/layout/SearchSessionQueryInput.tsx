@@ -19,19 +19,20 @@ export function SearchSessionQueryInput({
   onDraftChange,
   onCommit,
 }: SearchSessionQueryInputProps) {
-  const { draftQuery, setDraftQuery } = useSearchSessionInput(query, mode, onCommit);
+  const { inputRef, updateDraftQuery } = useSearchSessionInput(query, mode, onCommit);
 
   return (
     <input
+      ref={inputRef}
       aria-label={label}
       autoFocus
       className="panel-input"
       {...englishQueryInputProps}
-      value={draftQuery}
+      defaultValue={query}
       placeholder={placeholder}
       onChange={(event) => {
         const nextQuery = event.target.value;
-        setDraftQuery(nextQuery);
+        updateDraftQuery(nextQuery);
         onDraftChange(nextQuery);
       }}
       onKeyDown={(event) => {

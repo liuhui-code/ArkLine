@@ -13,11 +13,11 @@ describe("useSearchSessionInput", () => {
     const { result } = renderHook(() => useSearchSessionInput("", "find", onCommit));
 
     act(() => {
-      result.current.setDraftQuery("a");
+      result.current.updateDraftQuery("a");
       vi.advanceTimersByTime(120);
-      result.current.setDraftQuery("ar");
+      result.current.updateDraftQuery("ar");
       vi.advanceTimersByTime(120);
-      result.current.setDraftQuery("ark");
+      result.current.updateDraftQuery("ark");
     });
     act(() => {
       vi.advanceTimersByTime(249);

@@ -26,7 +26,7 @@ describe("SearchSessionQueryInput", () => {
     expect(input).toHaveValue("entryAbility");
     expect(onDraftChange).toHaveBeenCalledTimes(7);
     expect(onCommit).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(39));
+    act(() => vi.advanceTimersByTime(119));
     expect(onCommit).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(onCommit).toHaveBeenCalledTimes(1);
@@ -51,7 +51,7 @@ describe("SearchSessionQueryInput", () => {
     fireEvent.change(screen.getByLabelText("Content Search Query"), {
       target: { value: "Entry" },
     });
-    act(() => vi.advanceTimersByTime(99));
+    act(() => vi.advanceTimersByTime(249));
     expect(onCommit).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(onCommit).toHaveBeenCalledWith("Entry");
