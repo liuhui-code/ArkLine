@@ -196,7 +196,7 @@ fn reports_partial_discovery_layer() {
         WorkspaceIndexLayerStatus::Partial
     );
     assert_eq!(discovery.indexed_count, 12);
-    assert_eq!(discovery.failed_count, 3);
+    assert_eq!(discovery.failed_count, 0);
     assert_eq!(discovery.recommended_action.as_deref(), Some("wait"));
 
     fs::remove_dir_all(root).unwrap();

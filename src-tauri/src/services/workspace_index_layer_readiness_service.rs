@@ -193,21 +193,20 @@ fn discovery_layer(
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
     let row = connection
         .query_row(
-            "select status, discovered_count, excluded_count, cursor_json
+            "select status, discovered_count, cursor_json
              from workspace_discovery_state where root_path = ?1 limit 1",
             params![root_key],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(2)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
-    let Some((status, discovered, excluded, cursor_json)) = row else {
+    let Some((status, discovered, cursor_json)) = row else {
         return Ok(layer(
             "discovery",
             WorkspaceIndexLayerStatus::Missing,
@@ -235,7 +234,7 @@ fn discovery_layer(
             current_file_path,
         )?,
         indexed_count: discovered,
-        failed_count: excluded,
+        failed_count: 0,
         stale_count: 0,
         reason: has_more.then(|| "Discovery has a pending cursor".to_string()),
         recommended_action: (has_more || status == "partial").then(|| "wait".to_string()),
