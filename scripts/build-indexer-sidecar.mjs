@@ -4,6 +4,19 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REQUIRED_INDEXER_CAPABILITIES = Object.freeze([
+  "health",
+  "discoveryChunk",
+  "discoveryPrepareChunk",
+  "contentRefreshChunk",
+  "contentPrepareChunk",
+  "contentResourceBudget",
+  "stubRefreshChunk",
+  "stubPrepareChunk",
+  "writerActorPublication",
+  "writerTelemetry",
+  "publicationStageTelemetry",
+]);
 
 export function indexerSidecarOutput(targetTriple, root = projectRoot) {
   const extension = targetTriple.includes("windows") ? ".exe" : "";
@@ -89,17 +102,20 @@ export function smokeIndexerSidecar(outputPath) {
     throw new Error(result.error?.message || result.stderr.trim() || "Indexer sidecar failed health check");
   }
   const response = JSON.parse(result.stdout.split(/\r?\n/, 1)[0] || "null");
-  const capabilities = response?.payload?.capabilities ?? [];
-  if (
-    response?.id !== "indexer-health"
-    || !response.ok
-    || response.payload?.protocolVersion !== 4
-    || !capabilities.includes("contentRefreshChunk")
-    || !capabilities.includes("contentResourceBudget")
-    || !capabilities.includes("stubRefreshChunk")
-  ) {
+  if (!validateIndexerHealth(response)) {
     throw new Error(`Unexpected indexer sidecar response: ${result.stdout.trim()}`);
   }
+}
+
+export function validateIndexerHealth(response) {
+  const capabilities = response?.payload?.capabilities;
+  return response?.id === "indexer-health"
+    && response.ok === true
+    && response.payload?.status === "ready"
+    && Number.isInteger(response.payload?.protocolVersion)
+    && response.payload.protocolVersion > 0
+    && Array.isArray(capabilities)
+    && REQUIRED_INDEXER_CAPABILITIES.every((item) => capabilities.includes(item));
 }
 
 function readOption(argv, name) {

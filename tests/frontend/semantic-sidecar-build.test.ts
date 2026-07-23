@@ -12,6 +12,7 @@ import {
   buildIndexerCommand,
   indexerBuildArtifact,
   indexerSidecarOutput,
+  validateIndexerHealth,
 } from "../../scripts/build-indexer-sidecar.mjs";
 
 describe("semantic sidecar build targets", () => {
@@ -46,5 +47,42 @@ describe("indexer sidecar build targets", () => {
     expect(buildIndexerCommand("x86_64-pc-windows-msvc", "cargo-xwin").args.slice(0, 2))
       .toEqual(["xwin", "build"]);
     expect(buildIndexerCommand("x86_64-pc-windows-msvc", "cargo").args[0]).toBe("build");
+  });
+
+  it("accepts compatible indexer health with additive capabilities", () => {
+    expect(validateIndexerHealth({
+      id: "indexer-health",
+      ok: true,
+      payload: {
+        status: "ready",
+        protocolVersion: 5,
+        capabilities: [
+          "health",
+          "discoveryChunk",
+          "discoveryPrepareChunk",
+          "contentRefreshChunk",
+          "contentPrepareChunk",
+          "contentResourceBudget",
+          "stubRefreshChunk",
+          "stubPrepareChunk",
+          "writerActorPublication",
+          "writerTelemetry",
+          "publicationStageTelemetry",
+          "futureCapability",
+        ],
+      },
+    })).toBe(true);
+  });
+
+  it("rejects health responses missing a required publication capability", () => {
+    expect(validateIndexerHealth({
+      id: "indexer-health",
+      ok: true,
+      payload: {
+        status: "ready",
+        protocolVersion: 5,
+        capabilities: ["health", "contentRefreshChunk"],
+      },
+    })).toBe(false);
   });
 });
