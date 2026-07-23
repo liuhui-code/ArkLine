@@ -4,6 +4,7 @@ use crate::models::workspace::{
 };
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_content_index_service::search_indexed_workspace_content_with_cancellation;
+use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
 use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
@@ -13,6 +14,9 @@ use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
+use crate::services::workspace_index_layer_readiness_store_service::{
+    count_rows, normalize_layer_index_path, with_layer_readiness_store,
+};
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_search_ranking_service::{
@@ -173,7 +177,12 @@ where
     if missing_text_index {
         downgrade_missing_text_index(&mut readiness);
     }
-    let result = raw_text_search_result_with_cancellation(index_runtime, request, is_cancelled)?;
+    let result = raw_text_search_result_with_cancellation(
+        index_runtime,
+        request,
+        is_cancelled,
+        Some(missing_text_index),
+    )?;
     let confidence = if missing_text_index {
         "filesystemFallback"
     } else {
@@ -252,18 +261,22 @@ fn raw_text_search_result(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
 ) -> Result<WorkspaceTextSearchResult, String> {
-    raw_text_search_result_with_cancellation(index_runtime, request, || false)
+    raw_text_search_result_with_cancellation(index_runtime, request, || false, None)
 }
 
 fn raw_text_search_result_with_cancellation<F>(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
     is_cancelled: F,
+    missing_text_index: Option<bool>,
 ) -> Result<WorkspaceTextSearchResult, String>
 where
     F: FnMut() -> bool + Send + 'static,
 {
-    if should_use_indexed_text_search(&request) && !text_index_missing_for_request(&request)? {
+    let missing_text_index = missing_text_index
+        .map(Ok)
+        .unwrap_or_else(|| text_index_missing_for_request(&request))?;
+    if should_use_indexed_text_search(&request) && !missing_text_index {
         return search_indexed_workspace_content_with_cancellation(&request, is_cancelled);
     }
 
@@ -343,11 +356,12 @@ fn text_index_missing_for_request(request: &WorkspaceTextSearchRequest) -> Resul
     if !should_use_indexed_text_search(request) {
         return Ok(false);
     }
-    let report = get_workspace_index_layer_readiness(&request.root_path, None)?;
-    let Some(content) = report.layers.iter().find(|layer| layer.layer == "content") else {
-        return Ok(true);
-    };
-    Ok(content.workspace_status != WorkspaceIndexLayerStatus::Ready)
+    with_layer_readiness_store(&request.root_path, |connection| {
+        let root_key = normalize_layer_index_path(&request.root_path);
+        let expected = count_rows(connection, "workspace_files", &root_key)?;
+        let content = load_content_layer_summary(connection, &root_key)?;
+        Ok(expected == 0 || content.ready_count < expected)
+    })
 }
 
 fn text_search_candidates_from_result(
