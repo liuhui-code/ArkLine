@@ -27,11 +27,12 @@ impl LaunchWorkspaceState {
             .insert(label.to_string(), root_path);
     }
 
-    pub fn take_for_label(&self, label: &str) -> Option<String> {
+    pub fn get_for_label(&self, label: &str) -> Option<String> {
         self.paths
             .lock()
             .expect("launch workspace lock")
-            .remove(label)
+            .get(label)
+            .cloned()
     }
 }
 
@@ -85,7 +86,7 @@ pub fn get_launch_workspace_path(
     window: tauri::Window,
     launch_state: State<LaunchWorkspaceState>,
 ) -> Result<Option<String>, String> {
-    Ok(launch_state.take_for_label(window.label()))
+    Ok(launch_state.get_for_label(window.label()))
 }
 
 #[cfg(test)]
@@ -98,11 +99,15 @@ mod tests {
     }
 
     #[test]
-    fn stores_and_reads_launch_workspace_path() {
+    fn stores_and_repeatedly_reads_launch_workspace_path() {
         let state = LaunchWorkspaceState::default();
         state.set_for_label("workspace-1", "C:/samples/ArkDemo".to_string());
         assert_eq!(
-            state.take_for_label("workspace-1"),
+            state.get_for_label("workspace-1"),
+            Some("C:/samples/ArkDemo".to_string())
+        );
+        assert_eq!(
+            state.get_for_label("workspace-1"),
             Some("C:/samples/ArkDemo".to_string())
         );
     }
