@@ -8,6 +8,13 @@ export function resolveTauriExecutable(platform = process.platform) {
   return platform === "win32" ? "tauri.cmd" : "tauri";
 }
 
+export function tauriSpawnOptions(platform = process.platform) {
+  return {
+    stdio: "inherit",
+    shell: platform === "win32",
+  };
+}
+
 function hasExplicitTarget(args) {
   return args.some((arg) => arg === "--target" || arg === "-t" || arg.startsWith("--target="));
 }
@@ -25,10 +32,7 @@ export function buildTauriArgs(args, platform = process.platform) {
 export function main(argv = process.argv.slice(2)) {
   const command = resolveTauriExecutable();
   const args = buildTauriArgs(argv);
-  const result = spawnSync(command, args, {
-    stdio: "inherit",
-    shell: false,
-  });
+  const result = spawnSync(command, args, tauriSpawnOptions());
 
   if (typeof result.status === "number") {
     process.exit(result.status);

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTauriArgs,
   resolveTauriExecutable,
+  tauriSpawnOptions,
 } from "../../scripts/tauri-cli.mjs";
 
 describe("tauri cli launcher", () => {
@@ -46,5 +47,16 @@ describe("tauri cli launcher", () => {
 
   it("uses the Windows tauri shim on Windows", () => {
     expect(resolveTauriExecutable("win32")).toBe("tauri.cmd");
+  });
+
+  it("runs the Windows tauri shim through the system command processor", () => {
+    expect(tauriSpawnOptions("win32")).toEqual({
+      stdio: "inherit",
+      shell: true,
+    });
+    expect(tauriSpawnOptions("linux")).toEqual({
+      stdio: "inherit",
+      shell: false,
+    });
   });
 });

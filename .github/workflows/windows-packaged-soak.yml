@@ -55,6 +55,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
