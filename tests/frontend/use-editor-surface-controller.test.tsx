@@ -227,14 +227,14 @@ describe("useEditorSurfaceController", () => {
       await Promise.resolve();
     });
 
-    expect(onStatusChange).not.toHaveBeenCalledWith("Open failed A.ets");
+    expect(onStatusChange).not.toHaveBeenCalledWith("Open failed A.ets: A failed");
 
     await act(async () => {
       second.reject(new Error("B failed"));
       await Promise.resolve();
     });
 
-    expect(onStatusChange).toHaveBeenLastCalledWith("Open failed B.ets");
+    expect(onStatusChange).toHaveBeenLastCalledWith("Open failed B.ets: B failed");
   });
 
   it("does not cache stale file content when users rapidly switch jump targets", async () => {

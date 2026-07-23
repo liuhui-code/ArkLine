@@ -113,11 +113,12 @@ export function useEditorSurfaceController({
     try {
       content = await documentLoad.load(path, workspaceApi.openFile);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
         runtimeRef.current.navigation.finish(transaction.id);
-        onStatusChange(`Open failed ${title}`);
+        onStatusChange(`Open failed ${title}: ${message}`);
       }
-      return { ok: false, errorMessage: error instanceof Error ? error.message : String(error) };
+      return { ok: false, errorMessage: message };
     }
     if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
       return { ok: false, errorMessage: "superseded" };
