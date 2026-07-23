@@ -113,7 +113,8 @@ export const TELEMETRY_SNAPSHOT_SCRIPT = `
     frameGapCount: state.frameGapCount || 0,
     longAnimationFrameCount: state.longAnimationFrameCount || 0,
     longTaskCount: state.longTaskCount || 0,
-    scriptAttributions: Object.values(state.scriptAttributions || {})
+    scriptAttributions: Object.values(state.scriptAttributions || {}),
+    renderPressure: window.__arklineRenderPressure || null
   };
 `;
 

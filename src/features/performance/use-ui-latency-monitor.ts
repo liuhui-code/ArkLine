@@ -11,6 +11,20 @@ const renderPressureStore = createRenderPressureStore();
 
 export function recordRenderPressure(label: string) {
   renderPressureStore.record(label);
+  if (typeof window !== "undefined") {
+    const state = window.__arklineRenderPressure ??= { counts: {}, lastRenderedAt: {} };
+    state.counts[label] = (state.counts[label] ?? 0) + 1;
+    state.lastRenderedAt[label] = Date.now();
+  }
+}
+
+declare global {
+  interface Window {
+    __arklineRenderPressure?: {
+      counts: Record<string, number>;
+      lastRenderedAt: Record<string, number>;
+    };
+  }
 }
 
 export function useUiLatencyMonitor() {

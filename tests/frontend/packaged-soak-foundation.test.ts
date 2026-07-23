@@ -398,6 +398,10 @@ describe("packaged Windows soak foundation", () => {
           totalDuration: 120,
           maxDuration: 50,
         }],
+        renderPressure: {
+          counts: { AppShell: 4 },
+          lastRenderedAt: { AppShell: 100 },
+        },
         eventTimingCount: 1,
         frames: 60,
       },
@@ -407,6 +411,10 @@ describe("packaged Windows soak foundation", () => {
     expect(report.telemetry.scriptAttributions).toEqual([
       expect.objectContaining({ sourceFunctionName: "runSearch", totalDuration: 120 }),
     ]);
+    expect(report.telemetry.renderPressure).toEqual({
+      counts: { AppShell: 4 },
+      lastRenderedAt: { AppShell: 100 },
+    });
     expect(report.automationDispatch).toMatchObject({ p95Ms: 5_000 });
     expect(report.searchReady).toMatchObject({ count: 1, p95Ms: 80 });
     expect(report.summary).toMatchObject({
