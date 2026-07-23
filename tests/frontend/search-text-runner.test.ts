@@ -5,7 +5,7 @@ import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 describe("search text runner", () => {
-  it("uses indexed text search for clean plain queries", async () => {
+  it("uses indexed candidate search for Search Everywhere text scope", async () => {
     const envelope: WorkspaceIndexQueryEnvelope<SearchCandidate> = {
       items: [textCandidate()],
       readiness: readinessState("ready"),
@@ -20,7 +20,7 @@ describe("search text runner", () => {
 
     runSearchTextQuery({
       requestId: 8,
-      mode: "find",
+      mode: "searchEverywhere",
       query: "width",
       rootPath: "/workspace",
       minimumQueryLength: 2,
@@ -54,6 +54,44 @@ describe("search text runner", () => {
     );
     expect(replaceQueryReadiness).toHaveBeenCalledWith(envelope.readiness);
     expect(runFallback).not.toHaveBeenCalled();
+  });
+
+  it("routes Find in Files through the cancellable content channel", async () => {
+    const queryWorkspaceCandidatesWithReadiness = vi.fn();
+    const runFallback = vi.fn(async () => textResult("native-content"));
+    const patchSearchSession = vi.fn();
+    const trackQuery = vi.fn(async ({ request, apply }) => {
+      apply(await request, 9);
+    });
+
+    runSearchTextQuery({
+      requestId: 9,
+      mode: "find",
+      query: "width",
+      rootPath: "/workspace",
+      minimumQueryLength: 2,
+      options: { caseSensitive: false, wholeWord: false },
+      dirty: false,
+      workspaceApi: { queryWorkspaceCandidatesWithReadiness },
+      runFallback,
+      replaceQueryReadiness: vi.fn(),
+      trackQuery,
+      clearSearchResults: vi.fn(),
+      patchSearchSession,
+      recordUiInteraction: vi.fn(),
+      scheduleSelectedPreview: vi.fn(),
+      reportMiss: vi.fn(),
+    });
+    await vi.waitFor(() => {
+      expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
+        result: expect.objectContaining({
+          matches: [expect.objectContaining({ summary: "native-content" })],
+        }),
+      }));
+    });
+
+    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
+    expect(runFallback).toHaveBeenCalledWith("width", false, 9);
   });
 
   it("falls back when dirty documents require live content", async () => {
