@@ -41,14 +41,10 @@ export function useUiLatencyMonitor() {
   useEffect(() => {
     monitor.recordHeartbeat(Date.now());
     const timer = window.setInterval(() => {
-      const beforeCount = monitor.getSnapshot().eventLoopLags.length;
       monitor.recordHeartbeat(Date.now());
-      if (monitor.getSnapshot().eventLoopLags.length !== beforeCount) {
-        refreshSamples();
-      }
     }, 50);
     return () => window.clearInterval(timer);
-  }, [monitor, refreshSamples]);
+  }, [monitor]);
 
   return { recordUiInteraction, uiLatencySamples: samples, renderPressureSamples, ipcLatencySamples };
 }

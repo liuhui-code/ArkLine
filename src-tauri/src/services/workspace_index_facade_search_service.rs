@@ -4,6 +4,7 @@ use crate::models::workspace::{
 };
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_content_index_service::search_indexed_workspace_content_with_cancellation;
+use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
 };
@@ -18,6 +19,8 @@ use crate::services::workspace_search_ranking_service::{
     sort_search_everywhere_candidates_with_context, WorkspaceSearchRankingContext,
 };
 use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
+
+const FILESYSTEM_TEXT_SEARCH_FILE_LIMIT: usize = 200_000;
 
 pub(crate) fn query_facade_search_everywhere(
     index_runtime: &WorkspaceIndexRuntime,
@@ -265,9 +268,12 @@ where
     }
 
     let index_state = index_runtime.get_index_state(&request.root_path)?;
+    let file_paths =
+        load_ready_discovered_files(&request.root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
+            .unwrap_or(index_state.file_paths);
     Ok(search_filesystem_text_with_cancellation(
         &request,
-        &index_state.file_paths,
+        &file_paths,
         is_cancelled,
     ))
 }

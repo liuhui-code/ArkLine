@@ -5,6 +5,10 @@ use rusqlite::Connection;
 use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
+use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
+use crate::services::workspace_discovery_store_service::{
+    replace_discovered_file_chunk, update_discovery_state, WorkspaceDiscoveryState,
+};
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_facade_search_service::query_facade_text_search;
 use crate::services::workspace_index_facade_service::{
@@ -266,6 +270,61 @@ fn text_search_falls_back_when_text_index_layer_is_missing() {
     assert!(matches!(
         envelope.items.as_slice(),
         [WorkspaceIndexFacadeItem::TextSearch(result)] if result.matches[0].summary.contains("PartialLayerTarget")
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn text_search_fallback_uses_ready_discovery_when_runtime_paths_are_empty() {
+    let root = create_empty_workspace("facade-text-search-discovery-fallback");
+    let source = create_workspace_source_dir(&root).join("Discovered.ets");
+    fs::write(&source, "Text(\"PersistedDiscoveryTarget\")\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    replace_discovered_file_chunk(
+        &root_path,
+        1,
+        &[WorkspaceDiscoveredFile {
+            path: source_path,
+            size_bytes: fs::metadata(&source).unwrap().len(),
+            modified_ms: None,
+        }],
+    )
+    .unwrap();
+    update_discovery_state(&WorkspaceDiscoveryState {
+        root_path: root_path.clone(),
+        generation: 1,
+        status: "ready".to_string(),
+        discovered_count: 1,
+        excluded_count: 0,
+        cursor: None,
+        error: None,
+    })
+    .unwrap();
+    let runtime = WorkspaceIndexRuntime::default();
+
+    let envelope = query_facade_text_search(
+        &runtime,
+        WorkspaceTextSearchRequest {
+            root_path: root_path.clone(),
+            query: "persisteddiscoverytarget".to_string(),
+            generation: None,
+            cursor: None,
+            options: WorkspaceTextSearchOptions {
+                case_sensitive: false,
+                whole_word: false,
+            },
+            limit: 8,
+            context_lines: 0,
+        },
+    )
+    .unwrap();
+
+    assert!(matches!(
+        envelope.items.as_slice(),
+        [WorkspaceIndexFacadeItem::TextSearch(result)]
+            if result.searched_files == 1
+                && result.matches[0].summary.contains("PersistedDiscoveryTarget")
     ));
     fs::remove_dir_all(root).unwrap();
 }
