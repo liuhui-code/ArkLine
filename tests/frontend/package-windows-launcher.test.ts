@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildPackagingSteps,
   getOutputSummary,
+  packagingSpawnOptions,
   resolvePnpmExecutable,
 } from "../../scripts/package-windows.mjs";
 // @ts-ignore The staging helper is a Node ESM script, not a typed app module.
@@ -95,6 +96,17 @@ describe("package windows launcher", () => {
   it("uses the standard pnpm executable on non-Windows hosts", () => {
     expect(resolvePnpmExecutable("darwin")).toBe("pnpm");
     expect(resolvePnpmExecutable("linux")).toBe("pnpm");
+  });
+
+  it("runs Windows command shims through the system command processor", () => {
+    expect(packagingSpawnOptions("win32")).toEqual({
+      stdio: "inherit",
+      shell: true,
+    });
+    expect(packagingSpawnOptions("darwin")).toEqual({
+      stdio: "inherit",
+      shell: false,
+    });
   });
 
   it("reports the portable Windows archive on Windows hosts", () => {

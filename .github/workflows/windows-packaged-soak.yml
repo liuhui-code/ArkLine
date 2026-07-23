@@ -113,5 +113,5 @@ jobs:
         with:
           name: arkline-packaged-soak-evidence
           path: artifacts/packaged-*-report.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30

@@ -7,6 +7,13 @@ export function resolvePnpmExecutable(platform = process.platform) {
   return platform === "win32" ? "pnpm.cmd" : "pnpm";
 }
 
+export function packagingSpawnOptions(platform = process.platform) {
+  return {
+    stdio: "inherit",
+    shell: platform === "win32",
+  };
+}
+
 function resolveTarget(target) {
   return target ?? "windows-installer";
 }
@@ -107,10 +114,7 @@ function printOutputLocation(target) {
 
 function runStep(step) {
   const command = step.command === "pnpm" ? resolvePnpmExecutable() : step.command;
-  const result = spawnSync(command, step.args, {
-    stdio: "inherit",
-    shell: false,
-  });
+  const result = spawnSync(command, step.args, packagingSpawnOptions());
 
   if (typeof result.status === "number") {
     return result.status;

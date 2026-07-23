@@ -7,6 +7,11 @@ export type PackagingTarget = "windows-installer" | "windows-portable" | "mac";
 
 export declare function resolvePnpmExecutable(platform?: string): string;
 
+export declare function packagingSpawnOptions(platform?: string): {
+  stdio: "inherit";
+  shell: boolean;
+};
+
 export declare function getOutputSummary(options?: {
   target?: PackagingTarget;
   platform?: string;
