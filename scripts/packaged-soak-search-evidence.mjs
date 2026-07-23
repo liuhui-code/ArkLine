@@ -37,6 +37,7 @@ export function shouldRecordSearchEvidence(evidence, currentCount, limit = 40) {
     && (
       evidence.phase.endsWith("-miss")
       || evidence.phase.endsWith("-typed")
+      || evidence.phase.endsWith("-failed")
       || evidence.resultCount > 0
     );
 }

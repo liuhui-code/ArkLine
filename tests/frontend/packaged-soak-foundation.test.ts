@@ -265,6 +265,10 @@ describe("packaged Windows soak foundation", () => {
       { phase: "quick-open-typed", resultCount: 0 },
       40,
     )).toBe(false);
+    expect(shouldRecordSearchEvidence(
+      { phase: "quick-open-enter-failed", resultCount: 0 },
+      0,
+    )).toBe(true);
   });
 
   it("preflights the executable, fixture probes, and Windows runtime tools", async () => {

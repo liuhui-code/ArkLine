@@ -2000,6 +2000,58 @@ describe("App shell", () => {
     expect(await screen.findByRole("button", { name: "entry" })).toBeVisible();
   });
 
+  it("opens a persistent Quick Open result from a lazy workspace with Enter", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/HugeWorkspace";
+    const filePath = "C:\\samples\\HugeWorkspace\\entry\\src\\Page000000.ets";
+    const openFile = vi.fn(async () => "export class Page000000 {}");
+    const queryWorkspaceQuickOpen = vi.fn(async () => [{
+      id: `file:${filePath}`,
+      source: "file" as const,
+      kind: "file",
+      title: "Page000000.ets",
+      subtitle: filePath,
+      path: filePath,
+      line: 1,
+      column: 1,
+      score: 100,
+    }]);
+
+    render(
+      <AppShell
+        workspaceApi={createWorkspaceApi({
+          openFile,
+          queryWorkspaceQuickOpen,
+          listWorkspaceDirectory: async () => [],
+          openWorkspace: async () => ({
+            rootName: "HugeWorkspace",
+            rootPath,
+            files: [],
+            scanSummary: {
+              scannedFiles: 0,
+              skippedEntries: 0,
+              truncated: true,
+              excludeRules: [".git", "node_modules", "oh_modules"],
+            },
+          }),
+        })}
+      />,
+    );
+
+    await openProject(user, rootPath);
+    await user.keyboard("{Control>}p{/Control}");
+    await user.type(await screen.findByLabelText("Quick Open Query"), "Page000000");
+    expect(await screen.findByRole("button", { name: filePath })).toBeVisible();
+
+    await user.keyboard("{Enter}");
+
+    expect(openFile).toHaveBeenCalledWith(filePath);
+    expect(await screen.findByRole("button", { name: "Page000000.ets" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
   it("adds an opened lazy project file to the workspace index immediately", async () => {
     const user = userEvent.setup();
     const rootPath = "C:/samples/HugeWorkspace";
