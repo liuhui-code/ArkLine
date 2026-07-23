@@ -73,6 +73,7 @@ function createProps(onClose: () => void): AppShellSearchOverlaySurfaceProps {
     searchOverlayProps: {
       quickOpenQuery: "width",
       quickOpenResults: [],
+      quickOpenSelectedIndex: 0,
       recentFileResults: [],
       recentProjectResults: [],
       searchEverywhereOptions: { caseSensitive: false, wholeWord: false },
@@ -86,6 +87,8 @@ function createProps(onClose: () => void): AppShellSearchOverlaySurfaceProps {
       onChangeSearchEverywhereScope: vi.fn(),
       onChangeSearchEverywhereReplaceQuery: vi.fn(),
       onOpenFile: vi.fn(),
+      onMoveQuickOpenSelection: vi.fn(),
+      onSelectQuickOpenResult: vi.fn(),
       onOpenSearchEverywhereResult: vi.fn(),
       onOpenSearchEverywhereCandidate: vi.fn(),
       onLoadNextSearchEverywherePage: vi.fn(),

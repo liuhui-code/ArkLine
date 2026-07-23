@@ -1,5 +1,6 @@
 import type { OverlayKey } from "@/components/layout/shell-state";
 import { englishQueryInputProps } from "@/components/layout/query-input-props";
+import { QuickOpenPanel } from "@/components/layout/QuickOpenPanel";
 import { SearchEverywherePanel, type SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import type { CommandPaletteItem } from "@/components/layout/search-overlay-model";
 import type {
@@ -15,6 +16,7 @@ export type SearchOverlayContentProps = {
   commandPaletteItems: CommandPaletteItem[];
   quickOpenQuery: string;
   quickOpenResults: { path: string }[];
+  quickOpenSelectedIndex: number;
   recentFileResults: { path: string; title: string; relativePath: string }[];
   recentProjectResults: { path: string; name: string }[];
   searchEverywhereOptions: WorkspaceTextSearchOptions;
@@ -28,6 +30,8 @@ export type SearchOverlayContentProps = {
   onChangeSearchEverywhereScope: (scope: WorkspaceIndexQueryScope) => void;
   onChangeSearchEverywhereReplaceQuery: (value: string) => void;
   onOpenFile: (path: string) => void;
+  onMoveQuickOpenSelection: (direction: 1 | -1) => void;
+  onSelectQuickOpenResult: (index: number) => void;
   onOpenSearchEverywhereResult: (result: WorkspaceTextSearchMatch) => void;
   onOpenSearchEverywhereCandidate: (candidate: SearchCandidate) => void;
   onLoadNextSearchEverywherePage: () => void;
@@ -46,6 +50,7 @@ export function SearchOverlayContent({
   commandPaletteItems,
   quickOpenQuery,
   quickOpenResults,
+  quickOpenSelectedIndex,
   recentFileResults,
   recentProjectResults,
   searchEverywhereOptions,
@@ -59,6 +64,8 @@ export function SearchOverlayContent({
   onChangeSearchEverywhereScope,
   onChangeSearchEverywhereReplaceQuery,
   onOpenFile,
+  onMoveQuickOpenSelection,
+  onSelectQuickOpenResult,
   onOpenSearchEverywhereResult,
   onOpenSearchEverywhereCandidate,
   onLoadNextSearchEverywherePage,
@@ -228,36 +235,17 @@ export function SearchOverlayContent({
     );
   }
 
-  const queryLabel = "Quick Open Query";
-  const resultsLabel = "Quick Open Results";
-  const placeholder = "Type a filename or path";
-  const results = quickOpenResults;
-
   return (
-    <>
-      <input
-        aria-label={queryLabel}
-        autoFocus
-        className="panel-input"
-        {...englishQueryInputProps}
-        value={quickOpenQuery}
-        placeholder={placeholder}
-        onChange={(event) => onChangeQuery(event.target.value)}
-      />
-      {workspacePartialNotice ? <div className="palette-empty" role="status">{workspacePartialNotice}</div> : null}
-      <div className="search-results" role="list" aria-label={resultsLabel}>
-        {results.map((result) => (
-          <button
-            key={result.path}
-            type="button"
-            className="search-result"
-            onClick={() => onOpenFile(result.path)}
-          >
-            {result.path}
-          </button>
-        ))}
-        {results.length === 0 ? <div className="palette-empty">No files found</div> : null}
-      </div>
-    </>
+    <QuickOpenPanel
+      query={quickOpenQuery}
+      results={quickOpenResults}
+      selectedIndex={quickOpenSelectedIndex}
+      partialNotice={workspacePartialNotice}
+      onChangeQuery={onChangeQuery}
+      onMoveSelection={onMoveQuickOpenSelection}
+      onSelectResult={onSelectQuickOpenResult}
+      onOpenResult={onOpenFile}
+      onClose={onCloseOverlay}
+    />
   );
 }

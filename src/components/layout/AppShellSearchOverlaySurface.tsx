@@ -36,6 +36,8 @@ export function AppShellSearchOverlaySurface({
   const onChangeSearchEverywhereScope = useLatestCallback(searchOverlayProps.onChangeSearchEverywhereScope);
   const onChangeSearchEverywhereReplaceQuery = useLatestCallback(searchOverlayProps.onChangeSearchEverywhereReplaceQuery);
   const onOpenFile = useLatestCallback(searchOverlayProps.onOpenFile);
+  const onMoveQuickOpenSelection = useLatestCallback(searchOverlayProps.onMoveQuickOpenSelection);
+  const onSelectQuickOpenResult = useLatestCallback(searchOverlayProps.onSelectQuickOpenResult);
   const onOpenSearchEverywhereResult = useLatestCallback(searchOverlayProps.onOpenSearchEverywhereResult);
   const onOpenSearchEverywhereCandidate = useLatestCallback(searchOverlayProps.onOpenSearchEverywhereCandidate);
   const onLoadNextSearchEverywherePage = useLatestCallback(searchOverlayProps.onLoadNextSearchEverywherePage);
@@ -68,6 +70,8 @@ export function AppShellSearchOverlaySurface({
         onChangeSearchEverywhereScope={onChangeSearchEverywhereScope}
         onChangeSearchEverywhereReplaceQuery={onChangeSearchEverywhereReplaceQuery}
         onOpenFile={onOpenFile}
+        onMoveQuickOpenSelection={onMoveQuickOpenSelection}
+        onSelectQuickOpenResult={onSelectQuickOpenResult}
         onOpenSearchEverywhereResult={onOpenSearchEverywhereResult}
         onOpenSearchEverywhereCandidate={onOpenSearchEverywhereCandidate}
         onLoadNextSearchEverywherePage={onLoadNextSearchEverywherePage}
@@ -119,5 +123,6 @@ function sameSearchOverlayContentProps(
       && previous.workspacePartialNotice === next.workspacePartialNotice;
   }
   return previous.quickOpenResults === next.quickOpenResults
+    && previous.quickOpenSelectedIndex === next.quickOpenSelectedIndex
     && previous.workspacePartialNotice === next.workspacePartialNotice;
 }

@@ -63,4 +63,36 @@ describe("useShellHotkeys", () => {
 
     expect(onCommand).not.toHaveBeenCalled();
   });
+
+  it("does not treat Shift presses used for camel-case input as Double Shift", () => {
+    const onCommand = vi.fn();
+
+    function Harness() {
+      useShellHotkeys({ onCommand });
+      return <input aria-label="Query" />;
+    }
+
+    const query = render(<Harness />).getByLabelText("Query");
+    fireEvent.keyDown(query, { key: "Shift" });
+    fireEvent.keyDown(query, { key: "S", shiftKey: true });
+    fireEvent.keyDown(query, { key: "Shift" });
+    fireEvent.keyDown(query, { key: "N", shiftKey: true });
+
+    expect(onCommand).not.toHaveBeenCalledWith("openSearchEverywhere");
+  });
+
+  it("still opens Search Everywhere for two uninterrupted Shift taps", () => {
+    const onCommand = vi.fn();
+
+    function Harness() {
+      useShellHotkeys({ onCommand });
+      return <input aria-label="Query" />;
+    }
+
+    const query = render(<Harness />).getByLabelText("Query");
+    fireEvent.keyDown(query, { key: "Shift" });
+    fireEvent.keyDown(query, { key: "Shift" });
+
+    expect(onCommand).toHaveBeenCalledWith("openSearchEverywhere");
+  });
 });

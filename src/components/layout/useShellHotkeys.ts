@@ -32,6 +32,7 @@ export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOpti
         return;
       }
 
+      lastShiftAtRef.current = 0;
       const command = resolveShellCommand(event, context);
       if (!command) {
         return;
