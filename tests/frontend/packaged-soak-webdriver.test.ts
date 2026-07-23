@@ -6,6 +6,7 @@ import {
 import {
   buildWebView2Environment,
   nativeDriverArguments,
+  packagedApplicationArguments,
   probeWebView2DebugEndpoints,
 } from "../../scripts/packaged-soak-windows-session.mjs";
 
@@ -50,6 +51,10 @@ describe("packaged Windows WebView2 attachment", () => {
     expect(nativeDriverArguments(4445)).toEqual([
       "--port=4445",
       "--verbose",
+    ]);
+    expect(packagedApplicationArguments("C:\\fixture")).toEqual([
+      "--workspace",
+      "C:\\fixture",
     ]);
   });
 

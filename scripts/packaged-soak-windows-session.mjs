@@ -20,6 +20,10 @@ export function nativeDriverArguments(port) {
   return [`--port=${port}`, "--verbose"];
 }
 
+export function packagedApplicationArguments(fixturePath) {
+  return ["--workspace", fixturePath];
+}
+
 export async function probeWebView2DebugEndpoints(
   debugPort,
   fetchImpl = fetch,
@@ -70,15 +74,19 @@ export class WindowsPackagedAutomationSession {
 
   async startApplication() {
     this.debugPort = await findAvailablePort();
-    this.applicationProcess = spawn(this.options.applicationPath, [], {
-      env: buildWebView2Environment(
-        process.env,
-        this.options.fixturePath,
-        this.debugPort,
-      ),
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    this.applicationProcess = spawn(
+      this.options.applicationPath,
+      packagedApplicationArguments(this.options.fixturePath),
+      {
+        env: buildWebView2Environment(
+          process.env,
+          this.options.fixturePath,
+          this.debugPort,
+        ),
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
     this.applicationExitPromise = observeProcessExit(this.applicationProcess);
     captureProcessLog(this.applicationProcess, (chunk) => {
       this.applicationLog = appendBoundedLog(this.applicationLog, chunk);
