@@ -170,6 +170,8 @@ describe("packaged Windows soak foundation", () => {
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('addEventListener("beforeinput"');
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('event.key === "Enter"');
     expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("MutationObserver");
+    expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("requestAnimationFrame(frame)");
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain("entry.scripts || []");
     expect(UI_READINESS_SCRIPT).toContain(
       '[aria-label="Find in Files Results"]',
     );
@@ -387,12 +389,24 @@ describe("packaged Windows soak foundation", () => {
         frameGaps: [],
         longAnimationFrames: [],
         longTasks: [],
+        scriptAttributions: [{
+          sourceUrl: "http://tauri.localhost/assets/index.js",
+          sourceFunctionName: "runSearch",
+          sourceCharPosition: 42,
+          invokerType: "event-listener",
+          count: 3,
+          totalDuration: 120,
+          maxDuration: 50,
+        }],
         eventTimingCount: 1,
         frames: 60,
       },
     });
 
     expect(report.schemaVersion).toBe(3);
+    expect(report.telemetry.scriptAttributions).toEqual([
+      expect.objectContaining({ sourceFunctionName: "runSearch", totalDuration: 120 }),
+    ]);
     expect(report.automationDispatch).toMatchObject({ p95Ms: 5_000 });
     expect(report.searchReady).toMatchObject({ count: 1, p95Ms: 80 });
     expect(report.summary).toMatchObject({

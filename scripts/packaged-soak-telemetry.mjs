@@ -17,7 +17,7 @@ export const TELEMETRY_INSTALL_SCRIPT = `
       errors: [], eventTimings: [], frameGaps: [], longAnimationFrames: [],
       longTasks: [], frames: 0, errorCount: 0,
       eventTimingCount: 0, frameGapCount: 0, longAnimationFrameCount: 0,
-      longTaskCount: 0, interactionStarts: {}
+      longTaskCount: 0, interactionStarts: {}, scriptAttributions: {}
     };
     const retain = (items, value, limit = ${SAMPLE_LIMIT}) => {
       if (items.length < limit) items.push(value);
@@ -30,18 +30,6 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         }).observe({ type, buffered: true, ...options });
       } catch {}
     };
-    let previousFrame = performance.now();
-    const frame = (now) => {
-      const gap = now - previousFrame;
-      if (gap > 50) {
-        state.frameGapCount += 1;
-        retain(state.frameGaps, gap);
-      }
-      previousFrame = now;
-      state.frames += 1;
-      requestAnimationFrame(frame);
-    };
-    requestAnimationFrame(frame);
     observe("event", (entry) => {
       state.eventTimingCount += 1;
       retain(state.eventTimings, {
@@ -55,6 +43,23 @@ export const TELEMETRY_INSTALL_SCRIPT = `
     }, { durationThreshold: 16 });
     observe("long-animation-frame", (entry) => {
       state.longAnimationFrameCount += 1;
+      for (const script of entry.scripts || []) {
+        const sourceUrl = script.sourceURL || "(unknown)";
+        const sourceFunctionName = script.sourceFunctionName || "(anonymous)";
+        const sourceCharPosition = script.sourceCharPosition || 0;
+        const invokerType = script.invokerType || "(unknown)";
+        const key = [sourceUrl, sourceFunctionName, sourceCharPosition, invokerType].join("|");
+        const existing = state.scriptAttributions[key];
+        if (!existing && Object.keys(state.scriptAttributions).length >= 256) continue;
+        const current = existing || {
+          sourceUrl, sourceFunctionName, sourceCharPosition, invokerType,
+          count: 0, totalDuration: 0, maxDuration: 0
+        };
+        current.count += 1;
+        current.totalDuration += script.duration || 0;
+        current.maxDuration = Math.max(current.maxDuration, script.duration || 0);
+        state.scriptAttributions[key] = current;
+      }
       retain(state.longAnimationFrames, {
         duration: entry.duration,
         blockingDuration: entry.blockingDuration || 0,
@@ -107,7 +112,8 @@ export const TELEMETRY_SNAPSHOT_SCRIPT = `
     eventTimingCount: state.eventTimingCount || 0,
     frameGapCount: state.frameGapCount || 0,
     longAnimationFrameCount: state.longAnimationFrameCount || 0,
-    longTaskCount: state.longTaskCount || 0
+    longTaskCount: state.longTaskCount || 0,
+    scriptAttributions: Object.values(state.scriptAttributions || {})
   };
 `;
 

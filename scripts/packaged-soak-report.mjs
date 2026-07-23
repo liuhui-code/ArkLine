@@ -190,6 +190,9 @@ function telemetryEvidence(
     longAnimationFrameCount: snapshot.longAnimationFrameCount ?? 0,
     longTaskCount: snapshot.longTaskCount ?? snapshot.longTasks.length,
     frames: snapshot.frames,
+    scriptAttributions: [...(snapshot.scriptAttributions ?? [])]
+      .sort((left, right) => right.totalDuration - left.totalDuration)
+      .slice(0, 20),
   };
 }
 
