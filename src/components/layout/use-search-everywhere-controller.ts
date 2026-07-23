@@ -223,8 +223,12 @@ export function useSearchEverywhereController({
     searchOverlayCommands.handleOverlayQueryChange(value);
   }
 
-  function handleOverlayQueryDraftChange(_value: string) {
+  function handleOverlayQueryDraftChange(value: string) {
     interactionRuntimeRef.current.invalidateForeground({ cancelActive: true });
+    const snapshot = searchSessionStoreRef.current.getSnapshot();
+    if (snapshot.candidates.length > 0 || snapshot.result.matches.length > 0) {
+      searchSessionStoreRef.current.clear(value);
+    }
   }
 
   function resetSearchOverlayState() {

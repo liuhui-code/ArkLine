@@ -1,11 +1,14 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -174,6 +177,63 @@ fn background_worker_is_reused_after_the_old_idle_window() {
         .unwrap()
         .iter()
         .any(|status| status == "ready"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn foreground_navigation_does_not_interrupt_background_discovery() {
+    let root = unique_temp_dir("workspace-index-manager-discovery-priority");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("Entry.ets");
+    fs::write(&source, "struct Entry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    let navigation_scheduled = Arc::new(AtomicBool::new(false));
+    let scheduled_for_worker = navigation_scheduled.clone();
+    let manager_for_worker = manager.clone();
+    let root_for_worker = root_path.clone();
+
+    manager.open_workspace_index(&root_path).unwrap();
+    manager
+        .start_background_worker_with_events(index_runtime, move |status, _events| {
+            if status.kind == "discovery"
+                && status.status == "running"
+                && !scheduled_for_worker.swap(true, Ordering::SeqCst)
+            {
+                manager_for_worker
+                    .schedule_changed_path_task(
+                        &root_for_worker,
+                        std::slice::from_ref(&source_path),
+                        WorkspaceIndexTaskPriority::ForegroundNavigation,
+                        "foreground-navigation",
+                    )
+                    .unwrap();
+            }
+        })
+        .unwrap();
+
+    for _ in 0..160 {
+        if manager
+            .get_index_task_statuses(&root_path)
+            .unwrap()
+            .iter()
+            .any(|status| status.kind == "discovery" && status.status == "ready")
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
+    let discovered = load_ready_discovered_files(&root_path, 10).unwrap();
+
+    assert!(navigation_scheduled.load(Ordering::SeqCst));
+    assert!(statuses
+        .iter()
+        .any(|status| status.kind == "discovery" && status.status == "ready"));
+    assert_eq!(discovered.map(|files| files.len()), Some(1));
 
     fs::remove_dir_all(root).unwrap();
 }

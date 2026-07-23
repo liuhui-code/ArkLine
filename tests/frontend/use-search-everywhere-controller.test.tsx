@@ -91,9 +91,11 @@ describe("useSearchEverywhereController", () => {
 
     await flushSearchDebounce();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+    expect(result.current.search.searchEverywhereCandidates).toHaveLength(1);
 
     act(() => result.current.search.handleOverlayQueryDraftChange("EntryA"));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
 
     act(() => result.current.search.handleOverlayQueryChange("EntryA"));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(2);

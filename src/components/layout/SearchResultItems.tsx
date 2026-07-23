@@ -52,7 +52,7 @@ export const SearchCandidateResultItem = memo(function SearchCandidateResultItem
       className={`search-result search-result--match${selected ? " search-result--selected" : ""}`}
       aria-label={`${item.source} ${item.title} ${item.subtitle}`}
       aria-selected={selected}
-      onMouseEnter={() => onSelect(index)}
+      onMouseMove={() => onSelect(index)}
       onMouseDown={(event) => onMouseDown(event, index, item)}
       onClick={(event) => onClick(event, index, item)}
       onContextMenu={(event) => onContextMenu(event, index, item)}
@@ -98,7 +98,7 @@ export const TextSearchResultItem = memo(function TextSearchResultItem({
       className={`search-result search-result--match${selected ? " search-result--selected" : ""}`}
       aria-label={`${item.relativePath}:${item.line}:${item.column} ${item.summary}`}
       aria-selected={selected}
-      onMouseEnter={() => onSelect(index)}
+      onMouseMove={() => onSelect(index)}
       onMouseDown={(event) => onMouseDown(event, index, item)}
       onClick={(event) => onClick(event, index, item)}
       onContextMenu={(event) => onContextMenu(event, index, item)}

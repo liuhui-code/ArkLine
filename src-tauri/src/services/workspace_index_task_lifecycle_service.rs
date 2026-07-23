@@ -49,9 +49,23 @@ pub fn task_supersedes_result(
             || task.reason == result_reason)
 }
 
+pub fn task_supersedes_active(
+    task: &WorkspaceIndexTask,
+    active_kind: &WorkspaceIndexTaskKind,
+    active_reason: &str,
+) -> bool {
+    task_kind_replaces_pending(&task.kind, active_kind)
+        && (task.kind != WorkspaceIndexTaskKind::ChangedPaths
+            || *active_kind != WorkspaceIndexTaskKind::ChangedPaths
+            || task.reason == active_reason)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{task_kind_replaces_pending, task_kind_supersedes_result, task_supersedes_result};
+    use super::{
+        task_kind_replaces_pending, task_kind_supersedes_result, task_supersedes_active,
+        task_supersedes_result,
+    };
     use crate::services::workspace_index_scheduler_service::{
         WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
     };
@@ -196,6 +210,31 @@ mod tests {
             &task,
             "changed-paths",
             "full-refresh-deep:refresh-workspace"
+        ));
+    }
+
+    #[test]
+    fn changed_path_tasks_only_supersede_active_tasks_with_the_same_reason() {
+        let task = WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::ForegroundNavigation,
+            changed_paths: vec!["/workspace/Entry.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation: 2,
+            reason: "foreground-navigation".to_string(),
+        };
+
+        assert!(!task_supersedes_active(
+            &task,
+            &WorkspaceIndexTaskKind::ChangedPaths,
+            "workspace-discovery",
+        ));
+        assert!(task_supersedes_active(
+            &task,
+            &WorkspaceIndexTaskKind::ChangedPaths,
+            "foreground-navigation",
         ));
     }
 }

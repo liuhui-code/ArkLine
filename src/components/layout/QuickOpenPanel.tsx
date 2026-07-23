@@ -82,7 +82,7 @@ export function QuickOpenPanel({
             type="button"
             aria-selected={index === selectedIndex}
             className={`search-result${index === selectedIndex ? " search-result--selected" : ""}`}
-            onMouseEnter={() => onSelectResult(index)}
+            onMouseMove={() => onSelectResult(index)}
             onClick={() => onOpenResult(result.path)}
           >
             {result.path}

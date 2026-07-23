@@ -6,7 +6,7 @@ use std::sync::{
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind,
 };
-use crate::services::workspace_index_task_lifecycle_service::task_kind_replaces_pending;
+use crate::services::workspace_index_task_lifecycle_service::task_supersedes_active;
 
 #[derive(Debug, Clone)]
 pub struct WorkspaceIndexCancellationToken {
@@ -47,6 +47,7 @@ impl WorkspaceIndexCancellationRegistry {
             root_path: task.root_path.clone(),
             kind: task.kind.clone(),
             generation: task.generation,
+            reason: task.reason.clone(),
             token: token.clone(),
         });
         token
@@ -65,7 +66,7 @@ impl WorkspaceIndexCancellationRegistry {
         for active in &self.active_tasks {
             if active.root_path == task.root_path
                 && task.generation > active.generation
-                && task_kind_replaces_pending(&task.kind, &active.kind)
+                && task_supersedes_active(task, &active.kind, &active.reason)
             {
                 active.token.cancel();
                 cancelled.push(active.token.clone());
@@ -91,6 +92,7 @@ struct WorkspaceIndexActiveCancellation {
     root_path: String,
     kind: WorkspaceIndexTaskKind,
     generation: u64,
+    reason: String,
     token: WorkspaceIndexCancellationToken,
 }
 
@@ -152,4 +154,51 @@ pub fn cancel_active_tasks_superseded_by_latest(
             .cancel_superseded_by(&task);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WorkspaceIndexCancellationRegistry;
+    use crate::services::workspace_index_scheduler_service::{
+        WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
+    };
+
+    fn changed_path_task(generation: u64, reason: &str) -> WorkspaceIndexTask {
+        WorkspaceIndexTask {
+            root_path: "/workspace".to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority: WorkspaceIndexTaskPriority::ForegroundNavigation,
+            changed_paths: vec!["/workspace/Entry.ets".to_string()],
+            sdk_path: None,
+            sdk_version: None,
+            generation,
+            reason: reason.to_string(),
+        }
+    }
+
+    #[test]
+    fn foreground_navigation_does_not_cancel_active_workspace_discovery() {
+        let mut registry = WorkspaceIndexCancellationRegistry::default();
+        let discovery = changed_path_task(1, "workspace-discovery");
+        let token = registry.start_task(&discovery);
+
+        let cancelled =
+            registry.cancel_superseded_by(&changed_path_task(2, "foreground-navigation"));
+
+        assert!(cancelled.is_empty());
+        assert!(!token.is_cancelled());
+    }
+
+    #[test]
+    fn newer_same_reason_task_cancels_the_active_task() {
+        let mut registry = WorkspaceIndexCancellationRegistry::default();
+        let active = changed_path_task(1, "foreground-navigation");
+        let token = registry.start_task(&active);
+
+        let cancelled =
+            registry.cancel_superseded_by(&changed_path_task(2, "foreground-navigation"));
+
+        assert_eq!(cancelled.len(), 1);
+        assert!(token.is_cancelled());
+    }
 }

@@ -101,10 +101,14 @@ describe("Quick Open", () => {
     const input = screen.getByLabelText("Quick Open Query");
     fireEvent.keyDown(input, { key: "ArrowUp" });
     fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.mouseEnter(screen.getByRole("button", { name: "/Page0.ets" }));
+    const firstResult = screen.getByRole("button", { name: "/Page0.ets" });
+    fireEvent.mouseEnter(firstResult);
 
     expect(onMoveSelection).toHaveBeenCalledWith(-1);
     expect(onOpenResult).toHaveBeenCalledWith("/Page1.ets");
+    expect(onSelectResult).not.toHaveBeenCalled();
+
+    fireEvent.mouseMove(firstResult);
     expect(onSelectResult).toHaveBeenCalledWith(0);
   });
 });

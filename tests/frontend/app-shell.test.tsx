@@ -1271,7 +1271,7 @@ describe("App shell", () => {
 
     const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
     const result = await within(results).findByRole("button", { name: /class LoginController/ });
-    fireEvent.mouseEnter(result);
+    fireEvent.mouseMove(result);
     fireEvent.mouseDown(result, { button: 0 });
 
     await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
