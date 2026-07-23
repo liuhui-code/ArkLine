@@ -69,7 +69,7 @@ describe("runtime interaction soak", () => {
         view.unmount();
         act(() => vi.advanceTimersByTime(200));
       } else {
-        act(() => vi.advanceTimersByTime(100));
+        act(() => vi.advanceTimersByTime(250));
         runtime.invalidateForeground();
         view.unmount();
       }
