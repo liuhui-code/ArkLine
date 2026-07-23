@@ -9,7 +9,9 @@ export const SEARCH_UI_EVIDENCE_SCRIPT = `
   const empty = results
     ? results.querySelector(".search-everywhere__empty, .palette-empty")
     : null;
-  const status = document.querySelector('[aria-label="Status Bar Left"]');
+  const statusLeft = document.querySelector('[aria-label="Status Bar Left"]');
+  const statusRight = document.querySelector('[aria-label="Status Bar Right"]');
+  const activeTab = document.querySelector(".editor-tab--active");
   return {
     capturedAt: Date.now(),
     phase,
@@ -24,7 +26,9 @@ export const SEARCH_UI_EVIDENCE_SCRIPT = `
       button.getAttribute("aria-label") || (button.textContent || "").trim().slice(0, 240)
     ),
     emptyText: empty ? (empty.textContent || "").trim() : null,
-    statusText: status ? (status.textContent || "").trim().slice(0, 500) : null,
+    statusLeftText: statusLeft ? (statusLeft.textContent || "").trim().slice(0, 500) : null,
+    statusRightText: statusRight ? (statusRight.textContent || "").trim().slice(0, 500) : null,
+    activeTabText: activeTab ? (activeTab.textContent || "").trim().slice(0, 240) : null,
   };
 `;
 

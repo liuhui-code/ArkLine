@@ -58,6 +58,38 @@ describe("packaged Windows WebView2 attachment", () => {
     ]);
   });
 
+  it("sends special keys through W3C keyboard actions", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: null }),
+    });
+    const driver = new PackagedWebDriver(
+      "http://127.0.0.1:4445",
+      fetchImpl,
+    );
+    driver.sessionId = "session-1";
+
+    await driver.keyChord(["\uE007"]);
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:4445/session/session-1/actions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          actions: [{
+            type: "key",
+            id: "arkline-keyboard",
+            actions: [
+              { type: "keyDown", value: "\uE007" },
+              { type: "keyUp", value: "\uE007" },
+            ],
+          }],
+        }),
+      }),
+    );
+  });
+
   it("records WebView2 debug probes without requiring a version endpoint", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       const reachable = url.endsWith("/json/list");

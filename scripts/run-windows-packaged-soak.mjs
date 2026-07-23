@@ -277,8 +277,20 @@ async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvi
     "Quick Open Results",
     searchEvidence,
   );
-  await driver.sendToActive(WEBDRIVER_KEYS.enter);
-  const activeTab = await waitForActiveTab(driver, pageName, 10_000);
+  await driver.keyChord([WEBDRIVER_KEYS.enter]);
+  let activeTab;
+  try {
+    activeTab = await waitForActiveTab(driver, pageName, 10_000);
+  } catch (error) {
+    await captureSearchEvidence(
+      driver,
+      "quick-open-enter-failed",
+      "Quick Open Query",
+      "Quick Open Results",
+      searchEvidence,
+    );
+    throw error;
+  }
   jumpSamples.push(await stableRendererDuration(driver, started));
   if (!activeTab.includes(pageName)) counters.staleApplyCount += 1;
 }
