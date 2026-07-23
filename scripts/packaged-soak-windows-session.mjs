@@ -9,14 +9,10 @@ import {
 const execFileAsync = promisify(execFile);
 
 export function buildWebView2Environment(baseEnvironment, fixturePath, debugPort) {
-  const remoteDebugging = `--remote-debugging-port=${debugPort}`;
-  const existing = baseEnvironment.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS?.trim();
   return {
     ...baseEnvironment,
     ARKLINE_WORKSPACE_ROOT: fixturePath,
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: existing
-      ? `${existing} ${remoteDebugging}`
-      : remoteDebugging,
+    ARKLINE_WEBDRIVER_PORT: String(debugPort),
   };
 }
 

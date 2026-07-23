@@ -57,6 +57,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            platform::create_manual_windows(app)?;
             platform::apply_app_icon();
             if let Ok(resource_dir) = app.path().resource_dir() {
                 services::semantic_host::process::register_resource_dir(resource_dir);

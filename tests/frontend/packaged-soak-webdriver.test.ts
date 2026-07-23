@@ -37,15 +37,15 @@ describe("packaged Windows WebView2 attachment", () => {
     );
   });
 
-  it("preserves existing WebView2 flags and adds the debug endpoint", () => {
+  it("passes a controlled WebDriver port to the packaged application", () => {
     expect(buildWebView2Environment(
-      { WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--disable-gpu" },
+      { EXISTING_VALUE: "preserved" },
       "C:\\fixture",
       9222,
     )).toMatchObject({
       ARKLINE_WORKSPACE_ROOT: "C:\\fixture",
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
-        "--disable-gpu --remote-debugging-port=9222",
+      ARKLINE_WEBDRIVER_PORT: "9222",
+      EXISTING_VALUE: "preserved",
     });
     expect(nativeDriverArguments(4445)).toEqual([
       "--port=4445",
