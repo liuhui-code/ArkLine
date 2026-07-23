@@ -8,7 +8,7 @@ use crate::services::workspace_index_state_machine_service::{
     should_publish_task_result, task_state_label, WorkspaceIndexTaskState,
 };
 use crate::services::workspace_index_task_journal_service::{
-    store_task_status, store_task_status_with_events,
+    store_task_status, store_task_status_with_events, store_task_statuses_with_events,
 };
 use crate::services::workspace_index_task_lifecycle_service::task_supersedes_result;
 use crate::services::workspace_index_task_status_service::{
@@ -33,6 +33,30 @@ pub(crate) fn store_recent_status(
         }
     }
     store_task_status_with_events(&status.root_path, &status)
+}
+
+pub(crate) fn store_recent_statuses(
+    recent_statuses: &Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
+    statuses: &[WorkspaceIndexTaskStatus],
+) -> Result<Vec<Vec<WorkspaceIndexEvent>>, String> {
+    let Some(first) = statuses.first() else {
+        return Ok(Vec::new());
+    };
+    {
+        let mut recent = recent_statuses
+            .lock()
+            .map_err(|_| "Workspace index status lock poisoned".to_string())?;
+        for status in statuses {
+            recent.retain(|existing| existing.task_id != status.task_id);
+            recent.push(status.clone());
+        }
+        recent.sort_by(|left, right| left.generation.cmp(&right.generation));
+        if recent.len() > 32 {
+            let overflow = recent.len() - 32;
+            recent.drain(0..overflow);
+        }
+    }
+    store_task_statuses_with_events(&first.root_path, statuses)
 }
 
 pub(crate) fn store_pending_statuses_for_root(

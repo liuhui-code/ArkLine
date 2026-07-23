@@ -299,6 +299,20 @@ fn bounded_batches_run_full_refresh_without_background_tail() {
 }
 
 #[test]
+fn drains_only_pending_tasks_owned_by_the_rebuilt_workspace() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    scheduler.schedule(changed_task("/workspace", &["A.ets"]));
+    scheduler.schedule(sdk_task("/workspace", "/sdk"));
+    scheduler.schedule(changed_task("/other", &["B.ets"]));
+
+    let removed = scheduler.drain_tasks_for_root("/workspace");
+
+    assert_eq!(removed.len(), 2);
+    assert!(removed.iter().all(|task| task.root_path == "/workspace"));
+    assert_eq!(scheduler.pending_tasks_for_root("/other").len(), 1);
+}
+
+#[test]
 fn keeps_changed_path_tasks_with_different_reasons_separate() {
     let mut scheduler = WorkspaceIndexScheduler::default();
 

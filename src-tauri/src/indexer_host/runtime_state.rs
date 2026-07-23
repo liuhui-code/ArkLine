@@ -1,5 +1,6 @@
 use crate::indexer_host::IndexerHostSession;
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
+use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
 use std::time::{Duration, Instant};
 
 const INITIAL_RESTART_BACKOFF: Duration = Duration::from_millis(250);
@@ -17,6 +18,7 @@ pub(super) struct IndexerHostLaneState {
     pub(super) in_flight: bool,
     pub(super) active_process_id: Option<u32>,
     pub(super) writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    pub(super) slowest_publication: Option<WorkspaceIndexPublicationProfile>,
     restart_count: u64,
     consecutive_failures: u32,
     retry_not_before: Option<Instant>,
@@ -29,6 +31,7 @@ impl IndexerHostLaneState {
             in_flight: false,
             active_process_id: None,
             writer_metrics: None,
+            slowest_publication: None,
             restart_count: 0,
             consecutive_failures: 0,
             retry_not_before: None,
@@ -62,6 +65,16 @@ impl IndexerHostLaneState {
     pub(super) fn mark_success(&mut self) {
         self.consecutive_failures = 0;
         self.retry_not_before = None;
+    }
+
+    pub(super) fn record_publication(&mut self, profile: WorkspaceIndexPublicationProfile) {
+        let should_replace = self.slowest_publication.as_ref().is_none_or(|current| {
+            current.root_path != profile.root_path
+                || profile.total_duration_us > current.total_duration_us
+        });
+        if should_replace {
+            self.slowest_publication = Some(profile);
+        }
     }
 
     pub(super) fn mark_failure(&mut self) {
@@ -188,6 +201,37 @@ impl IndexerHostState {
         .into_iter()
         .flatten()
         .max()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::IndexerHostLaneState;
+    use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
+
+    #[test]
+    fn slowest_publication_resets_when_workspace_changes() {
+        let mut lane = IndexerHostLaneState::new();
+        lane.record_publication(profile("/first", 100));
+        lane.record_publication(profile("/first", 50));
+        assert_eq!(
+            lane.slowest_publication.as_ref().unwrap().total_duration_us,
+            100
+        );
+
+        lane.record_publication(profile("/second", 10));
+
+        let current = lane.slowest_publication.as_ref().unwrap();
+        assert_eq!(current.root_path, "/second");
+        assert_eq!(current.total_duration_us, 10);
+    }
+
+    fn profile(root_path: &str, total_duration_us: u64) -> WorkspaceIndexPublicationProfile {
+        WorkspaceIndexPublicationProfile {
+            root_path: root_path.to_string(),
+            total_duration_us,
+            stages: Vec::new(),
+        }
     }
 }
 

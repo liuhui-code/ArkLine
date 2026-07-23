@@ -376,3 +376,32 @@ fn replaces_pending_sdk_task_and_marks_old_generation_cancelled() {
 
     fs::remove_dir_all(root).unwrap_or(());
 }
+
+#[test]
+fn maintenance_fence_cancels_pending_tasks_before_mutating_the_store() {
+    let root = unique_temp_dir("workspace-index-manager-maintenance");
+    let root_path = root.to_string_lossy().to_string();
+    let source = root.join("Entry.ets").to_string_lossy().to_string();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    manager
+        .schedule_changed_paths(&root_path, &[source])
+        .unwrap();
+
+    manager
+        .with_workspace_maintenance(&root_path, || {
+            assert!(
+                manager
+                    .get_queue_pressure(&root_path)?
+                    .workspace_pending_task_count
+                    == 0
+            );
+            Ok(())
+        })
+        .unwrap();
+
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
+    assert!(statuses
+        .iter()
+        .any(|status| status.kind == "changed-paths" && status.status == "cancelled"));
+    fs::remove_dir_all(root).unwrap_or(());
+}

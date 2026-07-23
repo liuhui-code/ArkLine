@@ -6,15 +6,14 @@ use crate::models::workspace_index_layer::{
 use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_layer_readiness_store_service::{
-    count_rows, normalize_layer_index_path as normalize_index_path,
-    open_layer_readiness_store as open_index_store, row_exists,
+    count_rows, normalize_layer_index_path as normalize_index_path, row_exists,
+    with_layer_readiness_store,
 };
 use crate::services::workspace_index_layer_reason_service::enrich_layer_reason;
 use crate::services::workspace_index_layer_status_service::{
     aggregate_count_status, file_hot_current_status, status_from_bool, status_from_count,
     status_from_text, status_with_failures,
 };
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_sdk_shared_bridge_service::count_shared_sdk_symbols;
 use crate::services::workspace_semantic_layer_readiness_service::semantic_layer_readiness;
 
@@ -22,8 +21,16 @@ pub fn get_workspace_index_layer_readiness(
     root_path: &str,
     current_file_path: Option<&str>,
 ) -> Result<WorkspaceIndexLayerReadinessReport, String> {
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    with_layer_readiness_store(root_path, |connection| {
+        build_workspace_index_layer_readiness(connection, root_path, current_file_path)
+    })
+}
+
+fn build_workspace_index_layer_readiness(
+    connection: &Connection,
+    root_path: &str,
+    current_file_path: Option<&str>,
+) -> Result<WorkspaceIndexLayerReadinessReport, String> {
     let root_key = normalize_index_path(root_path);
     let current_file_key = current_file_path.map(normalize_index_path);
     let file_readiness = current_file_path
@@ -31,42 +38,42 @@ pub fn get_workspace_index_layer_readiness(
         .transpose()?;
 
     let mut layers = four_layer_projection(
-        &connection,
+        connection,
         &root_key,
         current_file_path,
         file_readiness.as_ref(),
     )?;
     layers.extend(vec![
-        discovery_layer(&connection, &root_key, current_file_path)?,
+        discovery_layer(connection, &root_key, current_file_path)?,
         counted_layer(
-            &connection,
+            connection,
             &root_key,
             "fileCatalog",
             "workspace_files",
             current_file_path,
         )?,
         counted_layer(
-            &connection,
+            connection,
             &root_key,
             "fingerprint",
             "workspace_file_fingerprints",
             current_file_path,
         )?,
-        content_layer(&connection, &root_key, file_readiness.as_ref())?,
-        stub_layer(&connection, &root_key, file_readiness.as_ref())?,
-        symbol_layer(&connection, &root_key, file_readiness.as_ref())?,
-        reference_layer(&connection, &root_key, current_file_path)?,
+        content_layer(connection, &root_key, file_readiness.as_ref())?,
+        stub_layer(connection, &root_key, file_readiness.as_ref())?,
+        symbol_layer(connection, &root_key, file_readiness.as_ref())?,
+        reference_layer(connection, &root_key, current_file_path)?,
         counted_layer(
-            &connection,
+            connection,
             &root_key,
             "dependencyGraph",
             "workspace_dependency_edges",
             None,
         )?,
-        sdk_layer(&connection, &root_key)?,
+        sdk_layer(connection, &root_key)?,
     ]);
     layers.extend(semantic_layer_readiness(
-        &connection,
+        connection,
         &root_key,
         current_file_path,
     )?);

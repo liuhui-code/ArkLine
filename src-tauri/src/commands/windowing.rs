@@ -9,6 +9,17 @@ pub struct LaunchWorkspaceState {
 }
 
 impl LaunchWorkspaceState {
+    pub fn for_process() -> Self {
+        let state = Self::default();
+        if let Some(root_path) = initial_workspace_path(
+            std::env::args(),
+            std::env::var("ARKLINE_WORKSPACE_ROOT").ok(),
+        ) {
+            state.set_for_label("main", root_path);
+        }
+        state
+    }
+
     pub fn set_for_label(&self, label: &str, root_path: String) {
         self.paths
             .lock()
@@ -22,6 +33,24 @@ impl LaunchWorkspaceState {
             .expect("launch workspace lock")
             .remove(label)
     }
+}
+
+fn initial_workspace_path(
+    args: impl IntoIterator<Item = String>,
+    environment_path: Option<String>,
+) -> Option<String> {
+    let mut arguments = args.into_iter();
+    while let Some(argument) = arguments.next() {
+        if argument == "--workspace" {
+            return arguments.next().filter(|path| !path.trim().is_empty());
+        }
+        if let Some(path) = argument.strip_prefix("--workspace=") {
+            if !path.trim().is_empty() {
+                return Some(path.to_string());
+            }
+        }
+    }
+    environment_path.filter(|path| !path.trim().is_empty())
 }
 
 pub fn sanitize_window_label(root_path: &str) -> String {
@@ -61,7 +90,7 @@ pub fn get_launch_workspace_path(
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_window_label, LaunchWorkspaceState};
+    use super::{initial_workspace_path, sanitize_window_label, LaunchWorkspaceState};
 
     #[test]
     fn sanitizes_window_label_from_workspace_path() {
@@ -75,6 +104,37 @@ mod tests {
         assert_eq!(
             state.take_for_label("workspace-1"),
             Some("C:/samples/ArkDemo".to_string())
+        );
+    }
+
+    #[test]
+    fn resolves_explicit_workspace_before_environment_fallback() {
+        let arguments = ["arkline", "--workspace", "C:/explicit"]
+            .into_iter()
+            .map(str::to_string);
+        assert_eq!(
+            initial_workspace_path(arguments, Some("C:/environment".to_string())),
+            Some("C:/explicit".to_string())
+        );
+    }
+
+    #[test]
+    fn resolves_inline_workspace_and_environment_fallback() {
+        assert_eq!(
+            initial_workspace_path(
+                ["arkline", "--workspace=C:/inline"]
+                    .into_iter()
+                    .map(str::to_string),
+                None,
+            ),
+            Some("C:/inline".to_string())
+        );
+        assert_eq!(
+            initial_workspace_path(
+                ["arkline"].into_iter().map(str::to_string),
+                Some("C:/environment".to_string()),
+            ),
+            Some("C:/environment".to_string())
         );
     }
 }

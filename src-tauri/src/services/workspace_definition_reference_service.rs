@@ -1,6 +1,8 @@
-use std::path::{Path, PathBuf};
+use rusqlite::params;
 
-use rusqlite::{params, Connection};
+use crate::services::workspace_index_connection_service::{
+    require_existing_workspace_index_reader, WorkspaceIndexReader,
+};
 
 use crate::models::language::{DefinitionCandidate, LanguageQueryRequest};
 use crate::services::workspace_reference_index_service::query_reference_at_position;
@@ -112,22 +114,8 @@ fn query_sdk_definition_by_symbol_id(
         .map_err(|error| error.to_string())
 }
 
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    if !cache_path.exists() {
-        return Err(format!(
-            "Workspace index does not exist: {}",
-            cache_path.display()
-        ));
-    }
-    Connection::open(cache_path).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
+fn open_index_store(root_path: &str) -> Result<WorkspaceIndexReader<'static>, String> {
+    require_existing_workspace_index_reader(root_path)
 }
 
 fn normalize_index_path(path: &str) -> String {

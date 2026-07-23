@@ -61,3 +61,19 @@ fn registry_keeps_active_task_for_independent_workspace() {
     assert!(!token.is_cancelled());
     assert!(cancelled.is_empty());
 }
+
+#[test]
+fn registry_cancels_every_active_task_for_a_rebuilt_workspace() {
+    let mut registry = WorkspaceIndexCancellationRegistry::default();
+    let first = registry.start_task(&task("/workspace", WorkspaceIndexTaskKind::ChangedPaths, 1));
+    let second = registry.start_task(&task("/workspace", WorkspaceIndexTaskKind::IndexSdk, 2));
+    let independent =
+        registry.start_task(&task("/other", WorkspaceIndexTaskKind::RefreshWorkspace, 3));
+
+    let cancelled = registry.cancel_root("/workspace");
+
+    assert_eq!(cancelled.len(), 2);
+    assert!(first.is_cancelled());
+    assert!(second.is_cancelled());
+    assert!(!independent.is_cancelled());
+}

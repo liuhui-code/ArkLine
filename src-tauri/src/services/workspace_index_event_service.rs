@@ -1,9 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexTaskStatus};
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, with_workspace_index_writer,
+};
 use crate::services::workspace_index_task_status_service::current_time_millis;
 
 pub fn create_index_event_tables(connection: &Connection) -> Result<(), String> {
@@ -46,8 +48,9 @@ pub fn store_index_event(root_path: &str, event: &WorkspaceIndexEvent) -> Result
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(root_path)?;
-    store_index_event_in_connection(&connection, event)
+    with_workspace_index_writer(root_path, |connection| {
+        store_index_event_in_connection(connection, event)
+    })
 }
 
 pub fn store_index_event_in_connection(
@@ -86,8 +89,9 @@ pub fn load_recent_index_events(
     if !Path::new(root_path).is_dir() {
         return Ok(Vec::new());
     }
-    let connection = open_index_store(root_path)?;
-    create_index_event_tables(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(Vec::new());
+    };
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -119,8 +123,23 @@ pub fn load_recent_index_events(
     let mut events = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
-    events.sort_by(|left, right| left.created_at.cmp(&right.created_at));
+    events.sort_by(|left, right| {
+        left.created_at
+            .cmp(&right.created_at)
+            .then_with(|| left.generation.cmp(&right.generation))
+            .then_with(|| event_phase_order(&left.phase).cmp(&event_phase_order(&right.phase)))
+            .then_with(|| left.event_id.cmp(&right.event_id))
+    });
     Ok(events)
+}
+
+fn event_phase_order(phase: &str) -> u8 {
+    match phase {
+        "queued" => 0,
+        "running" => 1,
+        "ready" | "partial" | "failed" | "cancelled" | "superseded" => 2,
+        _ => 3,
+    }
 }
 
 pub fn event_from_task_status(
@@ -160,25 +179,6 @@ fn message_for_task_status(status: &WorkspaceIndexTaskStatus) -> String {
         .clone()
         .or_else(|| status.message.clone())
         .unwrap_or_else(|| format!("{} {}", status.kind, status.status))
-}
-
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace index event path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn normalize_index_path(path: &str) -> String {

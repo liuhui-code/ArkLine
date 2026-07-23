@@ -8,6 +8,7 @@ use crate::services::workspace_file_identity_service::create_workspace_file_iden
 use crate::services::workspace_index_connection_service::with_workspace_index_writer;
 use crate::services::workspace_index_event_service::create_index_event_tables;
 use crate::services::workspace_index_layer_generation_service::create_layer_generation_table;
+#[allow(unused_imports)]
 pub use crate::services::workspace_index_schema_version_service::load_workspace_index_schema_versions;
 use crate::services::workspace_index_schema_version_service::{
     create_workspace_index_schema_version_table, record_workspace_index_schema_versions,
@@ -29,6 +30,7 @@ pub fn migrate_workspace_index_schema(root_path: &str) -> Result<(), String> {
 }
 
 pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), String> {
+    configure_fresh_store_auto_vacuum(connection)?;
     create_workspace_index_schema_version_table(connection)?;
     create_catalog_tables(connection)?;
     create_workspace_file_identity_table(connection)?;
@@ -48,6 +50,23 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_reference_index_tables(connection)?;
     create_semantic_layer_tables(connection)?;
     record_workspace_index_schema_versions(connection)
+}
+
+fn configure_fresh_store_auto_vacuum(connection: &Connection) -> Result<(), String> {
+    let table_count: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master
+             where type = 'table' and name not like 'sqlite_%'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if table_count == 0 {
+        connection
+            .pragma_update(None, "auto_vacuum", "incremental")
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn create_catalog_tables(connection: &Connection) -> Result<(), String> {

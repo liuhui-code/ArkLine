@@ -1,19 +1,19 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::workspace::WorkspaceIndexFileReadiness;
 use crate::services::workspace_content_readiness_store_service::load_content_file_state;
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_index_connection_service::open_existing_workspace_index_reader;
 use crate::services::workspace_semantic_layer_state_service::load_semantic_layers;
 
 pub fn get_workspace_index_file_readiness(
     root_path: &str,
     file_path: &str,
 ) -> Result<WorkspaceIndexFileReadiness, String> {
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(missing_file_readiness(root_path, file_path));
+    };
     let root_key = normalize_index_path(root_path);
     let path_key = normalize_index_path(file_path);
     let file_name = file_name(file_path);
@@ -125,6 +125,28 @@ pub fn get_workspace_index_file_readiness(
     })
 }
 
+fn missing_file_readiness(root_path: &str, file_path: &str) -> WorkspaceIndexFileReadiness {
+    let file_name = file_name(file_path);
+    WorkspaceIndexFileReadiness {
+        root_path: normalize_index_path(root_path),
+        path: normalize_index_path(file_path),
+        file_name: file_name.clone(),
+        discovery_index: "missing".to_string(),
+        file_index: "missing".to_string(),
+        content_index: "missing".to_string(),
+        symbol_index: "missing".to_string(),
+        parser_status: "unknown".to_string(),
+        parser_error: None,
+        indexed_generation: None,
+        semantic_layers: Vec::new(),
+        definition_available: false,
+        completion_available: false,
+        usages_available: false,
+        search_available: Path::new(file_path).is_file(),
+        reason: readiness_reason(&file_name, false, false, "missing", None, false, "unknown"),
+    }
+}
+
 fn semantic_layer_available(
     layers: &[crate::models::workspace_semantic_layer::WorkspaceSemanticLayerReadiness],
     name: &str,
@@ -226,25 +248,6 @@ fn readiness_reason(
         return format!("{file_name} is in the file index but text search rows are not ready yet.");
     }
     format!("{file_name} is indexed and semantic navigation can use the workspace index.")
-}
-
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace file readiness index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn normalize_index_path(path: &str) -> String {

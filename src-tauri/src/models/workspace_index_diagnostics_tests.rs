@@ -38,6 +38,25 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
         discovery_excluded_count: 0,
         discovery_has_more: false,
         db_size_bytes: 0,
+        wal_size_bytes: 0,
+        freelist_bytes: 0,
+        compaction_status: "not-needed".to_string(),
+        store_revision: 4,
+        store_generation: 2,
+        active_store_reader_count: 0,
+        shared_sdk_artifact_count: 2,
+        shared_sdk_ready_artifact_count: 1,
+        shared_sdk_building_artifact_count: 1,
+        shared_sdk_failed_artifact_count: 0,
+        shared_sdk_reference_count: 3,
+        shared_sdk_db_size_bytes: 4_096,
+        shared_sdk_wal_size_bytes: 1_024,
+        shared_sdk_freelist_bytes: 512,
+        shared_sdk_store_revision: 7,
+        shared_sdk_store_generation: 0,
+        shared_sdk_active_reader_count: 0,
+        shared_sdk_last_maintenance_at: Some(42),
+        shared_sdk_last_deleted_artifact_count: 1,
         writer_metrics: Default::default(),
         queue_pressure: WorkspaceIndexQueuePressure {
             root_path: "/workspace".to_string(),
@@ -67,6 +86,10 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
             discovery_writer_metrics: None,
             content_writer_metrics: None,
             stub_writer_metrics: None,
+            publication_writer_metrics: None,
+            slowest_discovery_publication: None,
+            slowest_content_publication: None,
+            slowest_stub_publication: None,
             completed_discovery_chunks: 3,
             completed_content_refresh_chunks: 4,
             cancelled_content_refresh_chunks: 1,
@@ -91,5 +114,9 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
     assert!(json.contains("\"completedDiscoveryChunks\""));
     assert!(json.contains("\"backoffRemainingMs\""));
     assert!(json.contains("\"writerMetrics\""));
+    assert!(json.contains("\"sharedSdkArtifactCount\":2"));
+    assert!(json.contains("\"sharedSdkWalSizeBytes\":1024"));
+    assert!(json.contains("\"sharedSdkFreelistBytes\":512"));
+    assert!(json.contains("\"sharedSdkStoreRevision\":7"));
     assert!(!json.contains("schema_version_actions"));
 }

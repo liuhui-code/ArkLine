@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use arkline_lib::indexer_host::IndexerHostSession;
+use arkline_lib::indexer_host::{
+    IndexerContentRefreshAttempt, IndexerDiscoveryAttempt, IndexerHostRuntime, IndexerHostSession,
+    IndexerStubRefreshAttempt,
+};
 use arkline_lib::indexer_sidecar::IndexerTaskKey;
 use rusqlite::Connection;
 
@@ -14,10 +17,82 @@ fn host_negotiates_health_with_the_real_indexer_binary() {
 
     assert!(capabilities.contains(&"health".to_string()));
     assert!(capabilities.contains(&"discoveryChunk".to_string()));
+    assert!(capabilities.contains(&"discoveryPrepareChunk".to_string()));
     assert!(capabilities.contains(&"contentRefreshChunk".to_string()));
     assert!(capabilities.contains(&"contentResourceBudget".to_string()));
     assert!(capabilities.contains(&"stubRefreshChunk".to_string()));
     assert!(session.process_id() > 0);
+}
+
+#[test]
+fn discovery_runtime_prepares_in_sidecar_and_publishes_through_writer_actor() {
+    let root = unique_temp_root();
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("Entry.ets"), "class Entry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
+    let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+
+    let result = runtime.discover_workspace_chunk(
+        IndexerTaskKey {
+            root_path: root_path.clone(),
+            kind: "discovery".to_string(),
+            generation: 5,
+            reason: "actor-discovery-integration".to_string(),
+        },
+        None,
+        64,
+    );
+
+    let IndexerDiscoveryAttempt::Applied(result) = result else {
+        panic!("discovery actor publication should apply");
+    };
+    assert_eq!(result.chunk_file_count, 1);
+    assert!(result.publication_artifact.is_none());
+    assert!(result
+        .publication_profile
+        .stages
+        .iter()
+        .any(|stage| stage.name == "discoveryCommit"));
+    let snapshot = runtime.snapshot();
+    assert!(snapshot
+        .publication_writer_metrics
+        .is_some_and(|metrics| metrics.sample_count > 0));
+    let connection =
+        Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
+    let discovered_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_discovered_files",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let task_status: String = connection
+        .query_row(
+            "select status from workspace_index_task_journal
+             where task_id = '5:discovery'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(discovered_count, 1);
+    assert_eq!(task_status, "ready");
+    drop(connection);
+    let process_id = runtime.snapshot().discovery_process_id;
+    let stale = runtime.discover_workspace_chunk(
+        IndexerTaskKey {
+            root_path: root_path.clone(),
+            kind: "discovery".to_string(),
+            generation: 4,
+            reason: "stale-discovery-integration".to_string(),
+        },
+        None,
+        64,
+    );
+    assert_eq!(stale, IndexerDiscoveryAttempt::Cancelled);
+    assert_eq!(runtime.snapshot().fallback_count, 0);
+    assert_eq!(runtime.snapshot().discovery_process_id, process_id);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -73,30 +148,33 @@ fn stub_refresh_is_bounded_idempotent_and_rejects_old_generations() {
         good.to_string_lossy().to_string(),
         broken.to_string_lossy().to_string(),
     ];
-    let first = session
-        .refresh_stub_chunk(
-            stub_task.clone(),
-            100,
-            changed_paths.clone(),
-            Vec::new(),
-            || false,
-        )
-        .unwrap();
+    drop(session);
+    let first_runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+    let first = first_runtime.refresh_stub_chunk(
+        stub_task.clone(),
+        100,
+        changed_paths.clone(),
+        Vec::new(),
+        || false,
+    );
+    let IndexerStubRefreshAttempt::Applied(first) = first else {
+        panic!("first stub publication should apply");
+    };
     assert_eq!(first.parsed_file_count, 2);
     assert!(first.parse_error_count > 0);
 
-    drop(session);
-    let mut session = IndexerHostSession::start(executable).unwrap();
-    session.health().unwrap();
-    session
-        .refresh_stub_chunk(
+    drop(first_runtime);
+    let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+    assert!(matches!(
+        runtime.refresh_stub_chunk(
             stub_task.clone(),
             100,
             changed_paths.clone(),
             Vec::new(),
             || false,
-        )
-        .unwrap();
+        ),
+        IndexerStubRefreshAttempt::Applied(_)
+    ));
     let connection = Connection::open(&database_path).unwrap();
     let good_count: i64 = connection
         .query_row(
@@ -109,35 +187,40 @@ fn stub_refresh_is_bounded_idempotent_and_rejects_old_generations() {
     drop(connection);
 
     fs::write(&good, "export class NewerController {}\n").unwrap();
-    session
-        .refresh_stub_chunk(
+    assert!(matches!(
+        runtime.refresh_stub_chunk(
             stub_task.clone(),
             101,
             vec![changed_paths[0].clone()],
             Vec::new(),
             || false,
-        )
-        .unwrap();
-    let error = session
-        .refresh_stub_chunk(
-            stub_task.clone(),
-            100,
-            vec![changed_paths[1].clone()],
-            Vec::new(),
-            || false,
-        )
-        .unwrap_err();
-    assert!(error.contains("Stale stub refresh generation"));
+        ),
+        IndexerStubRefreshAttempt::Applied(_)
+    ));
+    let stub_process_id = runtime.snapshot().stub_process_id;
+    let stale = runtime.refresh_stub_chunk(
+        stub_task.clone(),
+        100,
+        vec![changed_paths[1].clone()],
+        Vec::new(),
+        || false,
+    );
+    assert_eq!(stale, IndexerStubRefreshAttempt::Cancelled);
+    assert_eq!(runtime.snapshot().fallback_count, 0);
+    assert_eq!(runtime.snapshot().stub_process_id, stub_process_id);
     fs::remove_file(&good).unwrap();
-    session
-        .refresh_stub_chunk(
-            stub_task,
-            102,
-            Vec::new(),
-            vec![changed_paths[0].clone()],
-            || false,
-        )
-        .unwrap();
+    let removed = runtime.refresh_stub_chunk(
+        stub_task,
+        102,
+        Vec::new(),
+        vec![changed_paths[0].clone()],
+        || false,
+    );
+    assert!(
+        matches!(removed, IndexerStubRefreshAttempt::Applied(_)),
+        "{:?}",
+        runtime.snapshot()
+    );
     let connection = Connection::open(&database_path).unwrap();
     let removed_count: i64 = connection
         .query_row(
@@ -149,21 +232,20 @@ fn stub_refresh_is_bounded_idempotent_and_rejects_old_generations() {
     assert_eq!(removed_count, 0);
     drop(connection);
     fs::write(&good, "export class StaleResurrection {}\n").unwrap();
-    let error = session
-        .refresh_stub_chunk(
-            IndexerTaskKey {
-                root_path: root_path.clone(),
-                kind: "stub-refresh".to_string(),
-                generation: 33,
-                reason: "stale-after-delete".to_string(),
-            },
-            101,
-            vec![changed_paths[0].clone()],
-            Vec::new(),
-            || false,
-        )
-        .unwrap_err();
-    assert!(error.contains("Stale stub refresh generation 101"));
+    let stale = runtime.refresh_stub_chunk(
+        IndexerTaskKey {
+            root_path: root_path.clone(),
+            kind: "stub-refresh".to_string(),
+            generation: 33,
+            reason: "stale-after-delete".to_string(),
+        },
+        101,
+        vec![changed_paths[0].clone()],
+        Vec::new(),
+        || false,
+    );
+    assert_eq!(stale, IndexerStubRefreshAttempt::Cancelled);
+    assert_eq!(runtime.snapshot().fallback_count, 0);
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -212,37 +294,41 @@ fn content_refresh_replays_across_restart_and_rejects_old_generations() {
         generation: 42,
         reason: "full-refresh-deep:test".to_string(),
     };
-    let result = first
-        .refresh_content_chunk(
-            task.clone(),
-            100,
-            vec![source_path.clone()],
-            Vec::new(),
-            || false,
-        )
-        .unwrap();
+    drop(first);
+    let first_runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+    let result = first_runtime.refresh_content_chunk(
+        task.clone(),
+        100,
+        vec![source_path.clone()],
+        Vec::new(),
+        || false,
+    );
+    let IndexerContentRefreshAttempt::Applied(result) = result else {
+        panic!("first content publication should apply");
+    };
     assert_eq!(result.indexed_file_count, 1);
     assert_eq!(result.indexed_line_count, 1);
     assert_eq!(result.resource_limited_file_count, 0);
     assert_eq!(result.processed_source_bytes, 27);
-    let writer_metrics = first
-        .writer_metrics()
-        .expect("real sidecar should return writer telemetry");
+    let writer_metrics = first_runtime
+        .snapshot()
+        .publication_writer_metrics
+        .expect("writer actor should return publication telemetry");
     assert!(writer_metrics.sample_count > 0);
     assert!(writer_metrics.hold_max_us > 0);
-    drop(first);
+    drop(first_runtime);
 
-    let mut second = IndexerHostSession::start(executable).unwrap();
-    second.health().unwrap();
-    second
-        .refresh_content_chunk(
+    let second = IndexerHostRuntime::with_executable(executable.to_path_buf());
+    assert!(matches!(
+        second.refresh_content_chunk(
             task.clone(),
             100,
             vec![source_path.clone()],
             Vec::new(),
             || false,
-        )
-        .unwrap();
+        ),
+        IndexerContentRefreshAttempt::Applied(_)
+    ));
     let connection = Connection::open(&database_path).unwrap();
     let replay_count: i64 = connection
         .query_row("select count(*) from workspace_content_lines", [], |row| {
@@ -253,25 +339,25 @@ fn content_refresh_replays_across_restart_and_rejects_old_generations() {
     drop(connection);
 
     fs::write(&source, "const newerGeneration = 2;\n").unwrap();
-    second
-        .refresh_content_chunk(
+    assert!(matches!(
+        second.refresh_content_chunk(
             task.clone(),
             101,
             vec![source_path.clone()],
             Vec::new(),
             || false,
-        )
-        .unwrap();
-    let error = second
-        .refresh_content_chunk(
-            task.clone(),
-            100,
-            vec![source_path.clone()],
-            Vec::new(),
-            || false,
-        )
-        .unwrap_err();
-    assert!(error.contains("Stale content refresh generation"));
+        ),
+        IndexerContentRefreshAttempt::Applied(_)
+    ));
+    let stale = second.refresh_content_chunk(
+        task.clone(),
+        100,
+        vec![source_path.clone()],
+        Vec::new(),
+        || false,
+    );
+    assert_eq!(stale, IndexerContentRefreshAttempt::Cancelled);
+    assert_eq!(second.snapshot().fallback_count, 0);
     let connection = Connection::open(&database_path).unwrap();
     let text: String = connection
         .query_row(
@@ -283,9 +369,12 @@ fn content_refresh_replays_across_restart_and_rejects_old_generations() {
     assert!(text.contains("newerGeneration"));
     drop(connection);
     fs::remove_file(&source).unwrap();
-    second
-        .refresh_content_chunk(task, 102, Vec::new(), vec![source_path], || false)
-        .unwrap();
+    let removed = second.refresh_content_chunk(task, 102, Vec::new(), vec![source_path], || false);
+    assert!(
+        matches!(removed, IndexerContentRefreshAttempt::Applied(_)),
+        "{:?}",
+        second.snapshot()
+    );
     let connection = Connection::open(&database_path).unwrap();
     let removed_count: i64 = connection
         .query_row("select count(*) from workspace_content_files", [], |row| {

@@ -10,9 +10,11 @@ use crate::services::workspace_stub_index_service::normalize_index_path;
 use crate::services::workspace_stub_refresh_plan_service::{
     plan_workspace_stub_refresh, WorkspaceStubRefreshPlan,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct PreparedWorkspaceStubRefresh {
+    pub(crate) indexed_generation: u64,
     pub(crate) plan: WorkspaceStubRefreshPlan,
     pub(crate) stubs: Vec<ArkTsFileStub>,
 }
@@ -26,7 +28,11 @@ pub(crate) fn prepare_changed_stub_rows(
 ) -> PreparedWorkspaceStubRefresh {
     let plan = plan_workspace_stub_refresh(changed_paths, removed_paths);
     let stubs = parse_stub_files(root_key, &plan.indexed_paths, indexed_generation, priority);
-    PreparedWorkspaceStubRefresh { plan, stubs }
+    PreparedWorkspaceStubRefresh {
+        indexed_generation,
+        plan,
+        stubs,
+    }
 }
 
 pub(crate) fn parse_stub_files(

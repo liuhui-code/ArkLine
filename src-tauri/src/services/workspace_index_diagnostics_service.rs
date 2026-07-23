@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
@@ -10,8 +9,13 @@ use crate::models::workspace::{
     WorkspaceIndexSchemaVersionAction, WorkspaceIndexTimelineItem,
 };
 use crate::services::workspace_index_connection_service::workspace_index_writer_metrics;
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, require_existing_workspace_index_reader,
+    workspace_index_store_path, WorkspaceIndexReader,
+};
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_freshness_service::load_index_freshness_layers;
+use crate::services::workspace_index_maintenance_runtime_service::workspace_index_store_stats;
 use crate::services::workspace_index_repair_action_service::{
     workspace_index_health_status, workspace_index_repair_actions, WorkspaceIndexRepairActionInput,
 };
@@ -19,25 +23,32 @@ use crate::services::workspace_index_repair_service::{
     inspect_parser_failures, inspect_unresolved_imports,
 };
 use crate::services::workspace_index_resume_service::load_resume_tasks;
-use crate::services::workspace_index_schema_service::{
-    ensure_workspace_index_schema, load_workspace_index_schema_versions,
-};
+use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
 use crate::services::workspace_index_schema_version_service::{
-    plan_workspace_index_schema_version_actions, WorkspaceIndexSchemaVersionStatus,
+    plan_workspace_index_schema_version_actions, read_workspace_index_schema_versions,
+    WorkspaceIndexSchemaVersionStatus,
 };
+use crate::services::workspace_index_store_generation_service::workspace_index_store_generation;
 use crate::services::workspace_sdk_shared_bridge_service::count_shared_sdk_symbols;
+use crate::services::workspace_shared_sdk_maintenance_service::{
+    inspect_shared_sdk_store, SharedSdkStoreStats,
+};
+use crate::services::workspace_shared_sdk_path_service::shared_sdk_store_path;
 
 const DIAGNOSTICS_PARSER_FAILURE_LIMIT: usize = 5;
 const DIAGNOSTICS_UNRESOLVED_IMPORT_LIMIT: usize = 5;
 
 pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnostics, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
+    ensure_diagnostics_store_schema(root_path)?;
+    let cache_path = workspace_index_store_path(root_path);
     let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let active_sdk = load_active_sdk_metadata(&connection, &root_key)?;
     let index_status = load_status(&connection, &root_key)?;
     let discovery = load_discovery_diagnostics(&connection, &root_key)?;
+    let store_stats = workspace_index_store_stats(root_path, &connection)?;
+    let store_generation = workspace_index_store_generation(&cache_path);
+    let shared_sdk = load_shared_sdk_store_stats(root_path)?;
 
     let recent_events = load_recent_index_events(root_path, 20)?;
     let timeline = timeline_from_events(&recent_events);
@@ -51,7 +62,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let sdk_symbol_count =
         count_sdk_symbols(root_path, &connection, &root_key, active_sdk.as_ref())?;
     let health_status = workspace_index_health_status(&index_status, sdk_symbol_count);
-    let schema_versions = load_workspace_index_schema_versions(&connection)?;
+    let schema_versions = read_workspace_index_schema_versions(&connection)?;
     let schema_version_actions = diagnostics_schema_version_actions(&schema_versions);
     let schema_needs_rebuild = schema_version_actions
         .iter()
@@ -87,6 +98,25 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         discovery_excluded_count: discovery.excluded_count,
         discovery_has_more: discovery.has_more,
         db_size_bytes: db_size_bytes(&cache_path)?,
+        wal_size_bytes: store_stats.wal_size_bytes,
+        freelist_bytes: store_stats.freelist_bytes(),
+        compaction_status: store_stats.compaction_status().to_string(),
+        store_revision: store_generation.revision,
+        store_generation: store_generation.generation,
+        active_store_reader_count: store_generation.active_readers,
+        shared_sdk_artifact_count: shared_sdk.artifact_count,
+        shared_sdk_ready_artifact_count: shared_sdk.ready_artifact_count,
+        shared_sdk_building_artifact_count: shared_sdk.building_artifact_count,
+        shared_sdk_failed_artifact_count: shared_sdk.failed_artifact_count,
+        shared_sdk_reference_count: shared_sdk.reference_count,
+        shared_sdk_db_size_bytes: shared_sdk.db_size_bytes,
+        shared_sdk_wal_size_bytes: shared_sdk.wal_size_bytes,
+        shared_sdk_freelist_bytes: shared_sdk.freelist_bytes,
+        shared_sdk_store_revision: shared_sdk.store.revision,
+        shared_sdk_store_generation: shared_sdk.store.generation,
+        shared_sdk_active_reader_count: shared_sdk.store.active_readers,
+        shared_sdk_last_maintenance_at: shared_sdk.last_maintenance_at,
+        shared_sdk_last_deleted_artifact_count: shared_sdk.last_deleted_artifact_count,
         writer_metrics: workspace_index_writer_metrics(root_path),
         queue_pressure: empty_queue_pressure(&root_key),
         active_sdk_path: active_sdk
@@ -107,6 +137,36 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         timeline,
         indexer_host: None,
     })
+}
+
+fn load_shared_sdk_store_stats(root_path: &str) -> Result<SharedSdkStoreStats, String> {
+    let store_path = shared_sdk_store_path(root_path)?;
+    if !store_path.is_file() {
+        return Ok(SharedSdkStoreStats::default());
+    }
+    inspect_shared_sdk_store(&store_path)
+}
+
+fn ensure_diagnostics_store_schema(root_path: &str) -> Result<(), String> {
+    let initialized = open_existing_workspace_index_reader(root_path)?
+        .map(|connection| {
+            connection
+                .query_row(
+                    "select exists(
+                        select 1 from sqlite_master
+                        where type = 'table' and name = 'workspace_index_schema_versions'
+                     )",
+                    [],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(|error| error.to_string())
+        })
+        .transpose()?
+        .unwrap_or(false);
+    if initialized {
+        return Ok(());
+    }
+    migrate_workspace_index_schema(root_path)
 }
 
 fn diagnostics_schema_version_actions(
@@ -179,16 +239,8 @@ struct ActiveSdkMetadata {
     sdk_version: String,
 }
 
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace SQLite index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
+fn open_index_store(root_path: &str) -> Result<WorkspaceIndexReader<'static>, String> {
+    require_existing_workspace_index_reader(root_path)
 }
 
 fn load_discovery_diagnostics(
@@ -308,13 +360,6 @@ fn load_active_sdk_metadata(
         })
         .map_err(|error| error.to_string())?;
     rows.next().transpose().map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn normalize_index_path(path: &str) -> String {

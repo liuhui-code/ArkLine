@@ -108,8 +108,11 @@ pub fn get_workspace_index_task_statuses(
 pub fn clear_workspace_index(
     root_path: String,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
+    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<(), String> {
-    clear_workspace_index_service(&index_runtime, &root_path)
+    index_manager.with_workspace_maintenance(&root_path, || {
+        clear_workspace_index_service(&index_runtime, &root_path)
+    })
 }
 
 #[tauri::command]

@@ -4,7 +4,6 @@ use serde_json::json;
 use crate::models::language::CompletionItem;
 use crate::services::workspace_completion_item_service::completion_item;
 use crate::services::workspace_index_query_path_service::{normalize_index_path, open_index_store};
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_sdk_parser_service::WorkspaceSdkSymbol;
 use crate::services::workspace_sdk_shared_bridge_service::query_shared_sdk_prefix_candidates;
 use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
@@ -21,7 +20,6 @@ pub fn sdk_member_completion_items(
     {
         return Ok(symbols.into_iter().map(to_completion_item).collect());
     }
-    ensure_workspace_index_schema(connection)?;
     let pattern = format!("{}%", escape_like_pattern(prefix));
     let suffix = format!("%.{}", receiver_type);
     let mut statement = connection
@@ -68,7 +66,6 @@ pub fn sdk_symbol_completion_items(
         Ok(connection) => connection,
         Err(_) => return Ok(Vec::new()),
     };
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let pattern = format!("{}%", escape_like_pattern(prefix));
     let mut statement = connection

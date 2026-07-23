@@ -1,19 +1,18 @@
-use std::fs;
-
 use rusqlite::{params, Connection};
 
-use crate::services::workspace_index_cache_path_service::sqlite_catalog_cache_path;
+use crate::services::workspace_index_connection_service::open_existing_workspace_index_reader;
+use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
-pub(crate) fn open_layer_readiness_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace SQLite index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
+pub(crate) fn with_layer_readiness_store<T>(
+    root_path: &str,
+    operation: impl FnOnce(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    if let Some(connection) = open_existing_workspace_index_reader(root_path)? {
+        return operation(&connection);
+    }
+    let connection = Connection::open_in_memory().map_err(|error| error.to_string())?;
+    ensure_workspace_index_schema(&connection)?;
+    operation(&connection)
 }
 
 pub(crate) fn row_exists(

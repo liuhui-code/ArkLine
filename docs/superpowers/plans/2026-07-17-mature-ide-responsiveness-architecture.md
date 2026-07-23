@@ -1203,6 +1203,568 @@ Final gates for this writer-observability slice:
 | Source line-count gate | 743 files checked; none over 500 lines |
 | Whitespace gate | passed |
 
+#### Phase 5 Budgeted Publication Pipeline Result
+
+Implemented and measured on 2026-07-23. Content and stub sidecar responses now
+carry additive publication profiles with named atomic stages. The Host retains
+the slowest profile per lane and the diagnostics center shows both total hold
+and the slowest stage. Older v4 sidecars remain readable because missing
+profiles deserialize to an empty profile.
+
+Hot publication no longer reruns the complete DDL migration before every
+chunk. Project-open migration remains authoritative; content and stub writers
+perform a read-only schema-version compatibility check. Writer connection
+setup also avoids reapplying `journal_mode=WAL` when the database is already in
+WAL mode. This removed an observed 900-1,000 ms setup stall from stub chunks.
+
+Content and stub use independent adaptive budgets. They begin at 16 paths and
+8 MiB, remain capped by the v4 protocol at 64 paths and 32 MiB, reduce
+immediately when publication hold exceeds 200 ms, and grow by 25% only below
+half the target. Feedback uses SQLite writer hold, not queue wait; otherwise a
+stub chunk waiting behind content incorrectly shrinks even when its own work is
+fast. Generation checks, deletion, derived layers, and publication remain one
+transaction.
+
+Measured 1,000-file debug evidence with three real sidecar processes:
+
+| Measure | Previous | Budgeted publication |
+| --- | ---: | ---: |
+| Open plus full background pipeline | 9.68 s | 10.23 s |
+| First worker tick | 64.2 ms | 58.9 ms |
+| Quick Open after drain | 0.90 ms | 0.72 ms |
+| Content publication hold p95 / max | 810 ms / 810 ms | 150 ms / 166 ms |
+| Stub publication hold p95 / max | 1.16 s / 1.16 s | 85 ms / 103 ms |
+| Content / stub chunks | 16 / 16 | 51 / 41 |
+| Content / stub wait p95 | 10 us / 14 us | 98.6 ms / 702 ms |
+| Fallbacks / restarts / cancellations | 0 / 0 / 0 | 0 / 0 / 0 |
+
+The hold budget is now green, but total debug throughput is about 5.7% slower
+and cross-lane queue wait is above the 50 ms trigger. This is the expected
+boundary for the dedicated writer actor: the next slice must replace SQLite's
+unfair competition between content and stub processes with one fair foreground
+and background publication queue, retain one writer connection, and group
+terminal journal updates. Adding more parser lanes is not justified.
+
+Verification for this slice: 8 diagnostics UI tests passed; production
+TypeScript/Vite build passed; publication, protocol compatibility, schema,
+generation, deletion, and adaptive-budget Rust tests passed. The full Rust run
+reported 804 passed, 11 ignored, and one timing-sensitive fallback-status
+failure that passed in isolation. A mistakenly broad frontend run also exposed
+five existing bottom-tool-window drag timeouts; the targeted diagnostics suite
+is green. These are not packaged Windows release results.
+
+#### Phase 5 Dedicated Writer Actor Result
+
+Implemented and measured on 2026-07-23. Protocol v5 separates preparation from
+publication. Content reads and ArkTS stub parsing remain parallel in their
+independent sidecar processes, but they now produce bounded immutable JSON
+artifacts under the workspace index staging directory. The sidecars return an
+artifact descriptor and do not mutate content or stub SQLite rows.
+
+The Host owns one process-wide Writer Actor with a bounded 64-request ingress
+queue. Changed-file work enters the foreground queue; background deep refresh
+enters the background queue. The scheduler permits at most four consecutive
+foreground publications while background work is waiting. Once publication
+starts it completes atomically; cancellation before start removes the artifact
+without publishing. Stale generations are classified as superseded control
+flow, not as sidecar crashes, so they do not trigger restart backoff or fallback.
+
+The actor validates the artifact path and byte count, reloads current catalog
+state, rechecks generation inside `BEGIN IMMEDIATE`, and publishes every derived
+layer in the existing atomic transaction. Content and stub therefore no longer
+compete as independent SQLite writers. The connection manager retains one
+configured writer connection per workspace while preserving its per-workspace
+writer gate and cross-process SQLite boundary. Multiple Host runtime instances
+share the same actor.
+
+Protocol negotiation is additive. A v5 sidecar advertises both legacy refresh
+capabilities and `writerActorPublication`; the Host requires an artifact only
+when that capability is present. This keeps staged Host/sidecar upgrades usable
+without weakening the new path. Terminal task statuses and unified events are
+grouped by workspace and committed in one transaction. Event timelines now use
+a deterministic generation and lifecycle-phase tie-breaker when several events
+share one millisecond timestamp.
+
+Diagnostics expose publication actor queue depth, active count, cumulative
+samples, failures, and p50/p95/p99/max wait and hold time. Existing per-stage
+content and stub profiles remain visible.
+
+Measured 1,000-file debug evidence with real discovery, content, and stub
+sidecars:
+
+| Measure | Budgeted multi-writer | Writer Actor |
+| --- | ---: | ---: |
+| Open plus full background pipeline | 10.23 s | 9.08 s |
+| First worker tick | 58.9 ms | 49.7 ms |
+| Quick Open after drain | 0.72 ms | 1.05 ms |
+| Publication queue wait p95 / max | stub 702 ms | 136 ms / 143 ms |
+| Publication hold p95 / max | content 150 ms, stub 85 ms | 149 ms / 160 ms |
+| Content / stub chunks | 51 / 41 | 51 / 41 |
+| Publication samples / failures | 92 / 0 | 92 / 0 |
+| Fallbacks / restarts / cancellations | 0 / 0 / 0 | 0 / 0 / 0 |
+
+The actor removes unfair cross-lane contention and improves total debug
+throughput by about 11%. Its wait p95 remains above the final 50 ms target
+because callers synchronously wait behind a single publication already in
+progress. The next optimization must use measured group commit or smaller
+foreground-aware deltas; adding parser threads is still not justified.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 815 passed / 11 ignored / 0 failed |
+| Real sidecar integration | 4 passed / 0 failed |
+| Publication-focused Rust tests | 15 passed / 0 failed |
+| Index diagnostics UI | 8 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 751 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+This is not yet complete crash recovery for staging artifacts. Orphans left by a
+sidecar dying after artifact creation need age-bounded startup cleanup or replay.
+At this point in the sequence, discovery, SDK publication, compaction, and
+maintenance writes remained outside the actor. Packaged Windows process,
+memory, crash, and p95/p99 gates remain Phase 6 requirements.
+
+#### Phase 5 Staging Crash Recovery Slice Result
+
+Implemented on 2026-07-23. Publication artifacts are now written to a unique
+`.tmp` file, flushed and synced, then atomically renamed to the immutable
+`.json` path returned to the Host. A sidecar crash during serialization can
+therefore leave only an uncommitted temporary file; the Writer Actor will never
+interpret a partially written file as a publishable artifact.
+
+Each Writer Actor performs one lazy recovery scan per workspace before that
+workspace's first publication. The scan is confined to
+`.arkline/index/staging`, recognizes only `.json` and `.tmp` files, and removes
+only files older than the five-minute grace period. Fresh files and unrelated
+workspace files are retained. Per-entry metadata or deletion failures are
+counted but do not block publication of the current valid artifact. This keeps
+startup recovery bounded and prevents a permissions problem in old staging data
+from making the current project unusable.
+
+The publication writer diagnostics now report recovered workspace count,
+staging artifacts scanned, removed and retained, and recovery failures. The
+Health / Storage view surfaces the workspace, removal, retention, and failure
+totals so recovery is observable rather than silent.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 817 passed / 11 ignored / 0 failed |
+| Real sidecar integration | 4 passed / 0 failed |
+| Publication-focused Rust tests | 16 passed / 0 failed |
+| Index diagnostics UI | 8 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 752 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+This slice deliberately does not replay orphan artifacts. An artifact records
+prepared rows but not a durable publication intent proving that the originating
+task was still active rather than cancelled or superseded. Replaying it after a
+restart could publish work the scheduler intentionally abandoned. Safe replay
+requires a small intent journal containing artifact identity, workspace,
+generation, task identity, priority, created time, and terminal state; recovery
+must reconcile that journal with the current catalog generation before enqueue.
+Until that contract exists, age-bounded cleanup is the safer mature behavior.
+
+#### Phase 5 Discovery Writer Actor Migration Result
+
+Implemented on 2026-07-23. Workspace discovery now follows the same
+prepare/publish boundary as content and stub indexing. A capable sidecar scans
+the bounded directory chunk and writes an immutable discovery artifact without
+creating or mutating the workspace SQLite database. The Host enqueues that
+artifact on the background Writer Actor lane.
+
+The Actor rechecks the durable discovery generation and input cursor inside the
+existing transaction, then atomically publishes discovered files, prunes rows
+when the generation reaches its final chunk, updates discovery state, and writes
+the task journal and unified event. Existing cursor replay semantics remain
+idempotent. A stale generation is classified as superseded cancellation, so it
+does not increment fallback or restart the healthy discovery sidecar.
+
+Protocol v5 negotiation remains additive. New sidecars advertise
+`discoveryPrepareChunk`; the Runtime uses `prepareDiscoveryChunk` only when both
+that capability and `writerActorPublication` are present. Older sidecars keep
+using `discoverWorkspaceChunk` and its direct atomic publication. The public
+low-level session method also retains the legacy operation, while normal
+workspace indexing uses the Runtime and Writer Actor path.
+
+Diagnostics now expose the slowest discovery publication and its
+`discoveryCommit` stage beside content and stub publication profiles. Together
+with the aggregate Actor queue and hold metrics, this makes slow directory
+catalog commits distinguishable from slow filesystem scanning.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 819 passed / 11 ignored / 0 failed |
+| Discovery-focused Rust tests | 36 passed / 0 failed |
+| Real sidecar integration | 5 passed / 0 failed |
+| Index diagnostics UI | 8 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 753 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+All sidecar-driven project discovery, content, and stub publication now shares
+one Host writer boundary. SDK publication, compaction, and maintenance writes
+remain outside the Actor and are the next coverage slices. Group commit or
+smaller foreground deltas should be evaluated only after those remaining write
+paths stop competing with the same SQLite database.
+
+#### Phase 5 SDK Storage-Domain Publication Result
+
+Implemented on 2026-07-23. SDK indexing writes two independent databases: the
+global shared SDK artifact store and the workspace catalog binding/mirror.
+These are now treated as separate writer domains instead of putting both under
+the workspace Writer Actor. Large shared symbol inserts remain behind the
+process-wide shared SDK writer gate; only the small workspace binding and
+compatibility mirror transaction enters the workspace Writer Actor.
+
+An SDK task parses one bounded API-file chunk and constructs a serializable
+prepared SDK catalog artifact containing the resolved immutable shared artifact
+identity, parsed symbols, replacement mode, and final-chunk state. The staging
+artifact is written and size-validated before either publication begins. The
+shared store then publishes begin/append/symbol-count/ready changes in one
+transaction. After another cancellation check, the workspace Actor atomically
+updates the active binding, local fallback symbols, and superseded-SDK pruning.
+
+This ordering deliberately publishes the content-addressed shared cache before
+the workspace pointer. A shared-store failure cannot change the active SDK. If
+the workspace transaction fails, the old binding remains active and the newly
+created shared artifact is merely an unbound reusable cache entry. Cancellation
+before the Actor starts removes the staging artifact and does not expose a
+partial workspace SDK. Ready-artifact reuse also changes the workspace binding
+through the Actor while preserving a matching local fallback mirror.
+
+Existing direct SDK indexing functions remain available for compatibility and
+tests, but the normal scheduled SDK task path uses the prepared artifact and
+Writer Actor. The shared store's previous multi-transaction begin/append/ready
+sequence is retained as a compatibility API; scheduled publication uses the new
+single-transaction chunk operation.
+
+Diagnostics report SDK publication count and maximum `sdkCatalogCommit`
+duration alongside the aggregate Actor queue, wait, and hold metrics. This
+separates slow workspace binding commits from SDK parsing and shared-cache bulk
+insertion.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 820 passed / 11 ignored / 0 failed |
+| SDK-focused Rust tests | 79 passed / 0 failed |
+| Real sidecar integration | 5 passed / 0 failed |
+| Index diagnostics UI | 8 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 753 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+Normal discovery, content, stub, and SDK workspace-catalog publication now
+shares the same Host writer boundary. Compaction, schema maintenance, repair,
+and a few explicit compatibility APIs remain outside it. The next coverage
+slice should inventory and classify those writes before migration; global
+shared-store maintenance must keep its own storage-domain gate.
+
+#### Phase 5 Maintenance Barrier And Transactional Reset Result
+
+Implemented on 2026-07-23. The first maintenance coverage slice replaces the
+runtime `remove_dir_all(.arkline/index)` rebuild path with a typed
+`ResetWorkspace` publication. Deleting an active SQLite database directory was
+unsafe because pooled readers, the pooled writer connection, and queued
+publications could retain WAL handles and repopulate a newly created database.
+Reset now runs as one immediate transaction on the workspace Writer Actor,
+preserves the database and schema, clears every workspace data layer, restores
+the expected schema-domain versions, and invalidates the legacy JSON catalog
+before removing the in-memory runtime state.
+
+Maintenance is a FIFO barrier rather than ordinary foreground work. All
+publications that reached the Actor before the barrier finish first; later
+foreground publications cannot overtake it. The Index Manager also owns a
+per-workspace maintenance fence. Entering the fence drains pending tasks,
+cancels active task tokens, and cancels tasks that race between scheduler drain
+and worker registration. Rebuild releases the fence only after reset completes,
+then schedules a fresh full refresh.
+
+Failure semantics are transactional. A trigger-induced delete failure rolls
+back rows already deleted from earlier index layers, leaves the schema usable,
+and increments Actor failure diagnostics without counting a successful
+maintenance publication. A schema-registry regression test enumerates every
+`workspace_*` data table and fails when a future index layer is not added to the
+explicit reset registry. This keeps repair coverage aligned with schema growth.
+
+Diagnostics now report maintenance publication count and maximum
+`maintenanceResetCommit` duration next to SDK and aggregate Actor metrics.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 827 passed / 11 ignored / 0 failed |
+| Writer Actor focused suite | 7 passed / 0 failed |
+| Real sidecar integration | 5 passed / 0 failed |
+| Index diagnostics UI | 8 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 754 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+The remaining maintenance work is deliberately separated by storage domain.
+Workspace `pragma optimize`, WAL checkpoint policy, and size-triggered
+compaction should be scheduled as low-priority Actor maintenance only after
+measured thresholds are defined; they must never run on the UI request path.
+Startup schema bootstrap remains an exclusive pre-publication operation until
+versioned copy-and-swap migrations exist. Global shared-SDK compaction and
+repair must continue to use the shared store's independent writer gate.
+
+#### Phase 5 Idle Store Maintenance Result
+
+Implemented on 2026-07-23. Workspace store upkeep now has an
+`IdleMaintenance` Actor lane below foreground and background publication. It is
+not a reset barrier and cannot overtake ordinary index work. The Index Manager
+submits candidates only after a successful background batch has no continuation
+or pending task. Search, navigation, completion, file-open activity, or newly
+queued index work cancels maintenance before it starts. Yielded roots remain in
+a deferred set and receive one more attempt before the background worker retires.
+
+The policy is bounded and evidence-driven:
+
+- the first changed long-lived writer connection runs
+  `pragma optimize=0x10002`; later changed stores run ordinary `pragma optimize`
+  no more than once per hour;
+- a PASSIVE WAL checkpoint is requested only when the WAL reaches 16 MiB and
+  the workspace has not attempted one during the previous 30 seconds;
+- fresh workspace stores enable SQLite incremental auto-vacuum before creating
+  schema objects;
+- incremental reclaim requires at least 64 MiB and 20 percent free pages, is
+  limited to 1,024 pages per run, and has a five-minute cooldown;
+- legacy stores without incremental auto-vacuum are reported as
+  `copy-swap-required`; ArkLine does not run blocking full `VACUUM` in place.
+
+The legacy snapshot and content persistence paths no longer execute
+`pragma optimize` after every commit. All workspace optimize work now enters
+through the same thresholded idle policy.
+
+These choices follow SQLite's guidance for
+[periodic optimize on long-lived connections](https://www.sqlite.org/pragma.html#pragma_optimize)
+and its
+[non-blocking PASSIVE checkpoint semantics](https://www.sqlite.org/c3ref/wal_checkpoint_v2.html).
+The policy is intentionally kept in a pure planner with threshold/cooldown
+tests, while filesystem/SQLite observation and Actor publication remain in the
+maintenance runtime.
+
+Health / Storage now reports WAL bytes, reclaimable freelist bytes, compaction
+status, aggregate maintenance duration, and separate optimize, checkpoint, and
+incremental-reclaim counts. The main DB size remains separate from WAL size so
+growth is diagnosable.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 835 passed / 11 ignored / 0 failed |
+| Writer Actor focused suite | 8 passed / 0 failed |
+| Maintenance policy suite | 5 passed / 0 failed |
+| Index Manager focused suite | 21 passed / 0 failed |
+| Index diagnostics UI/model | 19 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 755 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+#### Phase 5 Legacy Store Copy-And-Swap Result
+
+Implemented on 2026-07-23. Legacy workspace databases that meet the same
+64 MiB / 20 percent reclaim threshold now use a cancellable two-phase
+copy-and-swap protocol instead of an in-place full `VACUUM`:
+
+1. The connection manager briefly quiesces its pooled writer and readers and
+   truncates a clean WAL. A named `arkline-index-compaction` worker then runs
+   SQLite `VACUUM INTO` into the workspace staging directory.
+2. SQLite's progress handler checks a cancellation flag every 10,000 virtual
+   machine operations. UI-sensitive work or newly queued indexing interrupts
+   the copy and leaves the root deferred.
+3. The copy records the managed store revision, SQLite `data_version`, and
+   source DB/WAL fingerprint. Any managed or external commit observed during
+   or after the copy rejects the candidate.
+4. The Writer Actor owns the final low-priority commit. It requires the same
+   revision, no active managed reader lease, a matching source fingerprint, a
+   successful candidate `integrity_check`, and the expected workspace schema.
+5. macOS/Linux replace the main database with a same-directory atomic rename.
+   Windows uses `ReplaceFileW` with write-through semantics. A sharing
+   violation, active reader, changed source, or busy WAL defers the attempt
+   rather than waiting on an IDE query.
+
+The connection manager now tracks two separate counters per store. `revision`
+advances after writes and invalidates stale candidates. `generation` advances
+only after a successful file replacement. Reader leases capture their
+generation, pooled readers are drained before the swap, and a reader from an
+older generation is never returned to the pool.
+
+Crash and failure behavior is conservative:
+
+- the source database is retained until the validated replacement succeeds;
+- failed, cancelled, stale, or busy attempts remove their candidate;
+- expired `compaction-*.sqlite` files are part of publication staging recovery;
+- copy-swap uses the existing five-minute successful-reclaim cooldown, while
+  deferred attempts remain queued for a later idle window.
+
+Health / Storage exposes store revision, store generation, active managed
+readers, successful copy-swaps, and deferred copy-swaps. Actor profiles
+distinguish source-changed, readers-active, and busy deferrals from committed
+replacement.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Copy-and-swap protocol suite | 4 passed / 0 failed |
+| Writer Actor focused suite | 9 passed / 0 failed |
+| Maintenance policy suite | 5 passed / 0 failed |
+| Connection lifecycle suite | 7 passed / 0 failed |
+| Index diagnostics service | 6 passed / 0 failed |
+| Index diagnostics UI/model | 19 passed / 0 failed |
+| Serial Rust library suite | 841 passed / 11 ignored / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 761 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+The installed Windows Rust target reached the bundled SQLite C build during
+cross-checking, then stopped before ArkLine compilation because this macOS host
+does not provide the MSVC C sysroot (`stdlib.h`). The native Windows CI/release
+job remains the authoritative compile gate for `ReplaceFileW`.
+
+The remaining architectural boundary is unmanaged direct SQLite connections.
+Core publication and managed query paths participate in revision and reader
+leases, while several compatibility helpers still open short-lived read/write
+connections directly. Windows naturally defers replacement while such handles
+are open; source fingerprints and the idle-work gate reject observed changes on
+other platforms. The next storage slice should migrate the remaining workspace
+DB opens behind one connection facade, then move shared-SDK maintenance into
+its separate storage domain.
+
+#### Phase 5 Unified Workspace Connection Boundary Result
+
+Implemented on 2026-07-23. All production access to the primary
+`workspace-catalog.sqlite` now enters through the connection manager. Managed
+queries acquire a generation lease and a `query_only` reader; event, task
+journal, resume, fingerprint, discovery, dependency-status, SDK binding, and
+SDK catalog writes use the serialized writer or an immediate transaction.
+Copy-and-swap can therefore observe every primary-catalog write and no longer
+depends on best-effort detection of compatibility helpers.
+
+The migration preserves storage-domain ownership:
+
+- shared SDK artifacts retain their independent shared-store writer;
+- reference search retains its independent reference catalog;
+- Device Log metadata retains its independent log database;
+- compaction and the connection manager remain the only low-level primary-store
+  openers;
+- large-project fixture code may open its isolated test catalog directly.
+
+Read paths no longer run persistent schema DDL. Missing layer-readiness stores
+use a temporary in-memory empty schema so the UI reports `Missing` without
+creating a project database. Diagnostics is intentionally more defensive: if
+the catalog is absent or predates the schema registry, it performs one managed
+writer bootstrap before acquiring its reader. A healthy initialized catalog
+stays read-only during every diagnostics refresh.
+
+SDK parsing and filesystem fingerprint calculation remain outside the writer
+critical section. Only prepared immutable rows enter the immediate transaction.
+Discovery ready-state and file rows are read from one leased connection so a
+generation swap cannot split one readiness answer across snapshots.
+
+A deterministic concurrency regression holds an active writer while
+copy-and-swap attempts publication. The swap waits for the workspace gate, then
+rejects the candidate as source-changed instead of replacing the writer's
+commit. Existing tests also cover active-reader deferral and post-copy revision
+changes.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 842 passed / 11 ignored / 0 failed |
+| Connection-facade migration suites | 53 passed / 0 failed |
+| Copy-and-swap protocol suite | 5 passed / 0 failed |
+| Real sidecar integration | 5 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 761 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+The next storage-domain task is shared-SDK maintenance and retention. It must
+not be folded into the workspace connection manager: one SDK artifact can be
+shared by multiple workspaces, so compaction, stale-artifact deletion, and
+repair require their own generation tracking and writer gate.
+
+#### Phase 5 Shared SDK Retention Boundary Result
+
+Implemented on 2026-07-23. The platform-wide shared SDK artifact database now
+has an independent connection manager instead of reusing workspace catalog
+lifecycle rules. Writers are serialized per shared-store path with
+`BEGIN IMMEDIATE`; queries use `query_only` reader leases and perform artifact
+validation plus result loading from one WAL snapshot. The shared store exposes
+its own revision, reserved replacement generation, and active reader count.
+
+Workspace bindings now have a corresponding shared-store reference:
+
+- successful full, chunked, and reused SDK bindings upsert one reference keyed
+  by workspace root;
+- switching SDK artifacts replaces that workspace's previous reference;
+- active SDK reads refresh the reference at most once per 24 hours per process;
+- a failed cross-database reference update is surfaced, while the fresh-artifact
+  retention window prevents immediate data loss if a process exits between the
+  workspace commit and reference update.
+
+Retention is deliberately conservative and bounded:
+
+- incomplete `building` artifacts are eligible after 24 hours;
+- failed artifacts are eligible after 7 days;
+- ready artifacts require both no live workspace reference and 30 days of age;
+- references expire only after 90 days without a refresh;
+- one maintenance transaction deletes at most eight artifacts, including their
+  symbols and trigram postings;
+- maintenance records its last run and deletion counts for diagnostics.
+
+Production maintenance is a deduplicated low-priority thread requested after a
+successful binding and delayed by one second. It never extends the SDK
+publication critical path. Unit tests execute the same maintenance operation
+synchronously for deterministic evidence.
+
+Failure and concurrency behavior is transactional. A forced metadata-delete
+failure rolls back previously deleted postings and symbols. An active WAL reader
+continues to observe its original artifact snapshot while cleanup commits; the
+next reader observes the deletion. Reference expiry and artifact selection run
+inside the same writer transaction, so a concurrent binding cannot be deleted
+between the reference check and commit.
+
+Health / Storage now reports shared artifact status counts, workspace reference
+count, DB size, WAL size, reclaimable freelist bytes, revision/generation,
+active readers, and the latest cleanup result. A missing shared store remains
+absent during ordinary workspace diagnostics instead of being created for
+observation.
+
+Verification for this slice:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 848 passed / 11 ignored / 0 failed |
+| Shared SDK artifact and retention suites | 13 passed / 0 failed |
+| SDK index integration suite | 16 passed / 0 failed |
+| Real sidecar integration | 5 passed / 0 failed |
+| Index diagnostics frontend | 56 passed / 0 failed |
+| Production TypeScript/Vite build | passed |
+| Source line-count gate | 764 files checked; none over 500 lines |
+| Whitespace gate | passed |
+
+Shared-store file compaction remains evidence-triggered work. The generation
+boundary is present, but replacement must not be added until diagnostics record
+freelist/WAL growth large enough to justify a separate shared-store copy-and-
+swap policy. The packaged soak now records these metrics without mutating store
+state; a real 30-minute Windows artifact must supply the decision evidence
+rather than running periodic vacuum by default.
+
 #### Phase 5 Indexer Crash-Loop Backoff Result
 
 Implemented on 2026-07-17:
@@ -1262,13 +1824,14 @@ slice before Phase 6 can claim a green repository-wide frontend gate.
 
 ### Phase 6: Release Performance And Reliability Gate
 
-- [ ] Add 1k, 20k, and 100k fixture profiles.
+- [x] Add 1k, 20k, and 100k fixture profiles.
 - [x] Add headless product-runtime rapid type/delete, search close, file-switch,
   and jump soak tests.
 - [x] Record headless p50/p95/p99, pending loads, candidate count, render commits,
   heap delta, cancellation, and stale-result rejection.
-- [ ] Record packaged queue wait, SQLite lock wait, allocation count, process
-  memory, WebView render commits, and Worker restarts.
+- [ ] Record packaged queue wait, SQLite lock wait, process/private memory,
+  optional JavaScript heap, Event Timing, Long Animation Frames, and Worker
+  restarts.
 - [ ] Run gates on packaged Windows builds before release.
 - [ ] Run latency gates on an exclusive CI runner in a serial stage; concurrent
   compilation and bundling must not contaminate p95/p99 evidence.
@@ -1295,19 +1858,142 @@ and resolves a closed query after invalidation. The navigation scenario switches
 at 16, pending loads return to zero, 49 stale jumps are rejected, and only the
 latest target is published.
 
-Local headless evidence:
+Latest local headless evidence on 2026-07-23:
 
 | Scenario | p50 | p95 | p99 | Correctness evidence |
 | --- | ---: | ---: | ---: | --- |
-| Search type/delete/close | 0.317 ms | 0.696 ms | 1.022 ms | 0 stale applies; 110 render commits |
-| File switch | 0.083 ms | 0.172 ms | 1.532 ms | 0 pending loads; cache 16 |
-| Jump dispatch | - | 0.010 ms | - | 49 stale rejected; 1 latest applied |
+| Search type/delete/close | 0.295 ms | 0.647 ms | 0.835 ms | 0 stale applies; 110 render commits |
+| File switch | 0.073 ms | 0.133 ms | 1.066 ms | 0 pending loads; cache 16 |
+| Jump dispatch | - | 0.008 ms | - | 49 stale rejected; 1 latest applied |
 
 This is deliberately not marked as release or packaged evidence. jsdom cannot
 measure native WebView paint, Tauri IPC contention, SQLite writer lock wait,
 sidecar RSS, or app white-screen recovery. The next Phase 6 slice must run a
 mixed workload through a built application, and the release claim still requires
 a 30-minute packaged Windows soak on an exclusive runner.
+
+#### Phase 6 Packaged Windows Soak Foundation Result
+
+Implemented on 2026-07-23. ArkLine now has deterministic 1k, 20k, and 100k
+ArkTS fixture profiles. A marker/version contract permits reuse and prevents the
+generator from deleting an unrelated non-fixture directory without an explicit
+`--force`.
+
+The main window accepts `--workspace <path>`, `--workspace=<path>`, or
+`ARKLINE_WORKSPACE_ROOT`. This is a production launch boundary, not a React test
+hook: the ordinary workspace restore controller receives the root from the
+existing Tauri launch-state command and performs normal discovery, indexing,
+build inspection, and editor restoration.
+
+The native Windows harness drives the release portable executable through
+Tauri's official `tauri-driver` and Edge WebDriver path. It repeatedly types and
+deletes Find in Files queries, closes search, opens Quick Open, and jumps among
+real fixture files while the indexer sidecar is enabled. Bounded observation
+records WebView long tasks, frame gaps, unhandled errors, and visible
+shell/editor crash boundaries without adding instrumentation branches to
+production UI code.
+
+Every 30 seconds the harness records aggregate ArkLine/sidecar RSS and invokes
+the real index diagnostics command for queue depth, WAL/freelist growth, writer
+wait/hold, shared SDK storage, and worker restart evidence. The JSON verdict
+rejects crashes, repeated WebDriver stalls, stale navigation, final pending work,
+worker restarts, unbounded RSS/WAL growth, and interaction p95/p99 violations.
+
+The `windows-packaged-soak` workflow is manually dispatched, Windows-native,
+globally serialized, and defaults to the 20k fixture for 30 minutes. It uploads
+the report even when the strict verdict fails. Hosted Actions results are
+regression evidence, not a substitute for the documented dedicated release
+machine class.
+
+This completes the automation foundation, not the release gate. A successful
+30-minute artifact has not yet been recorded. The next Phase 6 action is to run
+that workflow, inspect real queue/WAL/RSS/latency evidence, then fix the first
+measured violation. Shared-SDK copy-and-swap remains deferred until packaged
+freelist/WAL growth demonstrates that it is necessary.
+
+Local foundation verification:
+
+| Gate | Result |
+| --- | ---: |
+| Serial Rust library suite | 851 passed / 11 ignored / 0 failed |
+| Focused packaged-soak and shared-SDK diagnostics frontend | 13 passed / 0 failed |
+| Frontend quality suite | 27 passed / 0 failed |
+| Headless interaction performance gate | passed |
+| Production TypeScript/Vite build | passed |
+| Fixture generation and reuse | 1k generated, then reused |
+| Source line-count gate | 772 files checked; none over 500 lines |
+| Rust format and whitespace gates | passed |
+| Native Windows 20k / 30-minute packaged soak | not run |
+
+#### Phase 6 WebView Evidence Contract Result
+
+Implemented on 2026-07-23. The packaged report is now schema version 2 and
+separates automation transport time from user-visible WebView completion.
+WebDriver dispatch remains diagnostic evidence. Search latency starts on the
+renderer clock and ends after the result is visible plus two animation frames;
+cross-file navigation ends after the target tab is visible plus two animation
+frames. This prevents a successful command response from being mistaken for a
+painted, usable UI.
+
+The release observer uses the standardized Event Timing API and Long Animation
+Frames API. It records bounded Event Timing duration/processing samples, LoAF
+duration and blocking time, long tasks, frame gaps, JavaScript errors, and
+unhandled rejections. Capability flags are explicit. A supported observer with
+zero slow entries is a valid responsive result; an unsupported observer fails
+the strict evidence contract. The API choices follow the [W3C Event Timing
+specification](https://www.w3.org/TR/2023/WD-event-timing-20230703/), the [W3C
+Long Animation Frames specification](https://www.w3.org/TR/long-animation-frames/),
+and [Chrome's LoAF guidance](https://developer.chrome.com/docs/web-platform/long-animation-frames).
+
+The observer deliberately does not use a full-tree `MutationObserver` as a
+React-render proxy. DOM mutations do not identify React commits and observation
+work would contaminate the UI workload being measured. Production React commit
+profiling is also not a portable packaged-release contract. Native allocation
+count is deferred to a focused ETW/WPA diagnostic because allocation
+instrumentation can perturb the workload; the serial release gate uses
+aggregate RSS/private bytes, optional JavaScript heap growth, WAL growth, and
+worker restart trends.
+
+Windows process evidence now starts from the exact executable path and walks
+the full parent/child tree. This includes Rust sidecars and WebView2 renderer,
+GPU, and utility descendants instead of sampling ArkLine-named processes only.
+Each sample records process count, RSS, private bytes, handles, and threads.
+The report also captures runner/CI identity, driver capabilities, fixture
+marker, and executable SHA-256/size so evidence can be reproduced against the
+same artifact.
+
+This completes the WebView evidence contract, not the release gate. A native
+Windows 20k / 30-minute artifact has still not been recorded. The next action
+remains: run the serialized workflow, inspect its first strict failure, and fix
+that measured bottleneck before adding more instrumentation.
+
+#### Phase 6 Native Runner Preflight Result
+
+Implemented on 2026-07-23. The serialized workflow now runs an isolated 1k
+single-cycle protocol smoke before creating the selected 20k or 100k release
+fixture. Preflight verifies the portable executable, fixture marker and first
+and last fixture files, `tauri-driver`, `msedgedriver`, and PowerShell. The smoke
+then requires a real WebDriver session, Event Timing and LoAF capabilities,
+process-tree evidence, one visible content-search result, and one completed
+cross-file navigation.
+
+The smoke verdict intentionally excludes p95/p99, final queue drain, memory
+growth, and WAL growth. One cycle cannot support those claims. The separate
+30-minute soak remains responsible for stability and performance thresholds,
+while the smoke provides a fast failure for packaging, driver, protocol, and
+selector drift.
+
+Once arguments and the report directory are valid, the harness writes a
+schema-v2 report for platform, preflight, driver startup, session creation, and
+workload failures. Failure evidence includes the exact phase, error/stack, every
+preflight check, driver capabilities and exit state, a bounded tail log, fixture
+marker, and executable hash when available. Driver exit races readiness so a
+crashed driver does not consume the full startup timeout, and driver logs remain
+bounded during the long run.
+
+This closes runner diagnosability but does not claim native success. Neither the
+1k smoke nor the 20k / 30-minute soak has been executed on Windows from this
+working tree.
 
 ## Explicit Non-Solutions
 

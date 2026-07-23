@@ -4,11 +4,10 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::indexer_host::{discover_indexer_executable, IndexerHostSession};
-use crate::indexer_sidecar::{IndexerDiscoveryResult, IndexerStubRefreshResult, IndexerTaskKey};
 use crate::models::workspace_index_diagnostics::WorkspaceIndexerHostSnapshot;
+use crate::services::workspace_index_writer_actor_service::WorkspaceIndexWriterActor;
 
 use super::runtime_state::{validate_capabilities, IndexerHostState, IndexerRequestKind};
-use super::session::is_cancelled_error;
 
 pub const ARKLINE_INDEXER_ENABLED_ENV: &str = "ARKLINE_INDEXER_ENABLED";
 
@@ -16,13 +15,7 @@ pub struct IndexerHostRuntime {
     pub(super) enabled: bool,
     executable_path: Option<PathBuf>,
     state: Mutex<IndexerHostState>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IndexerStubRefreshAttempt {
-    Applied(IndexerStubRefreshResult),
-    Unavailable,
-    Cancelled,
+    pub(super) writer: WorkspaceIndexWriterActor,
 }
 
 impl Default for IndexerHostRuntime {
@@ -53,36 +46,7 @@ impl IndexerHostRuntime {
             enabled,
             executable_path,
             state: Mutex::new(IndexerHostState::new(enabled)),
-        }
-    }
-
-    pub fn discover_workspace_chunk(
-        &self,
-        task: IndexerTaskKey,
-        pending_directories: Option<Vec<String>>,
-        limit: usize,
-    ) -> Option<IndexerDiscoveryResult> {
-        if !self.enabled {
-            return None;
-        }
-        let mut session = match self.checkout_session(IndexerRequestKind::Discovery) {
-            Ok(Some(session)) => session,
-            Ok(None) => return None,
-            Err(error) => {
-                self.finish_failure(IndexerRequestKind::Discovery, error);
-                return None;
-            }
-        };
-        let result = session.discover_workspace_chunk(task, pending_directories, limit);
-        match result {
-            Ok(result) => {
-                self.finish_success(session, IndexerRequestKind::Discovery);
-                Some(result)
-            }
-            Err(error) => {
-                self.finish_failure(IndexerRequestKind::Discovery, error);
-                None
-            }
+            writer: WorkspaceIndexWriterActor::shared(),
         }
     }
 
@@ -98,6 +62,10 @@ impl IndexerHostRuntime {
             discovery_writer_metrics: state.discovery.writer_metrics.clone(),
             content_writer_metrics: state.content.writer_metrics.clone(),
             stub_writer_metrics: state.stub.writer_metrics.clone(),
+            publication_writer_metrics: Some(self.writer.snapshot()),
+            slowest_discovery_publication: state.discovery.slowest_publication.clone(),
+            slowest_content_publication: state.content.slowest_publication.clone(),
+            slowest_stub_publication: state.stub.slowest_publication.clone(),
             completed_discovery_chunks: state.completed_discovery_chunks,
             completed_content_refresh_chunks: state.completed_content_refresh_chunks,
             cancelled_content_refresh_chunks: state.cancelled_content_refresh_chunks,
@@ -110,51 +78,6 @@ impl IndexerHostRuntime {
                 .backoff_remaining()
                 .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)),
             last_error: state.last_error.clone(),
-        }
-    }
-
-    pub fn refresh_stub_chunk<F>(
-        &self,
-        task: IndexerTaskKey,
-        indexed_generation: u64,
-        changed_paths: Vec<String>,
-        removed_paths: Vec<String>,
-        is_cancelled: F,
-    ) -> IndexerStubRefreshAttempt
-    where
-        F: FnMut() -> bool,
-    {
-        if !self.enabled {
-            return IndexerStubRefreshAttempt::Unavailable;
-        }
-        let mut session = match self.checkout_session(IndexerRequestKind::StubRefresh) {
-            Ok(Some(session)) => session,
-            Ok(None) => return IndexerStubRefreshAttempt::Unavailable,
-            Err(error) => {
-                self.finish_failure(IndexerRequestKind::StubRefresh, error);
-                return IndexerStubRefreshAttempt::Unavailable;
-            }
-        };
-        let result = session.refresh_stub_chunk(
-            task,
-            indexed_generation,
-            changed_paths,
-            removed_paths,
-            is_cancelled,
-        );
-        match result {
-            Ok(result) => {
-                self.finish_success(session, IndexerRequestKind::StubRefresh);
-                IndexerStubRefreshAttempt::Applied(result)
-            }
-            Err(error) if is_cancelled_error(&error) => {
-                self.finish_cancelled(IndexerRequestKind::StubRefresh);
-                IndexerStubRefreshAttempt::Cancelled
-            }
-            Err(error) => {
-                self.finish_failure(IndexerRequestKind::StubRefresh, error);
-                IndexerStubRefreshAttempt::Unavailable
-            }
         }
     }
 
@@ -198,6 +121,7 @@ impl IndexerHostRuntime {
 
     pub(super) fn finish_success(&self, session: IndexerHostSession, kind: IndexerRequestKind) {
         let writer_metrics = session.writer_metrics().cloned();
+        let publication_profile = session.publication_profile().cloned();
         let Ok(mut state) = self.state.lock() else {
             return;
         };
@@ -207,6 +131,9 @@ impl IndexerHostRuntime {
         lane.mark_success();
         if writer_metrics.is_some() {
             lane.writer_metrics = writer_metrics;
+        }
+        if let Some(profile) = publication_profile {
+            lane.record_publication(profile);
         }
         lane.session = Some(session);
         match kind {
@@ -269,6 +196,37 @@ impl IndexerHostRuntime {
         };
     }
 
+    pub(super) fn finish_superseded(&self, session: IndexerHostSession, kind: IndexerRequestKind) {
+        let writer_metrics = session.writer_metrics().cloned();
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        let lane = state.lane_mut(kind);
+        lane.in_flight = false;
+        lane.active_process_id = None;
+        lane.mark_success();
+        if writer_metrics.is_some() {
+            lane.writer_metrics = writer_metrics;
+        }
+        lane.session = Some(session);
+        match kind {
+            IndexerRequestKind::ContentRefresh => {
+                state.cancelled_content_refresh_chunks =
+                    state.cancelled_content_refresh_chunks.saturating_add(1);
+            }
+            IndexerRequestKind::StubRefresh => {
+                state.cancelled_stub_refresh_chunks =
+                    state.cancelled_stub_refresh_chunks.saturating_add(1);
+            }
+            IndexerRequestKind::Discovery => {}
+        }
+        state.status = if state.any_in_flight() {
+            "running"
+        } else {
+            "idle"
+        };
+    }
+
     pub(crate) fn supports_parallel_deep_refresh(&self) -> bool {
         self.enabled
             && self
@@ -287,7 +245,8 @@ mod tests {
     use std::thread;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-    use super::{IndexerHostRuntime, IndexerStubRefreshAttempt};
+    use super::IndexerHostRuntime;
+    use crate::indexer_host::IndexerStubRefreshAttempt;
     use crate::indexer_sidecar::{IndexerTaskKey, INDEXER_PROTOCOL_VERSION};
 
     #[test]

@@ -1,9 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::{params, Connection};
+use rusqlite::params;
 
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, with_workspace_index_transaction,
+};
 use crate::services::workspace_index_continuation_task_service::is_full_refresh_continuation_reason;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
@@ -21,16 +23,15 @@ pub fn save_resume_task(root_path: &str, task: &WorkspaceIndexTask) -> Result<()
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let task_key = resume_task_key(task);
     let changed_paths_json =
         serde_json::to_string(&task.changed_paths).map_err(|error| error.to_string())?;
 
-    connection
-        .execute(
-            "insert into workspace_index_resume_tasks (
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        transaction
+            .execute(
+                "insert into workspace_index_resume_tasks (
                 root_path, task_key, kind, priority, reason, generation,
                 changed_paths_json, updated_at
              ) values (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%s','now') * 1000)
@@ -41,26 +42,28 @@ pub fn save_resume_task(root_path: &str, task: &WorkspaceIndexTask) -> Result<()
                 generation = excluded.generation,
                 changed_paths_json = excluded.changed_paths_json,
                 updated_at = excluded.updated_at",
-            params![
-                root_key,
-                task_key,
-                task_kind_label(&task.kind),
-                task_priority_value(task.priority),
-                task.reason,
-                task.generation as i64,
-                changed_paths_json,
-            ],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+                params![
+                    root_key,
+                    task_key,
+                    task_kind_label(&task.kind),
+                    task_priority_value(task.priority),
+                    task.reason,
+                    task.generation as i64,
+                    changed_paths_json,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })
 }
 
 pub fn load_resume_tasks(root_path: &str) -> Result<Vec<WorkspaceIndexTask>, String> {
     if !Path::new(root_path).is_dir() {
         return Ok(Vec::new());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(Vec::new());
+    };
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -96,15 +99,15 @@ pub fn clear_resume_tasks_for_root(root_path: &str) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    connection
-        .execute(
-            "delete from workspace_index_resume_tasks where root_path = ?1",
-            params![normalize_index_path(root_path)],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        transaction
+            .execute(
+                "delete from workspace_index_resume_tasks where root_path = ?1",
+                params![normalize_index_path(root_path)],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })
 }
 
 pub fn schedule_resume_tasks_from_store(
@@ -149,28 +152,16 @@ fn clear_resume_task(root_path: &str, kind: &str, reason: &str) -> Result<(), St
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    connection
-        .execute(
-            "delete from workspace_index_resume_tasks
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        transaction
+            .execute(
+                "delete from workspace_index_resume_tasks
              where root_path = ?1 and task_key = ?2",
-            params![normalize_index_path(root_path), format!("{kind}:{reason}")],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace resume task path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
+                params![normalize_index_path(root_path), format!("{kind}:{reason}")],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })
 }
 
 fn resume_task_key(task: &WorkspaceIndexTask) -> String {
@@ -212,13 +203,6 @@ fn parse_task_priority(priority: i64) -> WorkspaceIndexTaskPriority {
         8 => WorkspaceIndexTaskPriority::ForegroundNavigation,
         _ => WorkspaceIndexTaskPriority::FullRefresh,
     }
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn normalize_index_path(path: &str) -> String {

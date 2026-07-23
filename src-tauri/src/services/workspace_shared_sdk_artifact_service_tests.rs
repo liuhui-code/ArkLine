@@ -12,6 +12,13 @@ use crate::services::workspace_sdk_shared_bridge_service::{
 use crate::services::workspace_shared_sdk_artifact_service::{
     SharedSdkArtifactIdentity, SharedSdkArtifactStatus, SharedSdkArtifactStore,
 };
+use crate::services::workspace_shared_sdk_connection_service::{
+    clear_shared_sdk_store_state, shared_sdk_store_snapshot, with_shared_sdk_reader,
+};
+use crate::services::workspace_shared_sdk_maintenance_service::{
+    inspect_shared_sdk_store, maintain_shared_sdk_store, record_shared_sdk_workspace_reference,
+    refresh_shared_sdk_workspace_reference_if_due, SharedSdkRetentionPolicy,
+};
 
 fn unique_store_path(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -170,6 +177,12 @@ fn ready_artifact_binds_multiple_workspaces_without_copying_sdk_symbols() {
     );
     assert_eq!(workspace_local_sdk_symbol_count(&first_workspace), 0);
     assert_eq!(workspace_local_sdk_symbol_count(&second_workspace), 0);
+    assert_eq!(
+        inspect_shared_sdk_store(&store_path)
+            .unwrap()
+            .reference_count,
+        2
+    );
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -290,4 +303,142 @@ fn shared_sdk_trigram_query_stays_bounded_for_large_artifact() {
 
     assert!(p95.as_millis() < 100, "shared SDK query p95 was {p95:?}");
     fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn retention_keeps_referenced_artifact_then_removes_it_after_reference_expiry() {
+    let path = unique_store_path("retention-reference");
+    let identity = SharedSdkArtifactIdentity::new("/sdk/openharmony", "5.0", "manifest-a");
+    let store = SharedSdkArtifactStore::open(&path).unwrap();
+    store
+        .replace_ready(&identity, &[symbol("width", "/sdk/common.d.ts")])
+        .unwrap();
+    age_artifact(&path, &identity.artifact_key);
+    record_shared_sdk_workspace_reference(
+        &path,
+        "/workspace/app",
+        &identity.artifact_key,
+        10_000,
+    )
+    .unwrap();
+    let policy = test_retention_policy(1);
+
+    let protected = maintain_shared_sdk_store(&path, 10_050, policy).unwrap();
+    assert_eq!(protected.deleted_artifact_count, 0);
+    assert_eq!(store.status(&identity).unwrap(), Some(SharedSdkArtifactStatus::Ready));
+
+    let expired = maintain_shared_sdk_store(&path, 20_000, policy).unwrap();
+    assert_eq!(expired.deleted_reference_count, 1);
+    assert_eq!(expired.deleted_artifact_count, 1);
+    assert_eq!(expired.deleted_symbol_count, 1);
+    assert_eq!(store.status(&identity).unwrap(), None);
+    cleanup_store(&path);
+}
+
+#[test]
+fn retention_deletes_only_the_bounded_number_of_unreferenced_artifacts() {
+    let path = unique_store_path("retention-bound");
+    let store = SharedSdkArtifactStore::open(&path).unwrap();
+    for index in 0..3 {
+        let identity = SharedSdkArtifactIdentity::new(
+            "/sdk/openharmony",
+            &format!("{index}.0"),
+            &format!("manifest-{index}"),
+        );
+        store
+            .replace_ready(
+                &identity,
+                &[symbol(&format!("method{index}"), "/sdk/common.d.ts")],
+            )
+            .unwrap();
+        age_artifact(&path, &identity.artifact_key);
+    }
+    let mut policy = test_retention_policy(1);
+    policy.artifact_limit = 2;
+
+    let first = maintain_shared_sdk_store(&path, 20_000, policy).unwrap();
+    assert_eq!(first.deleted_artifact_count, 2);
+    assert_eq!(first.remaining_artifact_count, 1);
+    let second = maintain_shared_sdk_store(&path, 20_001, policy).unwrap();
+    assert_eq!(second.deleted_artifact_count, 1);
+    assert_eq!(second.remaining_artifact_count, 0);
+    cleanup_store(&path);
+}
+
+#[test]
+fn shared_sdk_reader_is_query_only_and_reports_its_active_lease() {
+    let path = unique_store_path("reader-lease");
+    SharedSdkArtifactStore::open(&path).unwrap();
+
+    with_shared_sdk_reader(&path, |connection| {
+        assert_eq!(shared_sdk_store_snapshot(&path).active_readers, 1);
+        let error = connection
+            .execute("delete from shared_sdk_artifacts", [])
+            .unwrap_err();
+        assert!(error.to_string().contains("readonly"));
+        Ok(())
+    })
+    .unwrap();
+
+    let snapshot = shared_sdk_store_snapshot(&path);
+    assert_eq!(snapshot.active_readers, 0);
+    assert!(snapshot.revision >= 1);
+    cleanup_store(&path);
+}
+
+#[test]
+fn workspace_reference_refresh_is_throttled_after_the_first_touch() {
+    let path = unique_store_path("reference-throttle");
+    let identity = SharedSdkArtifactIdentity::new("/sdk/openharmony", "5.0", "manifest-a");
+    SharedSdkArtifactStore::open(&path)
+        .unwrap()
+        .replace_ready(&identity, &[symbol("width", "/sdk/common.d.ts")])
+        .unwrap();
+    let before = shared_sdk_store_snapshot(&path).revision;
+
+    refresh_shared_sdk_workspace_reference_if_due(
+        &path,
+        "/workspace/app",
+        &identity.artifact_key,
+    )
+    .unwrap();
+    let first = shared_sdk_store_snapshot(&path).revision;
+    refresh_shared_sdk_workspace_reference_if_due(
+        &path,
+        "/workspace/app",
+        &identity.artifact_key,
+    )
+    .unwrap();
+
+    assert_eq!(first, before + 1);
+    assert_eq!(shared_sdk_store_snapshot(&path).revision, first);
+    assert_eq!(inspect_shared_sdk_store(&path).unwrap().reference_count, 1);
+    cleanup_store(&path);
+}
+
+fn test_retention_policy(age_ms: u128) -> SharedSdkRetentionPolicy {
+    SharedSdkRetentionPolicy {
+        stale_building_ms: age_ms,
+        stale_failed_ms: age_ms,
+        unreferenced_ready_ms: age_ms,
+        stale_reference_ms: 100,
+        artifact_limit: 8,
+    }
+}
+
+fn age_artifact(path: &std::path::Path, artifact_key: &str) {
+    rusqlite::Connection::open(path)
+        .unwrap()
+        .execute(
+            "update shared_sdk_artifacts set updated_at = 0 where artifact_key = ?1",
+            [artifact_key],
+        )
+        .unwrap();
+}
+
+fn cleanup_store(path: &std::path::Path) {
+    clear_shared_sdk_store_state(path);
+    let _ = fs::remove_file(path);
+    let _ = fs::remove_file(path.with_extension("sqlite-wal"));
+    let _ = fs::remove_file(path.with_extension("sqlite-shm"));
 }

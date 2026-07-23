@@ -71,6 +71,27 @@ pub(crate) fn record_workspace_index_schema_versions(
     Ok(())
 }
 
+pub(crate) fn verify_workspace_index_schema_versions(
+    connection: &Connection,
+) -> Result<(), String> {
+    let mut statement = connection
+        .prepare("select version from workspace_index_schema_versions where domain = ?1")
+        .map_err(|error| format!("Workspace index schema is not initialized: {error}"))?;
+    for (domain, expected_version) in SCHEMA_DOMAINS {
+        let persisted_version = statement
+            .query_row([domain], |row| row.get::<_, i64>(0))
+            .map_err(|error| {
+                format!("Workspace index schema domain {domain} is missing: {error}")
+            })?;
+        if persisted_version != *expected_version {
+            return Err(format!(
+                "Workspace index schema domain {domain} requires version {expected_version}, found {persisted_version}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn plan_workspace_index_schema_version_actions(
     persisted_versions: &HashMap<String, i64>,
 ) -> Vec<WorkspaceIndexSchemaVersionAction> {
@@ -100,6 +121,12 @@ pub fn load_workspace_index_schema_versions(
     connection: &Connection,
 ) -> Result<HashMap<String, i64>, String> {
     create_workspace_index_schema_version_table(connection)?;
+    read_workspace_index_schema_versions(connection)
+}
+
+pub(crate) fn read_workspace_index_schema_versions(
+    connection: &Connection,
+) -> Result<HashMap<String, i64>, String> {
     let mut statement = connection
         .prepare(
             "select domain, version

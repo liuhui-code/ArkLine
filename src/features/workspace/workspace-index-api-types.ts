@@ -22,6 +22,25 @@ export type WorkspaceIndexDiagnostics = {
   discoveryExcludedCount: number;
   discoveryHasMore: boolean;
   dbSizeBytes: number;
+  walSizeBytes?: number;
+  freelistBytes?: number;
+  compactionStatus?: string;
+  storeRevision?: number;
+  storeGeneration?: number;
+  activeStoreReaderCount?: number;
+  sharedSdkArtifactCount?: number;
+  sharedSdkReadyArtifactCount?: number;
+  sharedSdkBuildingArtifactCount?: number;
+  sharedSdkFailedArtifactCount?: number;
+  sharedSdkReferenceCount?: number;
+  sharedSdkDbSizeBytes?: number;
+  sharedSdkWalSizeBytes?: number;
+  sharedSdkFreelistBytes?: number;
+  sharedSdkStoreRevision?: number;
+  sharedSdkStoreGeneration?: number;
+  sharedSdkActiveReaderCount?: number;
+  sharedSdkLastMaintenanceAt?: number | null;
+  sharedSdkLastDeletedArtifactCount?: number;
   writerMetrics?: WorkspaceIndexWriterMetrics;
   queuePressure: WorkspaceIndexQueuePressure;
   activeSdkPath: string | null;
@@ -43,6 +62,20 @@ export type WorkspaceIndexWriterMetrics = {
   activeWriterCount: number;
   queuedWriterCount: number;
   failureCount: number;
+  recoveryWorkspaceCount?: number;
+  orphanArtifactScannedCount?: number;
+  orphanArtifactRemovedCount?: number;
+  orphanArtifactRetainedCount?: number;
+  recoveryFailureCount?: number;
+  sdkPublicationCount?: number;
+  sdkPublicationMaxUs?: number;
+  maintenancePublicationCount?: number;
+  maintenancePublicationMaxUs?: number;
+  maintenanceOptimizeCount?: number;
+  maintenanceCheckpointCount?: number;
+  maintenanceIncrementalVacuumCount?: number;
+  maintenanceCopySwapCount?: number;
+  maintenanceCopySwapDeferredCount?: number;
   waitP50Us: number;
   waitP95Us: number;
   waitP99Us: number;
@@ -55,6 +88,17 @@ export type WorkspaceIndexWriterMetrics = {
   lastHoldUs: number;
 };
 
+export type WorkspaceIndexPublicationProfile = {
+  rootPath: string;
+  totalDurationUs: number;
+  stages: WorkspaceIndexPublicationStage[];
+};
+
+export type WorkspaceIndexPublicationStage = {
+  name: string;
+  durationUs: number;
+};
+
 export type WorkspaceIndexerHostSnapshot = {
   enabled: boolean;
   status: string;
@@ -65,6 +109,10 @@ export type WorkspaceIndexerHostSnapshot = {
   discoveryWriterMetrics?: WorkspaceIndexWriterMetrics | null;
   contentWriterMetrics?: WorkspaceIndexWriterMetrics | null;
   stubWriterMetrics?: WorkspaceIndexWriterMetrics | null;
+  publicationWriterMetrics?: WorkspaceIndexWriterMetrics | null;
+  slowestDiscoveryPublication?: WorkspaceIndexPublicationProfile | null;
+  slowestContentPublication?: WorkspaceIndexPublicationProfile | null;
+  slowestStubPublication?: WorkspaceIndexPublicationProfile | null;
   completedDiscoveryChunks: number;
   completedContentRefreshChunks: number;
   cancelledContentRefreshChunks: number;

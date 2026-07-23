@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WorkspaceSdkSymbol {
     pub kind: String,
     pub name: String,

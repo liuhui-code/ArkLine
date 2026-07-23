@@ -3,21 +3,23 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+use serde::{Deserialize, Serialize};
+
 use crate::services::workspace_service::{normalize_path, should_exclude};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WorkspaceDiscoveryCursor {
     pub pending_directories: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WorkspaceDiscoveredFile {
     pub path: String,
     pub size_bytes: u64,
     pub modified_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WorkspaceDiscoveryChunk {
     pub files: Vec<WorkspaceDiscoveredFile>,
     pub cursor: Option<WorkspaceDiscoveryCursor>,

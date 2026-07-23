@@ -3,8 +3,8 @@ use std::collections::HashMap;
 
 use crate::services::workspace_index_schema_version_service::{
     load_workspace_index_schema_versions, plan_workspace_index_schema_version_actions,
-    record_workspace_index_schema_versions, WorkspaceIndexSchemaVersionStatus,
-    WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT,
+    record_workspace_index_schema_versions, verify_workspace_index_schema_versions,
+    WorkspaceIndexSchemaVersionStatus, WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT,
 };
 
 #[test]
@@ -26,6 +26,29 @@ fn schema_versions_record_all_known_domains_idempotently() {
     assert_eq!(versions.get("reference"), Some(&1));
     assert_eq!(versions.get("discovery"), Some(&1));
     assert_eq!(versions.get("semantic_layer"), Some(&1));
+}
+
+#[test]
+fn hot_path_schema_check_is_read_only_and_rejects_incompatible_versions() {
+    let connection = Connection::open_in_memory().unwrap();
+    let missing_error = verify_workspace_index_schema_versions(&connection).unwrap_err();
+    assert!(missing_error.contains("not initialized"));
+    let table_count: i64 = connection
+        .query_row("select count(*) from sqlite_master", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(table_count, 0);
+
+    record_workspace_index_schema_versions(&connection).unwrap();
+    verify_workspace_index_schema_versions(&connection).unwrap();
+    connection
+        .execute(
+            "update workspace_index_schema_versions set version = 0 where domain = 'stub'",
+            [],
+        )
+        .unwrap();
+
+    let stale_error = verify_workspace_index_schema_versions(&connection).unwrap_err();
+    assert!(stale_error.contains("stub requires version 2, found 0"));
 }
 
 #[test]

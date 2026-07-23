@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -7,8 +7,10 @@ use crate::models::workspace::{
     WorkspaceIndexEvent, WorkspaceIndexExplainFact, WorkspaceIndexExplainRequest,
     WorkspaceIndexExplainResult,
 };
+use crate::services::workspace_index_connection_service::{
+    require_existing_workspace_index_reader, WorkspaceIndexReader,
+};
 use crate::services::workspace_index_event_service::store_index_event;
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_semantic_layer_state_service::load_semantic_layers;
 use crate::services::workspace_service::should_exclude;
@@ -46,7 +48,6 @@ pub fn explain_workspace_index_query(
     }
 
     let connection = open_index_store(&request.root_path)?;
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(&request.root_path);
     let mut semantic_evidence = Vec::new();
     let mut semantic_layer_observed = false;
@@ -433,15 +434,8 @@ fn table_exists(connection: &Connection, table_name: &str) -> Result<bool, Strin
         .map_err(|error| error.to_string())
 }
 
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    Connection::open(sqlite_catalog_cache_path(root_path)).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
+fn open_index_store(root_path: &str) -> Result<WorkspaceIndexReader<'static>, String> {
+    require_existing_workspace_index_reader(root_path)
 }
 
 fn normalize_index_path(path: &str) -> String {

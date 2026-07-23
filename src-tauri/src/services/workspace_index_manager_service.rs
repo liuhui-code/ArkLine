@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Condvar, Mutex,
@@ -15,9 +16,10 @@ use crate::services::workspace_index_cancellation_service::{
     WorkspaceIndexCancellationRegistry,
 };
 use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
+use crate::services::workspace_index_maintenance_runtime_service::WorkspaceIndexMaintenanceRuntime;
 use crate::services::workspace_index_manager_status_service::{
     mark_superseded_results, store_cancelled_statuses, store_pending_statuses_for_root,
-    store_recent_status, store_superseded_statuses,
+    store_recent_status, store_recent_statuses, store_superseded_statuses,
 };
 use crate::services::workspace_index_queue_pressure_service::project_queue_pressure;
 use crate::services::workspace_index_resume_service::{
@@ -50,6 +52,7 @@ pub struct WorkspaceIndexManagerRuntime {
     worker_running: Arc<AtomicBool>,
     worker_signal: Arc<(Mutex<u64>, Condvar)>,
     indexer: Arc<IndexerHostRuntime>,
+    maintenance: WorkspaceIndexMaintenanceRuntime,
 }
 impl WorkspaceIndexManagerRuntime {
     #[allow(dead_code)]
@@ -80,6 +83,25 @@ impl WorkspaceIndexManagerRuntime {
             WorkspaceIndexTaskPriority::FullRefresh,
             "refresh-workspace",
         )
+    }
+
+    pub(crate) fn with_workspace_maintenance<T>(
+        &self,
+        root_path: &str,
+        operation: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.maintenance.begin(
+            root_path,
+            &self.scheduler,
+            &self.cancellations,
+            &self.recent_statuses,
+        )?;
+        let result = operation();
+        let finish_result = self.maintenance.finish(root_path);
+        match (result, finish_result) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        }
     }
 
     pub fn schedule_changed_paths(
@@ -307,6 +329,7 @@ impl WorkspaceIndexManagerRuntime {
             .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
             .drain_ready_batch(WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE);
         let (guarded_tasks, tokens) = start_cancellable_tasks(&self.cancellations, tasks)?;
+        self.maintenance.cancel_blocked_tasks(&guarded_tasks)?;
         let results = run_index_tasks_with_cancellation_and_ui_activity_and_indexer(
             index_runtime,
             guarded_tasks,
@@ -328,10 +351,18 @@ impl WorkspaceIndexManagerRuntime {
             store_pending_statuses_for_root(&self.scheduler, &root_path)?;
         }
 
+        let mut terminal_by_root = BTreeMap::<String, Vec<WorkspaceIndexTaskStatus>>::new();
         for result in &results {
-            let ready_status = task_status_from_publishable_result(result)?;
-            let events = store_recent_status(&self.recent_statuses, ready_status.clone())?;
-            on_status(ready_status, events);
+            terminal_by_root
+                .entry(result.root_path.clone())
+                .or_default()
+                .push(task_status_from_publishable_result(result)?);
+        }
+        for statuses in terminal_by_root.into_values() {
+            let events = store_recent_statuses(&self.recent_statuses, &statuses)?;
+            for (status, status_events) in statuses.into_iter().zip(events) {
+                on_status(status, status_events);
+            }
         }
 
         Ok(results)
@@ -367,13 +398,23 @@ impl WorkspaceIndexManagerRuntime {
             .name("arkline-index-manager".to_string())
             .spawn(move || {
                 loop {
-                    let _ = manager.run_index_worker_once_with_events_and_ui_activity(
+                    let results = manager.run_index_worker_once_with_events_and_ui_activity(
                         &index_runtime,
                         |status, events| on_status(status, events),
                         &mut is_ui_latency_sensitive,
                     );
+                    if let Ok(results) = results {
+                        let _ = manager.maintenance.run_after_results(&results, || {
+                            is_ui_latency_sensitive() || manager.has_pending_tasks()
+                        });
+                    }
                     if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
-                        break;
+                        let _ = manager.maintenance.run_pending(|| {
+                            is_ui_latency_sensitive() || manager.has_pending_tasks()
+                        });
+                        if !manager.has_pending_tasks() {
+                            break;
+                        }
                     }
                 }
                 manager.worker_running.store(false, Ordering::SeqCst);

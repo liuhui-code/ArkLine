@@ -3,7 +3,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::thread;
 use std::time::Duration;
 
-use super::IndexerHostRuntime;
+use super::{IndexerDiscoveryAttempt, IndexerHostRuntime};
 use crate::indexer_sidecar::IndexerTaskKey;
 
 #[test]
@@ -33,10 +33,14 @@ fn repeated_requests_do_not_restart_a_crashing_lane_during_backoff() {
         reason: "crash-backoff-test".to_string(),
     };
 
-    assert!(runtime
-        .discover_workspace_chunk(task.clone(), None, 64)
-        .is_none());
-    assert!(runtime.discover_workspace_chunk(task, None, 64).is_none());
+    assert_eq!(
+        runtime.discover_workspace_chunk(task.clone(), None, 64),
+        IndexerDiscoveryAttempt::Unavailable
+    );
+    assert_eq!(
+        runtime.discover_workspace_chunk(task, None, 64),
+        IndexerDiscoveryAttempt::Unavailable
+    );
 
     assert_eq!(fs::read_to_string(&launch_log).unwrap(), "x");
     let first_failure = runtime.snapshot();
@@ -47,8 +51,8 @@ fn repeated_requests_do_not_restart_a_crashing_lane_during_backoff() {
 
     thread::sleep(Duration::from_millis(300));
     assert_eq!(runtime.snapshot().status, "fallback");
-    assert!(runtime
-        .discover_workspace_chunk(
+    assert_eq!(
+        runtime.discover_workspace_chunk(
             IndexerTaskKey {
                 root_path: root.to_string_lossy().to_string(),
                 kind: "discovery".to_string(),
@@ -57,8 +61,9 @@ fn repeated_requests_do_not_restart_a_crashing_lane_during_backoff() {
             },
             None,
             64,
-        )
-        .is_none());
+        ),
+        IndexerDiscoveryAttempt::Unavailable
+    );
     let second_failure = runtime.snapshot();
     assert_eq!(fs::read_to_string(&launch_log).unwrap(), "xx");
     assert_eq!(second_failure.restart_count, 1);

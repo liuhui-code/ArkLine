@@ -73,6 +73,17 @@ impl WorkspaceIndexCancellationRegistry {
         }
         cancelled
     }
+
+    pub fn cancel_root(&mut self, root_path: &str) -> Vec<WorkspaceIndexCancellationToken> {
+        let mut cancelled = Vec::new();
+        for active in &self.active_tasks {
+            if active.root_path == root_path {
+                active.token.cancel();
+                cancelled.push(active.token.clone());
+            }
+        }
+        cancelled
+    }
 }
 
 #[derive(Debug)]

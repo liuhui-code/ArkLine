@@ -22,6 +22,20 @@ fn content_chunk_atomically_publishes_lines_and_both_search_indexes() {
     assert_eq!(summary.indexed_file_count, 1);
     assert_eq!(summary.indexed_line_count, 2);
     assert_eq!(summary.unreadable_file_count, 0);
+    assert_eq!(
+        summary
+            .publication_profile
+            .stages
+            .iter()
+            .map(|stage| stage.name.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "contentDelete",
+            "contentInsert",
+            "contentState",
+            "contentGeneration",
+        ]
+    );
     let connection = open_index(&root);
     for table in [
         "workspace_content_lines",

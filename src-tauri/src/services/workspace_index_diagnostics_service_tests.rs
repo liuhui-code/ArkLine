@@ -68,6 +68,7 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     assert_eq!(diagnostics.stale_generation_count, 0);
     assert_eq!(diagnostics.sdk_symbol_count, 0);
     assert!(diagnostics.db_size_bytes > 0);
+    assert_eq!(diagnostics.compaction_status, "not-needed");
     assert_eq!(diagnostics.queue_pressure.pending_task_count, 0);
     assert_eq!(diagnostics.queue_pressure.workspace_pending_task_count, 0);
     assert!(diagnostics.last_error.is_none());

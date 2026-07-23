@@ -6,11 +6,13 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, Statement};
+use serde::{Deserialize, Serialize};
 
-use crate::services::workspace_file_identity_service::ensure_workspace_file_id;
-use crate::services::workspace_index_connection_service::{
-    optimize_workspace_index_store, with_workspace_index_writer,
+use crate::models::workspace_index_publication::{
+    WorkspaceIndexPublicationProfile, WorkspaceIndexPublicationProfiler,
 };
+use crate::services::workspace_file_identity_service::ensure_workspace_file_id;
+use crate::services::workspace_index_connection_service::with_workspace_index_writer;
 use crate::services::workspace_index_layer_generation_service::{
     publish_layer_generation, CONTENT_LAYER,
 };
@@ -19,7 +21,7 @@ use crate::services::workspace_index_schema_service::ensure_workspace_index_sche
 pub(crate) const WORKSPACE_CONTENT_MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) const WORKSPACE_CONTENT_MAX_CHUNK_BYTES: usize = 32 * 1024 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct PreparedWorkspaceContentFile {
     pub(crate) path: String,
     pub(crate) content: String,
@@ -27,14 +29,14 @@ pub(crate) struct PreparedWorkspaceContentFile {
     pub(crate) source_bytes: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct PreparedWorkspaceContentFailure {
     pub(crate) path: String,
     pub(crate) error: String,
     pub(crate) resource_limited: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct PreparedWorkspaceContentRefresh {
     pub(crate) indexed_generation: u64,
     pub(crate) refreshed_paths: Vec<String>,
@@ -67,8 +69,7 @@ pub(crate) fn index_workspace_content_at_generation(
             .map_err(|error| error.to_string())?;
         clear_workspace_content(&transaction, &root_key)?;
         publish_workspace_content_refresh(&transaction, &root_key, &prepared)?;
-        transaction.commit().map_err(|error| error.to_string())?;
-        optimize_workspace_index_store(connection)
+        transaction.commit().map_err(|error| error.to_string())
     })
 }
 
@@ -219,23 +220,40 @@ pub(crate) fn publish_workspace_content_refresh(
     root_key: &str,
     prepared: &PreparedWorkspaceContentRefresh,
 ) -> Result<(), String> {
-    for path in prepared
-        .removed_paths
-        .iter()
-        .chain(prepared.refreshed_paths.iter())
-    {
-        delete_indexed_path(connection, root_key, path)?;
-    }
-    insert_prepared_files(connection, root_key, &prepared.files)
-        .and_then(|_| publish_content_file_states(connection, root_key, prepared))
-        .and_then(|_| {
-            publish_layer_generation(
-                connection,
-                root_key,
-                CONTENT_LAYER,
-                prepared.indexed_generation,
-            )
-        })
+    publish_workspace_content_refresh_profiled(connection, root_key, prepared).map(|_| ())
+}
+
+pub(crate) fn publish_workspace_content_refresh_profiled(
+    connection: &Connection,
+    root_key: &str,
+    prepared: &PreparedWorkspaceContentRefresh,
+) -> Result<WorkspaceIndexPublicationProfile, String> {
+    let mut profiler = WorkspaceIndexPublicationProfiler::start();
+    profiler.measure("contentDelete", || {
+        for path in prepared
+            .removed_paths
+            .iter()
+            .chain(prepared.refreshed_paths.iter())
+        {
+            delete_indexed_path(connection, root_key, path)?;
+        }
+        Ok(())
+    })?;
+    profiler.measure("contentInsert", || {
+        insert_prepared_files(connection, root_key, &prepared.files)
+    })?;
+    profiler.measure("contentState", || {
+        publish_content_file_states(connection, root_key, prepared)
+    })?;
+    profiler.measure("contentGeneration", || {
+        publish_layer_generation(
+            connection,
+            root_key,
+            CONTENT_LAYER,
+            prepared.indexed_generation,
+        )
+    })?;
+    Ok(profiler.finish())
 }
 
 fn clear_workspace_content(connection: &Connection, root_key: &str) -> Result<(), String> {

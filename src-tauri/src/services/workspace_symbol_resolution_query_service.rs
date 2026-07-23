@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
-use std::path::Path;
+use rusqlite::params;
 
-use rusqlite::{params, Connection};
+use crate::services::workspace_index_connection_service::{
+    require_existing_workspace_index_reader, WorkspaceIndexReader,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceResolvedSymbolRow {
@@ -175,15 +177,8 @@ fn resolved_symbol_from_row(
     })
 }
 
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    Connection::open(sqlite_catalog_cache_path(root_path)).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> std::path::PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
+fn open_index_store(root_path: &str) -> Result<WorkspaceIndexReader<'static>, String> {
+    require_existing_workspace_index_reader(root_path)
 }
 
 fn normalize_index_path(path: &str) -> String {

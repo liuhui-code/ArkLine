@@ -3,6 +3,9 @@ use std::time::{Duration, Instant};
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::ArkTsFileStub;
+use crate::models::workspace_index_publication::{
+    WorkspaceIndexPublicationProfile, WorkspaceIndexPublicationProfiler,
+};
 use crate::services::workspace_dependency_graph_service::{
     rebuild_dependency_graph, update_dependency_graph_for_paths,
 };
@@ -227,57 +230,96 @@ pub(crate) fn replace_changed_stub_rows_with_parsed(
     prepared: &PreparedWorkspaceStubRefresh,
     indexed_generation: u64,
 ) -> Result<(), String> {
-    let plan = &prepared.plan;
-
-    mark_semantic_layers_stale(
-        connection,
-        root_key,
-        &plan.affected_paths,
-        indexed_generation,
-    )?;
-    remove_semantic_layers(connection, root_key, &plan.removed_paths)?;
-    delete_stub_rows_for_paths(connection, root_key, &plan.affected_paths)?;
-    insert_parsed_stub_rows(connection, root_key, &prepared.stubs, indexed_generation)?;
-    publish_syntax_layers(
-        connection,
-        root_key,
-        &plan.indexed_paths,
-        indexed_generation,
-    )?;
-    update_dependency_graph_for_paths(
+    replace_changed_stub_rows_with_parsed_profiled(
         connection,
         root_key,
         file_paths,
-        &plan.indexed_paths,
-        &plan.removed_paths,
-    )?;
-    publish_project_model_layers(
-        connection,
-        root_key,
-        &plan.indexed_paths,
+        prepared,
         indexed_generation,
-    )?;
-    resolve_workspace_symbols_for_paths(
-        connection,
-        root_key,
-        &plan.indexed_paths,
-        &plan.removed_paths,
-        indexed_generation,
-    )?;
-    publish_definition_layers(
-        connection,
-        root_key,
-        &plan.indexed_paths,
-        indexed_generation,
-    )?;
-    replace_workspace_references_for_paths(
-        connection,
-        root_key,
-        &plan.indexed_paths,
-        &plan.removed_paths,
-        indexed_generation,
-    )?;
-    publish_layer_generation(connection, root_key, STUB_LAYER, indexed_generation)
+    )
+    .map(|_| ())
+}
+
+pub(crate) fn replace_changed_stub_rows_with_parsed_profiled(
+    connection: &Connection,
+    root_key: &str,
+    file_paths: &[String],
+    prepared: &PreparedWorkspaceStubRefresh,
+    indexed_generation: u64,
+) -> Result<WorkspaceIndexPublicationProfile, String> {
+    let plan = &prepared.plan;
+    let mut profiler = WorkspaceIndexPublicationProfiler::start();
+    profiler.measure("stubSemanticState", || {
+        mark_semantic_layers_stale(
+            connection,
+            root_key,
+            &plan.affected_paths,
+            indexed_generation,
+        )?;
+        remove_semantic_layers(connection, root_key, &plan.removed_paths)
+    })?;
+    profiler.measure("stubDelete", || {
+        delete_stub_rows_for_paths(connection, root_key, &plan.affected_paths)
+    })?;
+    profiler.measure("stubInsert", || {
+        insert_parsed_stub_rows(connection, root_key, &prepared.stubs, indexed_generation)
+            .map(|_| ())
+    })?;
+    profiler.measure("stubSyntax", || {
+        publish_syntax_layers(
+            connection,
+            root_key,
+            &plan.indexed_paths,
+            indexed_generation,
+        )
+    })?;
+    profiler.measure("stubDependency", || {
+        update_dependency_graph_for_paths(
+            connection,
+            root_key,
+            file_paths,
+            &plan.indexed_paths,
+            &plan.removed_paths,
+        )
+    })?;
+    profiler.measure("stubProjectModel", || {
+        publish_project_model_layers(
+            connection,
+            root_key,
+            &plan.indexed_paths,
+            indexed_generation,
+        )
+    })?;
+    profiler.measure("stubResolve", || {
+        resolve_workspace_symbols_for_paths(
+            connection,
+            root_key,
+            &plan.indexed_paths,
+            &plan.removed_paths,
+            indexed_generation,
+        )
+    })?;
+    profiler.measure("stubDefinition", || {
+        publish_definition_layers(
+            connection,
+            root_key,
+            &plan.indexed_paths,
+            indexed_generation,
+        )
+    })?;
+    profiler.measure("stubReference", || {
+        replace_workspace_references_for_paths(
+            connection,
+            root_key,
+            &plan.indexed_paths,
+            &plan.removed_paths,
+            indexed_generation,
+        )
+    })?;
+    profiler.measure("stubGeneration", || {
+        publish_layer_generation(connection, root_key, STUB_LAYER, indexed_generation)
+    })?;
+    Ok(profiler.finish())
 }
 
 fn insert_stub_rows_for_files_profiled(

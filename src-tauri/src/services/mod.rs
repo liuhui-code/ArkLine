@@ -6,16 +6,13 @@ pub mod device_log_export_service;
 pub mod device_log_hdc_service;
 pub mod device_log_level_summary_service;
 pub mod device_log_metadata_service;
-#[cfg(test)]
-mod device_log_query_cancellation_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod device_log_query_cancellation_service_tests;
 pub mod device_log_query_deadline_service;
 pub mod device_log_query_generation_service;
-#[cfg(test)]
-mod device_log_query_generation_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod device_log_query_generation_service_tests;
 pub mod device_log_query_limit_service;
 pub mod device_log_query_matcher_service;
-#[cfg(test)]
-mod device_log_query_orphan_tests;
+#[rustfmt::skip] #[cfg(test)] mod device_log_query_orphan_tests;
 pub mod device_log_query_parser_service;
 pub mod device_log_query_pruning_service;
 pub mod device_log_query_response_service;
@@ -109,7 +106,6 @@ pub(crate) mod workspace_dependency_graph_store_service;
 mod workspace_dependency_graph_store_service_tests;
 #[cfg(test)]
 mod workspace_discovery_continuation_service_tests;
-#[allow(dead_code)]
 pub(crate) mod workspace_discovery_runner_service;
 #[cfg(test)]
 mod workspace_discovery_runner_service_tests;
@@ -146,6 +142,7 @@ mod workspace_file_search_index_service_tests;
 pub(crate) mod workspace_incremental_path_plan_service;
 #[cfg(test)]
 mod workspace_incremental_path_plan_service_tests;
+pub(crate) mod workspace_index_adaptive_chunk_service;
 pub(crate) mod workspace_index_cache_path_service;
 #[cfg(test)]
 mod workspace_index_cache_path_service_tests;
@@ -159,6 +156,8 @@ pub(crate) mod workspace_index_changed_path_worker_service;
 pub mod workspace_index_chunk_service;
 #[cfg(test)]
 mod workspace_index_chunk_service_tests;
+pub(crate) mod workspace_index_compaction_service;
+pub(crate) mod workspace_index_connection_metrics_service;
 pub(crate) mod workspace_index_connection_service;
 #[cfg(test)]
 mod workspace_index_connection_service_tests;
@@ -245,6 +244,8 @@ pub mod workspace_index_layer_strategy_service;
 mod workspace_index_layer_strategy_service_tests;
 #[cfg(test)]
 mod workspace_index_lifecycle_service_tests;
+pub(crate) mod workspace_index_maintenance_publication_service;
+pub(crate) mod workspace_index_maintenance_runtime_service;
 pub mod workspace_index_maintenance_service;
 #[cfg(test)]
 mod workspace_index_maintenance_service_tests;
@@ -270,6 +271,8 @@ pub mod workspace_index_performance_gate_service;
 #[cfg(test)]
 mod workspace_index_performance_gate_service_tests;
 pub mod workspace_index_persistence_service;
+pub(crate) mod workspace_index_publication_artifact_service;
+pub(crate) mod workspace_index_publication_scheduler_service;
 pub(crate) mod workspace_index_query_path_service;
 #[cfg(test)]
 mod workspace_index_query_scope_service_tests;
@@ -324,6 +327,7 @@ mod workspace_index_state_machine_service_tests;
 pub mod workspace_index_status_projection_service;
 #[cfg(test)]
 mod workspace_index_status_projection_service_tests;
+pub(crate) mod workspace_index_store_generation_service;
 pub(crate) mod workspace_index_structured_restore_service;
 #[cfg(test)]
 mod workspace_index_structured_restore_service_tests;
@@ -351,6 +355,8 @@ pub mod workspace_index_worker_service;
 mod workspace_index_worker_service_tests;
 #[cfg(test)]
 mod workspace_index_worker_sidecar_fallback_tests;
+pub(crate) mod workspace_index_writer_actor_service;
+pub(crate) mod workspace_index_writer_connection_pool_service;
 #[cfg(test)]
 mod workspace_interaction_perf_fixture_tests;
 #[cfg(test)]
@@ -428,19 +434,20 @@ pub(crate) mod workspace_search_session_service;
 mod workspace_search_session_service_tests;
 pub(crate) mod workspace_semantic_layer_readiness_service;
 pub(crate) mod workspace_semantic_layer_state_service;
-#[cfg(test)]
-mod workspace_semantic_layer_state_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_semantic_layer_state_service_tests;
 pub mod workspace_service;
 pub mod workspace_shared_sdk_artifact_service;
+#[rustfmt::skip] #[cfg(test)] mod workspace_shared_sdk_artifact_service_tests;
+#[rustfmt::skip]
+pub(crate) mod workspace_shared_sdk_connection_service;pub(crate) mod workspace_shared_sdk_maintenance_service;
 #[cfg(test)]
-mod workspace_shared_sdk_artifact_service_tests;
+mod workspace_shared_sdk_maintenance_service_tests;
 pub(crate) mod workspace_shared_sdk_path_service;
 pub(crate) mod workspace_shared_sdk_posting_service;
 pub(crate) mod workspace_shared_sdk_query_service;
 pub(crate) mod workspace_shared_sdk_schema_service;
 pub mod workspace_stub_index_service;
-#[cfg(test)]
-mod workspace_stub_index_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_stub_index_service_tests;
 pub(crate) mod workspace_stub_index_writer_service;
 pub(crate) mod workspace_stub_prepare_service;
 pub(crate) mod workspace_stub_refresh_chunk_service;
@@ -448,8 +455,7 @@ pub(crate) mod workspace_stub_refresh_plan_service;
 #[cfg(test)]
 mod workspace_stub_refresh_plan_service_tests;
 pub mod workspace_symbol_hierarchy_service;
-#[cfg(test)]
-mod workspace_symbol_hierarchy_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_symbol_hierarchy_service_tests;
 pub mod workspace_symbol_identity_merge_service;
 pub mod workspace_symbol_identity_service;
 pub mod workspace_symbol_index_service;

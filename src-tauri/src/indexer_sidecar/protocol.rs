@@ -2,8 +2,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
+use crate::models::workspace_index_publication::{
+    WorkspaceIndexPublicationArtifactDescriptor, WorkspaceIndexPublicationProfile,
+};
 
-pub const INDEXER_PROTOCOL_VERSION: u64 = 4;
+pub const INDEXER_PROTOCOL_VERSION: u64 = 5;
 pub const INDEXER_CONTENT_REFRESH_PATH_LIMIT: usize = 64;
 pub const INDEXER_STUB_REFRESH_PATH_LIMIT: usize = 64;
 
@@ -34,6 +37,10 @@ pub struct IndexerDiscoveryResult {
     pub has_more: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_directories: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publication_artifact: Option<WorkspaceIndexPublicationArtifactDescriptor>,
+    #[serde(default)]
+    pub publication_profile: WorkspaceIndexPublicationProfile,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -55,6 +62,10 @@ pub struct IndexerStubRefreshResult {
     pub removed_path_count: usize,
     pub parsed_file_count: usize,
     pub parse_error_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publication_artifact: Option<WorkspaceIndexPublicationArtifactDescriptor>,
+    #[serde(default)]
+    pub publication_profile: WorkspaceIndexPublicationProfile,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -79,6 +90,10 @@ pub struct IndexerContentRefreshResult {
     pub unreadable_file_count: usize,
     pub resource_limited_file_count: usize,
     pub processed_source_bytes: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publication_artifact: Option<WorkspaceIndexPublicationArtifactDescriptor>,
+    #[serde(default)]
+    pub publication_profile: WorkspaceIndexPublicationProfile,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -116,7 +131,7 @@ impl IndexerResponse {
             payload: serde_json::json!({
                 "status": "ready",
                 "protocolVersion": INDEXER_PROTOCOL_VERSION,
-                "capabilities": ["health", "discoveryChunk", "contentRefreshChunk", "contentResourceBudget", "stubRefreshChunk", "writerTelemetry"],
+                "capabilities": ["health", "discoveryChunk", "discoveryPrepareChunk", "contentRefreshChunk", "contentPrepareChunk", "contentResourceBudget", "stubRefreshChunk", "stubPrepareChunk", "writerActorPublication", "writerTelemetry", "publicationStageTelemetry"],
             }),
             telemetry: None,
             error: None,
@@ -136,7 +151,9 @@ impl IndexerResponse {
 
 #[cfg(test)]
 mod tests {
-    use super::{IndexerRequest, IndexerResponse, INDEXER_PROTOCOL_VERSION};
+    use super::{
+        IndexerContentRefreshResult, IndexerRequest, IndexerResponse, INDEXER_PROTOCOL_VERSION,
+    };
 
     #[test]
     fn protocol_uses_versioned_camel_case_health_contract() {
@@ -150,5 +167,29 @@ mod tests {
         assert_eq!(request.method, "health");
         assert_eq!(json["payload"]["protocolVersion"], INDEXER_PROTOCOL_VERSION);
         assert_eq!(json["payload"]["capabilities"][0], "health");
+    }
+
+    #[test]
+    fn old_refresh_results_default_missing_publication_telemetry() {
+        let result: IndexerContentRefreshResult = serde_json::from_value(serde_json::json!({
+            "task": {
+                "rootPath": "/workspace",
+                "kind": "content-refresh",
+                "generation": 1,
+                "reason": "compatibility"
+            },
+            "indexedGeneration": 1,
+            "changedPathCount": 1,
+            "removedPathCount": 0,
+            "indexedFileCount": 1,
+            "indexedLineCount": 1,
+            "unreadableFileCount": 0,
+            "resourceLimitedFileCount": 0,
+            "processedSourceBytes": 10
+        }))
+        .unwrap();
+
+        assert_eq!(result.publication_profile.total_duration_us, 0);
+        assert!(result.publication_profile.stages.is_empty());
     }
 }

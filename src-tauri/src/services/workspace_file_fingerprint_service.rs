@@ -4,8 +4,11 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use rusqlite::{params, Connection, OptionalExtension, Statement};
+use rusqlite::{params, OptionalExtension, Statement};
 
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, with_workspace_index_transaction,
+};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_stub_index_service::ARKTS_STUB_PARSER_VERSION;
 
@@ -50,8 +53,9 @@ pub fn classify_file_fingerprints(
         return Ok(Vec::new());
     }
 
-    let connection = open_fingerprint_store(root_path)?;
-    ensure_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return classify_without_stored_fingerprints(paths);
+    };
     let root_key = normalize_index_path(root_path);
     let mut changes = Vec::new();
     let mut select_statement = connection
@@ -95,15 +99,11 @@ pub fn update_file_fingerprints(
         return Ok(());
     }
 
-    let mut connection = open_fingerprint_store(root_path)?;
-    ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let mut insert_statement = transaction
-        .prepare(
-            "insert into workspace_file_fingerprints (
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        let mut insert_statement = transaction
+            .prepare(
+                "insert into workspace_file_fingerprints (
                 root_path, path, mtime_ms, size, hash,
                 content_index_version, symbol_index_version, stub_parser_version,
                 indexed_generation
@@ -116,29 +116,29 @@ pub fn update_file_fingerprints(
                 symbol_index_version = excluded.symbol_index_version,
                 stub_parser_version = excluded.stub_parser_version,
                 indexed_generation = excluded.indexed_generation",
-        )
-        .map_err(|error| error.to_string())?;
-    for path in paths {
-        let Some(current) = current_file_fingerprint(path)? else {
-            continue;
-        };
-        let normalized_path = normalize_index_path(path);
-        insert_statement
-            .execute(params![
-                &root_key,
-                normalized_path,
-                current.mtime_ms,
-                current.size,
-                current.hash,
-                CONTENT_INDEX_VERSION,
-                SYMBOL_INDEX_VERSION,
-                ARKTS_STUB_PARSER_VERSION,
-                indexed_generation as i64,
-            ])
+            )
             .map_err(|error| error.to_string())?;
-    }
-    drop(insert_statement);
-    transaction.commit().map_err(|error| error.to_string())
+        for path in paths {
+            let Some(current) = current_file_fingerprint(path)? else {
+                continue;
+            };
+            let normalized_path = normalize_index_path(path);
+            insert_statement
+                .execute(params![
+                    &root_key,
+                    normalized_path,
+                    current.mtime_ms,
+                    current.size,
+                    current.hash,
+                    CONTENT_INDEX_VERSION,
+                    SYMBOL_INDEX_VERSION,
+                    ARKTS_STUB_PARSER_VERSION,
+                    indexed_generation as i64,
+                ])
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    })
 }
 
 pub fn remove_file_fingerprints(root_path: &str, paths: &[String]) -> Result<(), String> {
@@ -146,26 +146,40 @@ pub fn remove_file_fingerprints(root_path: &str, paths: &[String]) -> Result<(),
         return Ok(());
     }
 
-    let mut connection = open_fingerprint_store(root_path)?;
-    ensure_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    let mut delete_statement = transaction
-        .prepare(
-            "delete from workspace_file_fingerprints
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        let mut delete_statement = transaction
+            .prepare(
+                "delete from workspace_file_fingerprints
              where root_path = ?1 and path = ?2",
-        )
-        .map_err(|error| error.to_string())?;
-    for path in paths {
-        let normalized_path = normalize_index_path(path);
-        delete_statement
-            .execute(params![&root_key, normalized_path])
+            )
             .map_err(|error| error.to_string())?;
-    }
-    drop(delete_statement);
-    transaction.commit().map_err(|error| error.to_string())
+        for path in paths {
+            let normalized_path = normalize_index_path(path);
+            delete_statement
+                .execute(params![&root_key, normalized_path])
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    })
+}
+
+fn classify_without_stored_fingerprints(
+    paths: &[String],
+) -> Result<Vec<WorkspaceFileFingerprintChange>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            Ok(WorkspaceFileFingerprintChange {
+                path: path.clone(),
+                status: if current_file_fingerprint(path)?.is_some() {
+                    WorkspaceFileFingerprintStatus::Changed
+                } else {
+                    WorkspaceFileFingerprintStatus::Deleted
+                },
+            })
+        })
+        .collect()
 }
 
 fn fingerprint_matches(stored: &StoredFileFingerprint, current: &CurrentFileFingerprint) -> bool {
@@ -219,29 +233,6 @@ fn current_file_fingerprint(path: &str) -> Result<Option<CurrentFileFingerprint>
         size: metadata.len() as i64,
         hash: format!("{:016x}", hasher.finish()),
     }))
-}
-
-fn open_fingerprint_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace fingerprint index path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(&cache_path).map_err(|error| error.to_string())
-}
-
-fn ensure_schema(connection: &Connection) -> Result<(), String> {
-    ensure_workspace_index_schema(connection)
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn filesystem_path(path: &str) -> PathBuf {

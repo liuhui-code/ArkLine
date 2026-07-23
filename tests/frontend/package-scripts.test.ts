@@ -19,7 +19,13 @@ describe("package scripts", () => {
 
     expect(scripts["test:frontend"]).toBe("vitest run");
     expect(scripts["test:frontend:quality"]).toBe(
-      "vitest run tests/frontend/package-scripts.test.ts tests/frontend/quality-gate-manifest.test.ts tests/frontend/indexing-roadmap-status.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
+      "vitest run tests/frontend/package-scripts.test.ts tests/frontend/quality-gate-manifest.test.ts tests/frontend/indexing-roadmap-status.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/packaged-soak-foundation.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
+    );
+    expect(scripts["fixture:performance"]).toBe(
+      "node scripts/generate-performance-fixture.mjs",
+    );
+    expect(scripts["perf:packaged:windows"]).toBe(
+      "node scripts/run-windows-packaged-soak.mjs --strict",
     );
     expect(scripts["test:rust"]).toBe("node scripts/test-rust.mjs");
     expect(scripts["check:whitespace"]).toBe("git diff --check HEAD --");

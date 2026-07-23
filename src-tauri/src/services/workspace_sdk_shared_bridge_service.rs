@@ -1,13 +1,25 @@
 use std::path::Path;
 
-use crate::services::workspace_index_query_path_service::open_index_store;
+use crate::services::workspace_index_connection_service::{
+    require_existing_workspace_index_reader, with_workspace_index_transaction,
+};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_sdk_api_cache_service::sdk_api_file_manifest_fingerprint;
 use crate::services::workspace_sdk_api_scan_plan_service::plan_sdk_api_scan;
 use crate::services::workspace_sdk_binding_service::{load_sdk_binding, record_sdk_binding};
 use crate::services::workspace_sdk_parser_service::WorkspaceSdkSymbol;
 use crate::services::workspace_shared_sdk_artifact_service::{
     SharedSdkArtifactIdentity, SharedSdkArtifactStatus, SharedSdkArtifactStore,
+};
+#[cfg(not(test))]
+use crate::services::workspace_shared_sdk_maintenance_service::schedule_shared_sdk_maintenance;
+#[cfg(test)]
+use crate::services::workspace_shared_sdk_maintenance_service::{
+    maintain_shared_sdk_store, SharedSdkRetentionPolicy,
+};
+use crate::services::workspace_shared_sdk_maintenance_service::{
+    record_shared_sdk_workspace_reference, refresh_shared_sdk_workspace_reference_if_due,
 };
 use crate::services::workspace_shared_sdk_path_service::shared_sdk_store_path;
 
@@ -22,11 +34,24 @@ pub fn publish_complete_sdk_artifact(
     Ok(identity)
 }
 
+#[allow(dead_code)]
 pub fn publish_sdk_artifact_chunk(
     root_path: &str,
     sdk_path: &str,
     sdk_version: &str,
     symbols: &[WorkspaceSdkSymbol],
+    replace_existing: bool,
+) -> Result<SharedSdkArtifactIdentity, String> {
+    let identity =
+        prepare_sdk_artifact_identity(root_path, sdk_path, sdk_version, replace_existing)?;
+    publish_prepared_shared_sdk_chunk(root_path, &identity, symbols, replace_existing, false)?;
+    Ok(identity)
+}
+
+pub(crate) fn prepare_sdk_artifact_identity(
+    root_path: &str,
+    sdk_path: &str,
+    sdk_version: &str,
     replace_existing: bool,
 ) -> Result<SharedSdkArtifactIdentity, String> {
     let identity = if replace_existing {
@@ -38,14 +63,20 @@ pub fn publish_sdk_artifact_chunk(
     if identity.sdk_path != normalize_path(sdk_path) || identity.sdk_version != sdk_version {
         return Err("Workspace SDK continuation does not match the active artifact".to_string());
     }
-    let store = open_store(root_path)?;
-    if replace_existing {
-        store.begin(&identity)?;
-    }
-    store.append(&identity, symbols)?;
     Ok(identity)
 }
 
+pub(crate) fn publish_prepared_shared_sdk_chunk(
+    root_path: &str,
+    identity: &SharedSdkArtifactIdentity,
+    symbols: &[WorkspaceSdkSymbol],
+    replace_existing: bool,
+    mark_ready: bool,
+) -> Result<(), String> {
+    open_store(root_path)?.publish_chunk(identity, symbols, replace_existing, mark_ready)
+}
+
+#[allow(dead_code)]
 pub fn mark_active_sdk_artifact_ready(root_path: &str) -> Result<(), String> {
     let identity = load_active_sdk_identity(root_path)?
         .ok_or_else(|| "Workspace SDK binding is missing".to_string())?;
@@ -115,6 +146,7 @@ pub fn count_shared_sdk_symbols(root_path: &str) -> Result<Option<i64>, String> 
     open_store(root_path)?.count_symbols(&identity).map(Some)
 }
 
+#[allow(dead_code)]
 pub fn try_reuse_ready_shared_sdk_artifact(
     root_path: &str,
     sdk_path: &str,
@@ -122,6 +154,20 @@ pub fn try_reuse_ready_shared_sdk_artifact(
 ) -> Result<Option<usize>, String> {
     let store_path = shared_sdk_store_path(root_path)?;
     try_reuse_ready_shared_sdk_artifact_from_store(root_path, sdk_path, sdk_version, &store_path)
+}
+
+pub(crate) fn find_ready_shared_sdk_artifact(
+    root_path: &str,
+    sdk_path: &str,
+    sdk_version: &str,
+) -> Result<Option<(SharedSdkArtifactIdentity, usize)>, String> {
+    let identity = build_identity(sdk_path, sdk_version)?;
+    let store = open_store(root_path)?;
+    if store.status(&identity)? != Some(SharedSdkArtifactStatus::Ready) {
+        return Ok(None);
+    }
+    let count = usize::try_from(store.count_symbols(&identity)?).unwrap_or_default();
+    Ok(Some((identity, count)))
 }
 
 pub(crate) fn try_reuse_ready_shared_sdk_artifact_from_store(
@@ -136,21 +182,56 @@ pub(crate) fn try_reuse_ready_shared_sdk_artifact_from_store(
         return Ok(None);
     }
     let count = usize::try_from(store.count_symbols(&identity)?).unwrap_or_default();
-    let mut connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    let transaction = connection
-        .transaction()
-        .map_err(|error| error.to_string())?;
-    record_sdk_binding(
-        &transaction,
-        &normalize_workspace_path(root_path),
-        &normalize_workspace_path(sdk_path),
-        sdk_version,
-        &identity,
-        "ready",
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        record_sdk_binding(
+            transaction,
+            &normalize_workspace_path(root_path),
+            &normalize_workspace_path(sdk_path),
+            sdk_version,
+            &identity,
+            "ready",
+        )
+    })?;
+    record_shared_sdk_workspace_reference(
+        store_path,
+        root_path,
+        &identity.artifact_key,
+        current_time_millis(),
     )?;
-    transaction.commit().map_err(|error| error.to_string())?;
+    request_shared_sdk_maintenance(store_path);
     Ok(Some(count))
+}
+
+pub(crate) fn record_active_shared_sdk_reference(
+    root_path: &str,
+    identity: &SharedSdkArtifactIdentity,
+) -> Result<(), String> {
+    record_shared_sdk_workspace_reference(
+        &shared_sdk_store_path(root_path)?,
+        root_path,
+        &identity.artifact_key,
+        current_time_millis(),
+    )
+}
+
+pub(crate) fn maintain_active_shared_sdk_store(root_path: &str) {
+    let Ok(store_path) = shared_sdk_store_path(root_path) else {
+        return;
+    };
+    request_shared_sdk_maintenance(&store_path);
+}
+
+fn request_shared_sdk_maintenance(store_path: &Path) {
+    #[cfg(not(test))]
+    {
+        schedule_shared_sdk_maintenance(store_path.to_path_buf());
+    }
+    #[cfg(test)]
+    let _ = maintain_shared_sdk_store(
+        store_path,
+        current_time_millis(),
+        SharedSdkRetentionPolicy::default(),
+    );
 }
 
 pub fn query_shared_sdk_members_from_binding(
@@ -167,12 +248,22 @@ pub fn query_shared_sdk_members_from_binding(
 pub fn load_active_sdk_identity(
     root_path: &str,
 ) -> Result<Option<SharedSdkArtifactIdentity>, String> {
-    let connection = match open_index_store(root_path) {
+    let connection = match require_existing_workspace_index_reader(root_path) {
         Ok(connection) => connection,
         Err(_) => return Ok(None),
     };
-    ensure_workspace_index_schema(&connection)?;
-    load_sdk_binding(&connection, &normalize_workspace_path(root_path))
+    let identity = load_sdk_binding(&connection, &normalize_workspace_path(root_path))?;
+    drop(connection);
+    if let Some(identity) = &identity {
+        if let Ok(store_path) = shared_sdk_store_path(root_path) {
+            let _ = refresh_shared_sdk_workspace_reference_if_due(
+                &store_path,
+                root_path,
+                &identity.artifact_key,
+            );
+        }
+    }
+    Ok(identity)
 }
 
 fn build_identity(sdk_path: &str, sdk_version: &str) -> Result<SharedSdkArtifactIdentity, String> {

@@ -33,6 +33,7 @@ mod models {
     #[cfg(test)]
     mod workspace_index_diagnostics_tests;
     pub mod workspace_index_layer;
+    pub mod workspace_index_publication;
     pub mod workspace_semantic_layer;
 }
 
@@ -68,7 +69,7 @@ pub fn run() {
             app.manage(services::language_service::LanguageRuntime::new(launcher));
             Ok(())
         })
-        .manage(commands::windowing::LaunchWorkspaceState::default())
+        .manage(commands::windowing::LaunchWorkspaceState::for_process())
         .manage(services::terminal_service::TerminalRuntime::default())
         .manage(services::device_log_service::DeviceLogRuntime::default())
         .manage(services::workspace_index_service::WorkspaceIndexRuntime::default())

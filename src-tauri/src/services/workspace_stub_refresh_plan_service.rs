@@ -1,6 +1,7 @@
 use crate::services::workspace_stub_index_service::normalize_index_path;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct WorkspaceStubRefreshPlan {
     pub(crate) affected_paths: Vec<String>,
     pub(crate) indexed_paths: Vec<String>,

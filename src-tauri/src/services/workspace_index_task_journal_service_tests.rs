@@ -6,6 +6,7 @@ use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRunti
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_task_journal_service::{
     load_recent_task_statuses, store_task_status, store_task_status_with_events,
+    store_task_statuses_with_events,
 };
 use crate::services::workspace_index_test_fixture_service::create_empty_workspace;
 
@@ -118,6 +119,33 @@ fn repeated_failed_task_status_returns_retry_backoff_event_for_live_emit() {
         .expect("returned events should include live backoff event");
     assert!(backoff.message.contains("recommended retry delay 2000ms"));
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn batch_status_publication_rolls_back_every_status_when_one_write_fails() {
+    let root = create_empty_workspace("task-journal-batch-rollback");
+    let root_path = root.to_string_lossy().to_string();
+    store_task_status(&root_path, &failed_status(&root_path, 20)).unwrap();
+    let database_path = root.join(".arkline/index/workspace-catalog.sqlite");
+    rusqlite::Connection::open(database_path)
+        .unwrap()
+        .execute_batch(
+            "create trigger reject_second_batch_status
+             before insert on workspace_index_task_journal
+             when new.task_id = '22:changed-paths'
+             begin select raise(abort, 'reject batch'); end;",
+        )
+        .unwrap();
+    let first = failed_status(&root_path, 21);
+    let second = failed_status(&root_path, 22);
+
+    let error = store_task_statuses_with_events(&root_path, &[first, second]).unwrap_err();
+
+    assert!(error.contains("reject batch"));
+    let statuses = load_recent_task_statuses(&root_path, 8).unwrap();
+    assert_eq!(statuses.len(), 1);
+    assert_eq!(statuses[0].generation, 20);
     fs::remove_dir_all(root).unwrap();
 }
 

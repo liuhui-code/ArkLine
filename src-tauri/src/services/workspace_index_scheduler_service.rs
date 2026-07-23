@@ -146,6 +146,10 @@ impl WorkspaceIndexScheduler {
             .collect()
     }
 
+    pub fn drain_tasks_for_root(&mut self, root_path: &str) -> Vec<WorkspaceIndexTask> {
+        drain_matching_tasks(&mut self.tasks, |task| task.root_path == root_path)
+    }
+
     #[allow(dead_code)]
     pub fn pending_tasks(&self) -> Vec<WorkspaceIndexTask> {
         self.tasks.iter().cloned().collect()

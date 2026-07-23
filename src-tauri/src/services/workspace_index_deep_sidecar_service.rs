@@ -5,11 +5,13 @@ use crate::indexer_sidecar::{
     IndexerTaskKey, INDEXER_CONTENT_REFRESH_PATH_LIMIT, INDEXER_STUB_REFRESH_PATH_LIMIT,
 };
 use crate::models::workspace::WorkspaceIndexState;
-use crate::services::workspace_content_chunk_plan_service::plan_content_refresh_chunks;
+use crate::services::workspace_content_chunk_plan_service::take_refresh_chunk;
 use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
 use crate::services::workspace_content_refresh_service::WORKSPACE_CONTENT_MAX_CHUNK_BYTES;
+use crate::services::workspace_index_adaptive_chunk_service::AdaptiveRefreshBudget;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_persistence_service::persist_incremental_deep_index_state_with_priority;
+use crate::services::workspace_index_publication_scheduler_service::PublicationPriority;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskPriority,
 };
@@ -169,12 +171,26 @@ fn refresh_stub_chunks(
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
-    for (changed_chunk, removed_chunk) in refresh_chunks(
+    let mut budget = AdaptiveRefreshBudget::new(
+        INDEXER_STUB_REFRESH_PATH_LIMIT,
+        WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
+    );
+    let mut changed_offset = 0usize;
+    let mut removed_offset = 0usize;
+    while let Some(chunk) = take_refresh_chunk(
+        &task.root_path,
         changed_paths,
         removed_paths,
-        INDEXER_STUB_REFRESH_PATH_LIMIT,
+        changed_offset,
+        removed_offset,
+        budget.path_count(),
+        budget.source_bytes(),
     ) {
-        match indexer.refresh_stub_chunk(
+        let path_count = chunk.changed_paths.len() + chunk.removed_paths.len();
+        let source_bytes = chunk.changed_source_bytes;
+        let next_changed_offset = chunk.next_changed_offset;
+        let next_removed_offset = chunk.next_removed_offset;
+        match indexer.refresh_stub_chunk_with_priority(
             IndexerTaskKey {
                 root_path: task.root_path.clone(),
                 kind: "stub-refresh".to_string(),
@@ -182,14 +198,21 @@ fn refresh_stub_chunks(
                 reason: task.reason.clone(),
             },
             indexed_generation,
-            changed_chunk,
-            removed_chunk,
+            chunk.changed_paths,
+            chunk.removed_paths,
+            publication_priority(task.priority),
             || token.is_cancelled(),
         ) {
-            IndexerStubRefreshAttempt::Applied(_) => {}
+            IndexerStubRefreshAttempt::Applied(result) => budget.observe(
+                result.publication_profile.total_duration_us,
+                path_count,
+                source_bytes,
+            ),
             IndexerStubRefreshAttempt::Unavailable => return LayerChunkOutcome::Unavailable,
             IndexerStubRefreshAttempt::Cancelled => return LayerChunkOutcome::Cancelled,
         }
+        changed_offset = next_changed_offset;
+        removed_offset = next_removed_offset;
     }
     LayerChunkOutcome::Applied
 }
@@ -208,14 +231,25 @@ fn refresh_content_chunks(
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
-    for (changed_chunk, removed_chunk) in plan_content_refresh_chunks(
+    let mut budget = AdaptiveRefreshBudget::new(
+        INDEXER_CONTENT_REFRESH_PATH_LIMIT,
+        WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
+    );
+    let mut changed_offset = 0usize;
+    let mut removed_offset = 0usize;
+    while let Some(chunk) = take_refresh_chunk(
         &task.root_path,
         changed_paths,
         removed_paths,
-        INDEXER_CONTENT_REFRESH_PATH_LIMIT,
-        WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
+        changed_offset,
+        removed_offset,
+        budget.path_count(),
+        budget.source_bytes(),
     ) {
-        match indexer.refresh_content_chunk(
+        let path_count = chunk.changed_paths.len() + chunk.removed_paths.len();
+        let next_changed_offset = chunk.next_changed_offset;
+        let next_removed_offset = chunk.next_removed_offset;
+        match indexer.refresh_content_chunk_with_priority(
             IndexerTaskKey {
                 root_path: task.root_path.clone(),
                 kind: "content-refresh".to_string(),
@@ -223,14 +257,21 @@ fn refresh_content_chunks(
                 reason: task.reason.clone(),
             },
             indexed_generation,
-            changed_chunk,
-            removed_chunk,
+            chunk.changed_paths,
+            chunk.removed_paths,
+            publication_priority(task.priority),
             || token.is_cancelled(),
         ) {
-            IndexerContentRefreshAttempt::Applied(_) => {}
+            IndexerContentRefreshAttempt::Applied(result) => budget.observe(
+                result.publication_profile.total_duration_us,
+                path_count,
+                result.processed_source_bytes,
+            ),
             IndexerContentRefreshAttempt::Unavailable => return LayerChunkOutcome::Unavailable,
             IndexerContentRefreshAttempt::Cancelled => return LayerChunkOutcome::Cancelled,
         }
+        changed_offset = next_changed_offset;
+        removed_offset = next_removed_offset;
     }
     LayerChunkOutcome::Applied
 }
@@ -242,23 +283,10 @@ fn sidecar_priority(priority: WorkspaceIndexTaskPriority) -> bool {
     )
 }
 
-fn refresh_chunks(
-    changed_paths: &[String],
-    removed_paths: &[String],
-    limit: usize,
-) -> Vec<(Vec<String>, Vec<String>)> {
-    let mut chunks = Vec::new();
-    let mut changed_offset = 0usize;
-    let mut removed_offset = 0usize;
-    while changed_offset < changed_paths.len() || removed_offset < removed_paths.len() {
-        let changed_end = (changed_offset + limit).min(changed_paths.len());
-        let changed = changed_paths[changed_offset..changed_end].to_vec();
-        let remaining = limit.saturating_sub(changed.len());
-        let removed_end = (removed_offset + remaining).min(removed_paths.len());
-        let removed = removed_paths[removed_offset..removed_end].to_vec();
-        changed_offset = changed_end;
-        removed_offset = removed_end;
-        chunks.push((changed, removed));
+fn publication_priority(priority: WorkspaceIndexTaskPriority) -> PublicationPriority {
+    if matches!(priority, WorkspaceIndexTaskPriority::ChangedFiles) {
+        PublicationPriority::Foreground
+    } else {
+        PublicationPriority::Background
     }
-    chunks
 }

@@ -11,8 +11,7 @@ use crate::services::workspace_index_cache_path_service::{
     catalog_cache_path, normalized_root_key, sqlite_catalog_cache_path,
 };
 use crate::services::workspace_index_connection_service::{
-    open_existing_workspace_index_reader, optimize_workspace_index_store,
-    with_workspace_index_writer,
+    open_existing_workspace_index_reader, with_workspace_index_writer,
 };
 use crate::services::workspace_index_entity_persistence_service::{
     insert_legacy_symbol, insert_symbol_entity,
@@ -204,8 +203,7 @@ fn persist_sqlite_index_state_with_mode(
             .map_err(|error| error.to_string())?;
         persist_catalog_row(&transaction, &root_key, &state_json, updated_at)?;
         persist_structured_index_rows(&transaction, &root_key, state, parsed_stubs.as_deref())?;
-        transaction.commit().map_err(|error| error.to_string())?;
-        optimize_workspace_index_store(connection)
+        transaction.commit().map_err(|error| error.to_string())
     })
 }
 

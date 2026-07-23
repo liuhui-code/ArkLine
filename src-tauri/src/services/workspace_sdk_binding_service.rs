@@ -62,6 +62,7 @@ pub fn load_sdk_binding(
         .map_err(|error| error.to_string())
 }
 
+#[allow(dead_code)]
 pub fn mark_sdk_binding_ready(connection: &Connection, root_key: &str) -> Result<(), String> {
     connection
         .execute(

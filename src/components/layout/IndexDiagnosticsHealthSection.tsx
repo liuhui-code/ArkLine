@@ -1,7 +1,10 @@
 import type { WorkspaceIndexDiagnostics } from "@/features/workspace/workspace-api";
-import type { WorkspaceIndexWriterMetrics } from "@/features/workspace/workspace-index-api-types";
+import type {
+  WorkspaceIndexPublicationProfile,
+  WorkspaceIndexWriterMetrics,
+} from "@/features/workspace/workspace-index-api-types";
 import type { ActiveProjectTaskSummary } from "@/components/layout/index-diagnostics-model";
-import { buildRepairActionEvidence, formatRepairAction } from "@/components/layout/index-diagnostics-model";
+import { buildRepairActionEvidence, formatBytes, formatRepairAction } from "@/components/layout/index-diagnostics-model";
 import { IndexDiagnosticsHealthTaskSummary } from "@/components/layout/IndexDiagnosticsHealthTaskSummary";
 import { IndexDiagnosticsMetric } from "@/components/layout/IndexDiagnosticsMetric";
 
@@ -44,6 +47,10 @@ export function IndexDiagnosticsHealthSection({
   const indexerWriterWaitMax = maximumMetric(indexerWriterMetrics, "waitMaxUs");
   const indexerWriterHoldP95 = maximumMetric(indexerWriterMetrics, "holdP95Us");
   const indexerWriterHoldMax = maximumMetric(indexerWriterMetrics, "holdMaxUs");
+  const discoveryPublication = diagnostics?.indexerHost?.slowestDiscoveryPublication;
+  const contentPublication = diagnostics?.indexerHost?.slowestContentPublication;
+  const stubPublication = diagnostics?.indexerHost?.slowestStubPublication;
+  const publicationWriter = diagnostics?.indexerHost?.publicationWriterMetrics;
 
   return (
     <section className="index-diagnostics__section" id="index-diagnostics-health" aria-label="Health / Storage">
@@ -56,6 +63,40 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric label="Symbols" value={String(diagnostics?.symbolCount ?? 0)} />
         <IndexDiagnosticsMetric label="Text rows" value={String(diagnostics?.contentLineCount ?? 0)} />
         <IndexDiagnosticsMetric label="SDK symbols" value={String(diagnostics?.sdkSymbolCount ?? 0)} />
+        <IndexDiagnosticsMetric
+          label="Shared SDK artifacts"
+          value={`${diagnostics?.sharedSdkReadyArtifactCount ?? 0} ready / ${diagnostics?.sharedSdkBuildingArtifactCount ?? 0} building / ${diagnostics?.sharedSdkFailedArtifactCount ?? 0} failed`}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK references"
+          value={String(diagnostics?.sharedSdkReferenceCount ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK DB size"
+          value={formatBytes(diagnostics?.sharedSdkDbSizeBytes ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK WAL size"
+          value={formatBytes(diagnostics?.sharedSdkWalSizeBytes ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK reclaimable"
+          value={formatBytes(diagnostics?.sharedSdkFreelistBytes ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK revision / generation"
+          value={`${diagnostics?.sharedSdkStoreRevision ?? 0} / ${diagnostics?.sharedSdkStoreGeneration ?? 0}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK readers"
+          value={String(diagnostics?.sharedSdkActiveReaderCount ?? 0)}
+        />
+        <IndexDiagnosticsMetric
+          label="Shared SDK last cleanup"
+          value={diagnostics?.sharedSdkLastMaintenanceAt
+            ? `${diagnostics.sharedSdkLastDeletedArtifactCount ?? 0} artifacts removed`
+            : "never"}
+        />
         <IndexDiagnosticsMetric label="Discovery" value={diagnostics?.discoveryStatus ?? "none"} />
         <IndexDiagnosticsMetric label="Discovered files" value={(diagnostics?.discoveredFileCount ?? 0).toLocaleString()} />
         <IndexDiagnosticsMetric label="Excluded entries" value={(diagnostics?.discoveryExcludedCount ?? 0).toLocaleString()} />
@@ -63,6 +104,17 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
         <IndexDiagnosticsMetric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
         <IndexDiagnosticsMetric label="DB size" value={dbSize} />
+        <IndexDiagnosticsMetric label="WAL size" value={formatBytes(diagnostics?.walSizeBytes ?? 0)} />
+        <IndexDiagnosticsMetric label="Reclaimable" value={formatBytes(diagnostics?.freelistBytes ?? 0)} />
+        <IndexDiagnosticsMetric label="Compaction" value={diagnostics?.compactionStatus ?? "not-needed"} />
+        <IndexDiagnosticsMetric
+          label="Store revision / generation"
+          value={`${diagnostics?.storeRevision ?? 0} / ${diagnostics?.storeGeneration ?? 0}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Active store readers"
+          value={String(diagnostics?.activeStoreReaderCount ?? 0)}
+        />
         <IndexDiagnosticsMetric
           label="Writer queue"
           value={`${diagnostics?.writerMetrics?.activeWriterCount ?? 0} active / ${diagnostics?.writerMetrics?.queuedWriterCount ?? 0} queued`}
@@ -90,6 +142,46 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric
           label="Indexer writer samples / failures"
           value={`${indexerWriterSamples} / ${indexerWriterFailures}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Publication actor queue"
+          value={`${publicationWriter?.activeWriterCount ?? 0} active / ${publicationWriter?.queuedWriterCount ?? 0} queued`}
+        />
+        <IndexDiagnosticsMetric
+          label="Publication actor wait p95 / max"
+          value={`${formatWriterMicros(publicationWriter?.waitP95Us)} / ${formatWriterMicros(publicationWriter?.waitMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Staging recovery"
+          value={`${publicationWriter?.recoveryWorkspaceCount ?? 0} roots / ${publicationWriter?.orphanArtifactRemovedCount ?? 0} removed / ${publicationWriter?.orphanArtifactRetainedCount ?? 0} retained / ${publicationWriter?.recoveryFailureCount ?? 0} failed`}
+        />
+        <IndexDiagnosticsMetric
+          label="SDK publications / max"
+          value={`${publicationWriter?.sdkPublicationCount ?? 0} / ${formatWriterMicros(publicationWriter?.sdkPublicationMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Maintenance publications / max"
+          value={`${publicationWriter?.maintenancePublicationCount ?? 0} / ${formatWriterMicros(publicationWriter?.maintenancePublicationMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Maintenance optimize / checkpoint / reclaim"
+          value={`${publicationWriter?.maintenanceOptimizeCount ?? 0} / ${publicationWriter?.maintenanceCheckpointCount ?? 0} / ${publicationWriter?.maintenanceIncrementalVacuumCount ?? 0}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Copy-swap applied / deferred"
+          value={`${publicationWriter?.maintenanceCopySwapCount ?? 0} / ${publicationWriter?.maintenanceCopySwapDeferredCount ?? 0}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Slowest discovery publication"
+          value={formatPublicationProfile(discoveryPublication)}
+        />
+        <IndexDiagnosticsMetric
+          label="Slowest content publication"
+          value={formatPublicationProfile(contentPublication)}
+        />
+        <IndexDiagnosticsMetric
+          label="Slowest stub publication"
+          value={formatPublicationProfile(stubPublication)}
         />
         <IndexDiagnosticsMetric label="Last explain" value={diagnostics?.lastExplainStatus ?? "none"} />
         <IndexDiagnosticsMetric
@@ -264,6 +356,16 @@ function formatWriterMicros(value: number | undefined) {
   return `${(micros / 1_000).toFixed(micros < 10_000 ? 2 : 1)} ms`;
 }
 
+function formatPublicationProfile(profile: WorkspaceIndexPublicationProfile | null | undefined) {
+  if (!profile) return "No samples";
+  const slowest = profile.stages.reduce(
+    (current, stage) => (stage.durationUs > (current?.durationUs ?? -1) ? stage : current),
+    undefined as WorkspaceIndexPublicationProfile["stages"][number] | undefined,
+  );
+  const detail = slowest ? `${slowest.name} ${formatWriterMicros(slowest.durationUs)}` : "no stage";
+  return `${formatWriterMicros(profile.totalDurationUs)} / ${detail}`;
+}
+
 function collectIndexerWriterMetrics(
   diagnostics: WorkspaceIndexDiagnostics | null,
 ): WorkspaceIndexWriterMetrics[] {
@@ -271,6 +373,7 @@ function collectIndexerWriterMetrics(
     diagnostics?.indexerHost?.discoveryWriterMetrics,
     diagnostics?.indexerHost?.contentWriterMetrics,
     diagnostics?.indexerHost?.stubWriterMetrics,
+    diagnostics?.indexerHost?.publicationWriterMetrics,
   ].filter((value): value is WorkspaceIndexWriterMetrics => value != null);
 }
 

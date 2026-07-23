@@ -1,7 +1,5 @@
 #![allow(dead_code)]
 
-use std::path::Path;
-
 use rusqlite::{params, Connection};
 
 use crate::models::language::{CompletionItem, LanguageQueryRequest};
@@ -17,6 +15,9 @@ use crate::services::workspace_completion_parser_service::{
 };
 use crate::services::workspace_completion_sdk_service::{
     sdk_member_completion_items, sdk_symbol_completion_items,
+};
+use crate::services::workspace_index_connection_service::{
+    require_existing_workspace_index_reader, workspace_index_store_path, WorkspaceIndexReader,
 };
 use crate::services::workspace_index_readiness_service::readiness_for_query;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -330,19 +331,12 @@ fn resolved_import_target_name(
     rows.next().transpose().map_err(|error| error.to_string())
 }
 
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    Connection::open(sqlite_catalog_cache_path(root_path)).map_err(|error| error.to_string())
+fn open_index_store(root_path: &str) -> Result<WorkspaceIndexReader<'static>, String> {
+    require_existing_workspace_index_reader(root_path)
 }
 
 fn index_store_exists(root_path: &str) -> bool {
-    sqlite_catalog_cache_path(root_path).is_file()
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> std::path::PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
+    workspace_index_store_path(root_path).is_file()
 }
 
 fn normalize_index_path(path: &str) -> String {

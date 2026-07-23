@@ -7,6 +7,8 @@ pub fn rebuild_workspace_index_through_manager(
     index_manager: &WorkspaceIndexManagerRuntime,
     root_path: &str,
 ) -> Result<(), String> {
-    clear_workspace_index(index_runtime, root_path)?;
+    index_manager.with_workspace_maintenance(root_path, || {
+        clear_workspace_index(index_runtime, root_path)
+    })?;
     index_manager.refresh_workspace_index(root_path)
 }

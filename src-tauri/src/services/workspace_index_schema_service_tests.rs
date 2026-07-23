@@ -12,6 +12,9 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
     ensure_workspace_index_schema(&connection).unwrap();
     ensure_workspace_index_schema(&connection).unwrap();
     let versions = load_workspace_index_schema_versions(&connection).unwrap();
+    let auto_vacuum: i64 = connection
+        .query_row("pragma auto_vacuum", [], |row| row.get(0))
+        .unwrap();
 
     assert_eq!(versions.get("catalog"), Some(&2));
     assert_eq!(versions.get("content"), Some(&4));
@@ -91,4 +94,5 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
     assert_eq!(semantic_layer_table_count, 1);
     assert_eq!(schema_count as usize, WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT);
+    assert_eq!(auto_vacuum, 2);
 }

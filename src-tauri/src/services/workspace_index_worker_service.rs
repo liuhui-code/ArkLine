@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::indexer_host::IndexerHostRuntime;
+use crate::indexer_host::{IndexerDiscoveryAttempt, IndexerHostRuntime};
 use crate::indexer_sidecar::IndexerTaskKey;
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
 use crate::services::workspace_dependency_graph_service::{
@@ -202,8 +202,8 @@ fn run_index_task_inner(
                     return Ok(Some(superseded_task_result_from_task(task)));
                 }
                 let cursor = workspace_discovery_task_cursor(task);
-                if let Some(result) = indexer.and_then(|runtime| {
-                    runtime.discover_workspace_chunk(
+                if let Some(runtime) = indexer {
+                    match runtime.discover_workspace_chunk(
                         IndexerTaskKey {
                             root_path: task.root_path.clone(),
                             kind: "discovery".to_string(),
@@ -214,15 +214,21 @@ fn run_index_task_inner(
                             .as_ref()
                             .map(|value| value.pending_directories.clone()),
                         WORKSPACE_DISCOVERY_CHUNK_SIZE,
-                    )
-                }) {
-                    return Ok(Some(discovery_task_result_from_counts(
-                        task,
-                        result.chunk_file_count,
-                        result.excluded_count,
-                        result.has_more,
-                        started_at,
-                    )));
+                    ) {
+                        IndexerDiscoveryAttempt::Applied(result) => {
+                            return Ok(Some(discovery_task_result_from_counts(
+                                task,
+                                result.chunk_file_count,
+                                result.excluded_count,
+                                result.has_more,
+                                started_at,
+                            )));
+                        }
+                        IndexerDiscoveryAttempt::Cancelled => {
+                            return Ok(Some(superseded_task_result_from_task(task)));
+                        }
+                        IndexerDiscoveryAttempt::Unavailable => {}
+                    }
                 }
                 let chunk = run_workspace_discovery_chunk(
                     Path::new(&task.root_path),

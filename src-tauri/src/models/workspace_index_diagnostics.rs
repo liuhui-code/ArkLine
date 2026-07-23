@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexEvent {
@@ -68,6 +70,34 @@ pub struct WorkspaceIndexWriterMetrics {
     pub active_writer_count: usize,
     pub queued_writer_count: usize,
     pub failure_count: u64,
+    #[serde(default)]
+    pub recovery_workspace_count: u64,
+    #[serde(default)]
+    pub orphan_artifact_scanned_count: u64,
+    #[serde(default)]
+    pub orphan_artifact_removed_count: u64,
+    #[serde(default)]
+    pub orphan_artifact_retained_count: u64,
+    #[serde(default)]
+    pub recovery_failure_count: u64,
+    #[serde(default)]
+    pub sdk_publication_count: u64,
+    #[serde(default)]
+    pub sdk_publication_max_us: u64,
+    #[serde(default)]
+    pub maintenance_publication_count: u64,
+    #[serde(default)]
+    pub maintenance_publication_max_us: u64,
+    #[serde(default)]
+    pub maintenance_optimize_count: u64,
+    #[serde(default)]
+    pub maintenance_checkpoint_count: u64,
+    #[serde(default)]
+    pub maintenance_incremental_vacuum_count: u64,
+    #[serde(default)]
+    pub maintenance_copy_swap_count: u64,
+    #[serde(default)]
+    pub maintenance_copy_swap_deferred_count: u64,
     pub wait_p50_us: u64,
     pub wait_p95_us: u64,
     pub wait_p99_us: u64,
@@ -105,6 +135,44 @@ pub struct WorkspaceIndexDiagnostics {
     pub discovery_has_more: bool,
     pub db_size_bytes: u64,
     #[serde(default)]
+    pub wal_size_bytes: u64,
+    #[serde(default)]
+    pub freelist_bytes: u64,
+    #[serde(default)]
+    pub compaction_status: String,
+    #[serde(default)]
+    pub store_revision: u64,
+    #[serde(default)]
+    pub store_generation: u64,
+    #[serde(default)]
+    pub active_store_reader_count: usize,
+    #[serde(default)]
+    pub shared_sdk_artifact_count: usize,
+    #[serde(default)]
+    pub shared_sdk_ready_artifact_count: usize,
+    #[serde(default)]
+    pub shared_sdk_building_artifact_count: usize,
+    #[serde(default)]
+    pub shared_sdk_failed_artifact_count: usize,
+    #[serde(default)]
+    pub shared_sdk_reference_count: usize,
+    #[serde(default)]
+    pub shared_sdk_db_size_bytes: u64,
+    #[serde(default)]
+    pub shared_sdk_wal_size_bytes: u64,
+    #[serde(default)]
+    pub shared_sdk_freelist_bytes: u64,
+    #[serde(default)]
+    pub shared_sdk_store_revision: u64,
+    #[serde(default)]
+    pub shared_sdk_store_generation: u64,
+    #[serde(default)]
+    pub shared_sdk_active_reader_count: usize,
+    #[serde(default)]
+    pub shared_sdk_last_maintenance_at: Option<u128>,
+    #[serde(default)]
+    pub shared_sdk_last_deleted_artifact_count: usize,
+    #[serde(default)]
     pub writer_metrics: WorkspaceIndexWriterMetrics,
     pub queue_pressure: WorkspaceIndexQueuePressure,
     pub active_sdk_path: Option<String>,
@@ -140,6 +208,14 @@ pub struct WorkspaceIndexerHostSnapshot {
     pub content_writer_metrics: Option<WorkspaceIndexWriterMetrics>,
     #[serde(default)]
     pub stub_writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    #[serde(default)]
+    pub publication_writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    #[serde(default)]
+    pub slowest_discovery_publication: Option<WorkspaceIndexPublicationProfile>,
+    #[serde(default)]
+    pub slowest_content_publication: Option<WorkspaceIndexPublicationProfile>,
+    #[serde(default)]
+    pub slowest_stub_publication: Option<WorkspaceIndexPublicationProfile>,
     pub completed_discovery_chunks: u64,
     pub completed_content_refresh_chunks: u64,
     pub cancelled_content_refresh_chunks: u64,

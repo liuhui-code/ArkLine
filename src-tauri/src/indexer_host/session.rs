@@ -10,6 +10,7 @@ use crate::indexer_sidecar::{
     IndexerStubRefreshResult, IndexerTaskKey, INDEXER_PROTOCOL_VERSION,
 };
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
+use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
 use crate::services::process_command_service::hidden_command;
 
 const INDEXER_HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
@@ -24,7 +25,9 @@ pub struct IndexerHostSession {
     stdin: ChildStdin,
     response_rx: Receiver<Result<String, String>>,
     next_request_id: u64,
+    capabilities: Vec<String>,
     writer_metrics: Option<WorkspaceIndexWriterMetrics>,
+    publication_profile: Option<WorkspaceIndexPublicationProfile>,
 }
 
 impl IndexerHostSession {
@@ -58,13 +61,17 @@ impl IndexerHostSession {
             stdin,
             response_rx: spawn_stdout_reader(stdout),
             next_request_id: 1,
+            capabilities: Vec::new(),
             writer_metrics: None,
+            publication_profile: None,
         })
     }
 
     pub fn health(&mut self) -> Result<Vec<String>, String> {
         let response = self.exchange("health", None, INDEXER_HEALTH_TIMEOUT)?;
-        validate_health_response(response)
+        let capabilities = validate_health_response(response)?;
+        self.capabilities = capabilities.clone();
+        Ok(capabilities)
     }
 
     pub fn discover_workspace_chunk(
@@ -73,19 +80,40 @@ impl IndexerHostSession {
         pending_directories: Option<Vec<String>>,
         limit: usize,
     ) -> Result<IndexerDiscoveryResult, String> {
+        self.exchange_discovery_chunk("discoverWorkspaceChunk", task, pending_directories, limit)
+    }
+
+    pub(super) fn prepare_discovery_chunk(
+        &mut self,
+        task: IndexerTaskKey,
+        pending_directories: Option<Vec<String>>,
+        limit: usize,
+    ) -> Result<IndexerDiscoveryResult, String> {
+        self.exchange_discovery_chunk("prepareDiscoveryChunk", task, pending_directories, limit)
+    }
+
+    fn exchange_discovery_chunk(
+        &mut self,
+        method: &str,
+        task: IndexerTaskKey,
+        pending_directories: Option<Vec<String>>,
+        limit: usize,
+    ) -> Result<IndexerDiscoveryResult, String> {
+        let expected_task = task.clone();
         let payload = serde_json::to_value(IndexerDiscoveryRequest {
             task,
             pending_directories,
             limit,
         })
         .map_err(|error| format!("Failed to serialize discovery payload: {error}"))?;
-        let response = self.exchange(
-            "discoverWorkspaceChunk",
-            Some(payload),
-            INDEXER_DISCOVERY_TIMEOUT,
-        )?;
-        serde_json::from_value(response.payload)
-            .map_err(|error| format!("Invalid indexer discovery response: {error}"))
+        let response = self.exchange(method, Some(payload), INDEXER_DISCOVERY_TIMEOUT)?;
+        let result: IndexerDiscoveryResult = serde_json::from_value(response.payload)
+            .map_err(|error| format!("Invalid indexer discovery response: {error}"))?;
+        self.record_publication_profile(&result.publication_profile);
+        if result.task != expected_task {
+            return Err("Indexer discovery returned a mismatched task key".to_string());
+        }
+        Ok(result)
     }
 
     pub fn refresh_stub_chunk<F>(
@@ -108,14 +136,20 @@ impl IndexerHostSession {
             priority: "background".to_string(),
         })
         .map_err(|error| format!("Failed to serialize stub refresh payload: {error}"))?;
+        let method = if self.supports_writer_actor_publication() {
+            "prepareStubChunk"
+        } else {
+            "refreshStubChunk"
+        };
         let response = self.exchange_cancellable(
-            "refreshStubChunk",
+            method,
             Some(payload),
             INDEXER_STUB_REFRESH_TIMEOUT,
             is_cancelled,
         )?;
         let result: IndexerStubRefreshResult = serde_json::from_value(response.payload)
             .map_err(|error| format!("Invalid indexer stub refresh response: {error}"))?;
+        self.record_publication_profile(&result.publication_profile);
         if result.task != expected_task {
             return Err("Indexer stub refresh returned a mismatched task key".to_string());
         }
@@ -142,14 +176,20 @@ impl IndexerHostSession {
             priority: "background".to_string(),
         })
         .map_err(|error| format!("Failed to serialize content refresh payload: {error}"))?;
+        let method = if self.supports_writer_actor_publication() {
+            "prepareContentChunk"
+        } else {
+            "refreshContentChunk"
+        };
         let response = self.exchange_cancellable(
-            "refreshContentChunk",
+            method,
             Some(payload),
             INDEXER_CONTENT_REFRESH_TIMEOUT,
             is_cancelled,
         )?;
         let result: IndexerContentRefreshResult = serde_json::from_value(response.payload)
             .map_err(|error| format!("Invalid indexer content refresh response: {error}"))?;
+        self.record_publication_profile(&result.publication_profile);
         if result.task != expected_task {
             return Err("Indexer content refresh returned a mismatched task key".to_string());
         }
@@ -162,6 +202,33 @@ impl IndexerHostSession {
 
     pub fn writer_metrics(&self) -> Option<&WorkspaceIndexWriterMetrics> {
         self.writer_metrics.as_ref()
+    }
+
+    pub fn publication_profile(&self) -> Option<&WorkspaceIndexPublicationProfile> {
+        self.publication_profile.as_ref()
+    }
+
+    pub(super) fn supports_writer_actor_publication(&self) -> bool {
+        self.capabilities
+            .iter()
+            .any(|capability| capability == "writerActorPublication")
+    }
+
+    pub(super) fn supports_discovery_writer_actor_publication(&self) -> bool {
+        self.supports_writer_actor_publication()
+            && self
+                .capabilities
+                .iter()
+                .any(|capability| capability == "discoveryPrepareChunk")
+    }
+
+    pub(super) fn record_publication_profile(
+        &mut self,
+        profile: &WorkspaceIndexPublicationProfile,
+    ) {
+        if profile.total_duration_us > 0 || !profile.stages.is_empty() {
+            self.publication_profile = Some(profile.clone());
+        }
     }
 
     fn exchange(
@@ -228,6 +295,10 @@ impl IndexerHostSession {
 
 pub(super) fn is_cancelled_error(error: &str) -> bool {
     error == INDEXER_REQUEST_CANCELLED
+}
+
+pub(super) fn is_stale_generation_error(error: &str) -> bool {
+    error.starts_with("Stale ") && error.contains(" generation ")
 }
 
 fn wait_for_response<F>(

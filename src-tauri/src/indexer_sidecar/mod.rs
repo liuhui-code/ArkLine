@@ -3,6 +3,8 @@ mod request_validation;
 #[cfg(test)]
 mod request_validation_tests;
 mod stdio;
+#[cfg(test)]
+mod stdio_prepare_tests;
 
 pub use protocol::{
     IndexerContentRefreshRequest, IndexerContentRefreshResult, IndexerDiscoveryRequest,

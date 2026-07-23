@@ -1,12 +1,13 @@
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock};
-use std::time::Duration;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use serde::{Deserialize, Serialize};
 
 use crate::services::workspace_sdk_api_cache_service::{sdk_api_cache_key, SDK_API_PARSER_VERSION};
 use crate::services::workspace_sdk_parser_service::WorkspaceSdkSymbol;
+use crate::services::workspace_shared_sdk_connection_service::{
+    ensure_shared_sdk_store, with_shared_sdk_reader, with_shared_sdk_transaction,
+};
 use crate::services::workspace_shared_sdk_posting_service::insert_shared_sdk_symbol_postings;
 use crate::services::workspace_shared_sdk_query_service::{
     count_symbols, query_by_symbol_id, query_exact, query_members, query_name_candidates,
@@ -18,9 +19,8 @@ use crate::services::workspace_shared_sdk_schema_service::{
 use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
 
 const SHARED_SDK_SCHEMA_VERSION: i64 = 1;
-static SHARED_SDK_WRITE_GATE: OnceLock<Mutex<()>> = OnceLock::new();
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SharedSdkArtifactIdentity {
     pub artifact_key: String,
     pub sdk_path: String,
@@ -60,15 +60,10 @@ pub struct SharedSdkArtifactStore {
 
 impl SharedSdkArtifactStore {
     pub fn open(path: &Path) -> Result<Self, String> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        }
         let store = Self {
             path: path.to_path_buf(),
         };
-        let _guard = writer_guard()?;
-        let connection = store.connection()?;
-        ensure_shared_sdk_schema(&connection)?;
+        ensure_shared_sdk_store(&store.path, ensure_shared_sdk_schema)?;
         Ok(store)
     }
 
@@ -77,27 +72,19 @@ impl SharedSdkArtifactStore {
         identity: &SharedSdkArtifactIdentity,
         symbols: &[WorkspaceSdkSymbol],
     ) -> Result<(), String> {
-        let _guard = writer_guard()?;
-        let mut connection = self.connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        upsert_artifact(&transaction, identity, "building")?;
-        delete_artifact_symbols(&transaction, &identity.artifact_key)?;
-        insert_symbols(&transaction, identity, symbols)?;
-        update_status(&transaction, &identity.artifact_key, "ready")?;
-        transaction.commit().map_err(|error| error.to_string())
+        with_shared_sdk_transaction(&self.path, |transaction| {
+            upsert_artifact(transaction, identity, "building")?;
+            delete_artifact_symbols(transaction, &identity.artifact_key)?;
+            insert_symbols(transaction, identity, symbols)?;
+            update_status(transaction, &identity.artifact_key, "ready")
+        })
     }
 
     pub fn begin(&self, identity: &SharedSdkArtifactIdentity) -> Result<(), String> {
-        let _guard = writer_guard()?;
-        let mut connection = self.connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        upsert_artifact(&transaction, identity, "building")?;
-        delete_artifact_symbols(&transaction, &identity.artifact_key)?;
-        transaction.commit().map_err(|error| error.to_string())
+        with_shared_sdk_transaction(&self.path, |transaction| {
+            upsert_artifact(transaction, identity, "building")?;
+            delete_artifact_symbols(transaction, &identity.artifact_key)
+        })
     }
 
     pub fn append(
@@ -105,41 +92,57 @@ impl SharedSdkArtifactStore {
         identity: &SharedSdkArtifactIdentity,
         symbols: &[WorkspaceSdkSymbol],
     ) -> Result<(), String> {
-        let _guard = writer_guard()?;
-        let mut connection = self.connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        require_artifact(&transaction, &identity.artifact_key)?;
-        insert_symbols(&transaction, identity, symbols)?;
-        update_symbol_count(&transaction, &identity.artifact_key)?;
-        transaction.commit().map_err(|error| error.to_string())
+        with_shared_sdk_transaction(&self.path, |transaction| {
+            require_artifact(transaction, &identity.artifact_key)?;
+            insert_symbols(transaction, identity, symbols)?;
+            update_symbol_count(transaction, &identity.artifact_key)
+        })
+    }
+
+    pub fn publish_chunk(
+        &self,
+        identity: &SharedSdkArtifactIdentity,
+        symbols: &[WorkspaceSdkSymbol],
+        replace_existing: bool,
+        mark_ready: bool,
+    ) -> Result<(), String> {
+        with_shared_sdk_transaction(&self.path, |transaction| {
+            if replace_existing {
+                upsert_artifact(transaction, identity, "building")?;
+                delete_artifact_symbols(transaction, &identity.artifact_key)?;
+            } else {
+                require_artifact(transaction, &identity.artifact_key)?;
+            }
+            insert_symbols(transaction, identity, symbols)?;
+            if mark_ready {
+                update_status(transaction, &identity.artifact_key, "ready")
+            } else {
+                update_symbol_count(transaction, &identity.artifact_key)
+            }
+        })
     }
 
     pub fn mark_ready(&self, identity: &SharedSdkArtifactIdentity) -> Result<(), String> {
-        let _guard = writer_guard()?;
-        let mut connection = self.connection()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        update_status(&transaction, &identity.artifact_key, "ready")?;
-        transaction.commit().map_err(|error| error.to_string())
+        with_shared_sdk_transaction(&self.path, |transaction| {
+            update_status(transaction, &identity.artifact_key, "ready")
+        })
     }
 
     pub fn status(
         &self,
         identity: &SharedSdkArtifactIdentity,
     ) -> Result<Option<SharedSdkArtifactStatus>, String> {
-        let connection = self.connection()?;
-        let status = connection
-            .query_row(
-                "select status from shared_sdk_artifacts where artifact_key = ?1",
-                [&identity.artifact_key],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?;
-        status.map(parse_status).transpose()
+        with_shared_sdk_reader(&self.path, |connection| {
+            let status = connection
+                .query_row(
+                    "select status from shared_sdk_artifacts where artifact_key = ?1",
+                    [&identity.artifact_key],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?;
+            status.map(parse_status).transpose()
+        })
     }
 
     pub fn query_name_candidates(
@@ -148,9 +151,10 @@ impl SharedSdkArtifactStore {
         query: &str,
         limit: usize,
     ) -> Result<Vec<WorkspaceSdkSymbol>, String> {
-        let connection = self.connection()?;
-        validate_artifact(&connection, &identity.artifact_key)?;
-        query_name_candidates(&connection, &identity.artifact_key, query, limit)
+        with_shared_sdk_reader(&self.path, |connection| {
+            validate_artifact(connection, &identity.artifact_key)?;
+            query_name_candidates(connection, &identity.artifact_key, query, limit)
+        })
     }
 
     pub fn query_prefix_candidates(
@@ -160,15 +164,10 @@ impl SharedSdkArtifactStore {
         container: Option<&str>,
         limit: usize,
     ) -> Result<Vec<WorkspaceSdkSymbol>, String> {
-        let connection = self.connection()?;
-        validate_artifact(&connection, &identity.artifact_key)?;
-        query_prefix_candidates(
-            &connection,
-            &identity.artifact_key,
-            prefix,
-            container,
-            limit,
-        )
+        with_shared_sdk_reader(&self.path, |connection| {
+            validate_artifact(connection, &identity.artifact_key)?;
+            query_prefix_candidates(connection, &identity.artifact_key, prefix, container, limit)
+        })
     }
 
     pub fn query_by_symbol_id(
@@ -176,9 +175,10 @@ impl SharedSdkArtifactStore {
         identity: &SharedSdkArtifactIdentity,
         symbol_id: &str,
     ) -> Result<Option<WorkspaceSdkSymbol>, String> {
-        let connection = self.connection()?;
-        validate_artifact(&connection, &identity.artifact_key)?;
-        query_by_symbol_id(&connection, &identity.artifact_key, symbol_id)
+        with_shared_sdk_reader(&self.path, |connection| {
+            validate_artifact(connection, &identity.artifact_key)?;
+            query_by_symbol_id(connection, &identity.artifact_key, symbol_id)
+        })
     }
 
     pub fn query_exact(
@@ -189,53 +189,35 @@ impl SharedSdkArtifactStore {
         container: Option<&str>,
         limit: usize,
     ) -> Result<Vec<WorkspaceSdkSymbol>, String> {
-        let connection = self.connection()?;
-        validate_artifact(&connection, &identity.artifact_key)?;
-        query_exact(
-            &connection,
-            &identity.artifact_key,
-            kind,
-            name,
-            container,
-            limit,
-        )
+        with_shared_sdk_reader(&self.path, |connection| {
+            validate_artifact(connection, &identity.artifact_key)?;
+            query_exact(
+                connection,
+                &identity.artifact_key,
+                kind,
+                name,
+                container,
+                limit,
+            )
+        })
     }
 
     pub fn count_symbols(&self, identity: &SharedSdkArtifactIdentity) -> Result<i64, String> {
-        let connection = self.connection()?;
-        validate_artifact(&connection, &identity.artifact_key)?;
-        count_symbols(&connection, &identity.artifact_key)
+        with_shared_sdk_reader(&self.path, |connection| {
+            validate_artifact(connection, &identity.artifact_key)?;
+            count_symbols(connection, &identity.artifact_key)
+        })
     }
 
     pub fn query_members(
         &self,
         identity: &SharedSdkArtifactIdentity,
     ) -> Result<Vec<WorkspaceSdkSymbol>, String> {
-        let connection = self.connection()?;
-        validate_artifact(&connection, &identity.artifact_key)?;
-        query_members(&connection, &identity.artifact_key)
+        with_shared_sdk_reader(&self.path, |connection| {
+            validate_artifact(connection, &identity.artifact_key)?;
+            query_members(connection, &identity.artifact_key)
+        })
     }
-
-    fn connection(&self) -> Result<Connection, String> {
-        let connection = Connection::open(&self.path).map_err(|error| error.to_string())?;
-        connection
-            .busy_timeout(Duration::from_secs(5))
-            .map_err(|error| error.to_string())?;
-        connection
-            .pragma_update(None, "journal_mode", "WAL")
-            .map_err(|error| error.to_string())?;
-        connection
-            .pragma_update(None, "synchronous", "NORMAL")
-            .map_err(|error| error.to_string())?;
-        Ok(connection)
-    }
-}
-
-fn writer_guard() -> Result<MutexGuard<'static, ()>, String> {
-    SHARED_SDK_WRITE_GATE
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .map_err(|_| "Shared SDK writer gate is poisoned".to_string())
 }
 
 fn upsert_artifact(

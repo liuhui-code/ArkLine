@@ -41,7 +41,21 @@ pub fn ensure_shared_sdk_schema(connection: &Connection) -> Result<(), String> {
                 primary key (artifact_key, trigram, symbol_id)
              );
              create index if not exists shared_sdk_symbol_trigrams_lookup
-                on shared_sdk_symbol_trigrams(artifact_key, trigram, symbol_id);",
+                on shared_sdk_symbol_trigrams(artifact_key, trigram, symbol_id);
+             create table if not exists shared_sdk_workspace_references (
+                workspace_key text primary key,
+                artifact_key text not null,
+                last_seen_at integer not null
+             );
+             create index if not exists shared_sdk_workspace_references_artifact
+                on shared_sdk_workspace_references(artifact_key, last_seen_at);
+             create table if not exists shared_sdk_maintenance_state (
+                singleton integer primary key check(singleton = 1),
+                last_run_at integer not null,
+                deleted_artifact_count integer not null,
+                deleted_symbol_count integer not null,
+                deleted_reference_count integer not null
+             );",
         )
         .map_err(|error| error.to_string())?;
     ensure_acronym_column(connection)?;

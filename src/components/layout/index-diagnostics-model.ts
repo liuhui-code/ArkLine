@@ -273,7 +273,7 @@ export function buildIndexDiagnosticsEvidenceReport(input: IndexDiagnosticsEvide
   return `${lines.join("\n")}\n`;
 }
 
-function formatBytes(bytes: number) {
+export function formatBytes(bytes: number) {
   if (bytes <= 0) {
     return "0 KB";
   }

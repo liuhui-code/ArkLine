@@ -1,10 +1,12 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::services::workspace_discovery_service::{
     WorkspaceDiscoveredFile, WorkspaceDiscoveryCursor,
+};
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, with_workspace_index_transaction,
 };
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
@@ -27,9 +29,9 @@ pub fn replace_discovered_file_chunk(
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    replace_discovered_file_chunk_in_connection(&connection, root_path, generation, files)
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        replace_discovered_file_chunk_in_connection(transaction, root_path, generation, files)
+    })
 }
 
 pub(crate) fn replace_discovered_file_chunk_in_connection(
@@ -70,9 +72,11 @@ pub fn update_discovery_state(state: &WorkspaceDiscoveryState) -> Result<(), Str
     if !Path::new(&state.root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(&state.root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    update_discovery_state_in_connection(&connection, state)
+    with_workspace_index_transaction(
+        &state.root_path,
+        ensure_workspace_index_schema,
+        |transaction| update_discovery_state_in_connection(transaction, state),
+    )
 }
 
 pub(crate) fn update_discovery_state_in_connection(
@@ -118,8 +122,17 @@ pub fn load_discovered_files(root_path: &str, limit: usize) -> Result<Vec<String
     if !Path::new(root_path).is_dir() {
         return Ok(Vec::new());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(Vec::new());
+    };
+    load_discovered_files_in_connection(&connection, root_path, limit)
+}
+
+fn load_discovered_files_in_connection(
+    connection: &Connection,
+    root_path: &str,
+    limit: usize,
+) -> Result<Vec<String>, String> {
     let mut statement = connection
         .prepare(
             "select path
@@ -146,8 +159,9 @@ pub fn load_ready_discovered_files(
     if !Path::new(root_path).is_dir() {
         return Ok(None);
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
     let status = connection
         .query_row(
             "select status
@@ -161,15 +175,16 @@ pub fn load_ready_discovered_files(
     if status.as_deref() != Some("ready") {
         return Ok(None);
     }
-    load_discovered_files(root_path, limit).map(Some)
+    load_discovered_files_in_connection(&connection, root_path, limit).map(Some)
 }
 
 pub fn load_discovery_cursor(root_path: &str) -> Result<Option<WorkspaceDiscoveryCursor>, String> {
     if !Path::new(root_path).is_dir() {
         return Ok(None);
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
     let cursor_json = connection
         .query_row(
             "select cursor_json
@@ -198,8 +213,9 @@ pub fn load_discovery_state(root_path: &str) -> Result<Option<WorkspaceDiscovery
     if !Path::new(root_path).is_dir() {
         return Ok(None);
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
     load_discovery_state_in_connection(&connection, root_path)
 }
 
@@ -251,9 +267,9 @@ pub fn prune_discovered_files_except_generation(
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
-    prune_discovered_files_except_generation_in_connection(&connection, root_path, generation)
+    with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        prune_discovered_files_except_generation_in_connection(transaction, root_path, generation)
+    })
 }
 
 pub(crate) fn prune_discovered_files_except_generation_in_connection(
@@ -275,8 +291,9 @@ pub fn count_discovered_files(root_path: &str) -> Result<usize, String> {
     if !Path::new(root_path).is_dir() {
         return Ok(0);
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(0);
+    };
     count_discovered_files_in_connection(&connection, root_path)
 }
 
@@ -294,25 +311,6 @@ pub(crate) fn count_discovered_files_in_connection(
         )
         .map(|count| count as usize)
         .map_err(|error| error.to_string())
-}
-
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace discovery store path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn normalize_index_path(path: &str) -> String {

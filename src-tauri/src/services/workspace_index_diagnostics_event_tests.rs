@@ -9,6 +9,7 @@ use crate::services::workspace_index_performance_gate_service::{
     evaluate_deep_layer_performance, record_deep_layer_performance_report,
     WorkspaceIndexPerfGateThresholds, WorkspaceIndexStageSample,
 };
+use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::unique_temp_dir;
 
@@ -50,6 +51,7 @@ fn reports_bounded_writer_wait_and_hold_metrics_in_diagnostics() {
     fs::create_dir_all(&root).unwrap();
     let root_path = root.to_string_lossy().to_string();
     with_workspace_index_writer(&root_path, |connection| {
+        ensure_workspace_index_schema(connection)?;
         connection
             .execute_batch("create table writer_metric_probe(value integer);")
             .map_err(|error| error.to_string())

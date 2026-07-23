@@ -1,16 +1,25 @@
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
+use crate::services::workspace_index_publication_artifact_service::{
+    remove_workspace_publication_artifact, write_workspace_publication_artifact,
+    WorkspaceIndexPublicationArtifact,
+};
+use crate::services::workspace_index_publication_scheduler_service::PublicationPriority;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTask;
 use crate::services::workspace_index_task_status_service::{
     current_time_millis, skipped_task_result, superseded_task_result_from_task,
     WorkspaceIndexTaskResult,
 };
+use crate::services::workspace_index_writer_actor_service::{
+    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationRequest, WorkspaceIndexWriterActor,
+};
 use crate::services::workspace_sdk_api_scan_plan_service::{
     plan_sdk_api_scan, sdk_api_scan_chunks,
 };
 use crate::services::workspace_sdk_index_service::{
-    index_workspace_sdk_symbol_chunk, mark_workspace_sdk_artifact_ready,
+    prepare_workspace_sdk_catalog_chunk, prepare_workspace_sdk_reuse,
+    publish_prepared_workspace_sdk_shared_chunk, PreparedWorkspaceSdkCatalogChunk,
 };
-use crate::services::workspace_sdk_shared_bridge_service::try_reuse_ready_shared_sdk_artifact;
+use crate::services::workspace_sdk_shared_bridge_service::find_ready_shared_sdk_artifact;
 
 pub const WORKSPACE_SDK_API_INDEX_CHUNK_SIZE: usize = 128;
 
@@ -31,9 +40,14 @@ pub fn run_sdk_index_task(
         return Ok(superseded_task_result_from_task(task));
     }
     if task.changed_paths.is_empty() {
-        if let Some(symbol_count) =
-            try_reuse_ready_shared_sdk_artifact(&task.root_path, &sdk_path, &sdk_version)?
+        if let Some((identity, symbol_count)) =
+            find_ready_shared_sdk_artifact(&task.root_path, &sdk_path, &sdk_version)?
         {
+            let prepared =
+                prepare_workspace_sdk_reuse(&task.root_path, &sdk_path, &sdk_version, identity);
+            if !publish_sdk_catalog(&prepared, token, false)? {
+                return Ok(superseded_task_result_from_task(task));
+            }
             let mut result = sdk_task_result(
                 task,
                 sdk_path,
@@ -66,27 +80,62 @@ pub fn run_sdk_index_task(
     }
 
     let replace_existing = task.changed_paths.is_empty();
-    let summary = index_workspace_sdk_symbol_chunk(
+    let total_chunks = chunks.len();
+    let remaining_files = chunks.drain(1..).flatten().collect::<Vec<_>>();
+    let prepared = prepare_workspace_sdk_catalog_chunk(
         &task.root_path,
         &sdk_path,
         &sdk_version,
         &first_chunk,
         replace_existing,
+        remaining_files.is_empty(),
     )?;
-    let total_chunks = chunks.len();
-    let remaining_files = chunks.drain(1..).flatten().collect::<Vec<_>>();
-    if remaining_files.is_empty() {
-        mark_workspace_sdk_artifact_ready(&task.root_path)?;
+    if !publish_sdk_catalog(&prepared, token, true)? {
+        return Ok(superseded_task_result_from_task(task));
     }
     Ok(sdk_task_result(
         task,
         sdk_path,
         sdk_version,
-        summary.symbol_count,
+        prepared.symbols.len(),
         remaining_files,
         total_chunks,
         started_at,
     ))
+}
+
+fn publish_sdk_catalog(
+    prepared: &PreparedWorkspaceSdkCatalogChunk,
+    token: &WorkspaceIndexCancellationToken,
+    publish_shared: bool,
+) -> Result<bool, String> {
+    let artifact = WorkspaceIndexPublicationArtifact::SdkCatalog {
+        root_path: prepared.root_path.clone(),
+        prepared: prepared.clone(),
+    };
+    let descriptor = write_workspace_publication_artifact(&prepared.root_path, &artifact)?;
+    if token.is_cancelled() {
+        remove_workspace_publication_artifact(&descriptor);
+        return Ok(false);
+    }
+    if publish_shared {
+        if let Err(error) = publish_prepared_workspace_sdk_shared_chunk(prepared) {
+            remove_workspace_publication_artifact(&descriptor);
+            return Err(error);
+        }
+    }
+    match WorkspaceIndexWriterActor::shared().publish(
+        WorkspaceIndexPublicationRequest {
+            root_path: prepared.root_path.clone(),
+            descriptor,
+            priority: PublicationPriority::Background,
+        },
+        || token.is_cancelled(),
+    ) {
+        WorkspaceIndexPublicationAttempt::Applied(_) => Ok(true),
+        WorkspaceIndexPublicationAttempt::Cancelled => Ok(false),
+        WorkspaceIndexPublicationAttempt::Failed(error) => Err(error),
+    }
 }
 
 fn sdk_task_files(task: &WorkspaceIndexTask, sdk_path: &str) -> Result<Vec<String>, String> {

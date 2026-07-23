@@ -1,10 +1,11 @@
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::{params, Connection};
 
 use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexTaskStatus};
-use crate::services::workspace_index_connection_service::with_workspace_index_transaction;
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, with_workspace_index_transaction,
+};
 use crate::services::workspace_index_event_service::{
     event_from_task_status, store_index_event_in_connection,
 };
@@ -19,11 +20,29 @@ pub fn store_task_status_with_events(
     root_path: &str,
     status: &WorkspaceIndexTaskStatus,
 ) -> Result<Vec<WorkspaceIndexEvent>, String> {
+    Ok(
+        store_task_statuses_with_events(root_path, std::slice::from_ref(status))?
+            .pop()
+            .unwrap_or_default(),
+    )
+}
+
+pub(crate) fn store_task_statuses_with_events(
+    root_path: &str,
+    statuses: &[WorkspaceIndexTaskStatus],
+) -> Result<Vec<Vec<WorkspaceIndexEvent>>, String> {
     if !Path::new(root_path).is_dir() {
         return Ok(Vec::new());
     }
     with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
-        let events = store_task_status_in_connection(transaction, root_path, status)?;
+        let mut events = Vec::with_capacity(statuses.len());
+        for status in statuses {
+            events.push(store_task_status_in_connection(
+                transaction,
+                root_path,
+                status,
+            )?);
+        }
         Ok(events)
     })
 }
@@ -91,8 +110,9 @@ pub fn load_recent_task_statuses(
     if !Path::new(root_path).is_dir() {
         return Ok(Vec::new());
     }
-    let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(Vec::new());
+    };
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -200,25 +220,6 @@ fn task_status_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WorkspaceIn
         message: row.get(13)?,
         error: row.get(14)?,
     })
-}
-
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    let Some(parent) = cache_path.parent() else {
-        return Err(format!(
-            "Workspace task journal path has no parent: {}",
-            cache_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    Connection::open(cache_path).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
 
 fn normalize_index_path(path: &str) -> String {

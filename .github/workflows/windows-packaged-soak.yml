@@ -1,0 +1,117 @@
+name: windows-packaged-soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      fixture_profile:
+        description: "Synthetic ArkTS workspace size"
+        required: true
+        default: medium
+        type: choice
+        options:
+          - small
+          - medium
+          - huge
+      duration_minutes:
+        description: "Mixed interaction soak duration"
+        required: true
+        default: "30"
+        type: string
+
+concurrency:
+  group: arkline-windows-packaged-soak
+  cancel-in-progress: false
+
+jobs:
+  packaged-soak:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        lane:
+          - packaged-soak
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Tauri and Edge drivers
+        shell: pwsh
+        run: |
+          cargo install tauri-driver --locked
+          cargo install --git https://github.com/chippers/msedgedriver-tool
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          $PWD.Path >> $env:GITHUB_PATH
+
+      - name: Build release portable application
+        run: pnpm package:windows:portable
+
+      - name: Generate protocol smoke workspace
+        shell: pwsh
+        run: |
+          pnpm fixture:performance -- `
+            --profile=small `
+            --output=artifacts/packaged-smoke-fixture
+
+      - name: Run packaged protocol smoke
+        shell: pwsh
+        env:
+          ARKLINE_INDEXER_ENABLED: "0"
+        run: |
+          pnpm perf:packaged:windows -- `
+            --mode=smoke `
+            --application=dist/ArkLine-windows-x64/ArkLine.exe `
+            --fixture=artifacts/packaged-smoke-fixture `
+            --report=artifacts/packaged-smoke-report.json
+
+      - name: Generate performance workspace
+        shell: pwsh
+        run: |
+          pnpm fixture:performance -- `
+            --profile=${{ inputs.fixture_profile }} `
+            --output=artifacts/packaged-soak-fixture
+
+      - name: Run packaged mixed interaction soak
+        shell: pwsh
+        env:
+          ARKLINE_INDEXER_ENABLED: "1"
+        run: |
+          pnpm perf:packaged:windows -- `
+            --mode=soak `
+            --application=dist/ArkLine-windows-x64/ArkLine.exe `
+            --fixture=artifacts/packaged-soak-fixture `
+            --duration-minutes=${{ inputs.duration_minutes }} `
+            --report=artifacts/packaged-soak-report.json
+
+      - name: Upload packaged evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-packaged-soak-evidence
+          path: artifacts/packaged-*-report.json
+          if-no-files-found: error
+          retention-days: 30

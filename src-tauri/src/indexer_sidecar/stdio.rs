@@ -7,11 +7,19 @@ use super::protocol::{
     IndexerStubRefreshRequest, IndexerStubRefreshResult,
 };
 use super::request_validation::{validate_content_refresh_request, validate_stub_refresh_request};
-use crate::services::workspace_content_refresh_chunk_service::run_workspace_content_refresh_chunk;
-use crate::services::workspace_discovery_runner_service::run_workspace_discovery_chunk_with_journal;
+use crate::services::workspace_content_refresh_service::prepare_workspace_content_refresh;
+use crate::services::workspace_discovery_runner_service::{
+    prepare_workspace_discovery_chunk, publish_prepared_workspace_discovery_chunk,
+};
 use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursor;
 use crate::services::workspace_index_connection_service::workspace_index_writer_metrics;
-use crate::services::workspace_stub_refresh_chunk_service::run_workspace_stub_refresh_chunk;
+use crate::services::workspace_index_publication_artifact_service::{
+    write_workspace_publication_artifact, WorkspaceIndexPublicationArtifact,
+};
+use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
+use crate::services::workspace_stub_index_service::normalize_index_path;
+use crate::services::workspace_stub_prepare_service::prepare_changed_stub_rows;
+use crate::services::workspace_stub_refresh_chunk_service::workspace_file_catalog_contains_paths;
 
 const INDEXER_REQUEST_BYTE_LIMIT: usize = 512 * 1024;
 
@@ -97,9 +105,10 @@ fn discard_until_newline(reader: &mut impl BufRead) -> Result<(), String> {
 fn handle_request(request: IndexerRequest) -> IndexerResponse {
     match request.method.as_str() {
         "health" => IndexerResponse::health(request.id),
-        "discoverWorkspaceChunk" => handle_discovery_request(request),
-        "refreshContentChunk" => handle_content_refresh_request(request),
-        "refreshStubChunk" => handle_stub_refresh_request(request),
+        "prepareDiscoveryChunk" => handle_discovery_request(request, true),
+        "discoverWorkspaceChunk" => handle_discovery_request(request, false),
+        "prepareContentChunk" | "refreshContentChunk" => handle_content_refresh_request(request),
+        "prepareStubChunk" | "refreshStubChunk" => handle_stub_refresh_request(request),
         method => IndexerResponse::unsupported(request.id, method),
     }
 }
@@ -158,7 +167,7 @@ fn handle_stub_refresh_request(request: IndexerRequest) -> IndexerResponse {
     }
 }
 
-fn handle_discovery_request(request: IndexerRequest) -> IndexerResponse {
+fn handle_discovery_request(request: IndexerRequest, prepare_only: bool) -> IndexerResponse {
     let result = request
         .payload
         .ok_or_else(|| "Discovery request omitted payload".to_string())
@@ -166,7 +175,7 @@ fn handle_discovery_request(request: IndexerRequest) -> IndexerResponse {
             serde_json::from_value::<IndexerDiscoveryRequest>(payload)
                 .map_err(|error| format!("Invalid discovery payload: {error}"))
         })
-        .and_then(run_discovery);
+        .and_then(|request| run_discovery(request, prepare_only));
     match result {
         Ok(result) => IndexerResponse {
             id: request.id,
@@ -191,7 +200,10 @@ fn writer_telemetry(root_path: &str) -> IndexerResponseTelemetry {
     }
 }
 
-fn run_discovery(request: IndexerDiscoveryRequest) -> Result<IndexerDiscoveryResult, String> {
+fn run_discovery(
+    request: IndexerDiscoveryRequest,
+    prepare_only: bool,
+) -> Result<IndexerDiscoveryResult, String> {
     if request.task.kind != "discovery" {
         return Err("Discovery task kind must be discovery".to_string());
     }
@@ -206,19 +218,35 @@ fn run_discovery(request: IndexerDiscoveryRequest) -> Result<IndexerDiscoveryRes
         .map(|pending_directories| WorkspaceDiscoveryCursor {
             pending_directories,
         });
-    let chunk = run_workspace_discovery_chunk_with_journal(
+    let prepared = prepare_workspace_discovery_chunk(
         Path::new(&request.task.root_path),
         cursor,
         request.limit,
         request.task.generation as i64,
-        &request.task.reason,
+        Some(&request.task.reason),
     )?;
+    let chunk = prepared.chunk.clone();
+    let (publication_artifact, publication_profile) = if prepare_only {
+        let root_path = request.task.root_path.clone();
+        let artifact = write_workspace_publication_artifact(
+            &root_path,
+            &WorkspaceIndexPublicationArtifact::Discovery {
+                root_path: root_path.clone(),
+                prepared,
+            },
+        )?;
+        (Some(artifact), Default::default())
+    } else {
+        (None, publish_prepared_workspace_discovery_chunk(&prepared)?)
+    };
     Ok(IndexerDiscoveryResult {
         task: request.task,
         chunk_file_count: chunk.files.len(),
         excluded_count: chunk.excluded_count,
         has_more: chunk.has_more,
         pending_directories: chunk.cursor.map(|cursor| cursor.pending_directories),
+        publication_artifact,
+        publication_profile,
     })
 }
 
@@ -226,17 +254,34 @@ fn run_stub_refresh(
     request: IndexerStubRefreshRequest,
 ) -> Result<IndexerStubRefreshResult, String> {
     validate_stub_refresh_request(&request)?;
-    let summary = run_workspace_stub_refresh_chunk(
-        &request.task.root_path,
+    if !workspace_file_catalog_contains_paths(&request.task.root_path, &request.changed_paths)? {
+        return Err("Stub refresh path is absent from workspace file index".to_string());
+    }
+    let prepared = prepare_changed_stub_rows(
+        &normalize_index_path(&request.task.root_path),
         &request.changed_paths,
         &request.removed_paths,
         request.indexed_generation,
+        WorkspaceIndexTaskPriority::Background,
+    );
+    let publication_artifact = write_workspace_publication_artifact(
+        &request.task.root_path,
+        &WorkspaceIndexPublicationArtifact::Stub {
+            root_path: request.task.root_path.clone(),
+            prepared: prepared.clone(),
+        },
     )?;
     Ok(IndexerStubRefreshResult {
         changed_path_count: request.changed_paths.len(),
         removed_path_count: request.removed_paths.len(),
-        parsed_file_count: summary.parsed_file_count,
-        parse_error_count: summary.parse_error_count,
+        parsed_file_count: prepared.stubs.len(),
+        parse_error_count: prepared
+            .stubs
+            .iter()
+            .map(|stub| stub.parse_errors.len())
+            .sum(),
+        publication_artifact: Some(publication_artifact),
+        publication_profile: Default::default(),
         indexed_generation: request.indexed_generation,
         task: request.task,
     })
@@ -246,20 +291,40 @@ fn run_content_refresh(
     request: IndexerContentRefreshRequest,
 ) -> Result<IndexerContentRefreshResult, String> {
     validate_content_refresh_request(&request)?;
-    let summary = run_workspace_content_refresh_chunk(
+    if !workspace_file_catalog_contains_paths(&request.task.root_path, &request.changed_paths)? {
+        return Err("Content refresh path is absent from workspace file index".to_string());
+    }
+    let prepared = prepare_workspace_content_refresh(
         &request.task.root_path,
         &request.changed_paths,
         &request.removed_paths,
         request.indexed_generation,
+    );
+    let publication_artifact = write_workspace_publication_artifact(
+        &request.task.root_path,
+        &WorkspaceIndexPublicationArtifact::Content {
+            root_path: request.task.root_path.clone(),
+            prepared: prepared.clone(),
+        },
     )?;
     Ok(IndexerContentRefreshResult {
         changed_path_count: request.changed_paths.len(),
         removed_path_count: request.removed_paths.len(),
-        indexed_file_count: summary.indexed_file_count,
-        indexed_line_count: summary.indexed_line_count,
-        unreadable_file_count: summary.unreadable_file_count,
-        resource_limited_file_count: summary.resource_limited_file_count,
-        processed_source_bytes: summary.processed_source_bytes,
+        indexed_file_count: prepared.files.len(),
+        indexed_line_count: prepared.files.iter().map(|file| file.line_count).sum(),
+        unreadable_file_count: prepared
+            .failures
+            .iter()
+            .filter(|failure| !failure.resource_limited)
+            .count(),
+        resource_limited_file_count: prepared
+            .failures
+            .iter()
+            .filter(|failure| failure.resource_limited)
+            .count(),
+        processed_source_bytes: prepared.source_bytes,
+        publication_artifact: Some(publication_artifact),
+        publication_profile: Default::default(),
         indexed_generation: request.indexed_generation,
         task: request.task,
     })

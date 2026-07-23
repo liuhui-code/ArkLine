@@ -147,6 +147,35 @@ fn does_not_reapply_wal_while_an_existing_reader_is_active() {
 }
 
 #[test]
+fn reuses_the_same_writer_connection_for_a_workspace() {
+    let root = unique_temp_dir("workspace-index-writer-pool");
+    let manager = WorkspaceIndexConnectionManager::new(0);
+    manager
+        .with_writer(root_str(&root), |connection| {
+            connection
+                .execute_batch("create temp table writer_session(value integer)")
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+    let reused = manager
+        .with_writer(root_str(&root), |connection| {
+            connection
+                .query_row(
+                    "select count(*) from temp.sqlite_schema where name = 'writer_session'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+    assert_eq!(reused, 1);
+    manager.clear(root_str(&root)).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn records_failed_writer_operations_without_leaking_active_or_queued_counts() {
     let root = unique_temp_dir("workspace-index-writer-failure-metrics");
     let manager = WorkspaceIndexConnectionManager::new(0);

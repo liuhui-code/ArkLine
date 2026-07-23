@@ -99,7 +99,7 @@ Record the JSON output here for every release candidate. The scripts are model-l
 checks; they do not replace packaged app profiling, but they catch large regressions
 in search input and file switch projections before release.
 
-Latest local product-runtime headless run on 2026-07-17:
+Latest local product-runtime headless run on 2026-07-23:
 
 ```json
 {
@@ -112,10 +112,10 @@ Latest local product-runtime headless run on 2026-07-17:
     "staleApplyCount": 0,
     "renderCommits": 110,
     "targetP95Ms": 50,
-    "p50Ms": 0.317,
-    "p95Ms": 0.696,
-    "p99Ms": 1.022,
-    "maxMs": 3.81
+    "p50Ms": 0.302,
+    "p95Ms": 0.55,
+    "p99Ms": 1.085,
+    "maxMs": 3.312
   },
   "fileSwitchJump": {
     "fileCount": 5000,
@@ -126,10 +126,10 @@ Latest local product-runtime headless run on 2026-07-17:
     "staleJumpCount": 49,
     "appliedJumpCount": 1,
     "targetP95Ms": 300,
-    "switchP50Ms": 0.083,
-    "switchP95Ms": 0.172,
-    "switchP99Ms": 1.532,
-    "jumpDispatchP95Ms": 0.01
+    "switchP50Ms": 0.069,
+    "switchP95Ms": 0.149,
+    "switchP99Ms": 1.048,
+    "jumpDispatchP95Ms": 0.008
   }
 }
 ```
@@ -137,3 +137,41 @@ Latest local product-runtime headless run on 2026-07-17:
 This replaces the 2026-07-08 benchmark-only string scan and projection numbers.
 The current fixture exercises production runtime modules, but remains a
 headless model-level gate rather than packaged WebView evidence.
+
+## Packaged Windows Evidence
+
+The repository includes a `windows-packaged-soak` workflow that builds and
+launches the release portable executable against deterministic 1k, 20k, or 100k
+ArkTS fixtures. The release gate requires its default 20k / 30-minute run with
+`ARKLINE_INDEXER_ENABLED=1`.
+
+No passing packaged report is recorded yet. Do not promote the local headless
+numbers above to Windows release evidence. The workflow first requires a
+schema-v2 `packaged-smoke-report.json` from an isolated 1k fixture. That report
+proves executable/fixture/tool preflight, WebDriver and WebView capabilities,
+process-tree discovery, and one real search/navigation cycle; it is not latency
+or stability evidence.
+
+After both stages pass, attach the schema-v2 `packaged-soak-report.json`
+artifact details here with:
+
+- runner image, OS release, commit/run identity, executable SHA-256, and fixture
+  marker;
+- duration plus WebDriver dispatch, search-result-visible, navigation
+  stable-paint, Event Timing, LoAF, and frame-gap p95/p99;
+- Event Timing, LoAF, JS heap, and process-tree capability flags;
+- RSS/private/JS-heap and workspace/shared-SDK WAL growth;
+- final queue state, pending loads, process/handle/thread maxima, and sidecar
+  restart count;
+- the complete strict verdict and failure identifiers.
+
+Zero Event Timing or LoAF entries is acceptable when the corresponding
+capability is present; these observers emit only when work crosses their
+threshold. Missing observer or process-tree capability means the packaged run
+did not collect enough evidence and must not be recorded as passing.
+
+If either harness stage fails after arguments and its report directory are
+valid, retain its failure report. The `fatalError.phase`, preflight checks,
+driver exit state, and bounded driver log are required diagnostic evidence; an
+absent report is a workflow or build failure rather than a measured application
+result.

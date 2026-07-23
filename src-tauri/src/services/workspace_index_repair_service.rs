@@ -1,18 +1,17 @@
-use std::path::{Path, PathBuf};
-
-use rusqlite::{params, Connection};
+use rusqlite::params;
 
 use crate::models::workspace::{
     WorkspaceIndexParserFailure, WorkspaceIndexSdkRepairTarget, WorkspaceIndexUnresolvedImport,
 };
-use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+use crate::services::workspace_index_connection_service::{
+    require_existing_workspace_index_reader, WorkspaceIndexReader,
+};
 
 pub fn inspect_parser_failures(
     root_path: &str,
     limit: usize,
 ) -> Result<Vec<WorkspaceIndexParserFailure>, String> {
     let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -42,7 +41,6 @@ pub fn inspect_unresolved_imports(
     limit: usize,
 ) -> Result<Vec<WorkspaceIndexUnresolvedImport>, String> {
     let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -71,7 +69,6 @@ pub fn load_active_sdk_repair_target(
     root_path: &str,
 ) -> Result<Option<WorkspaceIndexSdkRepairTarget>, String> {
     let connection = open_index_store(root_path)?;
-    ensure_workspace_index_schema(&connection)?;
     let root_key = normalize_index_path(root_path);
     let mut statement = connection
         .prepare(
@@ -92,15 +89,8 @@ pub fn load_active_sdk_repair_target(
     rows.next().transpose().map_err(|error| error.to_string())
 }
 
-fn open_index_store(root_path: &str) -> Result<Connection, String> {
-    Connection::open(sqlite_catalog_cache_path(root_path)).map_err(|error| error.to_string())
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
+fn open_index_store(root_path: &str) -> Result<WorkspaceIndexReader<'static>, String> {
+    require_existing_workspace_index_reader(root_path)
 }
 
 fn normalize_index_path(path: &str) -> String {

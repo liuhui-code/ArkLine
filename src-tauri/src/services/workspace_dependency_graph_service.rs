@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use std::collections::{HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rusqlite::{params, Connection};
 
@@ -23,6 +23,9 @@ use crate::services::workspace_dependency_graph_store_service::{
     insert_dependency_edge, insert_unresolved_import,
     load_dependency_graph_status as load_dependency_graph_status_from_store, load_import_rows,
     load_re_export_rows, record_dependency_graph_status,
+};
+use crate::services::workspace_index_connection_service::{
+    open_existing_workspace_index_reader, with_workspace_index_writer, workspace_index_store_path,
 };
 
 pub fn create_dependency_graph_tables(connection: &Connection) -> Result<(), String> {
@@ -164,13 +167,13 @@ fn index_dependency_graph_rows(
 }
 
 pub fn mark_dependency_graph_stale(root_path: &str, reason: &str) -> Result<(), String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    if !cache_path.exists() {
+    if !workspace_index_store_path(root_path).exists() {
         return Ok(());
     }
-    let connection = Connection::open(cache_path).map_err(|error| error.to_string())?;
     let root_key = normalize_index_path(root_path);
-    record_dependency_graph_status(&connection, &root_key, "stale", Some(reason))
+    with_workspace_index_writer(root_path, |connection| {
+        record_dependency_graph_status(connection, &root_key, "stale", Some(reason))
+    })
 }
 
 pub fn load_dependency_graph_status(
@@ -253,8 +256,7 @@ pub fn expand_changed_paths(
     current_paths: &HashSet<String>,
     limit: usize,
 ) -> Result<DependencyExpansion, String> {
-    let cache_path = sqlite_catalog_cache_path(root_path);
-    if !cache_path.exists() {
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
         return Ok(DependencyExpansion::Expanded(
             changed_paths
                 .iter()
@@ -262,8 +264,7 @@ pub fn expand_changed_paths(
                 .filter(|path| current_paths.contains(path))
                 .collect(),
         ));
-    }
-    let connection = Connection::open(cache_path).map_err(|error| error.to_string())?;
+    };
     let root_key = normalize_index_path(root_path);
     let mut expanded = changed_paths
         .iter()
@@ -289,11 +290,4 @@ pub fn expand_changed_paths(
 
 fn normalize_index_path(path: &str) -> String {
     path.replace('/', "\\")
-}
-
-fn sqlite_catalog_cache_path(root_path: &str) -> PathBuf {
-    Path::new(root_path)
-        .join(".arkline")
-        .join("index")
-        .join("workspace-catalog.sqlite")
 }
