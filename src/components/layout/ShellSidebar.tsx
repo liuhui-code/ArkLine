@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -12,6 +13,7 @@ import { ProjectToolWindow } from "@/components/layout/ProjectToolWindow";
 import type { ProjectMutationRequest } from "@/components/layout/ProjectToolWindow";
 import type { LeftToolKey } from "@/components/layout/shell-state";
 import { ToolWindow } from "@/components/layout/ToolWindow";
+import { useLatestCallback } from "@/components/layout/use-latest-callback";
 import type { WorkspaceDirectoryEntry, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 
 type ShellSidebarProps = {
@@ -57,6 +59,14 @@ export function ShellSidebar({
 }: ShellSidebarProps) {
   const resizeStartRef = useRef<{ x: number; width: number } | null>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
+  const stableOpenFile = useLatestCallback(onOpenFile);
+  const stableSelectProjectPath = useLatestCallback(onSelectProjectPath);
+  const stableLoadProjectDirectory = useLatestCallback(onLoadProjectDirectory);
+  const stableRequestProjectMutation = useLatestCallback(onRequestProjectMutation);
+  const lazyRoot = useMemo(() => workspace ? {
+    name: workspace.rootName,
+    path: workspace.rootPath,
+  } : undefined, [workspace?.rootName, workspace?.rootPath]);
 
   useEffect(() => {
     return () => {
@@ -139,19 +149,19 @@ export function ShellSidebar({
             {workspace ? (
               useLazyProjectTree ? (
                 <ProjectToolWindow
-                  lazyRoot={{ name: workspace.rootName, path: workspace.rootPath }}
+                  lazyRoot={lazyRoot}
                   lazyChildren={projectTreeChildren}
                   lazyLoadingPaths={projectTreeLoadingPaths}
                   tree={workspace.fileTree}
                   activePath={activePath}
                   selectedPath={selectedProjectPath}
-                  onLoadDirectory={onLoadProjectDirectory}
-                  onOpen={onOpenFile}
-                  onSelectPath={onSelectProjectPath}
-                  onRequestMutation={onRequestProjectMutation}
+                  onLoadDirectory={stableLoadProjectDirectory}
+                  onOpen={stableOpenFile}
+                  onSelectPath={stableSelectProjectPath}
+                  onRequestMutation={stableRequestProjectMutation}
                 />
               ) : (
-                <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} selectedPath={selectedProjectPath} onOpen={onOpenFile} onSelectPath={onSelectProjectPath} onRequestMutation={onRequestProjectMutation} />
+                <ProjectToolWindow tree={workspace.fileTree} activePath={activePath} selectedPath={selectedProjectPath} onOpen={stableOpenFile} onSelectPath={stableSelectProjectPath} onRequestMutation={stableRequestProjectMutation} />
               )
             ) : (
               <p>Workspace files will appear here.</p>

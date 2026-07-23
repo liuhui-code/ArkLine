@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { ContextMenu, type ContextMenuState } from "@/components/layout/ContextMenu";
+import { ProjectTreeRow } from "@/components/layout/ProjectTreeRows";
 import {
   buildProjectEntries,
   buildProjectTree,
@@ -7,9 +8,11 @@ import {
   collectDirectoryPaths,
   type ProjectTreeNode,
 } from "@/components/layout/project-tree-model";
+import { useLatestCallback } from "@/components/layout/use-latest-callback";
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { WorkspaceDirectoryEntry } from "@/features/workspace/workspace-api";
 import { normalizePath } from "@/features/workspace/workspace-store";
+import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
 type ProjectToolWindowProps = {
   tree?: FileTreeNode[];
@@ -43,7 +46,7 @@ function getParentPath(path: string, fallback: string) {
   return path.slice(0, lastSeparator);
 }
 
-export function ProjectToolWindow({
+function ProjectToolWindowComponent({
   tree,
   lazyRoot,
   lazyChildren,
@@ -55,6 +58,7 @@ export function ProjectToolWindow({
   onLoadDirectory,
   onRequestMutation,
 }: ProjectToolWindowProps) {
+  recordRenderPressure("Project/Tree");
   const root = useMemo(() => {
     return buildProjectTree(tree ?? [], { lazyRoot, lazyChildren, lazyLoadingPaths });
   }, [lazyChildren, lazyLoadingPaths, lazyRoot, tree]);
@@ -213,6 +217,32 @@ export function ProjectToolWindow({
     });
   }
 
+  const activateEntry = useLatestCallback((entry: ReturnType<typeof buildProjectEntries>[number]) => {
+    const path = normalizePath(entry.path);
+    onSelectPath?.(path);
+    if (entry.kind === "directory") {
+      toggleDirectory(entry.path);
+    } else if (entry.kind === "file") {
+      onOpen(entry.path);
+    }
+  });
+  const openEntryContextMenu = useLatestCallback((
+    event: ReactMouseEvent<HTMLElement>,
+    entry: ReturnType<typeof buildProjectEntries>[number],
+  ) => {
+    if (entry.kind === "loading") return;
+    openProjectContextMenu(event, {
+      kind: entry.kind,
+      label: entry.label,
+      path: entry.path,
+    });
+  });
+  const registerFileRow = useCallback((path: string, node: HTMLButtonElement | null) => {
+    const normalizedPath = normalizePath(path);
+    if (node) rowRefs.current.set(normalizedPath, node);
+    else rowRefs.current.delete(normalizedPath);
+  }, []);
+
   return (
     <div className="project-tree-shell">
       <div className="project-tree-toolbar" role="toolbar" aria-label="Project Tree Actions">
@@ -233,63 +263,21 @@ export function ProjectToolWindow({
           openProjectContextMenu(event, { kind: "directory", label: root.label, path: root.path });
         }}
       >
-        {entries.map((entry) =>
-          entry.kind === "directory" ? (
-            <button
-              key={entry.key}
-              type="button"
-              className={`project-tree__row project-tree__row--directory${normalizedSelectedPath === normalizePath(entry.path) ? " project-tree__row--active" : ""}`}
-              style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
-              aria-expanded={entry.expanded ? "true" : "false"}
-              aria-selected={normalizedSelectedPath === normalizePath(entry.path) ? "true" : undefined}
-              onClick={() => { onSelectPath?.(normalizePath(entry.path)); toggleDirectory(entry.path); }}
-              onContextMenu={(event) => openProjectContextMenu(event, { kind: "directory", label: entry.label, path: entry.path })}
-            >
-              <span className="project-tree__caret" aria-hidden="true">
-                {entry.expanded ? "▾" : "▸"}
-              </span>
-              <span className="project-tree__icon project-tree__icon--directory" aria-hidden="true" />
-              <span className="project-tree__label">{entry.label}</span>
-            </button>
-          ) : entry.kind === "loading" ? (
-            <div
-              key={entry.key}
-              className="project-tree__row project-tree__row--loading"
-              style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
-              role="status"
-              aria-live="polite"
-            >
-              <span className="project-tree__caret" aria-hidden="true" />
-              <span className="project-tree__icon project-tree__icon--file" aria-hidden="true" />
-              <span className="project-tree__label">{entry.label}</span>
-            </div>
-          ) : (
-            <button
-              key={entry.key}
-              ref={(node) => {
-                if (node) {
-                  rowRefs.current.set(normalizePath(entry.path), node);
-                } else {
-                  rowRefs.current.delete(normalizePath(entry.path));
-                }
-              }}
-              type="button"
-              className={`project-tree__row project-tree__row--file${normalizedActivePath === normalizePath(entry.path) || normalizedSelectedPath === normalizePath(entry.path) ? " project-tree__row--active" : ""}`}
-              style={{ paddingLeft: `${entry.depth * 16 + 8}px` }}
-              title={entry.path}
-              aria-current={normalizedActivePath === normalizePath(entry.path) ? "true" : undefined}
-              aria-selected={normalizedSelectedPath === normalizePath(entry.path) ? "true" : undefined}
-              onClick={() => { onSelectPath?.(normalizePath(entry.path)); onOpen(entry.path); }}
-              onContextMenu={(event) => openProjectContextMenu(event, { kind: "file", label: entry.label, path: entry.path })}
-            >
-              <span className="project-tree__caret" aria-hidden="true" />
-              <span className="project-tree__icon project-tree__icon--file" aria-hidden="true" />
-              <span className="project-tree__label">{entry.label}</span>
-            </button>
-          ),
-        )}
+        {entries.map((entry) => (
+          <ProjectTreeRow
+            key={entry.key}
+            entry={entry}
+            active={normalizedActivePath === normalizePath(entry.path)}
+            selected={normalizedSelectedPath === normalizePath(entry.path)}
+            onActivate={activateEntry}
+            onContextMenu={openEntryContextMenu}
+            registerFileRow={registerFileRow}
+          />
+        ))}
       </div>
       <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
     </div>
   );
 }
+
+export const ProjectToolWindow = memo(ProjectToolWindowComponent);
