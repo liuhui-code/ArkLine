@@ -51,6 +51,7 @@ pub struct WorkspaceIndexManagerRuntime {
     recent_statuses: Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
     worker_running: Arc<AtomicBool>,
     worker_signal: Arc<(Mutex<u64>, Condvar)>,
+    worker_execution: Arc<Mutex<()>>,
     indexer: Arc<IndexerHostRuntime>,
     maintenance: WorkspaceIndexMaintenanceRuntime,
 }
@@ -323,6 +324,10 @@ impl WorkspaceIndexManagerRuntime {
         F: FnMut(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>),
         G: FnMut() -> bool,
     {
+        let _execution_guard = self
+            .worker_execution
+            .lock()
+            .map_err(|_| "Workspace index worker execution lock poisoned".to_string())?;
         let tasks = self
             .scheduler
             .lock()

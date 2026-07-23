@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Barrier, Mutex};
 use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -342,4 +342,65 @@ fn deep_index_continuations_survive_sustained_ui_activity_and_navigation() {
     assert_eq!(ready_content_files, FILE_COUNT as i64);
     assert!(statuses.iter().all(|status| status.status != "running"));
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn concurrent_drain_callers_use_one_worker_execution_lane() {
+    let (first_root, first_root_path, first_sdk_path) =
+        create_sdk_fixture("manager-single-worker-first");
+    let (second_root, second_root_path, second_sdk_path) =
+        create_sdk_fixture("manager-single-worker-second");
+    let manager = WorkspaceIndexManagerRuntime::default();
+    let runtime = WorkspaceIndexRuntime::default();
+    manager
+        .schedule_sdk_index(&first_root_path, &first_sdk_path, "first-sdk")
+        .unwrap();
+
+    let (first_started_tx, first_started_rx) = mpsc::channel();
+    let release_first = Arc::new(Barrier::new(2));
+    let first_manager = manager.clone();
+    let first_runtime = runtime.clone();
+    let first_root_for_worker = first_root_path.clone();
+    let release_for_worker = release_first.clone();
+    let first_worker = thread::spawn(move || {
+        first_manager
+            .run_index_worker_once(&first_runtime, |status| {
+                if status.root_path == first_root_for_worker && status.status == "running" {
+                    first_started_tx.send(()).unwrap();
+                    release_for_worker.wait();
+                }
+            })
+            .unwrap();
+    });
+    first_started_rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("first worker should start");
+
+    manager
+        .schedule_sdk_index(&second_root_path, &second_sdk_path, "second-sdk")
+        .unwrap();
+    let second_started = Arc::new(AtomicBool::new(false));
+    let second_started_for_worker = second_started.clone();
+    let second_manager = manager.clone();
+    let second_runtime = runtime.clone();
+    let second_root_for_worker = second_root_path.clone();
+    let second_worker = thread::spawn(move || {
+        second_manager
+            .run_index_worker_once(&second_runtime, |status| {
+                if status.root_path == second_root_for_worker && status.status == "running" {
+                    second_started_for_worker.store(true, Ordering::SeqCst);
+                }
+            })
+            .unwrap();
+    });
+
+    thread::sleep(Duration::from_millis(100));
+    assert!(!second_started.load(Ordering::SeqCst));
+    release_first.wait();
+    first_worker.join().unwrap();
+    second_worker.join().unwrap();
+    assert!(second_started.load(Ordering::SeqCst));
+
+    fs::remove_dir_all(first_root).unwrap();
+    fs::remove_dir_all(second_root).unwrap();
 }
