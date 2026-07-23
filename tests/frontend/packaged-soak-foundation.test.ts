@@ -27,6 +27,10 @@ import {
   buildPackagedSoakFailureReport,
   buildPackagedSoakReport,
 } from "../../scripts/packaged-soak-report.mjs";
+import {
+  SEARCH_UI_EVIDENCE_SCRIPT,
+  shouldRecordSearchEvidence,
+} from "../../scripts/packaged-soak-search-evidence.mjs";
 
 describe("packaged Windows soak foundation", () => {
   it("defines deterministic 1k, 20k, and 100k ArkTS fixture profiles", () => {
@@ -248,6 +252,19 @@ describe("packaged Windows soak foundation", () => {
         "no-process-tree-evidence",
       ]),
     });
+  });
+
+  it("captures bounded query UI evidence for native smoke failures", () => {
+    expect(SEARCH_UI_EVIDENCE_SCRIPT).toContain("inputValue");
+    expect(SEARCH_UI_EVIDENCE_SCRIPT).toContain("resultCount");
+    expect(shouldRecordSearchEvidence(
+      { phase: "quick-open-miss", resultCount: 0 },
+      0,
+    )).toBe(true);
+    expect(shouldRecordSearchEvidence(
+      { phase: "quick-open-typed", resultCount: 0 },
+      40,
+    )).toBe(false);
   });
 
   it("preflights the executable, fixture probes, and Windows runtime tools", async () => {

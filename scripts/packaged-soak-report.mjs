@@ -83,6 +83,7 @@ export function buildPackagedSoakReport(input) {
     diagnostics: input.diagnostics,
     processSamples: input.processSamples,
     heapSamples: input.heapSamples,
+    searchEvidence: input.searchEvidence ?? [],
     summary: {
       ...verdictMetrics,
       maxRssBytes: maximum(rssSamples),

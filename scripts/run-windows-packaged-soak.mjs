@@ -31,6 +31,10 @@ import {
   inspectApplicationArtifact,
   inspectFixture,
 } from "./packaged-soak-report.mjs";
+import {
+  SEARCH_UI_EVIDENCE_SCRIPT,
+  shouldRecordSearchEvidence,
+} from "./packaged-soak-search-evidence.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -109,6 +113,7 @@ async function runSoak(driver, options) {
   const diagnostics = [];
   const processSamples = [];
   const heapSamples = [];
+  const searchEvidence = [];
   const counters = {
     attempts: 0,
     cycles: 0,
@@ -132,8 +137,20 @@ async function runSoak(driver, options) {
       nextEvidenceAt = Date.now() + 30_000;
     }
     try {
-      await exerciseFindInFiles(driver, counters.cycles, interactionSamples, searchReadySamples);
-      await exerciseQuickOpen(driver, counters.cycles, jumpSamples, counters);
+      await exerciseFindInFiles(
+        driver,
+        counters.cycles,
+        interactionSamples,
+        searchReadySamples,
+        searchEvidence,
+      );
+      await exerciseQuickOpen(
+        driver,
+        counters.cycles,
+        jumpSamples,
+        counters,
+        searchEvidence,
+      );
       await detectCrashSurface(driver, counters);
       counters.cycles += 1;
     } catch (error) {
@@ -168,11 +185,18 @@ async function runSoak(driver, options) {
     diagnostics,
     processSamples,
     heapSamples,
+    searchEvidence,
     telemetry,
   });
 }
 
-async function exerciseFindInFiles(driver, cycle, interactionSamples, readySamples) {
+async function exerciseFindInFiles(
+  driver,
+  cycle,
+  interactionSamples,
+  readySamples,
+  searchEvidence,
+) {
   const openedAt = await driver.execute(RENDERER_NOW_SCRIPT);
   await driver.keyChord([
     WEBDRIVER_KEYS.control,
@@ -184,11 +208,32 @@ async function exerciseFindInFiles(driver, cycle, interactionSamples, readySampl
   for (const character of query) {
     interactionSamples.push(await timed(() => driver.sendKeys(input, character)));
   }
-  await sleep(180);
+  await captureSearchEvidence(
+    driver,
+    "find-typed",
+    "Find in Files Query",
+    "Find in Files Results",
+    searchEvidence,
+  );
   const resultSelector = '[aria-label="Find in Files Results"] button';
   if (await waitForOptionalSelector(driver, resultSelector, 5_000)) {
     readySamples.push(await stableRendererDuration(driver, openedAt));
+    await captureSearchEvidence(
+      driver,
+      "find-ready",
+      "Find in Files Query",
+      "Find in Files Results",
+      searchEvidence,
+    );
     await driver.sendToActive(WEBDRIVER_KEYS.arrowDown);
+  } else {
+    await captureSearchEvidence(
+      driver,
+      "find-miss",
+      "Find in Files Query",
+      "Find in Files Results",
+      searchEvidence,
+    );
   }
   for (let index = 0; index < 6; index += 1) {
     interactionSamples.push(
@@ -198,19 +243,40 @@ async function exerciseFindInFiles(driver, cycle, interactionSamples, readySampl
   await driver.keyChord([WEBDRIVER_KEYS.escape]);
 }
 
-async function exerciseQuickOpen(driver, cycle, jumpSamples, counters) {
+async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvidence) {
   const pageIndex = (cycle * 97) % 1000;
   const pageName = `Page${String(pageIndex).padStart(6, "0")}`;
   const started = await driver.execute(RENDERER_NOW_SCRIPT);
   await driver.keyChord([WEBDRIVER_KEYS.control, "p"]);
   const input = await driver.waitForSelector('[aria-label="Quick Open Query"]');
   await driver.sendKeys(input, pageName);
+  await captureSearchEvidence(
+    driver,
+    "quick-open-typed",
+    "Quick Open Query",
+    "Quick Open Results",
+    searchEvidence,
+  );
   const resultSelector = '[aria-label="Quick Open Results"] button';
   if (!(await waitForOptionalSelector(driver, resultSelector, 8_000))) {
     counters.searchMissCount += 1;
+    await captureSearchEvidence(
+      driver,
+      "quick-open-miss",
+      "Quick Open Query",
+      "Quick Open Results",
+      searchEvidence,
+    );
     await driver.keyChord([WEBDRIVER_KEYS.escape]);
     return;
   }
+  await captureSearchEvidence(
+    driver,
+    "quick-open-ready",
+    "Quick Open Query",
+    "Quick Open Results",
+    searchEvidence,
+  );
   await driver.sendToActive(WEBDRIVER_KEYS.enter);
   const activeTab = await waitForActiveTab(driver, pageName, 10_000);
   jumpSamples.push(await stableRendererDuration(driver, started));
@@ -245,7 +311,12 @@ async function waitForIndexReady(driver, rootPath, timeoutMs) {
   let latest = null;
   while (Date.now() < deadline) {
     latest = await inspectDiagnostics(driver, rootPath);
-    if (latest.status === "ready" && latest.fileCount > 0) return;
+    if (
+      latest.status === "ready"
+      && latest.fileCount > 0
+      && latest.contentLineCount > 0
+      && latest.discoveredFileCount > 0
+    ) return;
     await sleep(200);
   }
   throw new Error(
@@ -275,6 +346,12 @@ async function inspectDiagnostics(driver, rootPath) {
     capturedAt: Date.now(),
     status: value.status,
     fileCount: value.fileCount,
+    symbolCount: value.symbolCount,
+    contentLineCount: value.contentLineCount,
+    discoveredFileCount: value.discoveredFileCount,
+    discoveryStatus: value.discoveryStatus,
+    discoveryHasMore: value.discoveryHasMore,
+    freshnessLayers: value.freshnessLayers,
     walSizeBytes: value.walSizeBytes ?? 0,
     freelistBytes: value.freelistBytes ?? 0,
     queuePending: value.queuePressure?.pendingTaskCount ?? 0,
@@ -286,6 +363,28 @@ async function inspectDiagnostics(driver, rootPath) {
     sharedSdkArtifactCount: value.sharedSdkArtifactCount ?? 0,
     workerRestartCount: value.indexerHost?.restartCount ?? 0,
   };
+}
+
+async function captureSearchEvidence(
+  driver,
+  phase,
+  queryLabel,
+  resultsLabel,
+  evidenceItems,
+) {
+  const evidence = await driver.execute(
+    SEARCH_UI_EVIDENCE_SCRIPT,
+    [phase, queryLabel, resultsLabel],
+  ).catch((error) => ({
+    capturedAt: Date.now(),
+    phase,
+    error: String(error),
+    resultCount: 0,
+  }));
+  if (shouldRecordSearchEvidence(evidence, evidenceItems.length)) {
+    evidenceItems.push(evidence);
+  }
+  return evidence;
 }
 
 async function inspectArkLineProcesses(applicationPath) {
