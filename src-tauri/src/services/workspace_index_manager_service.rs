@@ -23,7 +23,8 @@ use crate::services::workspace_index_manager_status_service::{
 };
 use crate::services::workspace_index_queue_pressure_service::project_queue_pressure;
 use crate::services::workspace_index_resume_service::{
-    clear_completed_resume_tasks, schedule_resume_tasks_from_store,
+    clear_completed_resume_tasks, schedule_interrupted_resume_tasks,
+    schedule_resume_tasks_from_store,
 };
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
@@ -350,7 +351,16 @@ impl WorkspaceIndexManagerRuntime {
         let results = results?;
         let results = mark_superseded_results(&self.scheduler, results)?;
         clear_completed_resume_tasks(&results)?;
-        let continuation_summary = schedule_index_follow_up_tasks(&self.scheduler, &results)?;
+        let mut continuation_summary = schedule_index_follow_up_tasks(&self.scheduler, &results)?;
+        let resume_summary = schedule_interrupted_resume_tasks(&self.scheduler, &results)?;
+        continuation_summary
+            .root_paths
+            .extend(resume_summary.root_paths);
+        continuation_summary
+            .superseded_tasks
+            .extend(resume_summary.superseded_tasks);
+        continuation_summary.root_paths.sort();
+        continuation_summary.root_paths.dedup();
         store_superseded_statuses(&self.recent_statuses, continuation_summary.superseded_tasks)?;
         for root_path in continuation_summary.root_paths {
             store_pending_statuses_for_root(&self.scheduler, &root_path)?;

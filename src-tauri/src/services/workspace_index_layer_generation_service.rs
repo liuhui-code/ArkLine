@@ -1,5 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::services::workspace_index_connection_service::open_existing_workspace_index_reader;
+
 pub(crate) const CONTENT_LAYER: &str = "content";
 pub(crate) const STUB_LAYER: &str = "stub";
 
@@ -55,6 +57,13 @@ pub(crate) fn publish_layer_generation(
         )
         .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+pub(crate) fn latest_layer_generation(root_path: &str, layer: &str) -> Result<Option<u64>, String> {
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
+    load_layer_generation(&connection, &root_path.replace('/', "\\"), layer)
 }
 
 fn load_layer_generation(

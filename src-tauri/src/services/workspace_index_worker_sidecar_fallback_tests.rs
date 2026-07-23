@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::indexer_host::IndexerHostRuntime;
+use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
 use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_discovery_task_service::workspace_discovery_task;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
@@ -116,6 +117,53 @@ fn unavailable_sidecar_falls_back_to_local_background_content_and_stub_refresh()
         .contains("Failed to launch indexer"));
 
     drop(connection);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fallback_rebases_on_newer_persisted_layer_generation() {
+    let root = unique_temp_dir("indexer-sidecar-generation-rebase");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("Entry.ets");
+    fs::write(&source, "export class EntryController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    let state = runtime
+        .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
+        .unwrap();
+    let newer_generation = state.indexed_at.unwrap() as u64 + 1_000;
+    update_workspace_content_at_generation(
+        &root_path,
+        std::slice::from_ref(&source_path),
+        &[],
+        newer_generation,
+    )
+    .unwrap();
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Background,
+        changed_paths: vec![source_path],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 9,
+        reason: "full-refresh-deep:generation-rebase".to_string(),
+    };
+    let token = WorkspaceIndexCancellationToken::new(task.generation);
+    let indexer = IndexerHostRuntime::with_executable(root.join("missing-indexer"));
+
+    let outcome = update_background_deep_layer(
+        &runtime,
+        Some(&indexer),
+        &task,
+        &token,
+        std::slice::from_ref(&task.changed_paths[0]),
+        &[],
+    )
+    .unwrap();
+
+    assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Applied(_)));
     fs::remove_dir_all(root).unwrap();
 }
 

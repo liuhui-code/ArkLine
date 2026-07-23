@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -121,6 +122,56 @@ pub fn schedule_resume_tasks_from_store(
         .lock()
         .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
     for task in tasks {
+        let root_path = task.root_path.clone();
+        let result = scheduler.schedule_with_result(task);
+        if result.scheduled {
+            root_paths.push(root_path);
+            superseded_tasks.extend(result.superseded_tasks);
+        }
+    }
+    root_paths.sort();
+    root_paths.dedup();
+    Ok(WorkspaceIndexResumeScheduleSummary {
+        root_paths,
+        superseded_tasks,
+    })
+}
+
+pub fn schedule_interrupted_resume_tasks(
+    scheduler: &Arc<Mutex<WorkspaceIndexScheduler>>,
+    results: &[WorkspaceIndexTaskResult],
+) -> Result<WorkspaceIndexResumeScheduleSummary, String> {
+    let interrupted = results
+        .iter()
+        .filter(|result| {
+            matches!(result.status.as_str(), "cancelled" | "superseded")
+                && result.kind == "changed-paths"
+                && is_full_refresh_continuation_reason(&result.reason)
+        })
+        .map(|result| (result.root_path.clone(), result.reason.clone()))
+        .collect::<HashSet<_>>();
+    let mut tasks = Vec::new();
+    for (root_path, reason) in interrupted {
+        tasks.extend(
+            load_resume_tasks(&root_path)?
+                .into_iter()
+                .filter(|task| task.reason == reason),
+        );
+    }
+
+    let mut root_paths = Vec::new();
+    let mut superseded_tasks = Vec::new();
+    let mut scheduler = scheduler
+        .lock()
+        .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
+    for task in tasks {
+        let already_pending = scheduler
+            .pending_tasks_for_root(&task.root_path)
+            .iter()
+            .any(|pending| pending.kind == task.kind && pending.reason == task.reason);
+        if already_pending {
+            continue;
+        }
         let root_path = task.root_path.clone();
         let result = scheduler.schedule_with_result(task);
         if result.scheduled {

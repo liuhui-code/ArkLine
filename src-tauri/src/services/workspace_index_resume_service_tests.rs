@@ -1,14 +1,18 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::services::workspace_index_resume_service::{
     clear_completed_resume_tasks, clear_resume_tasks_for_root, load_resume_tasks, save_resume_task,
+    schedule_interrupted_resume_tasks,
 };
 use crate::services::workspace_index_scheduler_service::{
-    WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
+    WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
-use crate::services::workspace_index_task_status_service::WorkspaceIndexTaskResult;
+use crate::services::workspace_index_task_status_service::{
+    superseded_task_result_from_task, WorkspaceIndexTaskResult,
+};
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -131,6 +135,32 @@ fn clears_completed_file_layer_resume_task() {
     .unwrap();
 
     assert!(load_resume_tasks(&root_path).unwrap().is_empty());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn requeues_persisted_continuation_after_interrupted_result_once() {
+    let root = unique_temp_dir("workspace-index-resume-interrupted");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let reason = "full-refresh-deep:refresh-workspace";
+    let task = continuation_task_with_reason(&root_path, &["A.ets"], 7, reason);
+    save_resume_task(&root_path, &task).unwrap();
+    let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
+    let result = superseded_task_result_from_task(&task);
+
+    let first = schedule_interrupted_resume_tasks(&scheduler, std::slice::from_ref(&result))
+        .expect("interrupted continuation should be recovered");
+    let second = schedule_interrupted_resume_tasks(&scheduler, &[result])
+        .expect("existing continuation should not be duplicated");
+    let pending = scheduler.lock().unwrap().pending_tasks_for_root(&root_path);
+
+    assert_eq!(first.root_paths, vec![root_path.clone()]);
+    assert!(second.root_paths.is_empty());
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].reason, reason);
+    assert_eq!(pending[0].changed_paths, vec!["A.ets"]);
 
     fs::remove_dir_all(root).unwrap();
 }

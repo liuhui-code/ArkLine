@@ -10,6 +10,9 @@ use crate::services::workspace_content_refresh_service::update_workspace_content
 use crate::services::workspace_content_refresh_service::WORKSPACE_CONTENT_MAX_CHUNK_BYTES;
 use crate::services::workspace_index_adaptive_chunk_service::AdaptiveRefreshBudget;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
+use crate::services::workspace_index_layer_generation_service::{
+    latest_layer_generation, CONTENT_LAYER, STUB_LAYER,
+};
 use crate::services::workspace_index_persistence_service::persist_incremental_deep_index_state_with_priority;
 use crate::services::workspace_index_publication_scheduler_service::PublicationPriority;
 use crate::services::workspace_index_scheduler_service::{
@@ -35,11 +38,25 @@ pub(crate) fn update_background_deep_layer(
         return Ok(WorkspaceDeepLayerUpdate::Cancelled);
     }
     let state = index_runtime.get_index_state(&task.root_path)?;
-    let indexed_generation = state.indexed_at.unwrap_or_default() as u64;
+    let catalog_generation = state.indexed_at.unwrap_or_default() as u64;
+    let content_generation = latest_layer_generation(&task.root_path, CONTENT_LAYER)?
+        .unwrap_or_default()
+        .max(catalog_generation);
+    let stub_generation = latest_layer_generation(&task.root_path, STUB_LAYER)?
+        .unwrap_or_default()
+        .max(catalog_generation);
 
     let sidecar_ready = workspace_file_catalog_contains_paths(&task.root_path, changed_paths)?;
     let (content_outcome, stub_outcome) = if sidecar_ready && sidecar_priority(task.priority) {
-        refresh_sidecar_layers(indexer, task, token, &state, changed_paths, removed_paths)
+        refresh_sidecar_layers(
+            indexer,
+            task,
+            token,
+            content_generation,
+            stub_generation,
+            changed_paths,
+            removed_paths,
+        )
     } else {
         (
             LayerChunkOutcome::Unavailable,
@@ -64,7 +81,7 @@ pub(crate) fn update_background_deep_layer(
             &task.root_path,
             changed_paths,
             removed_paths,
-            indexed_generation,
+            content_generation,
         )?;
     }
     if token.is_cancelled() {
@@ -72,9 +89,11 @@ pub(crate) fn update_background_deep_layer(
     }
 
     if !stub_applied_by_sidecar {
+        let mut stub_state = state.clone();
+        stub_state.indexed_at = Some(stub_generation as u128);
         persist_incremental_deep_index_state_with_priority(
             &task.root_path,
-            &state,
+            &stub_state,
             changed_paths,
             removed_paths,
             task.priority,
@@ -94,7 +113,8 @@ fn refresh_sidecar_layers(
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
-    state: &WorkspaceIndexState,
+    content_generation: u64,
+    stub_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
 ) -> (LayerChunkOutcome, LayerChunkOutcome) {
@@ -104,7 +124,6 @@ fn refresh_sidecar_layers(
             LayerChunkOutcome::Unavailable,
         );
     };
-    let indexed_generation = state.indexed_at.unwrap_or_default() as u64;
     if indexer.supports_parallel_deep_refresh() {
         return std::thread::scope(|scope| {
             let content = scope.spawn(|| {
@@ -112,7 +131,7 @@ fn refresh_sidecar_layers(
                     Some(indexer),
                     task,
                     token,
-                    indexed_generation,
+                    content_generation,
                     changed_paths,
                     removed_paths,
                 )
@@ -122,7 +141,7 @@ fn refresh_sidecar_layers(
                     Some(indexer),
                     task,
                     token,
-                    state,
+                    stub_generation,
                     changed_paths,
                     removed_paths,
                 )
@@ -137,7 +156,7 @@ fn refresh_sidecar_layers(
         Some(indexer),
         task,
         token,
-        indexed_generation,
+        content_generation,
         changed_paths,
         removed_paths,
     );
@@ -146,7 +165,7 @@ fn refresh_sidecar_layers(
             Some(indexer),
             task,
             token,
-            state,
+            stub_generation,
             changed_paths,
             removed_paths,
         )
@@ -160,14 +179,13 @@ fn refresh_stub_chunks(
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
-    state: &WorkspaceIndexState,
+    indexed_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
 ) -> LayerChunkOutcome {
     let Some(indexer) = indexer else {
         return LayerChunkOutcome::Unavailable;
     };
-    let indexed_generation = state.indexed_at.unwrap_or_default() as u64;
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
