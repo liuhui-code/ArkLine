@@ -1,4 +1,8 @@
 const SAMPLE_LIMIT = 4096;
+const TRACKED_INTERACTION_LABELS = new Set([
+  "Find in Files Query",
+  "Quick Open Query",
+]);
 
 export const TELEMETRY_INSTALL_SCRIPT = `
   if (!window.__arklinePackagedSoak) {
@@ -13,7 +17,8 @@ export const TELEMETRY_INSTALL_SCRIPT = `
       errors: [], eventTimings: [], frameGaps: [], longAnimationFrames: [],
       longTasks: [], frames: 0, errorCount: 0,
       eventTimingCount: 0, frameGapCount: 0, longAnimationFrameCount: 0,
-      longTaskCount: 0, interactionStarts: {}
+      longTaskCount: 0, interactionStarts: {}, resultReadiness: {},
+      activeTab: null
     };
     const retain = (items, value, limit = ${SAMPLE_LIMIT}) => {
       if (items.length < limit) items.push(value);
@@ -45,7 +50,8 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         duration: entry.duration,
         processingStart: entry.processingStart,
         processingEnd: entry.processingEnd,
-        interactionId: entry.interactionId || 0
+        interactionId: entry.interactionId || 0,
+        targetLabel: entry.target?.getAttribute?.("aria-label") || null
       });
     }, { durationThreshold: 16 });
     observe("long-animation-frame", (entry) => {
@@ -73,7 +79,12 @@ export const TELEMETRY_INSTALL_SCRIPT = `
     addEventListener("unhandledrejection", (event) => recordError(event.reason));
     addEventListener("beforeinput", (event) => {
       const label = event.target?.getAttribute?.("aria-label");
-      if (label) state.interactionStarts["input:" + label] = performance.now();
+      if (label) {
+        state.interactionStarts["input:" + label] = performance.now();
+        if (label === "Find in Files Query") {
+          state.resultReadiness["Find in Files Results"] = null;
+        }
+      }
     }, true);
     addEventListener("keydown", (event) => {
       const label = event.target?.getAttribute?.("aria-label");
@@ -81,6 +92,29 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         state.interactionStarts["enter:" + label] = performance.now();
       }
     }, true);
+    const captureUiReadiness = () => {
+      const results = document.querySelector('[aria-label="Find in Files Results"]');
+      const count = results?.querySelectorAll("button").length || 0;
+      if (count > 0) {
+        state.resultReadiness["Find in Files Results"] = {
+          at: performance.now(),
+          count,
+          query: document.querySelector('[aria-label="Find in Files Query"]')?.value || ""
+        };
+      }
+      const active = document.querySelector(".editor-tab--active");
+      const title = active?.getAttribute("title") || "";
+      if (title && title !== state.activeTab?.title) {
+        state.activeTab = { title, at: performance.now() };
+      }
+    };
+    new MutationObserver(captureUiReadiness).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "title"],
+      childList: true,
+      subtree: true
+    });
+    captureUiReadiness();
     window.__arklinePackagedSoak = state;
   }
   return window.__arklinePackagedSoak.capabilities;
@@ -123,6 +157,13 @@ export const INTERACTION_START_SCRIPT = `
   return state.interactionStarts?.[arguments[0]] ?? null;
 `;
 
+export const UI_READINESS_SCRIPT = `
+  const state = window.__arklinePackagedSoak || {};
+  return arguments[0] === "activeTab"
+    ? state.activeTab ?? null
+    : state.resultReadiness?.[arguments[0]] ?? null;
+`;
+
 export const STABLE_FRAME_SCRIPT = `
   const done = arguments[arguments.length - 1];
   requestAnimationFrame(() => requestAnimationFrame(() => done(performance.now())));
@@ -133,8 +174,14 @@ export const DIAGNOSTICS_SCRIPT = `
   const rootPath = arguments[0];
   const invoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
   if (!invoke) { done({ ok: false, error: "Tauri invoke unavailable" }); return; }
-  invoke("inspect_workspace_index", { rootPath })
-    .then((value) => done({ ok: true, value }))
+  Promise.all([
+    invoke("inspect_workspace_index", { rootPath }),
+    invoke("get_workspace_index_task_statuses", { rootPath })
+  ])
+    .then(([value, taskStatuses]) => done({
+      ok: true,
+      value: { ...value, taskStatuses }
+    }))
     .catch((error) => done({ ok: false, error: String(error) }));
 `;
 
@@ -152,7 +199,11 @@ export function telemetryDurations(snapshot) {
 export function interactionTimingDurations(entries) {
   const interactions = new Map();
   for (const entry of entries) {
-    if (!(entry.interactionId > 0) || !Number.isFinite(entry.duration)) continue;
+    if (
+      !(entry.interactionId > 0)
+      || !Number.isFinite(entry.duration)
+      || !TRACKED_INTERACTION_LABELS.has(entry.targetLabel)
+    ) continue;
     interactions.set(
       entry.interactionId,
       Math.max(interactions.get(entry.interactionId) ?? 0, entry.duration),

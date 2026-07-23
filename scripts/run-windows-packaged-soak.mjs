@@ -15,11 +15,17 @@ import {
 import {
   DIAGNOSTICS_SCRIPT,
   HEAP_SNAPSHOT_SCRIPT,
-  INTERACTION_START_SCRIPT,
-  STABLE_FRAME_SCRIPT,
   TELEMETRY_INSTALL_SCRIPT,
   TELEMETRY_SNAPSHOT_SCRIPT,
 } from "./packaged-soak-telemetry.mjs";
+import {
+  rendererInteractionStart,
+  waitForActiveTab,
+  waitForDiscoveryReady,
+  waitForFullIndexReady,
+  waitForSearchResult,
+  waitForWorkspace,
+} from "./packaged-soak-readiness.mjs";
 import {
   parsePowerShellProcessPayload,
   summarizeProcessEvidence,
@@ -102,7 +108,9 @@ async function runSoak(driver, options) {
   await driver.waitForSelector('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
   if (options.mode === "smoke") {
-    await waitForIndexReady(driver, options.fixturePath, 90_000);
+    await waitForFullIndexReady(driver, options.fixturePath, 90_000);
+  } else {
+    await waitForDiscoveryReady(driver, options.fixturePath, 180_000);
   }
   const telemetryCapabilities = await driver.execute(TELEMETRY_INSTALL_SCRIPT);
   const startedAt = Date.now();
@@ -216,9 +224,14 @@ async function exerciseFindInFiles(
     "Find in Files Results",
     searchEvidence,
   );
-  const resultSelector = '[aria-label="Find in Files Results"] button';
-  if (await waitForOptionalSelector(driver, resultSelector, 5_000)) {
-    readySamples.push(await stableRendererDuration(driver, searchStarted));
+  const ready = await waitForSearchResult(
+    driver,
+    "Find in Files Results",
+    query,
+    5_000,
+  ).catch(() => null);
+  if (ready) {
+    readySamples.push(Math.max(0, ready.at - searchStarted));
     await captureSearchEvidence(
       driver,
       "find-ready",
@@ -293,8 +306,8 @@ async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvi
     );
     throw error;
   }
-  jumpSamples.push(await stableRendererDuration(driver, started));
-  if (!activeTab.includes(pageName)) counters.staleApplyCount += 1;
+  jumpSamples.push(Math.max(0, activeTab.at - started));
+  if (!activeTab.title.includes(pageName)) counters.staleApplyCount += 1;
 }
 
 async function detectCrashSurface(driver, counters) {
@@ -307,45 +320,6 @@ async function detectCrashSurface(driver, counters) {
     counters.crashCount += 1;
     throw new Error("Crash boundary became visible");
   }
-}
-
-async function waitForWorkspace(driver, fixturePath, timeoutMs) {
-  const expectedName = path.basename(fixturePath);
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const text = await driver.text('[aria-label="Status Bar Left"]').catch(() => "");
-    if (text.includes(expectedName)) return;
-    await sleep(200);
-  }
-  throw new Error(`Workspace did not open: ${expectedName}`);
-}
-
-async function waitForIndexReady(driver, rootPath, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  let latest = null;
-  while (Date.now() < deadline) {
-    latest = await inspectDiagnostics(driver, rootPath);
-    if (
-      latest.status === "ready"
-      && latest.fileCount > 0
-      && latest.contentLineCount > 0
-      && latest.discoveredFileCount > 0
-    ) return;
-    await sleep(200);
-  }
-  throw new Error(
-    `Workspace index did not become ready: ${JSON.stringify(latest)}`,
-  );
-}
-
-async function waitForActiveTab(driver, pageName, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const text = await driver.text(".editor-tab--active").catch(() => "");
-    if (text.includes(pageName)) return text;
-    await sleep(100);
-  }
-  throw new Error(`Quick Open did not activate ${pageName}`);
 }
 
 async function waitForOptionalSelector(driver, selector, timeoutMs) {
@@ -377,7 +351,22 @@ async function inspectDiagnostics(driver, rootPath) {
     sharedSdkWalSizeBytes: value.sharedSdkWalSizeBytes ?? 0,
     sharedSdkFreelistBytes: value.sharedSdkFreelistBytes ?? 0,
     sharedSdkArtifactCount: value.sharedSdkArtifactCount ?? 0,
+    indexerStatus: value.indexerHost?.status ?? null,
+    completedDiscoveryChunks: value.indexerHost?.completedDiscoveryChunks ?? 0,
+    indexerFallbackCount: value.indexerHost?.fallbackCount ?? 0,
     workerRestartCount: value.indexerHost?.restartCount ?? 0,
+    indexerLastError: value.indexerHost?.lastError ?? null,
+    publicationWriterMetrics: value.indexerHost?.publicationWriterMetrics ?? null,
+    taskStatuses: (value.taskStatuses ?? []).slice(0, 16).map((status) => ({
+      kind: status.kind,
+      status: status.status,
+      reason: status.reason,
+      generation: status.generation,
+      durationMs: status.durationMs,
+      lastHeartbeatAt: status.lastHeartbeatAt,
+      message: status.message,
+      error: status.error,
+    })),
   };
 }
 
@@ -434,19 +423,6 @@ async function inspectHeap(driver) {
     capturedAt: Date.now(),
     error: String(error),
   }));
-}
-
-async function stableRendererDuration(driver, startedAt) {
-  const finishedAt = await driver.executeAsync(STABLE_FRAME_SCRIPT);
-  return Math.max(0, finishedAt - startedAt);
-}
-
-async function rendererInteractionStart(driver, key) {
-  const startedAt = await driver.execute(INTERACTION_START_SCRIPT, [key]);
-  if (!Number.isFinite(startedAt)) {
-    throw new Error(`Renderer interaction start was not captured: ${key}`);
-  }
-  return startedAt;
 }
 
 async function timed(operation) {

@@ -158,16 +158,17 @@ describe("packaged Windows soak foundation", () => {
     expect(telemetryDurations({
       eventTimings: [
         { duration: 18, interactionId: 0 },
-        { duration: 42, interactionId: 7 },
-        { duration: 30, interactionId: 7 },
-        { duration: 24, interactionId: 8 },
+        { duration: 42, interactionId: 7, targetLabel: "Find in Files Query" },
+        { duration: 30, interactionId: 7, targetLabel: "Find in Files Query" },
+        { duration: 24, interactionId: 8, targetLabel: "Quick Open Query" },
+        { duration: 80, interactionId: 9, targetLabel: "Unrelated" },
       ],
       longAnimationFrames: [
         { duration: 80, blockingDuration: 12 },
         { duration: 120, blockingDuration: 40 },
       ],
     })).toEqual({
-      eventTimings: [18, 42, 30, 24],
+      eventTimings: [18, 42, 30, 24, 80],
       interactionTimings: [42, 24],
       longAnimationFrames: [80, 120],
       longAnimationFrameBlocking: [12, 40],
@@ -359,7 +360,11 @@ describe("packaged Windows soak foundation", () => {
       telemetry: {
         capabilities: { eventTiming: true, longAnimationFrame: true },
         errors: [],
-        eventTimings: [{ duration: 20, interactionId: 1 }],
+        eventTimings: [{
+          duration: 20,
+          interactionId: 1,
+          targetLabel: "Find in Files Query",
+        }],
         frameGaps: [],
         longAnimationFrames: [],
         longTasks: [],
