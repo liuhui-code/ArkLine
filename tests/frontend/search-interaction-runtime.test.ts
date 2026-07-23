@@ -111,4 +111,42 @@ describe("search interaction runtime", () => {
 
     expect(cancel).not.toHaveBeenCalled();
   });
+
+  it("consumes superseded and deadline failures as expected control flow", async () => {
+    const onError = vi.fn();
+    const runtime = createSearchInteractionRuntime({ onError });
+
+    await runtime.runQuery({
+      kind: "searchEverywhere",
+      request: async () => {
+        throw new Error("Workspace query superseded");
+      },
+      apply: vi.fn(),
+    });
+    await runtime.runQuery({
+      kind: "text",
+      request: async () => {
+        throw "Workspace query deadline exceeded";
+      },
+      apply: vi.fn(),
+    });
+
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("reports unexpected current-query failures without rejecting", async () => {
+    const onError = vi.fn();
+    const runtime = createSearchInteractionRuntime({ onError });
+    const failure = new Error("SQLite unavailable");
+
+    await runtime.runQuery({
+      kind: "text",
+      request: async () => {
+        throw failure;
+      },
+      apply: vi.fn(),
+    });
+
+    expect(onError).toHaveBeenCalledWith(failure, 1);
+  });
 });

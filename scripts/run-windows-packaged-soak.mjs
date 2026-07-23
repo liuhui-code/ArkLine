@@ -97,6 +97,9 @@ async function main() {
 async function runSoak(driver, options) {
   await driver.waitForSelector('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
+  if (options.mode === "smoke") {
+    await waitForIndexReady(driver, options.fixturePath, 90_000);
+  }
   const telemetryCapabilities = await driver.execute(TELEMETRY_INSTALL_SCRIPT);
   const startedAt = Date.now();
   const deadline = startedAt + options.durationMs;
@@ -235,6 +238,19 @@ async function waitForWorkspace(driver, fixturePath, timeoutMs) {
     await sleep(200);
   }
   throw new Error(`Workspace did not open: ${expectedName}`);
+}
+
+async function waitForIndexReady(driver, rootPath, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = null;
+  while (Date.now() < deadline) {
+    latest = await inspectDiagnostics(driver, rootPath);
+    if (latest.status === "ready" && latest.fileCount > 0) return;
+    await sleep(200);
+  }
+  throw new Error(
+    `Workspace index did not become ready: ${JSON.stringify(latest)}`,
+  );
 }
 
 async function waitForActiveTab(driver, pageName, timeoutMs) {

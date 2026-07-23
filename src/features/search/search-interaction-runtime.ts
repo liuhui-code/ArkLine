@@ -2,6 +2,7 @@ export type SearchInteractionKind = "searchEverywhere" | "text";
 
 export type SearchInteractionRuntimeOptions = {
   cancel?: (kind: SearchInteractionKind, generation: number) => void;
+  onError?: (error: unknown, generation: number) => void;
 };
 
 export type SearchInteractionRuntime = ReturnType<typeof createSearchInteractionRuntime>;
@@ -78,6 +79,14 @@ export function createSearchInteractionRuntime(options: SearchInteractionRuntime
           apply(result, generation);
         }
       })
+      .catch((error) => {
+        if (
+          isCurrentQuery(generation)
+          && !isExpectedSearchInterruption(error)
+        ) {
+          options.onError?.(error, generation);
+        }
+      })
       .finally(() => finishQuery(generation));
   }
 
@@ -101,4 +110,10 @@ export function createSearchInteractionRuntime(options: SearchInteractionRuntime
     },
     cancelActive,
   };
+}
+
+export function isExpectedSearchInterruption(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Workspace query superseded")
+    || message.includes("Workspace query deadline exceeded");
 }

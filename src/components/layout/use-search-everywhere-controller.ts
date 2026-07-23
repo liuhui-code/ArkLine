@@ -107,6 +107,11 @@ export function useSearchEverywhereController({
   const interactionRuntimeRef = useRef(createWorkspaceSearchInteractionRuntime({
     getRootPath: () => workspaceRootRef.current,
     getWorkspaceApi: () => workspaceApiRef.current,
+    onError: (error) => {
+      onStatusChange(
+        `Search failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    },
   }));
   const navigationCloseHandledRef = useRef(false);
   const searchLifecycle = createSearchSessionLifecycle({
