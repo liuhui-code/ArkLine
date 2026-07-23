@@ -17,6 +17,7 @@ import {
 import { inspectPackagedSoakPreflight } from "../../scripts/packaged-soak-preflight.mjs";
 import {
   TELEMETRY_INSTALL_SCRIPT,
+  UI_READINESS_SCRIPT,
   telemetryDurations,
 } from "../../scripts/packaged-soak-telemetry.mjs";
 import {
@@ -168,6 +169,11 @@ describe("packaged Windows soak foundation", () => {
     expect(TELEMETRY_INSTALL_SCRIPT).toContain("items.length < limit");
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('addEventListener("beforeinput"');
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('event.key === "Enter"');
+    expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("MutationObserver");
+    expect(UI_READINESS_SCRIPT).toContain(
+      '[aria-label="Find in Files Results"]',
+    );
+    expect(UI_READINESS_SCRIPT).toContain(".editor-tab--active");
     expect(telemetryDurations({
       eventTimings: [
         { duration: 18, interactionId: 0 },
@@ -411,6 +417,7 @@ describe("packaged Windows soak foundation", () => {
     expect(workflow).toContain('default: "30"');
     expect(workflow).toContain("pnpm perf:packaged:windows");
     expect(workflow).toContain("--mode=smoke");
+    expect(workflow).toContain("--strict");
     expect(workflow).toContain("Test-Path -LiteralPath $driverPath");
     expect(workflow).toContain("ARKLINE_EDGEDRIVER=$driverPath");
     expect(workflow).toContain('--driver="$env:ARKLINE_EDGEDRIVER"');

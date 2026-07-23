@@ -111,7 +111,8 @@ jobs:
             --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/packaged-soak-fixture `
             --duration-minutes=${{ inputs.duration_minutes }} `
-            --report=artifacts/packaged-soak-report.json
+            --report=artifacts/packaged-soak-report.json `
+            --strict
 
       - name: Upload packaged evidence
         if: always()

@@ -17,8 +17,7 @@ export const TELEMETRY_INSTALL_SCRIPT = `
       errors: [], eventTimings: [], frameGaps: [], longAnimationFrames: [],
       longTasks: [], frames: 0, errorCount: 0,
       eventTimingCount: 0, frameGapCount: 0, longAnimationFrameCount: 0,
-      longTaskCount: 0, interactionStarts: {}, resultReadiness: {},
-      activeTab: null
+      longTaskCount: 0, interactionStarts: {}
     };
     const retain = (items, value, limit = ${SAMPLE_LIMIT}) => {
       if (items.length < limit) items.push(value);
@@ -81,9 +80,6 @@ export const TELEMETRY_INSTALL_SCRIPT = `
       const label = event.target?.getAttribute?.("aria-label");
       if (label) {
         state.interactionStarts["input:" + label] = performance.now();
-        if (label === "Find in Files Query") {
-          state.resultReadiness["Find in Files Results"] = null;
-        }
       }
     }, true);
     addEventListener("keydown", (event) => {
@@ -92,29 +88,6 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         state.interactionStarts["enter:" + label] = performance.now();
       }
     }, true);
-    const captureUiReadiness = () => {
-      const results = document.querySelector('[aria-label="Find in Files Results"]');
-      const count = results?.querySelectorAll("button").length || 0;
-      if (count > 0) {
-        state.resultReadiness["Find in Files Results"] = {
-          at: performance.now(),
-          count,
-          query: document.querySelector('[aria-label="Find in Files Query"]')?.value || ""
-        };
-      }
-      const active = document.querySelector(".editor-tab--active");
-      const title = active?.getAttribute("title") || "";
-      if (title && title !== state.activeTab?.title) {
-        state.activeTab = { title, at: performance.now() };
-      }
-    };
-    new MutationObserver(captureUiReadiness).observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "title"],
-      childList: true,
-      subtree: true
-    });
-    captureUiReadiness();
     window.__arklinePackagedSoak = state;
   }
   return window.__arklinePackagedSoak.capabilities;
@@ -158,10 +131,31 @@ export const INTERACTION_START_SCRIPT = `
 `;
 
 export const UI_READINESS_SCRIPT = `
-  const state = window.__arklinePackagedSoak || {};
-  return arguments[0] === "activeTab"
-    ? state.activeTab ?? null
-    : state.resultReadiness?.[arguments[0]] ?? null;
+  const label = arguments[0];
+  if (label === "activeTab") {
+    const active = document.querySelector(".editor-tab--active");
+    const title = active?.getAttribute("title") || "";
+    return title ? { title, at: performance.now() } : null;
+  }
+  const selectors = {
+    "Find in Files Results": {
+      results: '[aria-label="Find in Files Results"]',
+      query: '[aria-label="Find in Files Query"]'
+    },
+    "Quick Open Results": {
+      results: '[aria-label="Quick Open Results"]',
+      query: '[aria-label="Quick Open Query"]'
+    }
+  };
+  const selector = selectors[label];
+  if (!selector) return null;
+  const results = document.querySelector(selector.results);
+  const count = results?.querySelectorAll("button").length || 0;
+  return count > 0 ? {
+    at: performance.now(),
+    count,
+    query: document.querySelector(selector.query)?.value || ""
+  } : null;
 `;
 
 export const STABLE_FRAME_SCRIPT = `
