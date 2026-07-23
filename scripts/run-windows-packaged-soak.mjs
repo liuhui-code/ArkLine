@@ -53,8 +53,8 @@ async function main() {
     automation = new WindowsPackagedAutomationSession(options);
     phase = "application-start";
     await automation.startApplication();
-    phase = "webview2-ready";
-    await automation.waitForWebView2();
+    phase = "application-grace";
+    await automation.waitForApplicationGrace();
     phase = "driver-start";
     await automation.startDriver();
     driver = new PackagedWebDriver(automation.driverBaseUrl());
@@ -77,6 +77,7 @@ async function main() {
     });
   } finally {
     await driver?.close();
+    await automation?.captureProcessEvidence();
     await automation?.stop();
   }
   report.applicationArtifact = await safeEvidence(() =>

@@ -1,6 +1,10 @@
 import { execFile, spawn } from "node:child_process";
 import net from "node:net";
 import { promisify } from "node:util";
+import {
+  parsePowerShellProcessPayload,
+  WINDOWS_PROCESS_TREE_SCRIPT,
+} from "./packaged-soak-process-evidence.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +24,36 @@ export function nativeDriverArguments(port) {
   return [`--port=${port}`, "--verbose"];
 }
 
+export async function probeWebView2DebugEndpoints(
+  debugPort,
+  fetchImpl = fetch,
+) {
+  const paths = ["/json/version", "/json/list", "/json"];
+  const capturedAt = Date.now();
+  const attempts = await Promise.all(paths.map(async (pathname) => {
+    try {
+      const response = await fetchImpl(
+        `http://127.0.0.1:${debugPort}${pathname}`,
+        { signal: AbortSignal.timeout(750) },
+      );
+      const body = await response.text();
+      return {
+        pathname,
+        ok: response.ok,
+        status: response.status,
+        body: body.slice(0, 2_000),
+      };
+    } catch (error) {
+      return { pathname, ok: false, error: String(error) };
+    }
+  }));
+  return {
+    capturedAt,
+    reachable: attempts.some((attempt) => attempt.ok),
+    attempts,
+  };
+}
+
 export class WindowsPackagedAutomationSession {
   constructor(options) {
     this.options = options;
@@ -33,6 +67,9 @@ export class WindowsPackagedAutomationSession {
     this.driverLog = "";
     this.debugPort = null;
     this.driverPort = null;
+    this.debugProbe = null;
+    this.processes = [];
+    this.processEvidenceError = null;
   }
 
   async startApplication() {
@@ -52,19 +89,18 @@ export class WindowsPackagedAutomationSession {
     });
   }
 
-  async waitForWebView2(timeoutMs = 60_000) {
-    const endpoint = `http://127.0.0.1:${this.debugPort}/json/version`;
-    await pollWithProcessExit(
-      async () => {
-        const response = await fetch(endpoint, { signal: AbortSignal.timeout(2_000) });
-        if (!response.ok) return false;
-        const value = await response.json();
-        return Boolean(value?.webSocketDebuggerUrl);
-      },
-      this.applicationExitPromise,
-      timeoutMs,
-      "WebView2 remote debugging endpoint did not become ready",
-    );
+  async waitForApplicationGrace(timeoutMs = 3_000) {
+    const outcome = await Promise.race([
+      sleep(timeoutMs).then(() => ({ ready: true })),
+      this.applicationExitPromise.then((exit) => ({ exit })),
+    ]);
+    if (outcome.exit) {
+      throw new Error(
+        `Application exited during startup: ${JSON.stringify(outcome.exit)}`,
+      );
+    }
+    this.debugProbe = await probeWebView2DebugEndpoints(this.debugPort);
+    await this.captureProcessEvidence();
   }
 
   async startDriver() {
@@ -111,11 +147,36 @@ export class WindowsPackagedAutomationSession {
     );
   }
 
+  async captureProcessEvidence() {
+    if (!this.applicationProcess?.pid) return;
+    try {
+      const { stdout } = await execFileAsync(
+        "powershell.exe",
+        ["-NoProfile", "-Command", WINDOWS_PROCESS_TREE_SCRIPT],
+        {
+          env: {
+            ...process.env,
+            ARKLINE_SOAK_APPLICATION_PATH: this.options.applicationPath,
+          },
+          windowsHide: true,
+          timeout: 10_000,
+        },
+      );
+      this.processes = parsePowerShellProcessPayload(stdout);
+      this.processEvidenceError = null;
+    } catch (error) {
+      this.processEvidenceError = String(error);
+    }
+  }
+
   evidence() {
     return {
       mode: "webview2-attach",
       debugPort: this.debugPort,
       driverPort: this.driverPort,
+      debugProbe: this.debugProbe,
+      processes: this.processes,
+      processEvidenceError: this.processEvidenceError,
       application: {
         pid: this.applicationProcess?.pid ?? null,
         exit: this.applicationExit,

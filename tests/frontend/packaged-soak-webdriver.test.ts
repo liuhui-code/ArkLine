@@ -6,6 +6,7 @@ import {
 import {
   buildWebView2Environment,
   nativeDriverArguments,
+  probeWebView2DebugEndpoints,
 } from "../../scripts/packaged-soak-windows-session.mjs";
 
 describe("packaged Windows WebView2 attachment", () => {
@@ -50,5 +51,38 @@ describe("packaged Windows WebView2 attachment", () => {
       "--port=4445",
       "--verbose",
     ]);
+  });
+
+  it("records WebView2 debug probes without requiring a version endpoint", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      const reachable = url.endsWith("/json/list");
+      return {
+        ok: reachable,
+        status: reachable ? 200 : 404,
+        text: async () => reachable ? '[{"type":"page"}]' : "not found",
+      };
+    });
+
+    const evidence = await probeWebView2DebugEndpoints(9222, fetchImpl);
+
+    expect(evidence.reachable).toBe(true);
+    expect(evidence.attempts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pathname: "/json/version", ok: false }),
+      expect.objectContaining({ pathname: "/json/list", ok: true }),
+    ]));
+  });
+
+  it("keeps an unreachable WebView2 probe diagnostic rather than throwing", async () => {
+    const evidence = await probeWebView2DebugEndpoints(
+      9222,
+      vi.fn().mockRejectedValue(new Error("connection refused")),
+    );
+
+    expect(evidence.reachable).toBe(false);
+    expect(evidence.attempts).toHaveLength(3);
+    expect(evidence.attempts[0]).toMatchObject({
+      ok: false,
+      error: "Error: connection refused",
+    });
   });
 });
