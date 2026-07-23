@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params_from_iter, Connection};
 
 use crate::models::workspace::{
     WorkspaceTextSearchCursor, WorkspaceTextSearchMatch, WorkspaceTextSearchQuery,
@@ -114,7 +114,11 @@ fn search_indexed_workspace_content_on_connection(
         .iter()
         .map(|matched| matched.line.clone())
         .collect::<Vec<_>>();
-    let grouped_lines = load_context_lines(connection, &root_key, &context_sources)?;
+    let grouped_lines = if request.context_lines == 0 {
+        HashMap::new()
+    } else {
+        load_context_lines(connection, &root_key, &context_sources)?
+    };
     let mut matches = Vec::new();
 
     for matched in visible_lines {
@@ -185,29 +189,36 @@ fn load_context_lines(
     root_key: &str,
     matches: &[IndexedLine],
 ) -> Result<HashMap<String, Vec<String>>, String> {
+    let paths = matches
+        .iter()
+        .map(|line| line.path.as_str())
+        .collect::<HashSet<_>>();
+    if paths.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = (2..paths.len() + 2)
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let query = format!(
+        "select path, text
+         from workspace_content_lines
+         where root_path = ?1 and path in ({placeholders})
+         order by path, line"
+    );
+    let parameters = std::iter::once(root_key).chain(paths.iter().copied());
+    let mut statement = connection
+        .prepare(&query)
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params_from_iter(parameters), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?;
     let mut grouped = HashMap::new();
-    for matched_line in matches {
-        if grouped.contains_key(&matched_line.path) {
-            continue;
-        }
-
-        let mut statement = connection
-            .prepare(
-                "select text
-                 from workspace_content_lines
-                 where root_path = ?1 and path = ?2
-                 order by line",
-            )
-            .map_err(|error| error.to_string())?;
-        let rows = statement
-            .query_map(params![root_key, matched_line.path], |row| {
-                row.get::<_, String>(0)
-            })
-            .map_err(|error| error.to_string())?;
-        let lines = rows
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| error.to_string())?;
-        grouped.insert(matched_line.path.clone(), lines);
+    for row in rows {
+        let (path, text) = row.map_err(|error| error.to_string())?;
+        grouped.entry(path).or_insert_with(Vec::new).push(text);
     }
     Ok(grouped)
 }

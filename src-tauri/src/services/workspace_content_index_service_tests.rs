@@ -129,6 +129,41 @@ fn indexed_text_search_returns_filesystem_paths_that_can_be_opened() {
 }
 
 #[test]
+fn loads_context_for_matches_across_multiple_files() {
+    let root = unique_temp_dir("workspace-content-batched-context");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    let paths = (0..3)
+        .map(|index| {
+            let path = root
+                .join("entry")
+                .join("src")
+                .join(format!("Page{index}.ets"));
+            fs::write(
+                &path,
+                format!("before {index}\nconst SharedNeedle{index} = {index};\nafter {index}"),
+            )
+            .unwrap();
+            path.to_string_lossy().to_string()
+        })
+        .collect::<Vec<_>>();
+    let root_path = root.to_string_lossy().to_string();
+    index_workspace_content(&root_path, &paths).unwrap();
+    let mut search_request = request(&root_path, "SharedNeedle");
+    search_request.limit = 3;
+
+    let result = search_indexed_workspace_content(&search_request).unwrap();
+
+    assert_eq!(result.matches.len(), 3);
+    for (index, matched) in result.matches.iter().enumerate() {
+        assert_eq!(matched.context_before[0].line, 1);
+        assert_eq!(matched.context_before[0].text, format!("before {index}"));
+        assert_eq!(matched.context_after[0].line, 3);
+        assert_eq!(matched.context_after[0].text, format!("after {index}"));
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn creates_fts_table_for_indexed_content_queries() {
     let root = unique_temp_dir("workspace-content-fts");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();
