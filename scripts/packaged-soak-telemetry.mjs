@@ -176,11 +176,15 @@ export const DIAGNOSTICS_SCRIPT = `
   if (!invoke) { done({ ok: false, error: "Tauri invoke unavailable" }); return; }
   Promise.all([
     invoke("inspect_workspace_index", { rootPath }),
-    invoke("get_workspace_index_task_statuses", { rootPath })
+    invoke("get_workspace_index_task_statuses", { rootPath }),
+    invoke("get_workspace_index_layer_readiness", {
+      rootPath,
+      currentFilePath: null
+    })
   ])
-    .then(([value, taskStatuses]) => done({
+    .then(([value, taskStatuses, layerReadiness]) => done({
       ok: true,
-      value: { ...value, taskStatuses }
+      value: { ...value, taskStatuses, layerReadiness }
     }))
     .catch((error) => done({ ok: false, error: String(error) }));
 `;

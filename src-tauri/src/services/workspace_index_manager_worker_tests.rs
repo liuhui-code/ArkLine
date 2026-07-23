@@ -237,3 +237,109 @@ fn foreground_navigation_does_not_interrupt_background_discovery() {
 
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn config_change_finishes_the_started_changed_paths_status() {
+    let root = unique_temp_dir("workspace-index-manager-config-status");
+    fs::create_dir_all(&root).unwrap();
+    let config = root.join("oh-package.json5");
+    fs::write(&config, "{ name: \"before\" }\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let config_path = config.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::write(&config, "{ name: \"after\" }\n").unwrap();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    manager
+        .schedule_changed_paths(&root_path, &[config_path])
+        .unwrap();
+
+    manager.run_index_worker_once(&runtime, |_| {}).unwrap();
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
+
+    assert!(statuses.iter().any(|status| {
+        status.kind == "changed-paths"
+            && status.reason == "config-change"
+            && status.status == "ready"
+    }));
+    assert!(statuses.iter().all(|status| status.status != "running"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn deep_index_continuations_survive_sustained_ui_activity_and_navigation() {
+    const FILE_COUNT: usize = 257;
+    let root = unique_temp_dir("manager-deep-continuation-fairness");
+    let source_dir = root.join("entry/src/main/ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let mut paths = Vec::with_capacity(FILE_COUNT);
+    for index in 0..FILE_COUNT {
+        let path = source_dir.join(format!("Page{index:04}.ets"));
+        fs::write(
+            &path,
+            format!("export class Page{index:04} {{ value = {index}; }}\n"),
+        )
+        .unwrap();
+        paths.push(path.to_string_lossy().to_string());
+    }
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    manager.open_workspace_index(&root_path).unwrap();
+    let mut navigation_count = 0;
+
+    for _ in 0..128 {
+        let manager_for_status = manager.clone();
+        let root_for_status = root_path.clone();
+        let navigation_path = paths[FILE_COUNT - 1].clone();
+        let mut scheduled_this_tick = false;
+        let results = manager
+            .run_index_worker_once_with_events_and_ui_activity(
+                &runtime,
+                |status, _| {
+                    if status.status == "running"
+                        && status.reason.starts_with("full-refresh-deep:")
+                        && !scheduled_this_tick
+                    {
+                        manager_for_status
+                            .schedule_changed_path_task(
+                                &root_for_status,
+                                std::slice::from_ref(&navigation_path),
+                                WorkspaceIndexTaskPriority::ForegroundNavigation,
+                                "foreground-navigation",
+                            )
+                            .unwrap();
+                        scheduled_this_tick = true;
+                    }
+                },
+                || true,
+            )
+            .unwrap();
+        navigation_count += usize::from(scheduled_this_tick);
+        assert!(!results.is_empty());
+        if manager
+            .get_queue_pressure(&root_path)
+            .unwrap()
+            .workspace_pending_task_count
+            == 0
+        {
+            break;
+        }
+    }
+
+    let sqlite_path = root.join(".arkline/index/workspace-catalog.sqlite");
+    let connection = rusqlite::Connection::open(sqlite_path).unwrap();
+    let ready_content_files: i64 = connection
+        .query_row(
+            "select count(*) from workspace_content_files where status = 'ready'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
+
+    assert!(navigation_count > 1);
+    assert_eq!(ready_content_files, FILE_COUNT as i64);
+    assert!(statuses.iter().all(|status| status.status != "running"));
+    fs::remove_dir_all(root).unwrap();
+}

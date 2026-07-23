@@ -1,7 +1,8 @@
 use crate::models::workspace::WorkspaceIndexFileReadiness;
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_index_layer_status_service::{
-    aggregate_count_status, file_hot_current_status, status_from_text, status_with_failures,
+    aggregate_count_status, file_hot_current_status, status_from_text, status_with_expected_count,
+    status_with_failures,
 };
 
 #[test]
@@ -25,6 +26,18 @@ fn failure_count_takes_precedence_over_ready_count() {
     assert_eq!(
         status_with_failures(12, 1),
         WorkspaceIndexLayerStatus::Failed
+    );
+}
+
+#[test]
+fn expected_count_keeps_incomplete_layers_partial() {
+    assert_eq!(
+        status_with_expected_count(32, 0, 1_000),
+        WorkspaceIndexLayerStatus::Partial
+    );
+    assert_eq!(
+        status_with_expected_count(1_000, 0, 1_000),
+        WorkspaceIndexLayerStatus::Ready
     );
 }
 

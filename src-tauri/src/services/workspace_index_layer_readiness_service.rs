@@ -12,7 +12,7 @@ use crate::services::workspace_index_layer_readiness_store_service::{
 use crate::services::workspace_index_layer_reason_service::enrich_layer_reason;
 use crate::services::workspace_index_layer_status_service::{
     aggregate_count_status, file_hot_current_status, status_from_bool, status_from_count,
-    status_from_text, status_with_failures,
+    status_from_text, status_with_expected_count,
 };
 use crate::services::workspace_sdk_shared_bridge_service::count_shared_sdk_symbols;
 use crate::services::workspace_semantic_layer_readiness_service::semantic_layer_readiness;
@@ -277,9 +277,10 @@ fn content_layer(
     file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
     let summary = load_content_layer_summary(connection, root_key)?;
+    let expected = count_rows(connection, "workspace_files", root_key)?;
     Ok(layer_with_current(
         "content",
-        status_with_failures(summary.ready_count, summary.failed_count),
+        status_with_expected_count(summary.ready_count, summary.failed_count, expected),
         file_readiness.map(|readiness| status_from_text(&readiness.content_index)),
         summary.ready_count,
         summary.failed_count,
@@ -295,9 +296,10 @@ fn stub_layer(
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
     let count = count_rows(connection, "workspace_stub_files", root_key)?;
     let failures = count_rows(connection, "workspace_stub_parse_errors", root_key)?;
+    let expected = count_rows(connection, "workspace_files", root_key)?;
     Ok(layer_with_current(
         "stub",
-        status_with_failures(count, failures),
+        status_with_expected_count(count, failures, expected),
         file_readiness.map(|readiness| status_from_text(&readiness.parser_status)),
         count,
         failures,

@@ -38,6 +38,24 @@ pub(crate) fn status_with_failures(count: i64, failures: i64) -> WorkspaceIndexL
     }
 }
 
+pub(crate) fn status_with_expected_count(
+    ready: i64,
+    failures: i64,
+    expected: i64,
+) -> WorkspaceIndexLayerStatus {
+    if failures > 0 {
+        WorkspaceIndexLayerStatus::Failed
+    } else if expected <= 0 {
+        status_from_count(ready)
+    } else if ready >= expected {
+        WorkspaceIndexLayerStatus::Ready
+    } else if ready > 0 {
+        WorkspaceIndexLayerStatus::Partial
+    } else {
+        WorkspaceIndexLayerStatus::Missing
+    }
+}
+
 pub(crate) fn status_from_bool(value: bool) -> WorkspaceIndexLayerStatus {
     if value {
         WorkspaceIndexLayerStatus::Ready

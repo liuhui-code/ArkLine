@@ -288,7 +288,7 @@ fn run_index_task_inner(
                 config_task.reason = "config-change".to_string();
                 return Ok(Some(refresh_task_result(
                     &config_task,
-                    "config-change",
+                    "changed-paths",
                     refresh_result,
                     started_at,
                 )));

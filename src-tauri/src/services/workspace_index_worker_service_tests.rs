@@ -180,7 +180,7 @@ fn worker_config_change_runs_config_change_refresh() {
 
     let results = run_index_tasks(&runtime, vec![task], |_| Ok(())).unwrap();
 
-    assert_eq!(results[0].kind, "config-change");
+    assert_eq!(results[0].kind, "changed-paths");
     assert_eq!(results[0].reason, "config-change");
     assert_eq!(results[0].status, "ready");
 

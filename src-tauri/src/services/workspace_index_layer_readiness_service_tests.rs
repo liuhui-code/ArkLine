@@ -172,6 +172,43 @@ fn content_layer_counts_empty_files_and_persisted_failures() {
 }
 
 #[test]
+fn reports_deep_layers_partial_until_every_catalog_file_is_indexed() {
+    let root = create_empty_workspace("layer-readiness-partial-deep-index");
+    let source_dir = create_workspace_source_dir(&root);
+    let first = source_dir.join("First.ets");
+    let second = source_dir.join("Second.ets");
+    fs::write(&first, "export class First {}\n").unwrap();
+    fs::write(&second, "export class Second {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime
+        .update_workspace_file_symbol_layer(
+            &root_path,
+            &[
+                first.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            &[],
+        )
+        .unwrap();
+    runtime
+        .update_workspace_deep_layer(&root_path, &[first.to_string_lossy().to_string()], &[])
+        .unwrap();
+
+    let report = get_workspace_index_layer_readiness(&root_path, None).unwrap();
+
+    assert_eq!(
+        report.layer("content").unwrap().workspace_status,
+        WorkspaceIndexLayerStatus::Partial
+    );
+    assert_eq!(
+        report.layer("stub").unwrap().workspace_status,
+        WorkspaceIndexLayerStatus::Partial
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_partial_discovery_layer() {
     let root = create_empty_workspace("layer-readiness-discovery-partial");
     let root_path = root.to_string_lossy().to_string();

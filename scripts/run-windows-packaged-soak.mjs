@@ -150,6 +150,7 @@ async function runSoak(driver, options) {
         counters.cycles,
         automationDispatchSamples,
         searchReadySamples,
+        counters,
         searchEvidence,
       );
       await exerciseQuickOpen(
@@ -203,6 +204,7 @@ async function exerciseFindInFiles(
   cycle,
   automationDispatchSamples,
   readySamples,
+  counters,
   searchEvidence,
 ) {
   await driver.keyChord([
@@ -241,6 +243,7 @@ async function exerciseFindInFiles(
     );
     await driver.sendToActive(WEBDRIVER_KEYS.arrowDown);
   } else {
+    counters.searchMissCount += 1;
     await captureSearchEvidence(
       driver,
       "find-miss",
@@ -336,6 +339,8 @@ async function inspectDiagnostics(driver, rootPath) {
     fileCount: value.fileCount,
     symbolCount: value.symbolCount,
     contentLineCount: value.contentLineCount,
+    contentFileCount: indexedLayerCount(value, "content"),
+    stubFileCount: indexedLayerCount(value, "stub"),
     parserErrorCount: value.parserErrorCount,
     discoveredFileCount: value.discoveredFileCount,
     discoveryExcludedCount: value.discoveryExcludedCount,
@@ -357,17 +362,24 @@ async function inspectDiagnostics(driver, rootPath) {
     workerRestartCount: value.indexerHost?.restartCount ?? 0,
     indexerLastError: value.indexerHost?.lastError ?? null,
     publicationWriterMetrics: value.indexerHost?.publicationWriterMetrics ?? null,
-    taskStatuses: (value.taskStatuses ?? []).slice(0, 16).map((status) => ({
+    taskStatuses: (value.taskStatuses ?? []).slice(-16).map((status) => ({
       kind: status.kind,
       status: status.status,
       reason: status.reason,
       generation: status.generation,
       durationMs: status.durationMs,
       lastHeartbeatAt: status.lastHeartbeatAt,
+      stalled: status.stalled,
       message: status.message,
       error: status.error,
     })),
   };
+}
+
+function indexedLayerCount(value, layerName) {
+  return value.layerReadiness?.layers?.find(
+    (layer) => layer.layer === layerName,
+  )?.indexedCount ?? 0;
 }
 
 async function captureSearchEvidence(

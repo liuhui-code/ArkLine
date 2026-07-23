@@ -56,7 +56,12 @@ export function evaluateSoakReport(metrics, limits = PACKAGED_SOAK_LIMITS) {
   if (metrics.unresponsiveCount > 0) failures.push("webdriver-unresponsive");
   if (metrics.pendingLoads > 0) failures.push("pending-document-loads");
   if (metrics.staleApplyCount > 0) failures.push("stale-result-applied");
+  if (metrics.searchMissCount > 0) failures.push("search-result-miss");
   if (metrics.workerRestartGrowth > 0) failures.push("worker-restart");
+  if (metrics.indexedContentFileCount < metrics.indexedFileCount) {
+    failures.push("incomplete-content-index");
+  }
+  if (metrics.stalledIndexTaskCount > 0) failures.push("stalled-index-task");
   if (metrics.rendererSearchP95Ms > limits.rendererSearchP95Ms) {
     failures.push("renderer-search-p95");
   }

@@ -118,6 +118,19 @@ describe("packaged Windows soak foundation", () => {
     });
 
     expect(evaluateSoakReport(passingSoakMetrics({
+      searchMissCount: 1,
+      indexedContentFileCount: 999,
+      stalledIndexTaskCount: 1,
+    }))).toMatchObject({
+      passed: false,
+      failures: expect.arrayContaining([
+        "search-result-miss",
+        "incomplete-content-index",
+        "stalled-index-task",
+      ]),
+    });
+
+    expect(evaluateSoakReport(passingSoakMetrics({
       eventTimingSupported: false,
       longAnimationFrameSupported: false,
       interactionTimingCount: 0,
@@ -411,6 +424,7 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
     unresponsiveCount: 0,
     pendingLoads: 0,
     staleApplyCount: 0,
+    searchMissCount: 0,
     rssGrowthBytes: 8 * 1024 * 1024,
     privateGrowthBytes: 8 * 1024 * 1024,
     walGrowthBytes: 2 * 1024 * 1024,
@@ -425,6 +439,9 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
     jsHeapGrowthBytes: 4 * 1024 * 1024,
     processTreeSampleCount: 9,
     steadyProcessSampleCount: 5,
+    indexedFileCount: 1_000,
+    indexedContentFileCount: 1_000,
+    stalledIndexTaskCount: 0,
     ...overrides,
   };
 }

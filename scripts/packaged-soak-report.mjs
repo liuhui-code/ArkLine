@@ -43,6 +43,7 @@ export function buildPackagedSoakReport(input) {
     unresponsiveCount: input.counters.unresponsiveCount,
     pendingLoads: lastDiagnostics.queuePending ?? 0,
     staleApplyCount: input.counters.staleApplyCount,
+    searchMissCount: input.counters.searchMissCount,
     rssGrowthBytes: growth(steadyRssSamples),
     privateGrowthBytes: growth(steadyPrivateSamples),
     walGrowthBytes: fieldGrowth(
@@ -74,6 +75,11 @@ export function buildPackagedSoakReport(input) {
       steadyRssSamples.length,
       steadyPrivateSamples.length,
     ),
+    indexedFileCount: lastDiagnostics.fileCount ?? 0,
+    indexedContentFileCount: lastDiagnostics.contentFileCount ?? 0,
+    stalledIndexTaskCount: (lastDiagnostics.taskStatuses ?? []).filter(
+      (status) => status.status === "running" && status.stalled,
+    ).length,
   };
   const verdict = input.options.mode === "smoke"
     ? evaluateSmokeReport(verdictMetrics)

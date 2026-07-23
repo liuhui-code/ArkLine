@@ -20,6 +20,7 @@ export async function waitForDiscoveryReady(driver, rootPath, timeoutMs) {
     (value) => (
       value.discoveryStatus === "ready"
       && value.discoveredFileCount > 0
+      && value.fileCount >= value.discoveredFileCount
     ),
     "Workspace discovery did not become ready",
   );
@@ -35,9 +36,16 @@ export async function waitForFullIndexReady(driver, rootPath, timeoutMs) {
       && value.fileCount > 0
       && value.contentLineCount > 0
       && value.discoveredFileCount > 0
+      && indexedLayerCount(value, "content") >= value.fileCount
     ),
     "Workspace index did not become ready",
   );
+}
+
+function indexedLayerCount(value, layerName) {
+  return value.layerReadiness?.layers?.find(
+    (layer) => layer.layer === layerName,
+  )?.indexedCount ?? 0;
 }
 
 export async function waitForSearchResult(
