@@ -219,13 +219,15 @@ async function exerciseFindInFiles(
     driver,
     "input:Find in Files Query",
   );
-  await captureSearchEvidence(
-    driver,
-    "find-typed",
-    "Find in Files Query",
-    "Find in Files Results",
-    searchEvidence,
-  );
+  if (cycle === 0) {
+    await captureSearchEvidence(
+      driver,
+      "find-typed",
+      "Find in Files Query",
+      "Find in Files Results",
+      searchEvidence,
+    );
+  }
   const ready = await waitForSearchResult(
     driver,
     "Find in Files Results",

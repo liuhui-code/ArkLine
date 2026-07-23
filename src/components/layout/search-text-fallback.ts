@@ -72,7 +72,7 @@ export function runFallbackTextSearch({
       rootPath,
       options,
       limit: 50,
-      contextLines: 2,
+      contextLines: 0,
     });
   }
   return searchWorkspaceText({

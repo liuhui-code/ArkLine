@@ -34,7 +34,7 @@ describe("SearchSessionQueryInput", () => {
     vi.useRealTimers();
   });
 
-  it("uses the longer content-search debounce window", () => {
+  it("commits content search after the shared latency budget", () => {
     vi.useFakeTimers();
     const onCommit = vi.fn();
     render(
@@ -51,7 +51,7 @@ describe("SearchSessionQueryInput", () => {
     fireEvent.change(screen.getByLabelText("Content Search Query"), {
       target: { value: "Entry" },
     });
-    act(() => vi.advanceTimersByTime(249));
+    act(() => vi.advanceTimersByTime(119));
     expect(onCommit).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
     expect(onCommit).toHaveBeenCalledWith("Entry");

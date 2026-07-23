@@ -3,8 +3,8 @@ import type { SearchEverywhereMode } from "@/components/layout/SearchEverywhereP
 
 const INPUT_COMMIT_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = {
   searchEverywhere: 120,
-  find: 250,
-  replace: 250,
+  find: 120,
+  replace: 120,
 };
 
 export function useSearchSessionInput(
