@@ -38,8 +38,7 @@ export async function inspectPackagedSoakPreflight(
   }
 
   for (const [name, command] of [
-    ["tauri-driver", options.driverPath],
-    ["msedgedriver", "msedgedriver"],
+    ["msedgedriver", options.driverPath],
     ["powershell", "powershell.exe"],
   ]) {
     const resolved = await resolveTool(command).catch(() => null);

@@ -12,7 +12,7 @@
     "build:indexer-sidecar": "node scripts/build-indexer-sidecar.mjs",
     "test:semantic-worker": "pnpm --dir semantic-worker test",
     "test:frontend": "vitest run",
-    "test:frontend:quality": "vitest run tests/frontend/package-scripts.test.ts tests/frontend/quality-gate-manifest.test.ts tests/frontend/indexing-roadmap-status.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/packaged-soak-foundation.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
+    "test:frontend:quality": "vitest run tests/frontend/package-scripts.test.ts tests/frontend/quality-gate-manifest.test.ts tests/frontend/indexing-roadmap-status.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/packaged-soak-foundation.test.ts tests/frontend/packaged-soak-webdriver.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts",
     "test:rust": "node scripts/test-rust.mjs",
     "smoke:semantic": "node scripts/smoke-semantic.mjs --fixture",
     "perf:runtime": "node scripts/perf-runtime-gate.mjs --strict",

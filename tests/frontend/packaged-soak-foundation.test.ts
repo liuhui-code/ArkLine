@@ -272,7 +272,7 @@ describe("packaged Windows soak foundation", () => {
       const result = await inspectPackagedSoakPreflight({
         applicationPath,
         fixturePath,
-        driverPath: "tauri-driver",
+        driverPath: "msedgedriver",
       }, async (tool: string) => `C:\\tools\\${tool}.exe`);
 
       expect(result.passed).toBe(true);
@@ -281,7 +281,6 @@ describe("packaged Windows soak foundation", () => {
         "fixture-marker",
         "fixture-first-file",
         "fixture-last-file",
-        "tauri-driver",
         "msedgedriver",
         "powershell",
       ]);

@@ -60,10 +60,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Tauri and Edge drivers
+      - name: Install Edge driver
         shell: pwsh
         run: |
-          cargo install tauri-driver --locked
           cargo install --git https://github.com/chippers/msedgedriver-tool
           & "$HOME/.cargo/bin/msedgedriver-tool.exe"
           $PWD.Path >> $env:GITHUB_PATH

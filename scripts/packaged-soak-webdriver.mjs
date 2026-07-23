@@ -10,9 +10,23 @@ export const WEBDRIVER_KEYS = Object.freeze({
   arrowDown: "\uE015",
 });
 
+export function buildAttachedCapabilities(debuggerAddress) {
+  return {
+    capabilities: {
+      alwaysMatch: {
+        browserName: "webview2",
+        "ms:edgeChromium": true,
+        "ms:edgeOptions": { debuggerAddress },
+      },
+      firstMatch: [{}],
+    },
+  };
+}
+
 export class PackagedWebDriver {
-  constructor(baseUrl = "http://127.0.0.1:4444") {
+  constructor(baseUrl = "http://127.0.0.1:4444", fetchImpl = fetch) {
     this.baseUrl = baseUrl;
+    this.fetchImpl = fetchImpl;
     this.sessionId = null;
     this.capabilities = {};
   }
@@ -44,6 +58,17 @@ export class PackagedWebDriver {
     this.sessionId = value.sessionId;
     this.capabilities = value.capabilities ?? {};
     if (!this.sessionId) throw new Error("tauri-driver returned no session id");
+  }
+
+  async createAttachedSession(debuggerAddress) {
+    const value = await this.request("/session", {
+      method: "POST",
+      body: buildAttachedCapabilities(debuggerAddress),
+      timeoutMs: 60_000,
+    });
+    this.sessionId = value.sessionId;
+    this.capabilities = value.capabilities ?? {};
+    if (!this.sessionId) throw new Error("msedgedriver returned no session id");
   }
 
   async close() {
@@ -145,7 +170,7 @@ export class PackagedWebDriver {
       options.timeoutMs ?? 15_000,
     );
     try {
-      const response = await fetch(`${this.baseUrl}${pathname}`, {
+      const response = await this.fetchImpl(`${this.baseUrl}${pathname}`, {
         method: options.method ?? "GET",
         headers: options.body ? { "content-type": "application/json" } : undefined,
         body: options.body ? JSON.stringify(options.body) : undefined,

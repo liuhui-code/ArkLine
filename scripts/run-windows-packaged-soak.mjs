@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,6 +9,9 @@ import {
   PackagedWebDriver,
   WEBDRIVER_KEYS,
 } from "./packaged-soak-webdriver.mjs";
+import {
+  WindowsPackagedAutomationSession,
+} from "./packaged-soak-windows-session.mjs";
 import {
   DIAGNOSTICS_SCRIPT,
   HEAP_SNAPSHOT_SCRIPT,
@@ -37,11 +40,8 @@ async function main() {
   await mkdir(path.dirname(options.reportPath), { recursive: true });
   let phase = "platform";
   let preflight = null;
-  let driverProcess = null;
-  let driverExitPromise = null;
-  let driverExit = null;
-  let driverLog = "";
-  const driver = new PackagedWebDriver();
+  let automation = null;
+  let driver = null;
   let report;
   try {
     if (process.platform !== "win32") {
@@ -50,22 +50,18 @@ async function main() {
     phase = "preflight";
     preflight = await inspectPackagedSoakPreflight(options);
     assertPreflightPassed(preflight);
+    automation = new WindowsPackagedAutomationSession(options);
+    phase = "application-start";
+    await automation.startApplication();
+    phase = "webview2-ready";
+    await automation.waitForWebView2();
     phase = "driver-start";
-    driverProcess = spawn(options.driverPath, [], {
-      env: { ...process.env, ARKLINE_WORKSPACE_ROOT: options.fixturePath },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    driverProcess.stdout.on("data", (chunk) => {
-      driverLog = appendBoundedLog(driverLog, chunk);
-    });
-    driverProcess.stderr.on("data", (chunk) => {
-      driverLog = appendBoundedLog(driverLog, chunk);
-    });
-    driverExitPromise = observeDriverExit(driverProcess);
-    await waitForDriverReady(driver, driverExitPromise);
+    await automation.startDriver();
+    driver = new PackagedWebDriver(automation.driverBaseUrl());
+    phase = "driver-ready";
+    await automation.waitForDriver(driver);
     phase = "session-create";
-    await driver.createSession(options.applicationPath);
+    await driver.createAttachedSession(automation.debuggerAddress());
     phase = "mixed-workload";
     report = await runSoak(driver, options);
     report.driverCapabilities = driver.capabilities;
@@ -80,19 +76,16 @@ async function main() {
       preflight,
     });
   } finally {
-    await driver.close();
-    if (driverProcess && driverExitPromise) {
-      driverExit = await stopDriverProcess(driverProcess, driverExitPromise);
-    }
+    await driver?.close();
+    await automation?.stop();
   }
   report.applicationArtifact = await safeEvidence(() =>
     inspectApplicationArtifact(options.applicationPath));
   report.fixture = await safeEvidence(() => inspectFixture(options.fixturePath));
-  report.driver = {
-    capabilities: driver.capabilities,
-    exit: driverExit,
-    log: driverLog,
-  };
+  report.automation = automation?.evidence() ?? null;
+  if (report.automation?.driver) {
+    report.automation.driver.capabilities = driver?.capabilities ?? {};
+  }
   await writeFile(options.reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(
     `ARKLINE_PACKAGED_SOAK ${JSON.stringify(report.summary ?? report.verdict)}`,
@@ -333,50 +326,6 @@ function assertPreflightPassed(preflight) {
     .map((check) => `${check.name}: ${check.detail}`)
     .join("; ");
   throw new Error(`Packaged soak preflight failed: ${detail}`);
-}
-
-function appendBoundedLog(current, chunk, limit = 100_000) {
-  return `${current}${String(chunk)}`.slice(-limit);
-}
-
-function observeDriverExit(driverProcess) {
-  return new Promise((resolve) => {
-    driverProcess.once("error", (error) => {
-      resolve({ error: String(error), capturedAt: Date.now() });
-    });
-    driverProcess.once("exit", (code, signal) => {
-      resolve({ code, signal, capturedAt: Date.now() });
-    });
-  });
-}
-
-async function waitForDriverReady(driver, driverExitPromise) {
-  const outcome = await Promise.race([
-    driver.waitUntilReady().then(() => ({ ready: true })),
-    driverExitPromise,
-  ]);
-  if (!outcome.ready) {
-    throw new Error(`tauri-driver exited before ready: ${JSON.stringify(outcome)}`);
-  }
-}
-
-async function stopDriverProcess(driverProcess, driverExitPromise) {
-  if (driverProcess.exitCode === null) driverProcess.kill();
-  const normalExit = await waitForExit(driverExitPromise);
-  if (!normalExit.timedOut || !driverProcess.pid) return normalExit;
-  await execFileAsync(
-    "taskkill.exe",
-    ["/PID", String(driverProcess.pid), "/T", "/F"],
-    { windowsHide: true, timeout: 5_000 },
-  ).catch(() => undefined);
-  return waitForExit(driverExitPromise);
-}
-
-function waitForExit(driverExitPromise) {
-  return Promise.race([
-    driverExitPromise,
-    sleep(5_000).then(() => ({ timedOut: true, capturedAt: Date.now() })),
-  ]);
 }
 
 async function safeEvidence(operation) {

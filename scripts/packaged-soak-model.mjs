@@ -34,7 +34,7 @@ export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
       argumentValue(argv, "--report") ?? "artifacts/packaged-soak.json",
     ),
     strict: argv.includes("--strict"),
-    driverPath: argumentValue(argv, "--driver") ?? "tauri-driver",
+    driverPath: argumentValue(argv, "--driver") ?? "msedgedriver",
   };
 }
 
