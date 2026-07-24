@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetForegroundIndexScheduleGate } from "@/components/layout/foreground-index-schedule-gate";
 import { useWorkspaceSession } from "@/components/layout/use-workspace-session";
@@ -47,27 +47,26 @@ describe("useWorkspaceSession", () => {
     expect(result.current.workspace?.fileTree.length).toBeGreaterThan(0);
   });
 
-  it("includes newly opened workspace files and updates the durable index", async () => {
+  it("includes lazy-tree files locally without rewriting the durable file index", () => {
     const onOpenWorkspaceIndex = vi.fn();
-    const onReplaceWorkspaceIndexState = vi.fn();
+    const onIncludeWorkspaceIndexPath = vi.fn();
     const updateWorkspaceIndexFiles = vi.fn(async () => indexState({ filePaths: ["/workspace/src/A.ets"] }));
+    const scheduleVisibleFilesIndex = vi.fn(async () => undefined);
     const { result } = renderHook(() => useWorkspaceSession(options({
-      workspaceApi: workspaceApi({ updateWorkspaceIndexFiles }),
+      workspaceApi: workspaceApi({ updateWorkspaceIndexFiles, scheduleVisibleFilesIndex }),
       onOpenWorkspaceIndex,
-      onReplaceWorkspaceIndexState,
+      onIncludeWorkspaceIndexPath,
     })));
 
     act(() => result.current.applyWorkspaceSnapshot(workspace({ rootPath: "/workspace" })));
+    onOpenWorkspaceIndex.mockClear();
     act(() => result.current.includeVisibleWorkspaceFile("/workspace/src/A.ets"));
 
     expect(result.current.workspace?.visibleFiles).toEqual(["/workspace/src/A.ets"]);
-    expect(onOpenWorkspaceIndex).toHaveBeenLastCalledWith(expect.objectContaining({
-      visibleFiles: ["/workspace/src/A.ets"],
-    }));
-    await waitFor(() => expect(updateWorkspaceIndexFiles).toHaveBeenCalledWith("/workspace", ["/workspace/src/A.ets"], []));
-    expect(onReplaceWorkspaceIndexState).toHaveBeenCalledWith(expect.objectContaining({
-      filePaths: ["/workspace/src/A.ets"],
-    }));
+    expect(onOpenWorkspaceIndex).not.toHaveBeenCalled();
+    expect(onIncludeWorkspaceIndexPath).toHaveBeenCalledWith("/workspace/src/A.ets");
+    expect(updateWorkspaceIndexFiles).not.toHaveBeenCalled();
+    expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/A.ets"]);
   });
 
   it("falls back to visible-file scheduling when index file update is unavailable", () => {
@@ -111,6 +110,7 @@ function options(overrides: Partial<Parameters<typeof useWorkspaceSession>[0]> =
   return {
     workspaceApi: workspaceApi({}),
     onOpenWorkspaceIndex: vi.fn(),
+    onIncludeWorkspaceIndexPath: vi.fn(),
     onReplaceWorkspaceIndexState: vi.fn(),
     onPersistRecentProjects: vi.fn(),
     onStatusChange: vi.fn(),

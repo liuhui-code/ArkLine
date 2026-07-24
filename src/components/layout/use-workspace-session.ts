@@ -12,6 +12,7 @@ import { normalizePath } from "@/features/workspace/workspace-store";
 export type UseWorkspaceSessionOptions = {
   workspaceApi: WorkspaceApi;
   onOpenWorkspaceIndex: (workspace: WorkspaceViewModel) => void;
+  onIncludeWorkspaceIndexPath: (path: string) => void;
   onReplaceWorkspaceIndexState: (state: WorkspaceIndexState) => void;
   onPersistRecentProjects: (recentProjects: string[]) => void;
   onStatusChange: (message: string) => void;
@@ -20,6 +21,7 @@ export type UseWorkspaceSessionOptions = {
 export function useWorkspaceSession({
   workspaceApi,
   onOpenWorkspaceIndex,
+  onIncludeWorkspaceIndexPath,
   onReplaceWorkspaceIndexState,
   onPersistRecentProjects,
   onStatusChange,
@@ -105,19 +107,11 @@ export function useWorkspaceSession({
         visibleFiles,
         fileTree: createFileTreeNodes(visibleFiles),
       };
-      syncWorkspaceIndex(nextWorkspace);
+      onIncludeWorkspaceIndexPath(normalizedPath);
       return nextWorkspace;
     });
 
-    if (workspaceApi.updateWorkspaceIndexFiles) {
-      void workspaceApi.updateWorkspaceIndexFiles(normalizedRoot, [normalizedPath], [])
-        .then(onReplaceWorkspaceIndexState)
-        .catch((error) => {
-          onStatusChange(`Workspace index update failed: ${error instanceof Error ? error.message : String(error)}`);
-        });
-    } else {
-      scheduleVisibleFilesIndex(normalizedRoot, [normalizedPath]);
-    }
+    scheduleVisibleFilesIndex(normalizedRoot, [normalizedPath]);
   }
 
   return {

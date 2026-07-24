@@ -96,6 +96,60 @@ fn discovery_runtime_prepares_in_sidecar_and_publishes_through_writer_actor() {
 }
 
 #[test]
+fn discovery_runtime_bounds_a_twenty_thousand_path_sidecar_cursor() {
+    let root = unique_temp_root();
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let pending = (0..20_000)
+        .map(|index| {
+            root.join(format!("module/src/main/ets/Page{index:06}.ets"))
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
+    let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+
+    let result = runtime.discover_workspace_chunk(
+        IndexerTaskKey {
+            root_path,
+            kind: "discovery".to_string(),
+            generation: 6,
+            reason: "bounded-cursor-integration".to_string(),
+        },
+        Some(pending.clone()),
+        1_024,
+    );
+
+    let IndexerDiscoveryAttempt::Applied(result) = result else {
+        panic!(
+            "bounded discovery cursor should remain on the sidecar: {:?}",
+            runtime.snapshot()
+        );
+    };
+    let remaining = result.pending_directories.unwrap();
+    assert!(result.has_more);
+    assert!(!remaining.is_empty());
+    assert!(remaining.len() < pending.len());
+    assert_eq!(remaining.last(), pending.last());
+    let connection =
+        Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
+    let cursor_json: String = connection
+        .query_row(
+            "select cursor_json from workspace_discovery_state limit 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let persisted_remaining: Vec<String> = serde_json::from_str(&cursor_json).unwrap();
+    assert_eq!(persisted_remaining, remaining);
+    drop(connection);
+    assert_eq!(runtime.snapshot().fallback_count, 0);
+    assert_eq!(runtime.snapshot().restart_count, 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn stub_refresh_is_bounded_idempotent_and_rejects_old_generations() {
     let root = unique_temp_root();
     fs::create_dir_all(root.join("src")).unwrap();

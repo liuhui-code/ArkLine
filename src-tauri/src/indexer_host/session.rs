@@ -276,9 +276,14 @@ impl IndexerHostSession {
         let response: IndexerResponse = serde_json::from_str(line.trim())
             .map_err(|error| format!("Invalid indexer response: {error}"))?;
         if response.id != id {
+            let detail = response
+                .error
+                .as_deref()
+                .map(|error| format!(": {error}"))
+                .unwrap_or_default();
             return Err(format!(
-                "Indexer response id mismatch: expected {id}, received {}",
-                response.id
+                "Indexer response id mismatch: expected {id}, received {}{detail}",
+                response.id,
             ));
         }
         if !response.ok {

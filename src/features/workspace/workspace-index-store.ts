@@ -103,6 +103,12 @@ export function createWorkspaceIndexStore() {
       state.partialReason = nextState.partialReason;
       state.queryReadiness = nextState.queryReadiness ?? null;
     },
+    includeFilePath(path: string) {
+      const normalizedPath = normalizePath(path);
+      if (!state.filePaths.includes(normalizedPath)) {
+        state.filePaths.push(normalizedPath);
+      }
+    },
     replaceQueryReadiness(readiness: WorkspaceIndexReadiness) {
       state.queryReadiness = {
         ...readiness,

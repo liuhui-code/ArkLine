@@ -2053,18 +2053,12 @@ describe("App shell", () => {
     );
   });
 
-  it("adds an opened lazy project file to the workspace index immediately", async () => {
+  it("adds an opened lazy project file locally and prioritizes it without rewriting the catalog", async () => {
     const user = userEvent.setup();
     const rootPath = "C:/samples/HugeWorkspace";
     const filePath = `${rootPath}/entry/src/main/ets/EntryBackupAbility.ets`;
-    const updateWorkspaceIndexFiles = vi.fn(async () => ({
-      status: "partial" as const,
-      rootPath: "C:\\samples\\HugeWorkspace",
-      filePaths: ["C:\\samples\\HugeWorkspace\\entry\\src\\main\\ets\\EntryBackupAbility.ets"],
-      symbols: [],
-      indexedAt: 1,
-      partialReason: "Visible file indexed",
-    }));
+    const updateWorkspaceIndexFiles = vi.fn();
+    const scheduleVisibleFilesIndex = vi.fn(async () => undefined);
     const listWorkspaceDirectory = vi.fn(async (_root: string, directoryPath: string) => {
       const normalizedDirectory = directoryPath.replace(/\\/g, "/");
       if (normalizedDirectory.endsWith("HugeWorkspace")) {
@@ -2087,6 +2081,7 @@ describe("App shell", () => {
         workspaceApi={createWorkspaceApi({
           listWorkspaceDirectory,
           updateWorkspaceIndexFiles,
+          scheduleVisibleFilesIndex,
           openWorkspace: async () => ({
             rootName: "HugeWorkspace",
             rootPath,
@@ -2109,11 +2104,11 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "ets" }));
     await user.click(await screen.findByRole("button", { name: "EntryBackupAbility.ets" }));
 
-    await waitFor(() => expect(updateWorkspaceIndexFiles).toHaveBeenCalledWith(
+    await waitFor(() => expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith(
       "C:\\samples\\HugeWorkspace",
       ["C:\\samples\\HugeWorkspace\\entry\\src\\main\\ets\\EntryBackupAbility.ets"],
-      [],
     ));
+    expect(updateWorkspaceIndexFiles).not.toHaveBeenCalled();
     expect(await screen.findByText("Index: partial (1 files)")).toBeVisible();
   });
 

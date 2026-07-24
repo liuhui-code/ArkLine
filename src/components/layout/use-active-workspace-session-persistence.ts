@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { AppSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
@@ -15,6 +15,8 @@ export type UseActiveWorkspaceSessionPersistenceOptions = {
   workspaceApi: WorkspaceApi;
 };
 
+export const ACTIVE_SESSION_SAVE_DELAY_MS = 750;
+
 export function useActiveWorkspaceSessionPersistence({
   activePath,
   rootPath,
@@ -22,6 +24,15 @@ export function useActiveWorkspaceSessionPersistence({
   settingsRef,
   workspaceApi,
 }: UseActiveWorkspaceSessionPersistenceOptions) {
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSaveRef = useRef(false);
+
+  useEffect(() => () => {
+    if (!pendingSaveRef.current) return;
+    pendingSaveRef.current = false;
+    void workspaceApi.saveSettings(settingsRef.current.state.settings);
+  }, [settingsRef, workspaceApi]);
+
   useEffect(() => {
     if (!settingsHydrated || !rootPath || !activePath) return;
     const current = settingsRef.current.state.settings;
@@ -32,6 +43,20 @@ export function useActiveWorkspaceSessionPersistence({
       [rootPath]: { ...currentSession, activeFilePath: activePath },
     };
     settingsRef.current.update({ workspaceSessions: nextWorkspaceSessions });
-    void workspaceApi.saveSettings(settingsRef.current.state.settings);
+    pendingSaveRef.current = true;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      pendingSaveRef.current = false;
+      void workspaceApi.saveSettings(settingsRef.current.state.settings);
+    }, ACTIVE_SESSION_SAVE_DELAY_MS);
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
   }, [activePath, rootPath, settingsHydrated, settingsRef, workspaceApi]);
 }

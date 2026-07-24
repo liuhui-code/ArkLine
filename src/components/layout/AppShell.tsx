@@ -130,6 +130,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       workspaceIndexRef.current.openWorkspace(nextWorkspace);
       startTransition(() => setWorkspaceIndexState({ ...workspaceIndexRef.current.state }));
     },
+    onIncludeWorkspaceIndexPath: (path) => {
+      workspaceIndexRef.current.includeFilePath(path);
+      startTransition(() => setWorkspaceIndexState({ ...workspaceIndexRef.current.state }));
+    },
     onReplaceWorkspaceIndexState: (state) => {
       workspaceIndexRef.current.replaceState(state);
       startTransition(() => setWorkspaceIndexState({ ...workspaceIndexRef.current.state }));

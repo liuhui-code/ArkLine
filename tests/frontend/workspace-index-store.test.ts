@@ -96,6 +96,36 @@ describe("workspace index store", () => {
     expect(store.state.queryReadiness?.servedGeneration).toBe(12);
   });
 
+  it("adds a lazy-tree file without resetting indexed symbols or readiness", () => {
+    const store = createWorkspaceIndexStore();
+    store.replaceState({
+      status: "partial",
+      rootPath: "C:/samples/ArkDemo",
+      filePaths: ["C:/samples/ArkDemo/src/A.ets"],
+      symbols: [{
+        source: "class",
+        kind: "class",
+        name: "A",
+        path: "C:/samples/ArkDemo/src/A.ets",
+        line: 1,
+        column: 1,
+      }],
+      indexedAt: 42,
+      partialReason: "background indexing",
+    });
+
+    store.includeFilePath("C:/samples/ArkDemo/src/B.ets");
+    store.includeFilePath("C:/samples/ArkDemo/src/B.ets");
+
+    expect(store.state.filePaths).toEqual([
+      "C:\\samples\\ArkDemo\\src\\A.ets",
+      "C:\\samples\\ArkDemo\\src\\B.ets",
+    ]);
+    expect(store.state.symbols).toHaveLength(1);
+    expect(store.state.indexedAt).toBe(42);
+    expect(store.state.status).toBe("partial");
+  });
+
   it("queries search everywhere candidates across classes symbols and files", () => {
     const store = createWorkspaceIndexStore();
 
