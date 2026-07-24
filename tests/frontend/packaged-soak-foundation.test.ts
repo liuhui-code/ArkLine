@@ -254,6 +254,18 @@ describe("packaged Windows soak foundation", () => {
     )).toBe(true);
   });
 
+  it("keeps the packaged mixed workload free of retained element references", async () => {
+    const source = await readFile(
+      path.resolve("scripts/run-windows-packaged-soak.mjs"),
+      "utf8",
+    );
+
+    expect(source).not.toContain(".waitForSelector(");
+    expect(source).not.toContain(".findElement(");
+    expect(source).not.toContain(".sendToActive(");
+    expect(source).not.toContain(".sendKeys(");
+  });
+
   it("preflights the executable, fixture probes, and Windows runtime tools", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "arkline-soak-"));
     try {

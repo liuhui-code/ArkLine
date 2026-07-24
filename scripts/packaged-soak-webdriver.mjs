@@ -89,6 +89,17 @@ export class PackagedWebDriver {
     );
   }
 
+  async waitForSelectorPresent(selector, timeoutMs = 15_000) {
+    await pollUntil(
+      () => this.execute(
+        "return Boolean(document.querySelector(arguments[0]));",
+        [selector],
+      ).catch(() => false),
+      timeoutMs,
+      `Timed out waiting for ${selector}`,
+    );
+  }
+
   async findElement(selector) {
     const value = await this.sessionRequest("/element", {
       method: "POST",
@@ -109,7 +120,7 @@ export class PackagedWebDriver {
   }
 
   async pageText() {
-    return this.text("body");
+    return this.execute("return document.body?.innerText || '';");
   }
 
   async activeElement() {
@@ -130,10 +141,23 @@ export class PackagedWebDriver {
     return this.sendKeys(await this.activeElement(), text);
   }
 
+  async typeText(text) {
+    const actions = [];
+    Array.from(text).forEach((value) => {
+      actions.push({ type: "keyDown", value });
+      actions.push({ type: "keyUp", value });
+    });
+    await this.performKeyActions(actions);
+  }
+
   async keyChord(keys) {
     const keyActions = [];
     keys.forEach((key) => keyActions.push({ type: "keyDown", value: key }));
     [...keys].reverse().forEach((key) => keyActions.push({ type: "keyUp", value: key }));
+    await this.performKeyActions(keyActions);
+  }
+
+  async performKeyActions(keyActions) {
     await this.sessionRequest("/actions", {
       method: "POST",
       body: {

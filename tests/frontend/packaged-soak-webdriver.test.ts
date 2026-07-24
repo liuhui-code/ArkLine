@@ -94,6 +94,65 @@ describe("packaged Windows WebView2 attachment", () => {
     );
   });
 
+  it("types through W3C actions without retaining active element references", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: null }),
+    });
+    const driver = new PackagedWebDriver(
+      "http://127.0.0.1:4445",
+      fetchImpl,
+    );
+    driver.sessionId = "session-1";
+
+    await driver.typeText("ab\uE003");
+
+    const firstRequest = fetchImpl.mock.calls[0];
+    expect(firstRequest?.[0]).toBe(
+      "http://127.0.0.1:4445/session/session-1/actions",
+    );
+    expect(JSON.parse(firstRequest?.[1]?.body as string)).toEqual({
+      actions: [{
+        type: "key",
+        id: "arkline-keyboard",
+        actions: [
+          { type: "keyDown", value: "a" },
+          { type: "keyUp", value: "a" },
+          { type: "keyDown", value: "b" },
+          { type: "keyUp", value: "b" },
+          { type: "keyDown", value: "\uE003" },
+          { type: "keyUp", value: "\uE003" },
+        ],
+      }],
+    });
+    expect(fetchImpl.mock.calls.every(([url]) => !String(url).includes("/element"))).toBe(true);
+  });
+
+  it("reads hot-loop DOM state without creating WebDriver element ids", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ value: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ value: "ArkLine ready" }),
+      });
+    const driver = new PackagedWebDriver(
+      "http://127.0.0.1:4445",
+      fetchImpl,
+    );
+    driver.sessionId = "session-1";
+
+    await expect(driver.waitForSelectorPresent(".ready")).resolves.toBeUndefined();
+    await expect(driver.pageText()).resolves.toBe("ArkLine ready");
+
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:4445/session/session-1/execute/sync",
+      "http://127.0.0.1:4445/session/session-1/execute/sync",
+    ]);
+  });
+
   it("records WebView2 debug probes without requiring a version endpoint", async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       const reachable = url.endsWith("/json/list");

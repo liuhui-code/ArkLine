@@ -105,7 +105,7 @@ async function main() {
 }
 
 async function runSoak(driver, options) {
-  await driver.waitForSelector('[aria-label="Application Header"]', 60_000);
+  await driver.waitForSelectorPresent('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
   if (options.mode === "smoke") {
     await waitForFullIndexReady(driver, options.fixturePath, 90_000);
@@ -214,9 +214,9 @@ async function exerciseFindInFiles(
     WEBDRIVER_KEYS.shift,
     "f",
   ]);
-  const input = await driver.waitForSelector('[aria-label="Find in Files Query"]');
+  await driver.waitForSelectorPresent('[aria-label="Find in Files Query"]');
   const query = `arklineSearchNeedle${cycle % 1000}`;
-  automationDispatchSamples.push(await timed(() => driver.sendKeys(input, query)));
+  automationDispatchSamples.push(await timed(() => driver.typeText(query)));
   const searchStarted = await rendererInteractionStart(
     driver,
     "input:Find in Files Query",
@@ -245,7 +245,7 @@ async function exerciseFindInFiles(
       "Find in Files Results",
       searchEvidence,
     );
-    await driver.sendToActive(WEBDRIVER_KEYS.arrowDown);
+    await driver.typeText(WEBDRIVER_KEYS.arrowDown);
   } else {
     counters.searchMissCount += 1;
     counters.findInFilesMissCount += 1;
@@ -258,7 +258,7 @@ async function exerciseFindInFiles(
     );
   }
   automationDispatchSamples.push(await timed(
-    () => driver.sendToActive(WEBDRIVER_KEYS.backspace.repeat(6)),
+    () => driver.typeText(WEBDRIVER_KEYS.backspace.repeat(6)),
   ));
   await driver.keyChord([WEBDRIVER_KEYS.escape]);
 }
@@ -267,8 +267,8 @@ async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvi
   const pageIndex = (cycle * 97) % 1000;
   const pageName = `Page${String(pageIndex).padStart(6, "0")}`;
   await driver.keyChord([WEBDRIVER_KEYS.control, "p"]);
-  const input = await driver.waitForSelector('[aria-label="Quick Open Query"]');
-  await driver.sendKeys(input, pageName);
+  await driver.waitForSelectorPresent('[aria-label="Quick Open Query"]');
+  await driver.typeText(pageName);
   await captureSearchEvidence(
     driver,
     "quick-open-typed",
@@ -332,7 +332,7 @@ async function detectCrashSurface(driver, counters) {
 }
 
 async function waitForOptionalSelector(driver, selector, timeoutMs) {
-  return driver.waitForSelector(selector, timeoutMs).then(() => true, () => false);
+  return driver.waitForSelectorPresent(selector, timeoutMs).then(() => true, () => false);
 }
 
 async function inspectDiagnostics(driver, rootPath) {

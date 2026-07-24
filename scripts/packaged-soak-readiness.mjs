@@ -7,7 +7,10 @@ import {
 export async function waitForWorkspace(driver, fixturePath, timeoutMs) {
   const expectedName = fixturePath.split(/[\\/]/).filter(Boolean).at(-1);
   await pollUntil(async () => {
-    const text = await driver.text('[aria-label="Status Bar Left"]').catch(() => "");
+    const text = await driver.execute(
+      `return document.querySelector(arguments[0])?.innerText || "";`,
+      ['[aria-label="Status Bar Left"]'],
+    ).catch(() => "");
     return text.includes(expectedName);
   }, timeoutMs, `Workspace did not open: ${expectedName}`);
 }
