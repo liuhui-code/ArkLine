@@ -1,5 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::services::workspace_content_stats_schema_service::load_materialized_content_stats;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkspaceContentFileState {
     pub(crate) status: String,
@@ -37,19 +39,10 @@ pub(crate) fn load_content_layer_summary(
     connection: &Connection,
     root_key: &str,
 ) -> Result<WorkspaceContentLayerSummary, String> {
-    connection
-        .query_row(
-            "select
-                sum(case when status = 'ready' then 1 else 0 end),
-                sum(case when status = 'failed' then 1 else 0 end)
-             from workspace_content_files where root_path = ?1",
-            params![root_key],
-            |row| {
-                Ok(WorkspaceContentLayerSummary {
-                    ready_count: row.get::<_, Option<i64>>(0)?.unwrap_or_default(),
-                    failed_count: row.get::<_, Option<i64>>(1)?.unwrap_or_default(),
-                })
-            },
-        )
-        .map_err(|error| error.to_string())
+    let (ready_count, failed_count) =
+        load_materialized_content_stats(connection, root_key)?.unwrap_or_default();
+    Ok(WorkspaceContentLayerSummary {
+        ready_count,
+        failed_count,
+    })
 }

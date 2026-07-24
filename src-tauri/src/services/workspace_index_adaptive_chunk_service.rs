@@ -1,12 +1,14 @@
 const DEFAULT_PUBLICATION_TARGET_US: u64 = 200_000;
 const INTERACTIVE_PUBLICATION_TARGET_US: u64 = 50_000;
-const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 4;
+const INTERACTIVE_MINIMUM_PATH_COUNT: usize = 4;
+const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 8;
 const INITIAL_PATH_COUNT: usize = 16;
 const INITIAL_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 const INTERACTIVE_INITIAL_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AdaptiveRefreshBudget {
+    minimum_path_count: usize,
     maximum_path_count: usize,
     maximum_source_bytes: usize,
     path_count: usize,
@@ -30,6 +32,11 @@ impl AdaptiveRefreshBudget {
             maximum_path_count
         };
         let maximum_path_count = maximum_path_count.max(1);
+        let minimum_path_count = if ui_latency_sensitive {
+            maximum_path_count.min(INTERACTIVE_MINIMUM_PATH_COUNT)
+        } else {
+            1
+        };
         let maximum_source_bytes = maximum_source_bytes.max(1);
         let initial_source_bytes = if ui_latency_sensitive {
             INTERACTIVE_INITIAL_SOURCE_BYTES
@@ -37,6 +44,7 @@ impl AdaptiveRefreshBudget {
             INITIAL_SOURCE_BYTES
         };
         Self {
+            minimum_path_count,
             maximum_path_count,
             maximum_source_bytes,
             path_count: maximum_path_count.min(INITIAL_PATH_COUNT),
@@ -69,7 +77,12 @@ impl AdaptiveRefreshBudget {
         if publication_duration_us > self.target_duration_us {
             self.path_count =
                 proportional_budget(path_count, self.target_duration_us, publication_duration_us)
-                    .min(self.path_count.saturating_sub(1).max(1));
+                    .clamp(
+                        self.minimum_path_count,
+                        self.path_count
+                            .saturating_sub(1)
+                            .max(self.minimum_path_count),
+                    );
             if source_bytes > 0 {
                 self.source_bytes = proportional_budget(
                     source_bytes,
@@ -152,10 +165,13 @@ mod tests {
     fn interactive_budget_caps_non_preemptible_publication_work() {
         let mut budget = AdaptiveRefreshBudget::new_for_latency(64, 32 * 1024 * 1024, true);
 
-        assert_eq!(budget.path_count(), 4);
+        assert_eq!(budget.path_count(), 8);
         assert_eq!(budget.source_bytes(), 2 * 1024 * 1024);
-        budget.observe(10_000, 4, 2 * 1024 * 1024);
+        budget.observe(400_000, 8, 2 * 1024 * 1024);
         assert_eq!(budget.path_count(), 4);
-        assert!(budget.source_bytes() > 2 * 1024 * 1024);
+        budget.observe(400_000, 4, 1 * 1024 * 1024);
+        assert_eq!(budget.path_count(), 4);
+        assert!(budget.source_bytes() < 2 * 1024 * 1024);
+        assert!(budget.source_bytes() > 0);
     }
 }

@@ -64,6 +64,7 @@ const WORKSPACE_INDEX_RESET_TABLES: &[&str] = &[
     "workspace_symbols",
     "workspace_content_lines",
     "workspace_content_files",
+    "workspace_content_stats",
     "workspace_file_fingerprints",
     "workspace_index_layer_generations",
     "workspace_discovered_files",

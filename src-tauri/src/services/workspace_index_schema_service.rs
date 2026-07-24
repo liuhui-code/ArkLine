@@ -2,6 +2,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension};
 
+use crate::services::workspace_content_stats_schema_service::create_content_stats_schema;
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_discovery_schema_service::create_discovery_tables;
 use crate::services::workspace_file_identity_service::create_workspace_file_identity_table;
@@ -39,6 +40,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_stub_tables(connection)?;
     create_symbol_posting_tables(connection)?;
     create_content_tables(connection)?;
+    create_content_stats_schema(connection)?;
     create_fingerprint_tables(connection)?;
     create_sdk_tables(connection)?;
     create_task_journal_tables(connection)?;

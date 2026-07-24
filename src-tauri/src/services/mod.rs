@@ -78,9 +78,9 @@ mod workspace_content_match_service_tests;
 pub mod workspace_content_query_service;
 pub(crate) mod workspace_content_readiness_store_service;
 pub(crate) mod workspace_content_refresh_chunk_service;
-#[cfg(test)]
-mod workspace_content_refresh_chunk_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_content_refresh_chunk_service_tests;
 pub(crate) mod workspace_content_refresh_service;
+pub(crate) mod workspace_content_stats_schema_service;
 pub(crate) mod workspace_definition_candidate_query_service;
 #[cfg(test)]
 mod workspace_definition_member_query_tests;
