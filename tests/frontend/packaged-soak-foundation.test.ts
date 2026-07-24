@@ -241,6 +241,10 @@ describe("packaged Windows soak foundation", () => {
       40,
     )).toBe(false);
     expect(shouldRecordSearchEvidence(
+      { phase: "quick-open-miss", resultCount: 0 },
+      40,
+    )).toBe(true);
+    expect(shouldRecordSearchEvidence(
       { phase: "quick-open-enter-failed", resultCount: 0 },
       0,
     )).toBe(true);

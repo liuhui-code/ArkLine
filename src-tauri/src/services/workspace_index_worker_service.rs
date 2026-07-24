@@ -417,6 +417,7 @@ fn refresh_full_refresh_continuation_chunk(
                 token,
                 &selected_paths,
                 &[],
+                ui_latency_sensitive,
             )? {
                 WorkspaceDeepLayerUpdate::Applied(state) => state,
                 WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),

@@ -21,6 +21,7 @@ use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_index_ui_activity_service::{
     WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
 };
+use crate::services::workspace_index_writer_actor_service::WorkspaceIndexWriterActor;
 use crate::services::workspace_query_broker_service::{
     WorkspaceQueryBrokerRuntime, CONTENT_QUERY_DEADLINE_MS, ENTITY_QUERY_DEADLINE_MS,
 };
@@ -185,8 +186,10 @@ pub async fn search_workspace_text_blocking(
         text_search_cancellation.register_generation(&root_path, generation)?;
     }
     let ticket = query_broker.begin(&root_path, "text", generation, CONTENT_QUERY_DEADLINE_MS)?;
+    let foreground_read = WorkspaceIndexWriterActor::shared().begin_foreground_read();
 
     spawn_blocking(move || {
+        let _foreground_read = foreground_read;
         let cancellation_ticket = ticket.clone();
         let result = query_facade_text_search_result_with_cancellation(
             &index_runtime,

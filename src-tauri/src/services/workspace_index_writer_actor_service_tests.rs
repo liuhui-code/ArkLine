@@ -1,4 +1,5 @@
 use std::fs::{self, File, FileTimes};
+use std::thread;
 use std::time::{Duration, SystemTime};
 
 use super::{
@@ -70,6 +71,42 @@ fn writer_actor_publishes_a_prepared_content_artifact() {
     assert_eq!(metrics.active_writer_count, 0);
     assert_eq!(metrics.queued_writer_count, 0);
     drop(connection);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn foreground_read_prevents_a_new_background_publication_from_starting() {
+    let root =
+        std::env::temp_dir().join(format!("arkline-writer-read-gate-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("Entry.ets");
+    fs::write(&source, "class Entry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
+        .unwrap();
+    let actor = WorkspaceIndexWriterActor::new();
+    let foreground_read = actor.begin_foreground_read();
+    let publisher = actor.clone();
+    let publish_root = root_path.clone();
+    let publish_source = source_path.clone();
+
+    let publication =
+        thread::spawn(move || publish_content(&publisher, &publish_root, &publish_source, 10));
+    let deadline = SystemTime::now() + Duration::from_secs(1);
+    while actor.snapshot().queued_writer_count == 0 && SystemTime::now() < deadline {
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    assert_eq!(actor.snapshot().sample_count, 0);
+    assert_eq!(actor.snapshot().queued_writer_count, 1);
+    drop(foreground_read);
+    assert!(matches!(
+        publication.join().unwrap(),
+        WorkspaceIndexPublicationAttempt::Applied(_)
+    ));
+    assert_eq!(actor.snapshot().sample_count, 1);
     fs::remove_dir_all(root).unwrap();
 }
 

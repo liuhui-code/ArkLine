@@ -4,6 +4,13 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+#[path = "workspace_index_foreground_read_service.rs"]
+pub(crate) mod foreground_read;
+#[path = "workspace_index_writer_maintenance_metric_service.rs"]
+mod maintenance_metric;
+
+use self::foreground_read::{WorkspaceIndexForegroundReadGate, WorkspaceIndexForegroundReadGuard};
+use self::maintenance_metric::{maintenance_metric_sample, MaintenanceMetricSample};
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
 use crate::models::workspace_index_publication::{
     WorkspaceIndexPublicationArtifactDescriptor, WorkspaceIndexPublicationProfile,
@@ -40,9 +47,11 @@ pub(crate) enum WorkspaceIndexPublicationAttempt {
     Failed(String),
 }
 
+#[derive(Clone)]
 pub(crate) struct WorkspaceIndexWriterActor {
     sender: SyncSender<PublicationEnvelope>,
     metrics: Arc<Mutex<WriterActorMetricState>>,
+    foreground_reads: WorkspaceIndexForegroundReadGate,
 }
 
 struct PublicationEnvelope {
@@ -58,8 +67,16 @@ impl WorkspaceIndexWriterActor {
         let (sender, receiver) = mpsc::sync_channel(PUBLICATION_QUEUE_CAPACITY);
         let metrics = Arc::new(Mutex::new(WriterActorMetricState::default()));
         let worker_metrics = Arc::clone(&metrics);
-        std::thread::spawn(move || run_writer_actor(receiver, worker_metrics));
-        Self { sender, metrics }
+        let foreground_reads = WorkspaceIndexForegroundReadGate::default();
+        let worker_foreground_reads = foreground_reads.clone();
+        std::thread::spawn(move || {
+            run_writer_actor(receiver, worker_metrics, worker_foreground_reads)
+        });
+        Self {
+            sender,
+            metrics,
+            foreground_reads,
+        }
     }
 
     pub(crate) fn shared() -> Self {
@@ -114,6 +131,10 @@ impl WorkspaceIndexWriterActor {
             .lock()
             .map(|metrics| metrics.snapshot())
             .unwrap_or_default()
+    }
+
+    pub(crate) fn begin_foreground_read(&self) -> WorkspaceIndexForegroundReadGuard {
+        self.foreground_reads.begin()
     }
 
     fn recover_workspace_once(&self, root_path: &str) {
@@ -199,12 +220,14 @@ impl WorkspaceIndexWriterActor {
 fn run_writer_actor(
     receiver: Receiver<PublicationEnvelope>,
     metrics: Arc<Mutex<WriterActorMetricState>>,
+    foreground_reads: WorkspaceIndexForegroundReadGate,
 ) {
     let mut queue = WorkspaceIndexPublicationQueue::new(FOREGROUND_BURST_LIMIT);
     while let Ok(envelope) = receiver.recv() {
         queue.push(envelope.request.priority, envelope);
         drain_ingress(&receiver, &mut queue);
         while let Some(envelope) = queue.pop() {
+            foreground_reads.yield_background(envelope.request.priority, &envelope.cancelled);
             process_envelope(envelope, &metrics);
             drain_ingress(&receiver, &mut queue);
         }
@@ -416,57 +439,6 @@ fn record_finished(
     }
     push_sample(&mut metrics.wait_us, wait);
     push_sample(&mut metrics.hold_us, hold);
-}
-
-#[derive(Clone, Copy)]
-struct MaintenanceMetricSample {
-    duration_us: u64,
-    optimized: bool,
-    checkpointed: bool,
-    incremental_vacuumed: bool,
-    copy_swapped: bool,
-    copy_swap_deferred: bool,
-}
-
-fn maintenance_metric_sample(
-    profile: &WorkspaceIndexPublicationProfile,
-) -> Option<MaintenanceMetricSample> {
-    let maintenance = profile
-        .stages
-        .iter()
-        .any(|stage| stage.name.starts_with("maintenance"));
-    maintenance.then(|| MaintenanceMetricSample {
-        duration_us: profile.total_duration_us,
-        optimized: profile
-            .stages
-            .iter()
-            .any(|stage| stage.name.contains("Optimize")),
-        checkpointed: profile
-            .stages
-            .iter()
-            .any(|stage| stage.name == "maintenanceTruncateCheckpoint"),
-        incremental_vacuumed: profile
-            .stages
-            .iter()
-            .any(|stage| stage.name == "maintenanceIncrementalVacuum"),
-        copy_swapped: profile
-            .stages
-            .iter()
-            .any(|stage| stage.name == "maintenanceCopySwapCommit"),
-        copy_swap_deferred: profile
-            .stages
-            .iter()
-            .any(|stage| stage.name.starts_with("maintenanceCopySwapDeferred")),
-    })
-}
-
-impl Clone for WorkspaceIndexWriterActor {
-    fn clone(&self) -> Self {
-        Self {
-            sender: self.sender.clone(),
-            metrics: Arc::clone(&self.metrics),
-        }
-    }
 }
 
 fn push_sample(samples: &mut VecDeque<u64>, duration: Duration) {

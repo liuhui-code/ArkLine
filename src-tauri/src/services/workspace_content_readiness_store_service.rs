@@ -53,3 +53,29 @@ pub(crate) fn load_content_layer_summary(
         )
         .map_err(|error| error.to_string())
 }
+
+pub(crate) fn load_unready_content_paths(
+    connection: &Connection,
+    root_key: &str,
+    limit: usize,
+) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare(
+            "select files.path
+             from workspace_files files
+             left join workspace_content_files content
+               on content.root_path = files.root_path and content.path = files.path
+             where files.root_path = ?1
+               and (content.status is null or content.status != 'ready')
+             order by files.path
+             limit ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![root_key, limit as i64], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}

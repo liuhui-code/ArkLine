@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef } from "react";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 
 const INPUT_COMMIT_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = {
-  searchEverywhere: 120,
-  find: 120,
-  replace: 120,
+  searchEverywhere: 80,
+  find: 80,
+  replace: 80,
 };
 
 export function useSearchSessionInput(

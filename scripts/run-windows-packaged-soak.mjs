@@ -129,6 +129,8 @@ async function runSoak(driver, options) {
     unresponsiveCount: 0,
     staleApplyCount: 0,
     searchMissCount: 0,
+    findInFilesMissCount: 0,
+    quickOpenMissCount: 0,
   };
   let nextEvidenceAt = 0;
   while (
@@ -246,6 +248,7 @@ async function exerciseFindInFiles(
     await driver.sendToActive(WEBDRIVER_KEYS.arrowDown);
   } else {
     counters.searchMissCount += 1;
+    counters.findInFilesMissCount += 1;
     await captureSearchEvidence(
       driver,
       "find-miss",
@@ -276,6 +279,7 @@ async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvi
   const resultSelector = '[aria-label="Quick Open Results"] button';
   if (!(await waitForOptionalSelector(driver, resultSelector, 8_000))) {
     counters.searchMissCount += 1;
+    counters.quickOpenMissCount += 1;
     await captureSearchEvidence(
       driver,
       "quick-open-miss",

@@ -21,6 +21,9 @@ use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir,
 };
 
+#[path = "workspace_index_facade_partial_search_tests.rs"]
+mod partial_search;
+
 #[test]
 fn facade_routes_text_search_scope_queries() {
     let root = create_empty_workspace("facade-text-search");

@@ -33,6 +33,7 @@ pub(crate) fn update_background_deep_layer(
     token: &WorkspaceIndexCancellationToken,
     changed_paths: &[String],
     removed_paths: &[String],
+    ui_latency_sensitive: bool,
 ) -> Result<WorkspaceDeepLayerUpdate, String> {
     if token.is_cancelled() {
         return Ok(WorkspaceDeepLayerUpdate::Cancelled);
@@ -56,6 +57,7 @@ pub(crate) fn update_background_deep_layer(
             stub_generation,
             changed_paths,
             removed_paths,
+            ui_latency_sensitive,
         )
     } else {
         (
@@ -117,6 +119,7 @@ fn refresh_sidecar_layers(
     stub_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
+    ui_latency_sensitive: bool,
 ) -> (LayerChunkOutcome, LayerChunkOutcome) {
     let Some(indexer) = indexer else {
         return (
@@ -134,6 +137,7 @@ fn refresh_sidecar_layers(
                     content_generation,
                     changed_paths,
                     removed_paths,
+                    ui_latency_sensitive,
                 )
             });
             let stub = scope.spawn(|| {
@@ -144,6 +148,7 @@ fn refresh_sidecar_layers(
                     stub_generation,
                     changed_paths,
                     removed_paths,
+                    ui_latency_sensitive,
                 )
             });
             (
@@ -159,6 +164,7 @@ fn refresh_sidecar_layers(
         content_generation,
         changed_paths,
         removed_paths,
+        ui_latency_sensitive,
     );
     let stub = if matches!(content, LayerChunkOutcome::Applied) {
         refresh_stub_chunks(
@@ -168,6 +174,7 @@ fn refresh_sidecar_layers(
             stub_generation,
             changed_paths,
             removed_paths,
+            ui_latency_sensitive,
         )
     } else {
         LayerChunkOutcome::Unavailable
@@ -182,6 +189,7 @@ fn refresh_stub_chunks(
     indexed_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
+    ui_latency_sensitive: bool,
 ) -> LayerChunkOutcome {
     let Some(indexer) = indexer else {
         return LayerChunkOutcome::Unavailable;
@@ -189,9 +197,10 @@ fn refresh_stub_chunks(
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
-    let mut budget = AdaptiveRefreshBudget::new(
+    let mut budget = AdaptiveRefreshBudget::new_for_latency(
         INDEXER_STUB_REFRESH_PATH_LIMIT,
         WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
+        ui_latency_sensitive,
     );
     let mut changed_offset = 0usize;
     let mut removed_offset = 0usize;
@@ -242,6 +251,7 @@ fn refresh_content_chunks(
     indexed_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
+    ui_latency_sensitive: bool,
 ) -> LayerChunkOutcome {
     let Some(indexer) = indexer else {
         return LayerChunkOutcome::Unavailable;
@@ -249,9 +259,10 @@ fn refresh_content_chunks(
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
-    let mut budget = AdaptiveRefreshBudget::new(
+    let mut budget = AdaptiveRefreshBudget::new_for_latency(
         INDEXER_CONTENT_REFRESH_PATH_LIMIT,
         WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
+        ui_latency_sensitive,
     );
     let mut changed_offset = 0usize;
     let mut removed_offset = 0usize;

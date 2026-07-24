@@ -1,6 +1,9 @@
 const DEFAULT_PUBLICATION_TARGET_US: u64 = 200_000;
+const INTERACTIVE_PUBLICATION_TARGET_US: u64 = 50_000;
+const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 4;
 const INITIAL_PATH_COUNT: usize = 16;
 const INITIAL_SOURCE_BYTES: usize = 8 * 1024 * 1024;
+const INTERACTIVE_INITIAL_SOURCE_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AdaptiveRefreshBudget {
@@ -13,14 +16,36 @@ pub(crate) struct AdaptiveRefreshBudget {
 
 impl AdaptiveRefreshBudget {
     pub(crate) fn new(maximum_path_count: usize, maximum_source_bytes: usize) -> Self {
+        Self::new_for_latency(maximum_path_count, maximum_source_bytes, false)
+    }
+
+    pub(crate) fn new_for_latency(
+        maximum_path_count: usize,
+        maximum_source_bytes: usize,
+        ui_latency_sensitive: bool,
+    ) -> Self {
+        let maximum_path_count = if ui_latency_sensitive {
+            maximum_path_count.min(INTERACTIVE_MAXIMUM_PATH_COUNT)
+        } else {
+            maximum_path_count
+        };
         let maximum_path_count = maximum_path_count.max(1);
         let maximum_source_bytes = maximum_source_bytes.max(1);
+        let initial_source_bytes = if ui_latency_sensitive {
+            INTERACTIVE_INITIAL_SOURCE_BYTES
+        } else {
+            INITIAL_SOURCE_BYTES
+        };
         Self {
             maximum_path_count,
             maximum_source_bytes,
             path_count: maximum_path_count.min(INITIAL_PATH_COUNT),
-            source_bytes: maximum_source_bytes.min(INITIAL_SOURCE_BYTES),
-            target_duration_us: DEFAULT_PUBLICATION_TARGET_US,
+            source_bytes: maximum_source_bytes.min(initial_source_bytes),
+            target_duration_us: if ui_latency_sensitive {
+                INTERACTIVE_PUBLICATION_TARGET_US
+            } else {
+                DEFAULT_PUBLICATION_TARGET_US
+            },
         }
     }
 
@@ -121,5 +146,16 @@ mod tests {
 
         assert_eq!(budget.path_count(), 8);
         assert_eq!(budget.source_bytes(), 1_000);
+    }
+
+    #[test]
+    fn interactive_budget_caps_non_preemptible_publication_work() {
+        let mut budget = AdaptiveRefreshBudget::new_for_latency(64, 32 * 1024 * 1024, true);
+
+        assert_eq!(budget.path_count(), 4);
+        assert_eq!(budget.source_bytes(), 2 * 1024 * 1024);
+        budget.observe(10_000, 4, 2 * 1024 * 1024);
+        assert_eq!(budget.path_count(), 4);
+        assert!(budget.source_bytes() > 2 * 1024 * 1024);
     }
 }

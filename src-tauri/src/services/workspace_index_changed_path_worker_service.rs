@@ -113,6 +113,7 @@ fn refresh_incremental_watcher_chunk(
         token,
         &content_paths,
         &removed_paths,
+        false,
     )? {
         WorkspaceDeepLayerUpdate::Applied(state) => state,
         WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),

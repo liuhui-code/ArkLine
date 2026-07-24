@@ -33,11 +33,9 @@ export const SEARCH_UI_EVIDENCE_SCRIPT = `
 `;
 
 export function shouldRecordSearchEvidence(evidence, currentCount, limit = 40) {
+  if (evidence.phase.endsWith("-miss") || evidence.phase.endsWith("-failed")) {
+    return true;
+  }
   return currentCount < limit
-    && (
-      evidence.phase.endsWith("-miss")
-      || evidence.phase.endsWith("-typed")
-      || evidence.phase.endsWith("-failed")
-      || evidence.resultCount > 0
-    );
+    && (evidence.phase.endsWith("-typed") || evidence.resultCount > 0);
 }

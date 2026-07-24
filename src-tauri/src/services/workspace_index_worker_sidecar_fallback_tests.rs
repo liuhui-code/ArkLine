@@ -160,6 +160,7 @@ fn fallback_rebases_on_newer_persisted_layer_generation() {
         &token,
         std::slice::from_ref(&task.changed_paths[0]),
         &[],
+        false,
     )
     .unwrap();
 
@@ -232,9 +233,16 @@ fn cancelled_deep_refresh_does_not_publish_or_fall_back_locally() {
     token.cancel();
     let indexer = IndexerHostRuntime::with_executable(root.join("missing-indexer"));
 
-    let outcome =
-        update_background_deep_layer(&runtime, Some(&indexer), &task, &token, &[source_path], &[])
-            .unwrap();
+    let outcome = update_background_deep_layer(
+        &runtime,
+        Some(&indexer),
+        &task,
+        &token,
+        &[source_path],
+        &[],
+        false,
+    )
+    .unwrap();
     assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Cancelled));
 
     let connection =

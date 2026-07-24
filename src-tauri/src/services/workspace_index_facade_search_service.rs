@@ -4,7 +4,9 @@ use crate::models::workspace::{
 };
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_content_index_service::search_indexed_workspace_content_with_cancellation;
-use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
+use crate::services::workspace_content_readiness_store_service::{
+    load_content_layer_summary, load_unready_content_paths,
+};
 use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
@@ -287,11 +289,26 @@ fn raw_text_search_result_with_cancellation<F>(
 where
     F: FnMut() -> bool + Send + 'static,
 {
-    let missing_text_index = missing_text_index
-        .map(Ok)
-        .unwrap_or_else(|| text_index_missing_for_request(&request))?;
+    let coverage = text_index_coverage_for_request(&request)?;
+    let missing_text_index = missing_text_index.unwrap_or_else(|| coverage.is_missing());
     if should_use_indexed_text_search(&request) && !missing_text_index {
-        return search_indexed_workspace_content_with_cancellation(&request, is_cancelled);
+        let cancellation = std::sync::Arc::new(std::sync::Mutex::new(is_cancelled));
+        let indexed = search_indexed_workspace_content_with_cancellation(&request, {
+            let cancellation = cancellation.clone();
+            move || invoke_cancellation(&cancellation)
+        })?;
+        if !coverage.is_partial() || !indexed.matches.is_empty() || request.cursor.is_some() {
+            return Ok(indexed);
+        }
+        let unready_paths = unready_content_paths(&request)?;
+        if unready_paths.is_empty() {
+            return Ok(indexed);
+        }
+        return Ok(search_filesystem_text_with_cancellation(
+            &request,
+            &unready_paths,
+            move || invoke_cancellation(&cancellation),
+        ));
     }
 
     let index_state = index_runtime.get_index_state(&request.root_path)?;
@@ -303,6 +320,26 @@ where
         &file_paths,
         is_cancelled,
     ))
+}
+
+fn invoke_cancellation<F>(cancellation: &std::sync::Arc<std::sync::Mutex<F>>) -> bool
+where
+    F: FnMut() -> bool,
+{
+    cancellation
+        .lock()
+        .map(|mut is_cancelled| is_cancelled())
+        .unwrap_or(true)
+}
+
+fn unready_content_paths(request: &WorkspaceTextSearchRequest) -> Result<Vec<String>, String> {
+    with_layer_readiness_store(&request.root_path, |connection| {
+        load_unready_content_paths(
+            connection,
+            &normalize_layer_index_path(&request.root_path),
+            FILESYSTEM_TEXT_SEARCH_FILE_LIMIT,
+        )
+    })
 }
 
 fn text_explain(
@@ -379,10 +416,6 @@ fn apply_text_index_coverage(readiness: &mut WorkspaceIndexReadiness, coverage: 
             coverage.ready, coverage.expected
         ));
     }
-}
-
-fn text_index_missing_for_request(request: &WorkspaceTextSearchRequest) -> Result<bool, String> {
-    Ok(text_index_coverage_for_request(request)?.is_missing())
 }
 
 fn text_index_coverage_for_request(
