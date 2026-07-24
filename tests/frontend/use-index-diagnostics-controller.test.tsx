@@ -217,7 +217,7 @@ describe("useIndexDiagnosticsController", () => {
     expect(getWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
   });
 
-  it("refreshes existing layer readiness when the active file changes", async () => {
+  it("keeps detailed layer readiness off the file-switch hot path", async () => {
     const getWorkspaceIndexLayerReadiness = vi.fn(async (_rootPath: string, currentFilePath?: string | null) => (
       layerReadiness(currentFilePath)
     ));
@@ -245,8 +245,56 @@ describe("useIndexDiagnosticsController", () => {
       await Promise.resolve();
     });
 
+    expect(getWorkspaceIndexLayerReadiness).not.toHaveBeenCalled();
+    expect(result.current.layerReadiness?.currentFilePath).toBe("/workspace/Entry.ets");
+  });
+
+  it("refreshes layer readiness on active file changes while diagnostics is open", async () => {
+    const getWorkspaceIndexLayerReadiness = vi.fn(async (_rootPath: string, currentFilePath?: string | null) => (
+      layerReadiness(currentFilePath)
+    ));
+    const { result, rerender } = renderHook(
+      ({ activePath }) => useIndexDiagnosticsController(controllerOptions({
+        activePath,
+        workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness }),
+      })),
+      { initialProps: { activePath: "/workspace/Entry.ets" } },
+    );
+
+    await act(async () => {
+      result.current.openIndexDiagnostics();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    getWorkspaceIndexLayerReadiness.mockClear();
+
+    await act(async () => {
+      rerender({ activePath: "/workspace/Other.ets" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
     expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Other.ets");
     expect(result.current.layerReadiness?.currentFilePath).toBe("/workspace/Other.ets");
+  });
+
+  it("does not run detailed readiness for terminal visible-file skips", async () => {
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const getWorkspaceIndexHealth = vi.fn(async () => ({ retryBackoffCount: 0, latestRetryBackoff: null } as never));
+    const { result } = renderHook(() => useIndexDiagnosticsController(controllerOptions({
+      workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness, getWorkspaceIndexHealth }),
+    })));
+
+    await act(async () => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        kind: "changed-paths",
+        status: "skipped",
+      }));
+      await Promise.resolve();
+    });
+
+    expect(getWorkspaceIndexLayerReadiness).not.toHaveBeenCalled();
+    expect(getWorkspaceIndexHealth).not.toHaveBeenCalled();
   });
 
   it("refreshes current file readiness when diagnostics is open and active file changes", async () => {

@@ -36,6 +36,7 @@ export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
 export const gitTraceCompartment = new Compartment();
 export const editorStructureCompartment = new Compartment();
+export const historyCompartment = new Compartment();
 
 const arkTsLanguageExtension = javascript({ typescript: true });
 const jsonLanguageExtension = json();
@@ -139,7 +140,7 @@ export function createEditorExtensions(
     highlightActiveLineGutter(),
     dropCursor(),
     rectangularSelection(),
-    history(),
+    historyCompartment.of(history()),
     highlightActiveLine(),
     jumpRevealDecorationField,
     ...(reducedPerformanceMode ? [] : [definitionHoverDecorationField]),

@@ -93,9 +93,9 @@ export function useIndexDiagnosticsController({
       clearDiagnosticsRebuildPoll();
       return;
     }
-    if (!layerReadiness) return;
+    if (!indexDiagnosticsVisible || !layerReadiness) return;
     void refreshLayerReadiness();
-  }, [workspace?.rootPath, activePath]);
+  }, [indexDiagnosticsVisible, workspace?.rootPath, activePath]);
 
   useEffect(() => {
     if (!indexDiagnosticsVisible) return;
@@ -123,7 +123,9 @@ export function useIndexDiagnosticsController({
 
   function recordWorkspaceIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
     workspaceIndexProjectionStore.recordTaskStatus(status);
-    if (isTerminalIndexTaskStatus(status)) {
+    if (isTerminalProjectIndexTaskStatus(status) || (
+      indexDiagnosticsVisible && isTerminalIndexTaskStatus(status)
+    )) {
       void refreshLayerReadiness(status.rootPath);
       void refreshWorkspaceIndexHealth(status.rootPath);
     }

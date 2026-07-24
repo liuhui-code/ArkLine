@@ -1,4 +1,4 @@
-import { StateEffect, StateField, type Text } from "@codemirror/state";
+import { Annotation, StateEffect, StateField, type Text } from "@codemirror/state";
 import { Decoration, EditorView, type DecorationSet, ViewUpdate } from "@codemirror/view";
 import { createEditorChangeDispatcher } from "@/editor/editor-change-dispatcher";
 import { readSelectedTextWithinBudget } from "@/editor/editor-selection-budget";
@@ -43,6 +43,7 @@ const definitionHoverDecoration = Decoration.mark({
 
 const setDefinitionHoverEffect = StateEffect.define<DefinitionHoverRange | null>();
 export const setJumpRevealEffect = StateEffect.define<DefinitionHoverRange | null>();
+export const editorDocumentReplacement = Annotation.define<boolean>();
 
 export const definitionHoverDecorationField = StateField.define<DecorationSet>({
   create() {
@@ -212,7 +213,7 @@ export function createDocumentChangeListener(
 ) {
   const dispatcher = createEditorChangeDispatcher(onChange);
   return EditorView.updateListener.of((update: ViewUpdate) => {
-    if (!update.docChanged) {
+    if (!update.docChanged || isEditorDocumentReplacement(update)) {
       return;
     }
 
@@ -229,7 +230,10 @@ export function createSelectionChangeListener(
   ) => void,
 ) {
   return EditorView.updateListener.of((update: ViewUpdate) => {
-    if (!update.selectionSet && !update.docChanged) {
+    if (
+      (!update.selectionSet && !update.docChanged)
+      || isEditorDocumentReplacement(update)
+    ) {
       return;
     }
 
@@ -249,6 +253,12 @@ export function createSelectionChangeListener(
       update.selectionSet && !update.docChanged,
     );
   });
+}
+
+function isEditorDocumentReplacement(update: ViewUpdate) {
+  return update.transactions.some(
+    (transaction) => transaction.annotation(editorDocumentReplacement),
+  );
 }
 
 export function createDefinitionTriggerHandler(

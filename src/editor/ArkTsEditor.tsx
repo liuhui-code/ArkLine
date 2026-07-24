@@ -1,5 +1,6 @@
 import type { EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
 import { useEffect, useMemo, useRef } from "react";
+import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
@@ -8,11 +9,13 @@ import {
   createEditorExtensions,
   editorStructureCompartment,
   gitTraceCompartment,
+  historyCompartment,
   languageCompartment,
   languageExtensionForPath,
   structureExtensionForDocument,
 } from "@/editor/editor-extensions";
 import {
+  editorDocumentReplacement,
   readCaretRect,
   resolveDefinitionTokenRange,
   setJumpRevealEffect,
@@ -78,6 +81,7 @@ export function ArkTsEditor({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activePathRef = useRef(path);
+  const activeTransientPreviewRef = useRef(transientPreview);
   const sessionsRef = useRef(createEditorDocumentSessionRegistry());
   const activeEnhancedRef = useRef(false);
   const onChangeRef = useRef(onChange);
@@ -162,25 +166,35 @@ export function ArkTsEditor({
 
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || activePathRef.current === path) {
+    if (!view) {
+      return;
+    }
+    if (activePathRef.current === path) {
+      activeTransientPreviewRef.current = transientPreview;
       return;
     }
 
-    sessionsRef.current.save(activePathRef.current, {
-      state: view.state,
-      scrollTop: view.scrollDOM.scrollTop,
-      scrollLeft: view.scrollDOM.scrollLeft,
-      enhanced: activeEnhancedRef.current,
-    });
+    if (activeTransientPreviewRef.current) {
+      sessionsRef.current.delete(activePathRef.current);
+    } else {
+      sessionsRef.current.save(activePathRef.current, {
+        state: view.state,
+        scrollTop: view.scrollDOM.scrollTop,
+        scrollLeft: view.scrollDOM.scrollLeft,
+        enhanced: activeEnhancedRef.current,
+      });
+    }
     const cached = sessionsRef.current.restore(path);
     const cachedMatchesDocument = cached && documentMatches(cached.state.doc, documentSource);
-    const nextState = cachedMatchesDocument
-      ? cached.state
-      : createState(path, documentSource, reducedPerformanceMode);
 
     activePathRef.current = path;
+    activeTransientPreviewRef.current = transientPreview;
     activeEnhancedRef.current = cachedMatchesDocument ? cached.enhanced : false;
-    view.setState(nextState);
+    if (cachedMatchesDocument) {
+      view.setState(cached.state);
+    } else {
+      replaceDocumentInView(view, path, documentSource, reducedPerformanceMode);
+    }
     if (sessionRestoreFrameRef.current != null) {
       window.cancelAnimationFrame(sessionRestoreFrameRef.current);
     }
@@ -190,7 +204,32 @@ export function ArkTsEditor({
       view.scrollDOM.scrollLeft = cachedMatchesDocument ? cached.scrollLeft : 0;
       sessionRestoreFrameRef.current = null;
     });
-  }, [appearance, documentSource, onDocumentChange, path, reducedPerformanceMode]);
+  }, [appearance, documentSource, onDocumentChange, path, reducedPerformanceMode, transientPreview]);
+
+  function replaceDocumentInView(
+    view: EditorView,
+    documentPath: string,
+    content: string | Text,
+    reducedMode: boolean,
+  ) {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: content },
+      selection: EditorSelection.cursor(0),
+      annotations: editorDocumentReplacement.of(true),
+      effects: [
+        historyCompartment.reconfigure([]),
+        editorStructureCompartment.reconfigure(structureExtensionForDocument(true)),
+        languageCompartment.reconfigure(languageExtensionForPath(documentPath, true)),
+        setJumpRevealEffect.of(null),
+      ],
+    });
+    view.dispatch({
+      effects: historyCompartment.reconfigure(history()),
+    });
+    if (reducedMode) {
+      activeEnhancedRef.current = true;
+    }
+  }
 
   useEffect(() => {
     const view = viewRef.current;
