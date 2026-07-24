@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 
-const INPUT_COMMIT_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = {
+export type DeferredQueryMode = SearchEverywhereMode | "quickOpen";
+
+const INPUT_COMMIT_DEBOUNCE_MS: Record<DeferredQueryMode, number> = {
+  quickOpen: 40,
   searchEverywhere: 80,
   find: 80,
   replace: 80,
@@ -9,7 +12,7 @@ const INPUT_COMMIT_DEBOUNCE_MS: Record<SearchEverywhereMode, number> = {
 
 export function useSearchSessionInput(
   committedQuery: string,
-  mode: SearchEverywhereMode,
+  mode: DeferredQueryMode,
   onCommit: (query: string) => void,
 ) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -59,5 +62,16 @@ export function useSearchSessionInput(
     }, INPUT_COMMIT_DEBOUNCE_MS[mode]);
   }, [mode]);
 
-  return { inputRef, updateDraftQuery };
+  const flushDraftQuery = useCallback(() => {
+    if (timeoutRef.current != null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    const query = draftQueryRef.current;
+    if (query === committedQueryRef.current) return false;
+    onCommitRef.current(query);
+    return true;
+  }, []);
+
+  return { inputRef, updateDraftQuery, flushDraftQuery };
 }

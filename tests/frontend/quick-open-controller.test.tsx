@@ -130,4 +130,63 @@ describe("Quick Open", () => {
     fireEvent.mouseMove(firstResult);
     expect(onSelectResult).toHaveBeenCalledWith(0);
   });
+
+  it("keeps rapid filename typing local and commits only the final query", () => {
+    vi.useFakeTimers();
+    const onChangeQuery = vi.fn();
+    render(
+      <QuickOpenPanel
+        query=""
+        results={[]}
+        selectedIndex={0}
+        onChangeQuery={onChangeQuery}
+        onMoveSelection={vi.fn()}
+        onSelectResult={vi.fn()}
+        onOpenResult={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText("Quick Open Query");
+
+    for (const value of ["P", "Pa", "Pag", "Page", "Page0"]) {
+      fireEvent.change(input, { target: { value } });
+    }
+
+    expect(input).toHaveValue("Page0");
+    expect(onChangeQuery).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(39));
+    expect(onChangeQuery).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onChangeQuery).toHaveBeenCalledTimes(1);
+    expect(onChangeQuery).toHaveBeenCalledWith("Page0");
+    vi.useRealTimers();
+  });
+
+  it("commits a pending filename instead of opening a stale result", () => {
+    vi.useFakeTimers();
+    const onChangeQuery = vi.fn();
+    const onOpenResult = vi.fn();
+    render(
+      <QuickOpenPanel
+        query="Page0"
+        results={[{ path: "/Page0.ets" }]}
+        selectedIndex={0}
+        onChangeQuery={onChangeQuery}
+        onMoveSelection={vi.fn()}
+        onSelectResult={vi.fn()}
+        onOpenResult={onOpenResult}
+        onClose={vi.fn()}
+      />,
+    );
+    const input = screen.getByLabelText("Quick Open Query");
+
+    fireEvent.change(input, { target: { value: "Page1" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onChangeQuery).toHaveBeenCalledWith("Page1");
+    expect(onOpenResult).not.toHaveBeenCalled();
+    vi.runAllTimers();
+    expect(onChangeQuery).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, type KeyboardEvent } from "react";
 import { englishQueryInputProps } from "@/components/layout/query-input-props";
+import { useSearchSessionInput } from "@/components/layout/use-search-session-input";
 
 type QuickOpenResult = { path: string };
 
@@ -27,6 +28,11 @@ export function QuickOpenPanel({
   onClose,
 }: QuickOpenPanelProps) {
   const resultRefs = useRef(new Map<number, HTMLButtonElement>());
+  const { inputRef, updateDraftQuery, flushDraftQuery } = useSearchSessionInput(
+    query,
+    "quickOpen",
+    onChangeQuery,
+  );
 
   useEffect(() => {
     const selectedResult = resultRefs.current.get(selectedIndex);
@@ -51,6 +57,7 @@ export function QuickOpenPanel({
     }
     if (event.key === "Enter") {
       event.preventDefault();
+      if (flushDraftQuery()) return;
       const selected = results[selectedIndex];
       if (selected) onOpenResult(selected.path);
       return;
@@ -64,13 +71,14 @@ export function QuickOpenPanel({
   return (
     <>
       <input
+        ref={inputRef}
         aria-label="Quick Open Query"
         autoFocus
         className="panel-input"
         {...englishQueryInputProps}
-        value={query}
+        defaultValue={query}
         placeholder="Type a filename or path"
-        onChange={(event) => onChangeQuery(event.target.value)}
+        onChange={(event) => updateDraftQuery(event.target.value)}
         onKeyDown={handleKeyDown}
       />
       {partialNotice ? <div className="palette-empty" role="status">{partialNotice}</div> : null}
