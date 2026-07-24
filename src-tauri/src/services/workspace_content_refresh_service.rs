@@ -230,11 +230,12 @@ pub(crate) fn publish_workspace_content_refresh_profiled(
 ) -> Result<WorkspaceIndexPublicationProfile, String> {
     let mut profiler = WorkspaceIndexPublicationProfiler::start();
     profiler.measure("contentDelete", || {
-        for path in prepared
+        let candidates = prepared
             .removed_paths
             .iter()
             .chain(prepared.refreshed_paths.iter())
-        {
+            .collect::<Vec<_>>();
+        for path in existing_content_paths(connection, root_key, &candidates)? {
             delete_indexed_path(connection, root_key, path)?;
         }
         Ok(())
@@ -288,6 +289,31 @@ fn delete_indexed_path(connection: &Connection, root_key: &str, path: &str) -> R
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+pub(crate) fn existing_content_paths<'a>(
+    connection: &Connection,
+    root_key: &str,
+    candidates: &[&'a String],
+) -> Result<Vec<&'a str>, String> {
+    let mut statement = connection
+        .prepare(
+            "select exists(
+                select 1 from workspace_content_files
+                where root_path = ?1 and path = ?2
+             )",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut existing = Vec::new();
+    for path in candidates {
+        let present = statement
+            .query_row(params![root_key, path], |row| row.get::<_, bool>(0))
+            .map_err(|error| error.to_string())?;
+        if present {
+            existing.push(path.as_str());
+        }
+    }
+    Ok(existing)
 }
 
 fn insert_prepared_files(

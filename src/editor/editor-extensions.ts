@@ -37,6 +37,15 @@ export const appearanceCompartment = new Compartment();
 export const gitTraceCompartment = new Compartment();
 export const editorStructureCompartment = new Compartment();
 
+const arkTsLanguageExtension = javascript({ typescript: true });
+const jsonLanguageExtension = json();
+const reducedStructureExtension = [bracketMatching()];
+const fullStructureExtension = [
+  foldGutter(),
+  indentOnInput(),
+  bracketMatching(),
+];
+
 function openReplacePanel(view: EditorView) {
   const opened = openSearchPanel(view);
   window.setTimeout(() => {
@@ -77,11 +86,11 @@ export function languageExtensionForPath(path: string, largeDocumentMode = false
   const kind = detectDocumentKind(path);
 
   if (kind === "arkts" || kind === "typescript") {
-    return javascript({ typescript: true });
+    return arkTsLanguageExtension;
   }
 
   if (kind === "json5") {
-    return json();
+    return jsonLanguageExtension;
   }
 
   return [];
@@ -89,14 +98,10 @@ export function languageExtensionForPath(path: string, largeDocumentMode = false
 
 export function structureExtensionForDocument(largeDocumentMode = false): Extension {
   if (largeDocumentMode) {
-    return [bracketMatching()];
+    return reducedStructureExtension;
   }
 
-  return [
-    foldGutter(),
-    indentOnInput(),
-    bracketMatching(),
-  ];
+  return fullStructureExtension;
 }
 
 export function createEditorExtensions(

@@ -5,7 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use crate::services::workspace_content_refresh_chunk_service::run_workspace_content_refresh_chunk;
-use crate::services::workspace_content_refresh_service::prepare_workspace_content_refresh_with_limits;
+use crate::services::workspace_content_refresh_service::{
+    existing_content_paths, prepare_workspace_content_refresh_with_limits,
+};
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 #[test]
@@ -95,6 +97,40 @@ fn content_chunk_replay_is_idempotent_and_older_generation_is_rejected() {
         })
         .unwrap();
     assert!(text.contains("newerGeneration"));
+    drop(connection);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fresh_content_paths_skip_existing_fts_cleanup() {
+    let root = unique_temp_dir("content-refresh-fresh-path");
+    fs::create_dir_all(&root).unwrap();
+    let existing = root.join("Existing.ets");
+    let fresh = root.join("Fresh.ets");
+    fs::write(&existing, "const existing = 1;\n").unwrap();
+    fs::write(&fresh, "const fresh = 1;\n").unwrap();
+    let (root_path, existing_path) = prepare_catalog(&root, &existing);
+    let (_, fresh_path) = prepare_catalog(&root, &fresh);
+    run_workspace_content_refresh_chunk(
+        &root_path,
+        std::slice::from_ref(&existing_path),
+        &[],
+        100,
+    )
+    .unwrap();
+    let connection = open_index(&root);
+    let existing_key = existing_path.replace('/', "\\");
+    let fresh_key = fresh_path.replace('/', "\\");
+    let candidates = vec![&existing_key, &fresh_key];
+
+    let selected = existing_content_paths(
+        &connection,
+        &root_path.replace('/', "\\"),
+        &candidates,
+    )
+    .unwrap();
+
+    assert_eq!(selected, vec![existing_key.as_str()]);
     drop(connection);
     fs::remove_dir_all(root).unwrap();
 }
