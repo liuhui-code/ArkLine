@@ -1,5 +1,8 @@
 use crate::indexer_sidecar::{IndexerDiscoveryResult, IndexerTaskKey};
 use crate::models::workspace_index_publication::WorkspaceIndexPublicationArtifactDescriptor;
+use crate::services::workspace_discovery_service::{
+    workspace_discovery_cursor_identity, WorkspaceDiscoveryCursor, WorkspaceDiscoveryCursorIdentity,
+};
 use crate::services::workspace_index_publication_artifact_service::{
     read_workspace_publication_artifact, remove_workspace_publication_artifact,
     write_workspace_publication_artifact, WorkspaceIndexPublicationArtifact,
@@ -41,13 +44,13 @@ impl IndexerHostRuntime {
             }
         };
         let actor_publication = session.supports_discovery_writer_actor_publication();
-        let (request_cursor, deferred_cursor) = if actor_publication {
+        let (request_cursor, deferred_cursor, cursor_identity) = if actor_publication {
             partition_discovery_cursor(pending_directories)
         } else {
-            (pending_directories, Vec::new())
+            (pending_directories, Vec::new(), None)
         };
         let result = if actor_publication {
-            session.prepare_discovery_chunk(task, request_cursor, limit)
+            session.prepare_discovery_chunk(task, request_cursor, cursor_identity, limit)
         } else {
             session.discover_workspace_chunk(task, request_cursor, limit)
         };
@@ -121,10 +124,19 @@ impl IndexerHostRuntime {
     }
 }
 
-fn partition_discovery_cursor(pending: Option<Vec<String>>) -> (Option<Vec<String>>, Vec<String>) {
+fn partition_discovery_cursor(
+    pending: Option<Vec<String>>,
+) -> (
+    Option<Vec<String>>,
+    Vec<String>,
+    Option<WorkspaceDiscoveryCursorIdentity>,
+) {
     let Some(paths) = pending else {
-        return (None, Vec::new());
+        return (None, Vec::new(), None);
     };
+    let identity = workspace_discovery_cursor_identity(&WorkspaceDiscoveryCursor {
+        pending_directories: paths.clone(),
+    });
     let mut request = Vec::new();
     let mut deferred = Vec::new();
     let mut estimated_bytes = 0usize;
@@ -139,7 +151,8 @@ fn partition_discovery_cursor(pending: Option<Vec<String>>) -> (Option<Vec<Strin
             request.push(path);
         }
     }
-    (Some(request), deferred)
+    let identity = (!deferred.is_empty()).then_some(identity);
+    (Some(request), deferred, identity)
 }
 
 fn merge_deferred_discovery_cursor(result: &mut IndexerDiscoveryResult, deferred: Vec<String>) {
@@ -193,12 +206,13 @@ mod tests {
         let paths = (0..20_000)
             .map(|index| format!(r"C:\workspace\module\src\Page{index:06}.ets"))
             .collect::<Vec<_>>();
-        let (request, deferred) = partition_discovery_cursor(Some(paths.clone()));
+        let (request, deferred, identity) = partition_discovery_cursor(Some(paths.clone()));
         let request = request.unwrap();
         assert!(!request.is_empty());
         assert!(!deferred.is_empty());
         let estimated = request.iter().map(|path| path.len() * 2 + 4).sum::<usize>();
         assert!(estimated <= DISCOVERY_CURSOR_REQUEST_BUDGET_BYTES);
+        assert_eq!(identity.unwrap().pending_count, paths.len());
 
         let mut result = discovery_result(vec!["sidecar-pending".to_string()]);
         merge_deferred_discovery_cursor(&mut result, deferred.clone());

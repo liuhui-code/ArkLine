@@ -5,8 +5,9 @@ use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
 use crate::models::workspace_index_publication::{
     WorkspaceIndexPublicationArtifactDescriptor, WorkspaceIndexPublicationProfile,
 };
+use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursorIdentity;
 
-pub const INDEXER_PROTOCOL_VERSION: u64 = 5;
+pub const INDEXER_PROTOCOL_VERSION: u64 = 6;
 pub const INDEXER_CONTENT_REFRESH_PATH_LIMIT: usize = 64;
 pub const INDEXER_STUB_REFRESH_PATH_LIMIT: usize = 64;
 
@@ -25,6 +26,8 @@ pub struct IndexerDiscoveryRequest {
     pub task: IndexerTaskKey,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_directories: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_identity: Option<WorkspaceDiscoveryCursorIdentity>,
     pub limit: usize,
 }
 

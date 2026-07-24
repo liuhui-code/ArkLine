@@ -5,9 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::Connection;
 
 use crate::services::workspace_discovery_runner_service::{
+    prepare_workspace_discovery_chunk_with_identity, publish_prepared_workspace_discovery_chunk,
     run_workspace_discovery_chunk, run_workspace_discovery_chunk_with_journal,
 };
-use crate::services::workspace_discovery_store_service::load_discovered_files;
+use crate::services::workspace_discovery_service::{
+    workspace_discovery_cursor_identity, WorkspaceDiscoveryCursor,
+};
+use crate::services::workspace_discovery_store_service::{
+    load_discovered_files, load_discovery_cursor,
+};
 use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -74,6 +80,56 @@ fn discovery_runner_returns_durable_cursor_for_a_replayed_chunk() {
     assert_eq!(replay.cursor, first.cursor);
     assert!(replay.has_more);
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn partitioned_discovery_advances_against_the_full_durable_cursor() {
+    let root = unique_temp_dir("workspace-discovery-runner-partitioned");
+    fs::create_dir_all(&root).unwrap();
+    for name in ["A.ets", "B.ets", "C.ets"] {
+        fs::write(root.join(name), format!("struct {} {{}}\n", &name[..1])).unwrap();
+    }
+    let root_path = root.to_string_lossy().to_string();
+    let first = run_workspace_discovery_chunk(&root, None, 1, 13).unwrap();
+    let full_cursor = first.cursor.expect("first chunk should leave two files");
+    let identity = workspace_discovery_cursor_identity(&full_cursor);
+    let request_cursor = WorkspaceDiscoveryCursor {
+        pending_directories: vec![full_cursor.pending_directories[0].clone()],
+    };
+    let deferred = full_cursor.pending_directories[1..].to_vec();
+
+    let mut prepared = prepare_workspace_discovery_chunk_with_identity(
+        &root,
+        Some(request_cursor),
+        Some(identity),
+        1,
+        13,
+        None,
+    )
+    .unwrap();
+    assert_eq!(prepared.chunk.files.len(), 1);
+    let mut output_cursor = prepared
+        .chunk
+        .cursor
+        .take()
+        .map(|cursor| cursor.pending_directories)
+        .unwrap_or_default();
+    output_cursor.extend(deferred.clone());
+    prepared.chunk.cursor = Some(WorkspaceDiscoveryCursor {
+        pending_directories: output_cursor,
+    });
+    prepared.chunk.has_more = true;
+    publish_prepared_workspace_discovery_chunk(&prepared).unwrap();
+
+    assert_eq!(stored_discovered_count(&root), 2);
+    assert_eq!(
+        load_discovery_cursor(&root_path)
+            .unwrap()
+            .unwrap()
+            .pending_directories,
+        deferred
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

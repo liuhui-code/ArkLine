@@ -112,7 +112,7 @@ fn discovery_runtime_bounds_a_twenty_thousand_path_sidecar_cursor() {
 
     let result = runtime.discover_workspace_chunk(
         IndexerTaskKey {
-            root_path,
+            root_path: root_path.clone(),
             kind: "discovery".to_string(),
             generation: 6,
             reason: "bounded-cursor-integration".to_string(),
@@ -132,6 +132,25 @@ fn discovery_runtime_bounds_a_twenty_thousand_path_sidecar_cursor() {
     assert!(!remaining.is_empty());
     assert!(remaining.len() < pending.len());
     assert_eq!(remaining.last(), pending.last());
+    let second = runtime.discover_workspace_chunk(
+        IndexerTaskKey {
+            root_path,
+            kind: "discovery".to_string(),
+            generation: 6,
+            reason: "bounded-cursor-integration".to_string(),
+        },
+        Some(remaining.clone()),
+        1_024,
+    );
+    let IndexerDiscoveryAttempt::Applied(second) = second else {
+        panic!(
+            "partitioned cursor should advance on its second sidecar chunk: {:?}",
+            runtime.snapshot()
+        );
+    };
+    let second_remaining = second.pending_directories.unwrap();
+    assert!(second_remaining.len() < remaining.len());
+    assert_eq!(second_remaining.last(), pending.last());
     let connection =
         Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
     let cursor_json: String = connection
@@ -142,7 +161,7 @@ fn discovery_runtime_bounds_a_twenty_thousand_path_sidecar_cursor() {
         )
         .unwrap();
     let persisted_remaining: Vec<String> = serde_json::from_str(&cursor_json).unwrap();
-    assert_eq!(persisted_remaining, remaining);
+    assert_eq!(persisted_remaining, second_remaining);
     drop(connection);
     assert_eq!(runtime.snapshot().fallback_count, 0);
     assert_eq!(runtime.snapshot().restart_count, 0);

@@ -12,6 +12,7 @@ use crate::indexer_sidecar::{
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
 use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
 use crate::services::process_command_service::hidden_command;
+use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursorIdentity;
 
 const INDEXER_HEALTH_TIMEOUT: Duration = Duration::from_secs(5);
 const INDEXER_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -80,16 +81,29 @@ impl IndexerHostSession {
         pending_directories: Option<Vec<String>>,
         limit: usize,
     ) -> Result<IndexerDiscoveryResult, String> {
-        self.exchange_discovery_chunk("discoverWorkspaceChunk", task, pending_directories, limit)
+        self.exchange_discovery_chunk(
+            "discoverWorkspaceChunk",
+            task,
+            pending_directories,
+            None,
+            limit,
+        )
     }
 
     pub(super) fn prepare_discovery_chunk(
         &mut self,
         task: IndexerTaskKey,
         pending_directories: Option<Vec<String>>,
+        cursor_identity: Option<WorkspaceDiscoveryCursorIdentity>,
         limit: usize,
     ) -> Result<IndexerDiscoveryResult, String> {
-        self.exchange_discovery_chunk("prepareDiscoveryChunk", task, pending_directories, limit)
+        self.exchange_discovery_chunk(
+            "prepareDiscoveryChunk",
+            task,
+            pending_directories,
+            cursor_identity,
+            limit,
+        )
     }
 
     fn exchange_discovery_chunk(
@@ -97,12 +111,14 @@ impl IndexerHostSession {
         method: &str,
         task: IndexerTaskKey,
         pending_directories: Option<Vec<String>>,
+        cursor_identity: Option<WorkspaceDiscoveryCursorIdentity>,
         limit: usize,
     ) -> Result<IndexerDiscoveryResult, String> {
         let expected_task = task.clone();
         let payload = serde_json::to_value(IndexerDiscoveryRequest {
             task,
             pending_directories,
+            cursor_identity,
             limit,
         })
         .map_err(|error| format!("Failed to serialize discovery payload: {error}"))?;

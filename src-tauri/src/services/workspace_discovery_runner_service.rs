@@ -8,7 +8,8 @@ use crate::models::workspace_index_publication::{
     WorkspaceIndexPublicationProfile, WorkspaceIndexPublicationProfiler,
 };
 use crate::services::workspace_discovery_service::{
-    discover_workspace_chunk, WorkspaceDiscoveryChunk, WorkspaceDiscoveryCursor,
+    discover_workspace_chunk, workspace_discovery_cursor_identity, WorkspaceDiscoveryChunk,
+    WorkspaceDiscoveryCursor, WorkspaceDiscoveryCursorIdentity,
 };
 use crate::services::workspace_discovery_store_service::{
     count_discovered_files_in_connection, load_discovery_state_in_connection,
@@ -29,6 +30,8 @@ pub(crate) struct PreparedWorkspaceDiscoveryChunk {
     pub(crate) cursor: Option<WorkspaceDiscoveryCursor>,
     pub(crate) generation: i64,
     pub(crate) reason: Option<String>,
+    #[serde(default)]
+    pub(crate) cursor_identity: Option<WorkspaceDiscoveryCursorIdentity>,
     pub(crate) chunk: WorkspaceDiscoveryChunk,
 }
 
@@ -71,10 +74,29 @@ pub(crate) fn prepare_workspace_discovery_chunk(
     generation: i64,
     journal_reason: Option<&str>,
 ) -> Result<PreparedWorkspaceDiscoveryChunk, String> {
+    prepare_workspace_discovery_chunk_with_identity(
+        root_path,
+        cursor,
+        None,
+        limit,
+        generation,
+        journal_reason,
+    )
+}
+
+pub(crate) fn prepare_workspace_discovery_chunk_with_identity(
+    root_path: &Path,
+    cursor: Option<WorkspaceDiscoveryCursor>,
+    cursor_identity: Option<WorkspaceDiscoveryCursorIdentity>,
+    limit: usize,
+    generation: i64,
+    journal_reason: Option<&str>,
+) -> Result<PreparedWorkspaceDiscoveryChunk, String> {
     let root_key = root_path.to_string_lossy().to_string();
     if let Some(chunk) = existing_outcome(
         load_existing_discovery_state(&root_key)?.as_ref(),
         &cursor,
+        cursor_identity.as_ref(),
         generation,
     )? {
         return Ok(PreparedWorkspaceDiscoveryChunk {
@@ -82,6 +104,7 @@ pub(crate) fn prepare_workspace_discovery_chunk(
             cursor,
             generation,
             reason: journal_reason.map(str::to_string),
+            cursor_identity,
             chunk,
         });
     }
@@ -91,6 +114,7 @@ pub(crate) fn prepare_workspace_discovery_chunk(
         cursor,
         generation,
         reason: journal_reason.map(str::to_string),
+        cursor_identity,
         chunk,
     })
 }
@@ -107,6 +131,7 @@ pub(crate) fn publish_prepared_workspace_discovery_chunk(
                 if let Some(chunk) = existing_outcome(
                     load_discovery_state_in_connection(transaction, &prepared.root_path)?.as_ref(),
                     &prepared.cursor,
+                    prepared.cursor_identity.as_ref(),
                     prepared.generation,
                 )? {
                     return Ok(chunk);
@@ -185,6 +210,7 @@ fn load_existing_discovery_state(
 fn existing_outcome(
     existing: Option<&WorkspaceDiscoveryState>,
     cursor: &Option<WorkspaceDiscoveryCursor>,
+    cursor_identity: Option<&WorkspaceDiscoveryCursorIdentity>,
     generation: i64,
 ) -> Result<Option<WorkspaceDiscoveryChunk>, String> {
     let Some(existing) = existing else {
@@ -196,8 +222,20 @@ fn existing_outcome(
             existing.generation
         ));
     }
-    if existing.generation == generation && existing.cursor != *cursor {
-        return Ok(Some(replay_chunk(existing)));
+    if existing.generation == generation {
+        if let Some(expected_identity) = cursor_identity {
+            let durable_identity = existing
+                .cursor
+                .as_ref()
+                .map(workspace_discovery_cursor_identity);
+            if durable_identity.as_ref() != Some(expected_identity) {
+                return Err(
+                    "Partitioned discovery cursor no longer matches durable state".to_string(),
+                );
+            }
+        } else if existing.cursor != *cursor {
+            return Ok(Some(replay_chunk(existing)));
+        }
     }
     if existing.generation < generation && cursor.is_some() {
         return Err("A new discovery generation must start without a cursor".to_string());

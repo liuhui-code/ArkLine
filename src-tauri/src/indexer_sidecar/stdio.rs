@@ -9,7 +9,7 @@ use super::protocol::{
 use super::request_validation::{validate_content_refresh_request, validate_stub_refresh_request};
 use crate::services::workspace_content_refresh_service::prepare_workspace_content_refresh;
 use crate::services::workspace_discovery_runner_service::{
-    prepare_workspace_discovery_chunk, publish_prepared_workspace_discovery_chunk,
+    prepare_workspace_discovery_chunk_with_identity, publish_prepared_workspace_discovery_chunk,
 };
 use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursor;
 use crate::services::workspace_index_connection_service::workspace_index_writer_metrics;
@@ -218,9 +218,10 @@ fn run_discovery(
         .map(|pending_directories| WorkspaceDiscoveryCursor {
             pending_directories,
         });
-    let prepared = prepare_workspace_discovery_chunk(
+    let prepared = prepare_workspace_discovery_chunk_with_identity(
         Path::new(&request.task.root_path),
         cursor,
+        request.cursor_identity,
         request.limit,
         request.task.generation as i64,
         Some(&request.task.reason),

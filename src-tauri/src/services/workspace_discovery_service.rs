@@ -13,6 +13,13 @@ pub struct WorkspaceDiscoveryCursor {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceDiscoveryCursorIdentity {
+    pub pending_count: usize,
+    pub checksum: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct WorkspaceDiscoveredFile {
     pub path: String,
     pub size_bytes: u64,
@@ -25,6 +32,28 @@ pub struct WorkspaceDiscoveryChunk {
     pub cursor: Option<WorkspaceDiscoveryCursor>,
     pub excluded_count: usize,
     pub has_more: bool,
+}
+
+pub fn workspace_discovery_cursor_identity(
+    cursor: &WorkspaceDiscoveryCursor,
+) -> WorkspaceDiscoveryCursorIdentity {
+    let mut checksum = 0xcbf29ce484222325u64;
+    for path in &cursor.pending_directories {
+        checksum = fnv1a(checksum, &(path.len() as u64).to_le_bytes());
+        checksum = fnv1a(checksum, path.as_bytes());
+    }
+    WorkspaceDiscoveryCursorIdentity {
+        pending_count: cursor.pending_directories.len(),
+        checksum: format!("{checksum:016x}"),
+    }
+}
+
+fn fnv1a(mut checksum: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        checksum ^= u64::from(*byte);
+        checksum = checksum.wrapping_mul(0x100000001b3);
+    }
+    checksum
 }
 
 pub fn discover_workspace_chunk(
