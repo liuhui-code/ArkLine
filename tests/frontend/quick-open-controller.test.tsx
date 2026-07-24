@@ -189,4 +189,22 @@ describe("Quick Open", () => {
     expect(onChangeQuery).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
+
+  it("exposes the committed filename on the result surface", () => {
+    render(
+      <QuickOpenPanel
+        query="Page000097"
+        results={[{ path: "/Page000097.ets" }]}
+        selectedIndex={0}
+        onChangeQuery={vi.fn()}
+        onMoveSelection={vi.fn()}
+        onSelectResult={vi.fn()}
+        onOpenResult={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("list", { name: "Quick Open Results" }))
+      .toHaveAttribute("data-query", "Page000097");
+  });
 });

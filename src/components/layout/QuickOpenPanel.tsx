@@ -82,7 +82,12 @@ export function QuickOpenPanel({
         onKeyDown={handleKeyDown}
       />
       {partialNotice ? <div className="palette-empty" role="status">{partialNotice}</div> : null}
-      <div className="search-results" role="list" aria-label="Quick Open Results">
+      <div
+        className="search-results"
+        role="list"
+        aria-label="Quick Open Results"
+        data-query={query}
+      >
         {results.map((result, index) => (
           <button
             key={result.path}

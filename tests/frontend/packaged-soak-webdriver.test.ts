@@ -231,6 +231,7 @@ describe("packaged Windows WebView2 attachment", () => {
       9_000,
     );
     expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("expectedResultReady");
+    expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("results?.dataset.query");
     expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("button.innerText");
   });
 });

@@ -142,7 +142,10 @@ export const SEARCH_RESULT_READINESS_SCRIPT = `
     const buttons = [...(results?.querySelectorAll("button") || [])];
     const count = buttons.length;
     const expectedResultReady = label !== "Quick Open Results"
-      || buttons.some((button) => (button.innerText || "").includes(expectedQuery));
+      || (
+        results?.dataset.query === expectedQuery
+        && buttons.some((button) => (button.innerText || "").includes(expectedQuery))
+      );
     if (query === expectedQuery && count > 0 && expectedResultReady) {
       finish({ at: performance.now(), count, query });
     }

@@ -112,7 +112,7 @@ export function useIndexDiagnosticsController({
     if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return [];
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
     workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses);
-    if (statuses.some(isTerminalProjectIndexTaskStatus)) {
+    if (statuses.some(shouldRefreshDetailedIndexState)) {
       await Promise.all([
         refreshLayerReadiness(rootPath),
         refreshWorkspaceIndexHealth(rootPath),
@@ -123,12 +123,16 @@ export function useIndexDiagnosticsController({
 
   function recordWorkspaceIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
     workspaceIndexProjectionStore.recordTaskStatus(status);
-    if (isTerminalProjectIndexTaskStatus(status) || (
-      indexDiagnosticsVisible && isTerminalIndexTaskStatus(status)
-    )) {
+    if (shouldRefreshDetailedIndexState(status)) {
       void refreshLayerReadiness(status.rootPath);
       void refreshWorkspaceIndexHealth(status.rootPath);
     }
+  }
+
+  function shouldRefreshDetailedIndexState(status: WorkspaceIndexTaskStatus) {
+    if (status.kind === "sdk") return false;
+    if (status.status === "ready" || status.status === "failed") return true;
+    return indexDiagnosticsVisible && isTerminalIndexTaskStatus(status);
   }
 
   async function refreshWorkspaceIndexHealth(rootPath = workspace?.rootPath) {

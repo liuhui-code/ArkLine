@@ -297,6 +297,27 @@ describe("useIndexDiagnosticsController", () => {
     expect(getWorkspaceIndexHealth).not.toHaveBeenCalled();
   });
 
+  it("keeps partial continuation diagnostics off the hidden hot path", async () => {
+    const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
+    const getWorkspaceIndexHealth = vi.fn(async () => ({ retryBackoffCount: 0 } as never));
+    const { result } = renderHook(() => useIndexDiagnosticsController(controllerOptions({
+      workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness, getWorkspaceIndexHealth }),
+    })));
+
+    await act(async () => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({
+        kind: "changed-paths",
+        status: "partial",
+        message: "128 files published; continuation queued",
+      }));
+      await waitForProjectionFlush();
+    });
+
+    expect(getWorkspaceIndexLayerReadiness).not.toHaveBeenCalled();
+    expect(getWorkspaceIndexHealth).not.toHaveBeenCalled();
+    expect(result.current.workspaceIndexTaskStatuses.at(-1)?.status).toBe("partial");
+  });
+
   it("refreshes current file readiness when diagnostics is open and active file changes", async () => {
     const getWorkspaceIndexFileReadiness = vi.fn(async (_rootPath: string, path: string) => readiness(path));
     const { result, rerender } = renderHook(
