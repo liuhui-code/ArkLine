@@ -276,8 +276,13 @@ async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvi
     "Quick Open Results",
     searchEvidence,
   );
-  const resultSelector = '[aria-label="Quick Open Results"] button';
-  if (!(await waitForOptionalSelector(driver, resultSelector, 8_000))) {
+  const quickOpenReady = await waitForSearchResult(
+    driver,
+    "Quick Open Results",
+    pageName,
+    8_000,
+  ).catch(() => null);
+  if (!quickOpenReady) {
     counters.searchMissCount += 1;
     counters.quickOpenMissCount += 1;
     await captureSearchEvidence(
@@ -329,10 +334,6 @@ async function detectCrashSurface(driver, counters) {
     counters.crashCount += 1;
     throw new Error("Crash boundary became visible");
   }
-}
-
-async function waitForOptionalSelector(driver, selector, timeoutMs) {
-  return driver.waitForSelectorPresent(selector, timeoutMs).then(() => true, () => false);
 }
 
 async function inspectDiagnostics(driver, rootPath) {

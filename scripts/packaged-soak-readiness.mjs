@@ -139,8 +139,11 @@ export const SEARCH_RESULT_READINESS_SCRIPT = `
     if (!selector) return finish(null);
     const results = document.querySelector(selector.results);
     const query = document.querySelector(selector.query)?.value || "";
-    const count = results?.querySelectorAll("button").length || 0;
-    if (query === expectedQuery && count > 0) {
+    const buttons = [...(results?.querySelectorAll("button") || [])];
+    const count = buttons.length;
+    const expectedResultReady = label !== "Quick Open Results"
+      || buttons.some((button) => (button.innerText || "").includes(expectedQuery));
+    if (query === expectedQuery && count > 0 && expectedResultReady) {
       finish({ at: performance.now(), count, query });
     }
   };

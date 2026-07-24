@@ -208,4 +208,29 @@ describe("packaged Windows WebView2 attachment", () => {
     );
     expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("MutationObserver");
   });
+
+  it("does not treat stale Quick Open rows as the current query result", async () => {
+    const driver = {
+      executeAsync: vi.fn().mockResolvedValue({
+        at: 140,
+        count: 1,
+        query: "Page000097",
+      }),
+    };
+
+    await waitForSearchResult(
+      driver,
+      "Quick Open Results",
+      "Page000097",
+      8_000,
+    );
+
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      SEARCH_RESULT_READINESS_SCRIPT,
+      ["Quick Open Results", "Page000097", 8_000],
+      9_000,
+    );
+    expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("expectedResultReady");
+    expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("button.innerText");
+  });
 });
