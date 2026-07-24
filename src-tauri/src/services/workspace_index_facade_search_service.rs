@@ -5,7 +5,6 @@ use crate::models::workspace::{
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_content_index_service::search_indexed_workspace_content_with_cancellation;
 use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
-use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
 };
@@ -23,10 +22,13 @@ use crate::services::workspace_index_query_service::{
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 #[path = "workspace_parallel_text_search_service.rs"]
 mod parallel_text_search;
+#[path = "workspace_text_search_path_cache_service.rs"]
+mod text_search_path_cache;
 use crate::services::workspace_search_ranking_service::{
     sort_search_everywhere_candidates_with_context, WorkspaceSearchRankingContext,
 };
 use parallel_text_search::search_workspace_files_responsive;
+use text_search_path_cache::cached_ready_discovered_paths;
 
 const FILESYSTEM_TEXT_SEARCH_FILE_LIMIT: usize = 200_000;
 
@@ -338,12 +340,15 @@ where
 fn filesystem_search_paths(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
-) -> Result<Vec<String>, String> {
-    if let Some(paths) = load_ready_discovered_files(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
+) -> Result<std::sync::Arc<Vec<String>>, String> {
+    if let Some(paths) =
+        cached_ready_discovered_paths(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
     {
         return Ok(paths);
     }
-    index_runtime.inspect_index_state(root_path, |state| state.file_paths.clone())
+    index_runtime.inspect_index_state(root_path, |state| {
+        std::sync::Arc::new(state.file_paths.clone())
+    })
 }
 
 fn is_filesystem_cursor(request: &WorkspaceTextSearchRequest) -> bool {

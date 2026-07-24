@@ -178,6 +178,24 @@ pub fn load_ready_discovered_files(
     load_discovered_files_in_connection(&connection, root_path, limit).map(Some)
 }
 
+pub(crate) fn load_ready_discovery_generation(root_path: &str) -> Result<Option<i64>, String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(None);
+    }
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
+    connection
+        .query_row(
+            "select generation from workspace_discovery_state
+             where root_path = ?1 and status = 'ready'",
+            params![normalize_index_path(root_path)],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())
+}
+
 pub fn load_discovery_cursor(root_path: &str) -> Result<Option<WorkspaceDiscoveryCursor>, String> {
     if !Path::new(root_path).is_dir() {
         return Ok(None);
