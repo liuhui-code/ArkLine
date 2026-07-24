@@ -36,10 +36,26 @@ export function buildTextSearchAppendPatch(
   selectedIndex?: number,
 ) {
   return {
-    result: { ...result, matches: [...session.result.matches, ...result.matches] },
+    result: {
+      ...result,
+      matches: dedupeTextMatches([
+        ...session.result.matches,
+        ...result.matches,
+      ]),
+    },
     truncationNotice: textSearchPartialNotice(result),
     textNextCursor: result.nextCursor ?? null,
     textPageLoading: false,
     selectedIndex: selectedIndex ?? session.selectedIndex,
   };
+}
+
+function dedupeTextMatches(matches: WorkspaceTextSearchResult["matches"]) {
+  const seen = new Set<string>();
+  return matches.filter((match) => {
+    const key = `${match.path}\0${match.line}\0${match.column}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }

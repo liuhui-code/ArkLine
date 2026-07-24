@@ -5,6 +5,10 @@ use rusqlite::Connection;
 use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
+use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
+use crate::services::workspace_discovery_store_service::{
+    replace_discovered_file_chunk, update_discovery_state, WorkspaceDiscoveryState,
+};
 use crate::services::workspace_index_facade_search_service::query_facade_text_search;
 use crate::services::workspace_index_facade_service::WorkspaceIndexFacadeItem;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -13,7 +17,7 @@ use crate::services::workspace_index_test_fixture_service::{
 };
 
 #[test]
-fn partial_text_search_falls_back_only_to_unready_content_files_after_an_index_miss() {
+fn partial_text_search_uses_stable_discovery_fallback_after_an_index_miss() {
     let root = create_empty_workspace("facade-text-search-partial-hybrid");
     let source_dir = create_workspace_source_dir(&root);
     let indexed = source_dir.join("Indexed.ets");
@@ -53,6 +57,82 @@ fn partial_text_search_falls_back_only_to_unready_content_files_after_an_index_m
         [WorkspaceIndexFacadeItem::TextSearch(result)]
             if result.matches.len() == 1
                 && result.matches[0].summary.contains("DeferredHybridTarget")
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn large_missing_text_index_returns_one_result_with_a_filesystem_cursor() {
+    let root = create_empty_workspace("facade-text-search-large-first-result");
+    let source_dir = create_workspace_source_dir(&root);
+    let root_path = root.to_string_lossy().to_string();
+    let mut discovered = Vec::new();
+    for index in 0..1_000 {
+        let path = source_dir.join(format!("Page{index:04}.ets"));
+        let content = if matches!(index, 0 | 500 | 999) {
+            format!("const fastFallbackTarget{index} = true;\n")
+        } else {
+            format!("const unrelatedValue{index} = true;\n")
+        };
+        fs::write(&path, content).unwrap();
+        discovered.push(WorkspaceDiscoveredFile {
+            path: path.to_string_lossy().to_string(),
+            size_bytes: fs::metadata(&path).unwrap().len(),
+            modified_ms: None,
+        });
+    }
+    replace_discovered_file_chunk(&root_path, 1, &discovered).unwrap();
+    update_discovery_state(&WorkspaceDiscoveryState {
+        root_path: root_path.clone(),
+        generation: 1,
+        status: "ready".to_string(),
+        discovered_count: discovered.len(),
+        excluded_count: 0,
+        cursor: None,
+        error: None,
+    })
+    .unwrap();
+
+    let runtime = WorkspaceIndexRuntime::default();
+    let request = WorkspaceTextSearchRequest {
+        root_path: root_path.clone(),
+        query: "fastfallbacktarget".to_string(),
+        generation: None,
+        cursor: None,
+        options: WorkspaceTextSearchOptions {
+            case_sensitive: false,
+            whole_word: false,
+        },
+        limit: 50,
+        context_lines: 0,
+    };
+    let envelope = query_facade_text_search(&runtime, request.clone()).unwrap();
+
+    let WorkspaceIndexFacadeItem::TextSearch(first_page) = &envelope.items[0] else {
+        panic!("expected text search result");
+    };
+    assert_eq!(first_page.matches.len(), 1);
+    assert!(first_page.partial);
+    assert_eq!(
+        first_page
+            .next_cursor
+            .as_ref()
+            .and_then(|cursor| cursor.source.as_deref()),
+        Some("filesystem")
+    );
+
+    let second_envelope = query_facade_text_search(
+        &runtime,
+        WorkspaceTextSearchRequest {
+            cursor: first_page.next_cursor.clone(),
+            limit: 2,
+            ..request
+        },
+    )
+    .unwrap();
+    assert!(matches!(
+        second_envelope.items.as_slice(),
+        [WorkspaceIndexFacadeItem::TextSearch(result)] if result.matches.len() == 2
     ));
     fs::remove_dir_all(root).unwrap();
 }

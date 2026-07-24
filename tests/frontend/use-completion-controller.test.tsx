@@ -223,6 +223,38 @@ describe("useCompletionController", () => {
     expect(result.current.completion.completionMessage).toBe("Completion failed: Language request timed out after 2500ms");
     expect(onStatusChange).toHaveBeenCalledWith("Completion failed: Language request timed out after 2500ms");
   });
+
+  it("does not let a stale completion timeout take focus from search", async () => {
+    vi.useFakeTimers();
+    const focusEditorSoon = vi.fn();
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(() => new Promise<[]>(() => undefined)),
+      }),
+      focusEditorSoon,
+      onStatusChange,
+    });
+
+    let completionRequest: Promise<void>;
+    act(() => {
+      completionRequest = result.current.completion.openCompletionFromEditor();
+    });
+    act(() => {
+      result.current.openSearch("needle");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(2500);
+      await completionRequest;
+    });
+
+    expect(result.current.overlay).toBe("searchEverywhere");
+    expect(result.current.quickOpenQuery).toBe("needle");
+    expect(focusEditorSoon).not.toHaveBeenCalled();
+    expect(onStatusChange).not.toHaveBeenCalledWith(
+      "Completion failed: Language request timed out after 2500ms",
+    );
+  });
 });
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
@@ -249,7 +281,16 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       recordRecentQueryExplain: overrides.recordRecentQueryExplain ?? vi.fn(),
       onStatusChange: overrides.onStatusChange ?? vi.fn(),
     });
-    return { completion, overlay, quickOpenQuery, insertTarget };
+    return {
+      completion,
+      overlay,
+      quickOpenQuery,
+      insertTarget,
+      openSearch(query: string) {
+        setQuickOpenQuery(query);
+        setOverlay("searchEverywhere");
+      },
+    };
   });
 }
 

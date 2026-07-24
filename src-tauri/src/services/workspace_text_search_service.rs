@@ -72,6 +72,7 @@ where
             next_cursor = Some(WorkspaceTextSearchCursor {
                 path_index,
                 line_index: 0,
+                source: Some("filesystem".to_string()),
             });
             break;
         }
@@ -80,7 +81,7 @@ where
         let Ok(content) = fs::read_to_string(&file_path) else {
             continue;
         };
-        if !content_may_match(&content, &parsed_query) {
+        if !content_may_match(&content, &parsed_query, &request.options) {
             prefilter_skipped_files += 1;
             continue;
         }
@@ -105,6 +106,7 @@ where
                 next_cursor = Some(WorkspaceTextSearchCursor {
                     path_index,
                     line_index,
+                    source: Some("filesystem".to_string()),
                 });
                 break;
             }
@@ -246,11 +248,23 @@ fn find_line_match(
     }
 }
 
-fn content_may_match(content: &str, query: &ParsedTextSearchQuery) -> bool {
-    let ParsedTextSearchQuery::Regex { prefilter, .. } = query else {
-        return true;
-    };
-    content_matches_prefilter(content, prefilter)
+fn content_may_match(
+    content: &str,
+    query: &ParsedTextSearchQuery,
+    options: &WorkspaceTextSearchOptions,
+) -> bool {
+    match query {
+        ParsedTextSearchQuery::Text(query) if options.case_sensitive => content.contains(query),
+        ParsedTextSearchQuery::Text(query) if query.is_ascii() => content
+            .as_bytes()
+            .windows(query.len())
+            .any(|window| window.eq_ignore_ascii_case(query.as_bytes())),
+        ParsedTextSearchQuery::Text(_) => true,
+        ParsedTextSearchQuery::Regex { prefilter, .. } => {
+            content_matches_prefilter(content, prefilter)
+        }
+        ParsedTextSearchQuery::Invalid(_) => false,
+    }
 }
 
 fn is_whole_word_boundary(line_text: &str, start: usize, end: usize) -> bool {

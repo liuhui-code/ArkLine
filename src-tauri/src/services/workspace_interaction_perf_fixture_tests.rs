@@ -165,7 +165,10 @@ fn build_interaction_smoothness_report(root: &Path) -> Result<InteractionSmoothn
     let sampled_file = pick_sample_file(&snapshot.root_path, &state.file_paths)?;
     let text = read_sample_text(&sampled_file)?;
     let search_query = file_stem_query(&sampled_file);
-    let text_query = first_searchable_token(&text).unwrap_or_else(|| search_query.clone());
+    let text_query = std::env::var("ARKLINE_PROFILE_TEXT_QUERY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| first_searchable_token(&text).unwrap_or_else(|| search_query.clone()));
 
     let readiness_start = Instant::now();
     let first_readiness = get_workspace_index_file_readiness(&snapshot.root_path, &sampled_file)?;

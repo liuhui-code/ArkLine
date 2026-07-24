@@ -333,6 +333,13 @@ export function useCompletionController({
   }, []);
 
   useEffect(() => {
+    if (activeOverlay === "none" || activeOverlay === "completion") return;
+    clearTypingCompletionTimer();
+    completionRequestRef.current += 1;
+    languageSessionStore.cancel("completion");
+  }, [activeOverlay, languageSessionStore]);
+
+  useEffect(() => {
     function handleCompletionAcceptKey(event: KeyboardEvent) {
       if (activeOverlay !== "completion" || !isEditorFocused()) return;
       if (event.key === "Escape") {

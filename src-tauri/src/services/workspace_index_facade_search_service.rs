@@ -4,9 +4,7 @@ use crate::models::workspace::{
 };
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_content_index_service::search_indexed_workspace_content_with_cancellation;
-use crate::services::workspace_content_readiness_store_service::{
-    load_content_layer_summary, load_unready_content_paths,
-};
+use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
 use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
@@ -21,10 +19,12 @@ use crate::services::workspace_index_layer_readiness_store_service::{
 };
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+#[path = "workspace_parallel_text_search_service.rs"]
+mod parallel_text_search;
 use crate::services::workspace_search_ranking_service::{
     sort_search_everywhere_candidates_with_context, WorkspaceSearchRankingContext,
 };
-use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation as search_filesystem_text_with_cancellation;
+use parallel_text_search::search_workspace_files_responsive;
 
 const FILESYSTEM_TEXT_SEARCH_FILE_LIMIT: usize = 200_000;
 
@@ -291,6 +291,14 @@ where
 {
     let coverage = text_index_coverage_for_request(&request)?;
     let missing_text_index = missing_text_index.unwrap_or_else(|| coverage.is_missing());
+    if is_filesystem_cursor(&request) {
+        let file_paths = filesystem_search_paths(index_runtime, &request.root_path)?;
+        return Ok(search_workspace_files_responsive(
+            &request,
+            &file_paths,
+            is_cancelled,
+        ));
+    }
     if should_use_indexed_text_search(&request) && !missing_text_index {
         let cancellation = std::sync::Arc::new(std::sync::Mutex::new(is_cancelled));
         let indexed = search_indexed_workspace_content_with_cancellation(&request, {
@@ -300,22 +308,16 @@ where
         if !coverage.is_partial() || !indexed.matches.is_empty() || request.cursor.is_some() {
             return Ok(indexed);
         }
-        let unready_paths = unready_content_paths(&request)?;
-        if unready_paths.is_empty() {
-            return Ok(indexed);
-        }
-        return Ok(search_filesystem_text_with_cancellation(
+        let file_paths = filesystem_search_paths(index_runtime, &request.root_path)?;
+        return Ok(search_workspace_files_responsive(
             &request,
-            &unready_paths,
+            &file_paths,
             move || invoke_cancellation(&cancellation),
         ));
     }
 
-    let index_state = index_runtime.get_index_state(&request.root_path)?;
-    let file_paths =
-        load_ready_discovered_files(&request.root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
-            .unwrap_or(index_state.file_paths);
-    Ok(search_filesystem_text_with_cancellation(
+    let file_paths = filesystem_search_paths(index_runtime, &request.root_path)?;
+    Ok(search_workspace_files_responsive(
         &request,
         &file_paths,
         is_cancelled,
@@ -332,14 +334,23 @@ where
         .unwrap_or(true)
 }
 
-fn unready_content_paths(request: &WorkspaceTextSearchRequest) -> Result<Vec<String>, String> {
-    with_layer_readiness_store(&request.root_path, |connection| {
-        load_unready_content_paths(
-            connection,
-            &normalize_layer_index_path(&request.root_path),
-            FILESYSTEM_TEXT_SEARCH_FILE_LIMIT,
-        )
-    })
+fn filesystem_search_paths(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+) -> Result<Vec<String>, String> {
+    let index_state = index_runtime.get_index_state(root_path)?;
+    Ok(
+        load_ready_discovered_files(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
+            .unwrap_or(index_state.file_paths),
+    )
+}
+
+fn is_filesystem_cursor(request: &WorkspaceTextSearchRequest) -> bool {
+    request
+        .cursor
+        .as_ref()
+        .and_then(|cursor| cursor.source.as_deref())
+        == Some("filesystem")
 }
 
 fn text_explain(

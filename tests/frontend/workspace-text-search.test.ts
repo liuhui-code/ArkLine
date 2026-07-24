@@ -135,7 +135,11 @@ describe("workspace text search", () => {
     });
 
     expect(firstPage.matches.map((match) => `${match.relativePath}:${match.line}`)).toEqual(["a.ets:1", "a.ets:3"]);
-    expect(firstPage.nextCursor).toEqual({ pathIndex: 1, lineIndex: 0 });
+    expect(firstPage.nextCursor).toEqual({
+      pathIndex: 1,
+      lineIndex: 0,
+      source: "filesystem",
+    });
     expect(secondPage.matches.map((match) => `${match.relativePath}:${match.line}`)).toEqual(["b.ets:1", "b.ets:2"]);
     expect(secondPage.nextCursor).toBeNull();
   });

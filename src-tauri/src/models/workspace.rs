@@ -356,6 +356,8 @@ pub struct WorkspaceTextSearchRequest {
 pub struct WorkspaceTextSearchCursor {
     pub path_index: usize,
     pub line_index: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

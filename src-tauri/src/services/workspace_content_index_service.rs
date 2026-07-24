@@ -160,6 +160,7 @@ fn search_indexed_workspace_content_on_connection(
         next_cursor: limit_reached.then_some(WorkspaceTextSearchCursor {
             path_index: offset + consumed_candidates,
             line_index: 0,
+            source: Some("indexed".to_string()),
         }),
     })
 }

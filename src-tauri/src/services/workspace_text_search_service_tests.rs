@@ -278,7 +278,8 @@ fn returns_cursor_for_next_page_without_repeating_matches() {
         first.next_cursor,
         Some(WorkspaceTextSearchCursor {
             path_index: 0,
-            line_index: 2
+            line_index: 2,
+            source: Some("filesystem".to_string()),
         })
     );
     assert_eq!(second.matches[0].line, 3);

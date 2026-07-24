@@ -78,6 +78,21 @@ describe("search pagination session", () => {
     expect(patch.textNextCursor).toBeNull();
     expect(patch.truncationNotice).toBeNull();
   });
+
+  it("deduplicates a fast first result when ordered pagination restarts", () => {
+    const patch = buildTextSearchAppendPatch(
+      {
+        result: result(["first"]),
+        selectedIndex: 0,
+      },
+      result(["first", "second"]),
+    );
+
+    expect(patch.result.matches.map((item) => item.summary)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
 });
 
 function result(summaries: string[]): WorkspaceTextSearchResult {

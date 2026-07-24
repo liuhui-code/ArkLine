@@ -37,6 +37,7 @@ export type WorkspaceTextSearchResult = {
 export type WorkspaceTextSearchCursor = {
   pathIndex: number;
   lineIndex: number;
+  source?: "indexed" | "filesystem";
 };
 
 type SearchWorkspaceTextOptions = {
@@ -251,11 +252,11 @@ function nextTextSearchCursor(
   nextLineIndex: number,
 ): WorkspaceTextSearchCursor | null {
   if (nextLineIndex < currentLines.length) {
-    return { pathIndex, lineIndex: nextLineIndex };
+    return { pathIndex, lineIndex: nextLineIndex, source: "filesystem" };
   }
   const nextPathIndex = pathIndex + 1;
   if (nextPathIndex >= paths.length) {
     return null;
   }
-  return { pathIndex: nextPathIndex, lineIndex: 0 };
+  return { pathIndex: nextPathIndex, lineIndex: 0, source: "filesystem" };
 }
