@@ -62,13 +62,7 @@ pub fn persist_incremental_sqlite_index_state_with_priority(
             .transaction()
             .map_err(|error| error.to_string())?;
         persist_file_symbol_rows(&transaction, &root_key, state, changed_symbols, &path_plan)?;
-        replace_changed_stub_rows_with_parsed(
-            &transaction,
-            &root_key,
-            &state.file_paths,
-            &prepared,
-            generation,
-        )?;
+        replace_changed_stub_rows_with_parsed(&transaction, &root_key, &prepared, generation)?;
         transaction.commit().map_err(|error| error.to_string())
     })
 }
@@ -144,13 +138,7 @@ pub fn persist_incremental_sqlite_deep_state_with_priority(
         let transaction = connection
             .transaction()
             .map_err(|error| error.to_string())?;
-        replace_changed_stub_rows_with_parsed(
-            &transaction,
-            &root_key,
-            &state.file_paths,
-            &prepared,
-            generation,
-        )?;
+        replace_changed_stub_rows_with_parsed(&transaction, &root_key, &prepared, generation)?;
         transaction.commit().map_err(|error| error.to_string())
     })
 }

@@ -73,14 +73,15 @@ impl WorkspaceIndexConnectionManager {
         self.mark_writer_acquired(&store_path);
         let hold_started = Instant::now();
         let result = (|| {
-            let mut connection = self
-                .writer_connections
-                .take(&store_path)?
-                .map(Ok)
-                .unwrap_or_else(|| {
-                    Connection::open(&store_path).map_err(|error| error.to_string())
-                })?;
-            configure_writer(&connection)?;
+            let mut connection = match self.writer_connections.take(&store_path)? {
+                Some(connection) => connection,
+                None => {
+                    let connection =
+                        Connection::open(&store_path).map_err(|error| error.to_string())?;
+                    configure_writer(&connection)?;
+                    connection
+                }
+            };
             let result = operation(&mut connection);
             record_workspace_index_write(&store_path);
             self.writer_connections.put(store_path.clone(), connection);
@@ -114,16 +115,19 @@ impl WorkspaceIndexConnectionManager {
         };
         let local_wait = wait_started.elapsed();
         let setup_started = Instant::now();
-        let setup = self
-            .writer_connections
-            .take(&store_path)?
-            .map(Ok)
-            .unwrap_or_else(|| Connection::open(&store_path).map_err(|error| error.to_string()))
-            .and_then(|connection| {
-                configure_writer(&connection)?;
-                prepare(&connection)?;
-                Ok(connection)
-            });
+        let setup = match self.writer_connections.take(&store_path)? {
+            Some(connection) => Ok(connection),
+            None => Connection::open(&store_path)
+                .map_err(|error| error.to_string())
+                .and_then(|connection| {
+                    configure_writer(&connection)?;
+                    Ok(connection)
+                }),
+        }
+        .and_then(|connection| {
+            prepare(&connection)?;
+            Ok(connection)
+        });
         let mut connection = match setup {
             Ok(connection) => connection,
             Err(error) => {
@@ -174,11 +178,15 @@ impl WorkspaceIndexConnectionManager {
         if !store_path.exists() {
             return Ok(None);
         }
-        let connection = self
-            .take_reader(&store_path)?
-            .map(Ok)
-            .unwrap_or_else(|| Connection::open(&store_path).map_err(|error| error.to_string()))?;
-        configure_reader(&connection)?;
+        let connection = match self.take_reader(&store_path)? {
+            Some(connection) => connection,
+            None => {
+                let connection =
+                    Connection::open(&store_path).map_err(|error| error.to_string())?;
+                configure_reader(&connection)?;
+                connection
+            }
+        };
         Ok(Some(WorkspaceIndexReader {
             connection: Some(connection),
             manager: self,

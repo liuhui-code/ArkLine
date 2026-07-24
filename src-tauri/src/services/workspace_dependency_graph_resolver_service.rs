@@ -6,13 +6,21 @@ pub(crate) fn resolve_relative_import(
     source_module: &str,
     file_set: &HashSet<String>,
 ) -> Option<String> {
+    relative_import_candidates(from_path, source_module)
+        .into_iter()
+        .find(|path| file_set.contains(path))
+}
+
+pub(crate) fn relative_import_candidates(from_path: &str, source_module: &str) -> Vec<String> {
     let from = PathBuf::from(from_path.replace('\\', "/"));
-    let base = from.parent()?;
+    let Some(base) = from.parent() else {
+        return Vec::new();
+    };
     let joined = normalize_path(&base.join(source_module));
     candidate_paths(&joined)
         .into_iter()
         .map(|path| normalize_index_path(&path))
-        .find(|path| file_set.contains(path))
+        .collect()
 }
 
 pub(crate) fn is_relative_module(source_module: &str) -> bool {

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use rusqlite::params;
 
 use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
@@ -31,8 +29,7 @@ pub(crate) fn run_workspace_stub_refresh_chunk(
     indexed_generation: u64,
 ) -> Result<WorkspaceStubRefreshChunkSummary, String> {
     let root_key = normalize_index_path(root_path);
-    let file_paths = load_workspace_file_paths(root_path, &root_key)?;
-    reject_paths_outside_catalog(&file_paths, changed_paths)?;
+    reject_paths_outside_catalog(root_path, changed_paths)?;
     reject_stale_generation(root_path, &root_key, indexed_generation)?;
     let prepared = prepare_changed_stub_rows(
         &root_key,
@@ -58,7 +55,7 @@ pub(crate) fn publish_prepared_workspace_stub_refresh_chunk(
     prepared: &crate::services::workspace_stub_prepare_service::PreparedWorkspaceStubRefresh,
 ) -> Result<WorkspaceIndexPublicationProfile, String> {
     let root_key = normalize_index_path(root_path);
-    let file_paths = load_workspace_file_paths(root_path, &root_key)?;
+    reject_paths_outside_catalog(root_path, &prepared.plan.indexed_paths)?;
     let indexed_generation = prepared.indexed_generation;
     reject_stale_generation(root_path, &root_key, indexed_generation)?;
     let mut publication_profile = with_workspace_index_transaction(
@@ -69,7 +66,6 @@ pub(crate) fn publish_prepared_workspace_stub_refresh_chunk(
             replace_changed_stub_rows_with_parsed_profiled(
                 transaction,
                 &root_key,
-                &file_paths,
                 &prepared,
                 indexed_generation,
             )
@@ -88,15 +84,14 @@ pub(crate) fn workspace_file_catalog_contains_paths(
     let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
         return Ok(false);
     };
-    let file_paths = load_workspace_file_paths_from_connection(&connection, &root_key)?;
-    Ok(first_path_outside_catalog(&file_paths, paths).is_none())
+    Ok(first_path_outside_catalog(&connection, &root_key, paths)?.is_none())
 }
 
-fn reject_paths_outside_catalog(
-    file_paths: &[String],
-    changed_paths: &[String],
-) -> Result<(), String> {
-    if let Some(path) = first_path_outside_catalog(file_paths, changed_paths) {
+fn reject_paths_outside_catalog(root_path: &str, changed_paths: &[String]) -> Result<(), String> {
+    let root_key = normalize_index_path(root_path);
+    let connection = open_existing_workspace_index_reader(root_path)?
+        .ok_or_else(|| "Workspace file index is unavailable for stub refresh".to_string())?;
+    if let Some(path) = first_path_outside_catalog(&connection, &root_key, changed_paths)? {
         return Err(format!(
             "Stub refresh path is absent from workspace file index: {path}"
         ));
@@ -104,38 +99,32 @@ fn reject_paths_outside_catalog(
     Ok(())
 }
 
-fn first_path_outside_catalog(file_paths: &[String], paths: &[String]) -> Option<String> {
-    let catalog = file_paths
-        .iter()
-        .map(|path| normalize_index_path(path))
-        .collect::<HashSet<_>>();
-    paths
-        .iter()
-        .map(|path| normalize_index_path(path))
-        .find(|path| !catalog.contains(path))
-}
-
-fn load_workspace_file_paths(root_path: &str, root_key: &str) -> Result<Vec<String>, String> {
-    let connection = open_existing_workspace_index_reader(root_path)?
-        .ok_or_else(|| "Workspace file index is unavailable for stub refresh".to_string())?;
-    load_workspace_file_paths_from_connection(&connection, root_key)
-}
-
-fn load_workspace_file_paths_from_connection(
+fn first_path_outside_catalog(
     connection: &rusqlite::Connection,
     root_key: &str,
-) -> Result<Vec<String>, String> {
+    paths: &[String],
+) -> Result<Option<String>, String> {
     let mut statement = connection
         .prepare(
-            "select path from workspace_files
-             where root_path = ?1 order by path",
+            "select exists(
+                select 1 from workspace_files
+                where root_path = ?1 and path in (?2, ?3)
+             )",
         )
         .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map(params![root_key], |row| row.get::<_, String>(0))
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
+    for path in paths {
+        let normalized = normalize_index_path(path);
+        let portable = normalized.replace('\\', "/");
+        let exists = statement
+            .query_row(params![root_key, normalized, portable], |row| {
+                row.get::<_, bool>(0)
+            })
+            .map_err(|error| error.to_string())?;
+        if !exists {
+            return Ok(Some(normalized));
+        }
+    }
+    Ok(None)
 }
 
 fn reject_stale_generation(

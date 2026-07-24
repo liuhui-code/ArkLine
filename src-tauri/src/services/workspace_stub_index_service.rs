@@ -134,7 +134,7 @@ pub fn profile_replace_all_stub_rows(
 pub fn profile_replace_changed_stub_rows(
     connection: &Connection,
     root_key: &str,
-    file_paths: &[String],
+    _file_paths: &[String],
     changed_paths: &[String],
     removed_paths: &[String],
     indexed_generation: u64,
@@ -161,7 +161,6 @@ pub fn profile_replace_changed_stub_rows(
     update_dependency_graph_for_paths(
         connection,
         root_key,
-        file_paths,
         &plan.indexed_paths,
         &plan.removed_paths,
     )?;
@@ -201,7 +200,7 @@ pub fn profile_replace_changed_stub_rows(
 pub fn replace_changed_stub_rows(
     connection: &Connection,
     root_key: &str,
-    file_paths: &[String],
+    _file_paths: &[String],
     changed_paths: &[String],
     removed_paths: &[String],
     indexed_generation: u64,
@@ -214,26 +213,18 @@ pub fn replace_changed_stub_rows(
         indexed_generation,
         priority,
     );
-    replace_changed_stub_rows_with_parsed(
-        connection,
-        root_key,
-        file_paths,
-        &prepared,
-        indexed_generation,
-    )
+    replace_changed_stub_rows_with_parsed(connection, root_key, &prepared, indexed_generation)
 }
 
 pub(crate) fn replace_changed_stub_rows_with_parsed(
     connection: &Connection,
     root_key: &str,
-    file_paths: &[String],
     prepared: &PreparedWorkspaceStubRefresh,
     indexed_generation: u64,
 ) -> Result<(), String> {
     replace_changed_stub_rows_with_parsed_profiled(
         connection,
         root_key,
-        file_paths,
         prepared,
         indexed_generation,
     )
@@ -243,7 +234,6 @@ pub(crate) fn replace_changed_stub_rows_with_parsed(
 pub(crate) fn replace_changed_stub_rows_with_parsed_profiled(
     connection: &Connection,
     root_key: &str,
-    file_paths: &[String],
     prepared: &PreparedWorkspaceStubRefresh,
     indexed_generation: u64,
 ) -> Result<WorkspaceIndexPublicationProfile, String> {
@@ -277,7 +267,6 @@ pub(crate) fn replace_changed_stub_rows_with_parsed_profiled(
         update_dependency_graph_for_paths(
             connection,
             root_key,
-            file_paths,
             &plan.indexed_paths,
             &plan.removed_paths,
         )

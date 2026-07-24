@@ -4,7 +4,8 @@ use crate::services::workspace_dependency_graph_model_service::ImportRow;
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_dependency_graph_store_service::{
     insert_dependency_edge, insert_unresolved_import, load_dependency_graph_status,
-    load_import_rows, load_re_export_rows, record_dependency_graph_status,
+    load_import_rows, load_import_rows_for_paths, load_re_export_rows,
+    load_re_export_rows_for_paths, record_dependency_graph_status,
 };
 
 #[test]
@@ -89,6 +90,37 @@ fn inserts_dependency_edges_reverse_rows_and_unresolved_imports() {
     assert_eq!(edge_count, 1);
     assert_eq!(reverse_count, 1);
     assert_eq!(unresolved_count, 1);
+}
+
+#[test]
+fn incremental_loads_only_rows_for_the_requested_paths() {
+    let connection = Connection::open_in_memory().unwrap();
+    create_stub_tables(&connection);
+    for (table, path, source) in [
+        ("workspace_stub_imports", "src/A.ets", "./TargetA"),
+        ("workspace_stub_imports", "src/B.ets", "./TargetB"),
+        ("workspace_stub_exports", "src/A.ets", "./ExportA"),
+        ("workspace_stub_exports", "src/B.ets", "./ExportB"),
+    ] {
+        connection
+            .execute(
+                &format!(
+                    "insert into {table} (root_path, path, source_module, line, column)
+                     values (?1, ?2, ?3, 1, 1)"
+                ),
+                params!["/root", path, source],
+            )
+            .unwrap();
+    }
+
+    let paths = vec!["src/B.ets".to_string()];
+    let imports = load_import_rows_for_paths(&connection, "/root", &paths).unwrap();
+    let exports = load_re_export_rows_for_paths(&connection, "/root", &paths).unwrap();
+
+    assert_eq!(imports.len(), 1);
+    assert_eq!(imports[0].source_module, "./TargetB");
+    assert_eq!(exports.len(), 1);
+    assert_eq!(exports[0].source_module, "./ExportB");
 }
 
 #[test]

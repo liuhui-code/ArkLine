@@ -17,12 +17,13 @@ use crate::services::workspace_dependency_graph_refresh_plan_service::{
     load_dependency_fact_paths, plan_dependency_refresh_paths,
 };
 use crate::services::workspace_dependency_graph_resolver_service::{
-    is_relative_module, resolve_relative_import,
+    is_relative_module, relative_import_candidates, resolve_relative_import,
 };
 use crate::services::workspace_dependency_graph_store_service::{
     insert_dependency_edge, insert_unresolved_import,
     load_dependency_graph_status as load_dependency_graph_status_from_store, load_import_rows,
-    load_re_export_rows, record_dependency_graph_status,
+    load_import_rows_for_paths, load_re_export_rows, load_re_export_rows_for_paths,
+    record_dependency_graph_status,
 };
 use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, with_workspace_index_writer, workspace_index_store_path,
@@ -101,19 +102,13 @@ pub fn rebuild_dependency_graph(
 pub fn update_dependency_graph_for_paths(
     connection: &Connection,
     root_key: &str,
-    file_paths: &[String],
     indexed_paths: &[String],
     removed_paths: &[String],
 ) -> Result<(), String> {
     let path_plan = plan_dependency_graph_paths(indexed_paths, removed_paths);
-    let import_rows = load_import_rows(connection, root_key)?
-        .into_iter()
-        .filter(|row| path_plan.affected_path_set.contains(&row.from_path))
-        .collect::<Vec<_>>();
-    let export_rows = load_re_export_rows(connection, root_key)?
-        .into_iter()
-        .filter(|row| path_plan.affected_path_set.contains(&row.from_path))
-        .collect::<Vec<_>>();
+    let import_rows = load_import_rows_for_paths(connection, root_key, &path_plan.affected_paths)?;
+    let export_rows =
+        load_re_export_rows_for_paths(connection, root_key, &path_plan.affected_paths)?;
     let existing_paths =
         load_dependency_fact_paths(connection, root_key, &path_plan.affected_path_set)?;
     let refresh_paths = plan_dependency_refresh_paths(
@@ -126,9 +121,61 @@ pub fn update_dependency_graph_for_paths(
     for path in &refresh_paths {
         clear_dependency_graph_for_path(connection, root_key, path)?;
     }
-    index_dependency_graph_rows(connection, root_key, file_paths, &import_rows, &export_rows)?;
+    index_incremental_dependency_graph_rows(connection, root_key, &import_rows, &export_rows)?;
     record_dependency_graph_status(connection, root_key, "ready", None)?;
     Ok(())
+}
+
+fn index_incremental_dependency_graph_rows(
+    connection: &Connection,
+    root_key: &str,
+    import_rows: &[ImportRow],
+    export_rows: &[ImportRow],
+) -> Result<(), String> {
+    let mut exists = connection
+        .prepare(
+            "select exists(
+                select 1 from workspace_files
+                where root_path = ?1 and path in (?2, ?3)
+             )",
+        )
+        .map_err(|error| error.to_string())?;
+    for (rows, kind, require_relative) in [
+        (import_rows, "import", true),
+        (export_rows, "export", false),
+    ] {
+        for import in rows {
+            if require_relative && !is_relative_module(&import.source_module) {
+                continue;
+            }
+            let target = resolve_relative_import_from_catalog(&mut exists, root_key, import)?;
+            if let Some(target) = target {
+                insert_dependency_edge(connection, root_key, import, &target, kind)?;
+            } else {
+                insert_unresolved_import(connection, root_key, import)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn resolve_relative_import_from_catalog(
+    exists: &mut rusqlite::Statement<'_>,
+    root_key: &str,
+    import: &ImportRow,
+) -> Result<Option<String>, String> {
+    for candidate in relative_import_candidates(&import.from_path, &import.source_module) {
+        let portable_candidate = candidate.replace('\\', "/");
+        let found = exists
+            .query_row(params![root_key, candidate, portable_candidate], |row| {
+                row.get::<_, bool>(0)
+            })
+            .map_err(|error| error.to_string())?;
+        if found {
+            return Ok(Some(candidate));
+        }
+    }
+    Ok(None)
 }
 
 fn index_dependency_graph_rows(

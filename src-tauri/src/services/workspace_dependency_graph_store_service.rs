@@ -70,6 +70,58 @@ pub(crate) fn load_re_export_rows(
     )
 }
 
+pub(crate) fn load_import_rows_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    paths: &[String],
+) -> Result<Vec<ImportRow>, String> {
+    load_module_rows_for_paths(
+        connection,
+        root_key,
+        paths,
+        "select path, source_module, line, column
+         from workspace_stub_imports
+         where root_path = ?1 and path = ?2
+         order by line, column",
+    )
+}
+
+pub(crate) fn load_re_export_rows_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    paths: &[String],
+) -> Result<Vec<ImportRow>, String> {
+    load_module_rows_for_paths(
+        connection,
+        root_key,
+        paths,
+        "select path, source_module, line, column
+         from workspace_stub_exports
+         where root_path = ?1 and path = ?2 and source_module is not null
+         order by line, column",
+    )
+}
+
+fn load_module_rows_for_paths(
+    connection: &Connection,
+    root_key: &str,
+    paths: &[String],
+    sql: &str,
+) -> Result<Vec<ImportRow>, String> {
+    let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
+    let mut result = Vec::new();
+    for path in paths {
+        let rows = statement
+            .query_map(params![root_key, path], map_module_row)
+            .map_err(|error| error.to_string())?;
+        result.extend(
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    Ok(result)
+}
+
 fn load_module_rows(
     connection: &Connection,
     root_key: &str,
@@ -77,19 +129,21 @@ fn load_module_rows(
 ) -> Result<Vec<ImportRow>, String> {
     let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![root_key], |row| {
-            let line: i64 = row.get(2)?;
-            let column: i64 = row.get(3)?;
-            Ok(ImportRow {
-                from_path: row.get(0)?,
-                source_module: row.get(1)?,
-                line: usize::try_from(line).unwrap_or_default(),
-                column: usize::try_from(column).unwrap_or_default(),
-            })
-        })
+        .query_map(params![root_key], map_module_row)
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
+}
+
+fn map_module_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ImportRow> {
+    let line: i64 = row.get(2)?;
+    let column: i64 = row.get(3)?;
+    Ok(ImportRow {
+        from_path: row.get(0)?,
+        source_module: row.get(1)?,
+        line: usize::try_from(line).unwrap_or_default(),
+        column: usize::try_from(column).unwrap_or_default(),
+    })
 }
 
 pub(crate) fn insert_dependency_edge(

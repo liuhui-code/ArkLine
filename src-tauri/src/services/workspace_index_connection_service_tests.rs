@@ -110,6 +110,33 @@ fn reuses_readers_up_to_the_configured_bound() {
 }
 
 #[test]
+fn configures_a_pooled_reader_only_when_the_connection_is_created() {
+    let root = unique_temp_dir("workspace-index-reader-config");
+    let manager = WorkspaceIndexConnectionManager::new(1);
+    manager.with_writer(root_str(&root), |_| Ok(())).unwrap();
+
+    let reader = manager
+        .open_existing_reader(root_str(&root))
+        .unwrap()
+        .unwrap();
+    reader.busy_timeout(Duration::from_millis(17)).unwrap();
+    drop(reader);
+
+    let reader = manager
+        .open_existing_reader(root_str(&root))
+        .unwrap()
+        .unwrap();
+    let busy_timeout_ms: i64 = reader
+        .query_row("pragma busy_timeout", [], |row| row.get(0))
+        .unwrap();
+
+    assert_eq!(busy_timeout_ms, 17);
+    drop(reader);
+    manager.clear(root_str(&root)).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn does_not_reapply_wal_while_an_existing_reader_is_active() {
     let root = unique_temp_dir("workspace-index-active-reader");
     let manager = WorkspaceIndexConnectionManager::new(1);
