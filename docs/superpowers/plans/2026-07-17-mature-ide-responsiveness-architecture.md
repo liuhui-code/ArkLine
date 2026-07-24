@@ -1829,11 +1829,11 @@ slice before Phase 6 can claim a green repository-wide frontend gate.
   and jump soak tests.
 - [x] Record headless p50/p95/p99, pending loads, candidate count, render commits,
   heap delta, cancellation, and stale-result rejection.
-- [ ] Record packaged queue wait, SQLite lock wait, process/private memory,
+- [x] Record packaged queue wait, SQLite lock wait, process/private memory,
   optional JavaScript heap, Event Timing, Long Animation Frames, and Worker
   restarts.
-- [ ] Run gates on packaged Windows builds before release.
-- [ ] Run latency gates on an exclusive CI runner in a serial stage; concurrent
+- [x] Run gates on packaged Windows builds before release.
+- [x] Run latency gates on an exclusive CI runner in a serial stage; concurrent
   compilation and bundling must not contaminate p95/p99 evidence.
 
 Acceptance:
@@ -1885,8 +1885,8 @@ hook: the ordinary workspace restore controller receives the root from the
 existing Tauri launch-state command and performs normal discovery, indexing,
 build inspection, and editor restoration.
 
-The native Windows harness drives the release portable executable through
-Tauri's official `tauri-driver` and Edge WebDriver path. It repeatedly types and
+The native Windows harness drives the release portable executable through Edge
+WebDriver attached to the packaged Tauri WebView2 instance. It repeatedly types and
 deletes Find in Files queries, closes search, opens Quick Open, and jumps among
 real fixture files while the indexer sidecar is enabled. Bounded observation
 records WebView long tasks, frame gaps, unhandled errors, and visible
@@ -1905,11 +1905,10 @@ the report even when the strict verdict fails. Hosted Actions results are
 regression evidence, not a substitute for the documented dedicated release
 machine class.
 
-This completes the automation foundation, not the release gate. A successful
-30-minute artifact has not yet been recorded. The next Phase 6 action is to run
-that workflow, inspect real queue/WAL/RSS/latency evidence, then fix the first
-measured violation. Shared-SDK copy-and-swap remains deferred until packaged
-freelist/WAL growth demonstrates that it is necessary.
+This section records the automation foundation. The later packaged-gate result
+records the native executions and measured corrections. Shared-SDK copy-and-swap
+remains deferred until packaged freelist/WAL growth demonstrates that it is
+necessary.
 
 Local foundation verification:
 
@@ -1923,11 +1922,12 @@ Local foundation verification:
 | Fixture generation and reuse | 1k generated, then reused |
 | Source line-count gate | 772 files checked; none over 500 lines |
 | Rust format and whitespace gates | passed |
-| Native Windows 20k / 30-minute packaged soak | not run |
+| Native Windows 20k / 30-minute packaged soak | passed, run 30125657721 |
 
 #### Phase 6 WebView Evidence Contract Result
 
-Implemented on 2026-07-23. The packaged report is now schema version 2 and
+Implemented on 2026-07-23 and extended on 2026-07-24. The packaged report is
+now schema version 3 and
 separates automation transport time from user-visible WebView completion.
 WebDriver dispatch remains diagnostic evidence. Search latency starts on the
 renderer clock and ends after the result is visible plus two animation frames;
@@ -1945,10 +1945,10 @@ specification](https://www.w3.org/TR/2023/WD-event-timing-20230703/), the [W3C
 Long Animation Frames specification](https://www.w3.org/TR/long-animation-frames/),
 and [Chrome's LoAF guidance](https://developer.chrome.com/docs/web-platform/long-animation-frames).
 
-The observer deliberately does not use a full-tree `MutationObserver` as a
-React-render proxy. DOM mutations do not identify React commits and observation
-work would contaminate the UI workload being measured. Production React commit
-profiling is also not a portable packaged-release contract. Native allocation
+The observer uses a short-lived `MutationObserver` only to synchronize the
+active query with its visible result and disconnects immediately. It is not
+used as a React-render proxy. Production render-pressure counters remain
+diagnostic evidence rather than a portable release verdict. Native allocation
 count is deferred to a focused ETW/WPA diagnostic because allocation
 instrumentation can perturb the workload; the serial release gate uses
 aggregate RSS/private bytes, optional JavaScript heap growth, WAL growth, and
@@ -1962,10 +1962,37 @@ The report also captures runner/CI identity, driver capabilities, fixture
 marker, and executable SHA-256/size so evidence can be reproduced against the
 same artifact.
 
-This completes the WebView evidence contract, not the release gate. A native
-Windows 20k / 30-minute artifact has still not been recorded. The next action
-remains: run the serialized workflow, inspect its first strict failure, and fix
-that measured bottleneck before adding more instrumentation.
+This completes the WebView evidence contract. Native run identities and
+corrections are retained in
+`docs/performance-evidence/2026-07-24-windows-packaged-index-gates.md`.
+
+#### Phase 6 Packaged Windows Gate Result
+
+Completed on 2026-07-24 for commit
+`8b6e7d0d542b643af02a12489a3441c435b96e9d`. The globally serialized
+hosted Windows workflow passed the 1k / 5-minute gate in
+[run 30124746978](https://github.com/liuhui-code/ArkLine/actions/runs/30124746978)
+and the 20k / 30-minute gate in
+[run 30125657721](https://github.com/liuhui-code/ArkLine/actions/runs/30125657721).
+
+The final 20k report completed 3,463 real Find in Files and cross-file
+navigation cycles. Search p95 was `249.6 ms`, navigation p95 was `95.3 ms`, and
+W3C interaction p95 was `32 ms`. Content, symbol, and stub freshness each
+reached 20,001 / 20,001 files. The final queue and stalled-task counts were zero,
+the indexer was idle, and Worker restart and workspace/shared-SDK WAL growth
+were zero.
+
+The failure-driven corrections preceding the passing run made incremental
+refresh proportional to each chunk, removed detached WebDriver element
+retention, isolated Quick Open typing from `AppShell`, required committed-query
+readiness in the harness, and kept full Health/Layer reads off hidden
+`partial`-index event handling. Exact executable hashes, memory growth, failure
+history, and strict limits are retained in the evidence document.
+
+This completes the hosted packaged regression slice of Phase 6. The acceptance
+policy still requires final release sign-off on the documented dedicated
+Windows machine class; hosted-runner latency is not used as that machine-class
+claim.
 
 #### Phase 6 Native Runner Preflight Result
 
@@ -1984,16 +2011,15 @@ while the smoke provides a fast failure for packaging, driver, protocol, and
 selector drift.
 
 Once arguments and the report directory are valid, the harness writes a
-schema-v2 report for platform, preflight, driver startup, session creation, and
+schema-v3 report for platform, preflight, driver startup, session creation, and
 workload failures. Failure evidence includes the exact phase, error/stack, every
 preflight check, driver capabilities and exit state, a bounded tail log, fixture
 marker, and executable hash when available. Driver exit races readiness so a
 crashed driver does not consume the full startup timeout, and driver logs remain
 bounded during the long run.
 
-This closes runner diagnosability but does not claim native success. Neither the
-1k smoke nor the 20k / 30-minute soak has been executed on Windows from this
-working tree.
+This closes runner diagnosability. The packaged-gate evidence document records
+the Windows runs against exact commit and executable hashes.
 
 ## Explicit Non-Solutions
 

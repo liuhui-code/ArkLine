@@ -99,7 +99,7 @@ Record the JSON output here for every release candidate. The scripts are model-l
 checks; they do not replace packaged app profiling, but they catch large regressions
 in search input and file switch projections before release.
 
-Latest local product-runtime headless run on 2026-07-23:
+Latest local product-runtime headless run on 2026-07-24:
 
 ```json
 {
@@ -110,12 +110,12 @@ Latest local product-runtime headless run on 2026-07-23:
     "commitCount": 2,
     "cancelCount": 102,
     "staleApplyCount": 0,
-    "renderCommits": 110,
+    "renderCommits": 5,
     "targetP95Ms": 50,
-    "p50Ms": 0.302,
-    "p95Ms": 0.55,
-    "p99Ms": 1.085,
-    "maxMs": 3.312
+    "p50Ms": 0.1,
+    "p95Ms": 0.25,
+    "p99Ms": 0.373,
+    "maxMs": 1.505
   },
   "fileSwitchJump": {
     "fileCount": 5000,
@@ -126,10 +126,10 @@ Latest local product-runtime headless run on 2026-07-23:
     "staleJumpCount": 49,
     "appliedJumpCount": 1,
     "targetP95Ms": 300,
-    "switchP50Ms": 0.069,
-    "switchP95Ms": 0.149,
-    "switchP99Ms": 1.048,
-    "jumpDispatchP95Ms": 0.008
+    "switchP50Ms": 0.054,
+    "switchP95Ms": 0.103,
+    "switchP99Ms": 0.843,
+    "jumpDispatchP95Ms": 0.007
   }
 }
 ```
@@ -145,14 +145,13 @@ launches the release portable executable against deterministic 1k, 20k, or 100k
 ArkTS fixtures. The release gate requires its default 20k / 30-minute run with
 `ARKLINE_INDEXER_ENABLED=1`.
 
-No passing packaged report is recorded yet. Do not promote the local headless
-numbers above to Windows release evidence. The workflow first requires a
-schema-v2 `packaged-smoke-report.json` from an isolated 1k fixture. That report
+The workflow first requires a schema-v3 `packaged-smoke-report.json` from an
+isolated 1k fixture. That report
 proves executable/fixture/tool preflight, WebDriver and WebView capabilities,
 process-tree discovery, and one real search/navigation cycle; it is not latency
 or stability evidence.
 
-After both stages pass, attach the schema-v2 `packaged-soak-report.json`
+After both stages pass, attach the schema-v3 `packaged-soak-report.json`
 artifact details here with:
 
 - runner image, OS release, commit/run identity, executable SHA-256, and fixture
@@ -175,3 +174,27 @@ valid, retain its failure report. The `fatalError.phase`, preflight checks,
 driver exit state, and bounded driver log are required diagnostic evidence; an
 absent report is a workflow or build failure rather than a measured application
 result.
+
+The exact hosted Windows runs, executable hashes, failure history, and strict
+metrics are archived in
+`docs/performance-evidence/2026-07-24-windows-packaged-index-gates.md`.
+Hosted-runner success is regression evidence; dedicated release-machine
+sign-off remains required by the release policy.
+
+Latest hosted Windows regression evidence for commit
+`8b6e7d0d542b643af02a12489a3441c435b96e9d`:
+
+- 1k / 5-minute strict gate:
+  [run 30124746978](https://github.com/liuhui-code/ArkLine/actions/runs/30124746978),
+  passed with search p95 `133.6 ms` and navigation p95 `81.4 ms`;
+- 20k / 30-minute strict gate:
+  [run 30125657721](https://github.com/liuhui-code/ArkLine/actions/runs/30125657721),
+  passed with 3,463 successful search/navigation cycles, search p95
+  `249.6 ms`, navigation p95 `95.3 ms`, and interaction p95 `32 ms`;
+- all 20,001 content, symbol, and stub freshness records were ready; the final
+  queue, stalled-task count, Worker restart growth, and WAL growth were zero;
+- steady RSS/private-memory growth was `132,206,592 / 414,044,160` bytes and
+  JavaScript heap growth was `95,775,756` bytes, all within strict limits.
+
+This completes the hosted packaged regression measurement. It does not replace
+the dedicated Windows release-machine sign-off required above.

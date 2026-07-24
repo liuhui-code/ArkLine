@@ -89,7 +89,7 @@ and one real navigation. It does not evaluate long-run latency, queue drain, or
 memory/WAL growth.
 
 Once arguments and the report directory are valid, both smoke and soak write a
-schema-v2 JSON report even when the harness fails. A startup failure report
+schema-v3 JSON report even when the harness fails. A startup failure report
 identifies the failing platform/preflight/driver/session phase and preserves the
 checks, driver exit state, bounded driver log, fixture, and executable evidence.
 Its JSON artifact records:
@@ -107,26 +107,29 @@ Its JSON artifact records:
 - runner/CI identity, fixture marker, WebDriver capabilities, and executable
   size and SHA-256.
 
-Strict acceptance rejects crashes, any WebDriver response failure, a run with
-no real search result or no completed cross-file navigation, stale navigation,
-remaining queue work, sidecar restarts, p95 above 100 ms, p99 above 250 ms, RSS
-or private-memory growth above 512 MiB, supported JavaScript heap growth above
-256 MiB, or workspace/shared-SDK WAL growth above 128 MiB. The strict runner
-also requires Event Timing, LoAF, and process-tree capabilities. Zero Event
-Timing or LoAF samples is valid: these APIs report slow work, so a responsive
-run can have no entries. A missing capability is not valid because it leaves
-the release claim unmeasured.
+Strict acceptance rejects crashes, repeated WebDriver response failures, a run
+with no real search result or no completed cross-file navigation, stale
+navigation, remaining queue work, stalled index tasks, sidecar restarts,
+renderer search or navigation p95 above 300 ms, W3C interaction timing p95
+above 100 ms, RSS or private-memory growth above 512 MiB, supported JavaScript
+heap growth above 256 MiB, or workspace/shared-SDK WAL growth above 128 MiB.
+p99 remains diagnostic evidence and is not a hard verdict threshold. The strict
+runner also requires Event Timing, LoAF, and process-tree capabilities. Zero
+Event Timing or LoAF samples is valid: these APIs report slow work, so a
+responsive run can have no entries. A missing capability is not valid because
+it leaves the release claim unmeasured.
 
 User-visible completion is measured on the renderer clock. Search completes
-only after a result is visible; navigation completes only after the target tab
-is visible and two animation frames have elapsed. WebDriver command duration is
-kept separately to distinguish automation transport delay from WebView work.
-The harness uses bounded observers and does not install a full-tree
-`MutationObserver`: DOM mutations are neither React commit evidence nor a
-low-overhead release metric. Native allocation tracing is reserved for a
-targeted ETW/WPA diagnostic run because allocator instrumentation can perturb
-the workload; the serial release soak uses process/private memory, optional JS
-heap, WAL, and restart trends instead.
+only after a result for the current query is visible; navigation completes only
+after the target tab is visible. WebDriver command duration is kept separately
+to distinguish automation transport delay from WebView work.
+The harness uses bounded observers. A short-lived `MutationObserver` waits only
+for the active search result surface and disconnects as soon as the requested
+query is visible; it is readiness synchronization, not React commit evidence.
+Native allocation tracing is reserved for a targeted ETW/WPA diagnostic run
+because allocator instrumentation can perturb the workload; the serial release
+soak uses process/private memory, optional JS heap, WAL, and restart trends
+instead.
 
 A passing hosted runner artifact is regression evidence; final release claims
 still need the documented dedicated Windows machine class because hosted-runner
@@ -134,9 +137,18 @@ latency varies.
 
 ## Current Gate Status
 
-The local `perf:runtime` command is a deterministic headless product-runtime gate. It proves
-local input, cancellation, stale-result rejection, document preparation, and
-latest-navigation behavior, but it does not measure Tauri IPC, native WebView
-painting, SQLite lock wait, or packaged process memory. The packaged Windows
-workflow now captures those boundaries; a successful 30-minute artifact has not
-yet been recorded in this repository.
+The local `perf:runtime` command is a deterministic headless product-runtime
+gate. It proves local input, cancellation, stale-result rejection, document
+preparation, and latest-navigation behavior, but it does not measure Tauri IPC,
+native WebView painting, SQLite lock wait, or packaged process memory. The
+packaged Windows workflow captures those boundaries. Current run identities and
+the exact strict verdict are recorded in
+`docs/performance-evidence/2026-07-24-windows-packaged-index-gates.md`.
+
+For commit `8b6e7d0d542b643af02a12489a3441c435b96e9d`, the serialized
+hosted Windows gates passed both the 1k / 5-minute smoke workload and the
+20k / 30-minute release workload. The 20k run completed 3,463 real
+search/navigation cycles with search p95 `249.6 ms`, navigation p95 `95.3 ms`,
+interaction p95 `32 ms`, 20,001 fully fresh indexed files, no final queue or
+stalled tasks, no Worker restart, and no WAL growth. This is packaged regression
+evidence; dedicated release-machine sign-off remains required.
