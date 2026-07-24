@@ -24,7 +24,8 @@ type DocumentStoreRef = MutableRefObject<{
 }>;
 
 type TabsStoreRef = MutableRefObject<{
-  openTab(path: string): void;
+  openTab(path: string, disposition?: "pinned" | "preview"): void;
+  pinTab?(path: string): void;
 }>;
 
 export type UseEditorSurfaceControllerOptions = {
@@ -92,17 +93,20 @@ export function useEditorSurfaceController({
   const documentLoad = documentLoadCoordinator ?? fallbackDocumentLoadRef.current;
 
   async function openFile(path: string) {
-    await openFileInternal(path);
+    await openFileInternal(path, "preview");
   }
 
   async function restoreFile(path: string): Promise<RestoreFileResult> {
-    return openFileInternal(path);
+    return openFileInternal(path, "pinned");
   }
 
-  async function openFileInternal(path: string): Promise<RestoreFileResult> {
+  async function openFileInternal(
+    path: string,
+    disposition: "pinned" | "preview",
+  ): Promise<RestoreFileResult> {
     const title = getPathBasename(path);
     if (documentsRef.current.getDocument(path)) {
-      activateLoadedDocument(path);
+      activateLoadedDocument(path, disposition);
       onStatusChange(`Opened ${title}`);
       return { ok: true };
     }
@@ -136,14 +140,14 @@ export function useEditorSurfaceController({
     } else {
       documentsRef.current.openDocument(path, content);
     }
-    activateLoadedDocument(path);
+    activateLoadedDocument(path, disposition);
     runtimeRef.current.navigation.finish(transaction.id);
     onStatusChange(`Opened ${title}`);
     return { ok: true };
   }
 
-  function activateLoadedDocument(path: string) {
-    tabsRef.current.openTab(path);
+  function activateLoadedDocument(path: string, disposition: "pinned" | "preview") {
+    tabsRef.current.openTab(path, disposition);
     syncTabs();
     setActiveDocument(path);
     includeVisibleWorkspaceFile(path);
@@ -185,6 +189,7 @@ export function useEditorSurfaceController({
     }
     const result = documentsRef.current.updateDocument(activePath, content);
     if (result.dirtyChanged) {
+      tabsRef.current.pinTab?.(activePath);
       syncTabs();
       onStatusChange("Modified");
     }
@@ -197,6 +202,7 @@ export function useEditorSurfaceController({
     const result = documentsRef.current.applyEditorDocument?.(activePath, document)
       ?? documentsRef.current.updateDocument(activePath, document.toString());
     if (result.dirtyChanged) {
+      tabsRef.current.pinTab?.(activePath);
       syncTabs();
       onStatusChange("Modified");
     }

@@ -223,7 +223,20 @@ impl WorkspaceIndexMaintenanceRuntime {
         }
         if plan.has_store_maintenance() {
             match publish_idle_operation(root_path, plan.operation(), &mut should_yield)? {
-                Some(_) => self.record_applied(root_path, plan, writer_samples, now_ms)?,
+                Some(profile) => {
+                    let checkpointed = !plan.checkpoint || profile.stages.iter()
+                        .any(|stage| stage.name == "maintenanceTruncateCheckpoint");
+                    self.record_applied(
+                        root_path,
+                        plan,
+                        writer_samples,
+                        now_ms,
+                        checkpointed,
+                    )?;
+                    if !checkpointed {
+                        return Ok(false);
+                    }
+                }
                 None => return Ok(false),
             }
         }
@@ -281,6 +294,7 @@ impl WorkspaceIndexMaintenanceRuntime {
         plan: WorkspaceIndexMaintenancePlan,
         writer_samples: u64,
         now_ms: u128,
+        checkpointed: bool,
     ) -> Result<(), String> {
         let mut histories = self
             .histories
@@ -291,7 +305,7 @@ impl WorkspaceIndexMaintenanceRuntime {
             history.last_optimize_ms = now_ms;
             history.optimized_writer_sample_count = writer_samples;
         }
-        if plan.checkpoint {
+        if plan.checkpoint && checkpointed {
             history.last_checkpoint_ms = now_ms;
         }
         if plan.incremental_vacuum_pages > 0 {

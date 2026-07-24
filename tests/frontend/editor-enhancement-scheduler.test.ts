@@ -13,7 +13,7 @@ describe("editor enhancement scheduler", () => {
       clearTimeout: vi.fn(),
     });
 
-    expect(requestIdleCallback).toHaveBeenCalledWith(callback, { timeout: 180 });
+    expect(requestIdleCallback).toHaveBeenCalledWith(callback);
     cancel();
     expect(cancelIdleCallback).toHaveBeenCalledWith(7);
   });
@@ -28,5 +28,26 @@ describe("editor enhancement scheduler", () => {
 
     cancel();
     expect(clearTimeout).toHaveBeenCalledWith(9);
+  });
+
+  it("waits for preview dwell before requesting idle time", () => {
+    let releaseDwell: () => void = () => undefined;
+    const requestIdleCallback = vi.fn(() => 7);
+    const setTimeout = vi.fn((callback: () => void) => {
+      releaseDwell = callback;
+      return 9;
+    });
+    const cancel = scheduleEditorEnhancement(vi.fn(), {
+      requestIdleCallback,
+      cancelIdleCallback: vi.fn(),
+      setTimeout,
+      clearTimeout: vi.fn(),
+    }, 2_500);
+
+    expect(setTimeout).toHaveBeenCalledWith(expect.any(Function), 2_500);
+    expect(requestIdleCallback).not.toHaveBeenCalled();
+    releaseDwell();
+    expect(requestIdleCallback).toHaveBeenCalledTimes(1);
+    cancel();
   });
 });

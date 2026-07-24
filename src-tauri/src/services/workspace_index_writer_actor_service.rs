@@ -444,7 +444,7 @@ fn maintenance_metric_sample(
         checkpointed: profile
             .stages
             .iter()
-            .any(|stage| stage.name == "maintenancePassiveCheckpoint"),
+            .any(|stage| stage.name == "maintenanceTruncateCheckpoint"),
         incremental_vacuumed: profile
             .stages
             .iter()

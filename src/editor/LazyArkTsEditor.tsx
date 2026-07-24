@@ -31,6 +31,7 @@ type LazyArkTsEditorProps = {
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
+  transientPreview?: boolean;
 };
 
 export function LazyArkTsEditor(props: LazyArkTsEditorProps) {

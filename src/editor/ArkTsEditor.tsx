@@ -49,6 +49,7 @@ type ArkTsEditorProps = {
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
+  transientPreview?: boolean;
 };
 
 export function ArkTsEditor({
@@ -71,6 +72,7 @@ export function ArkTsEditor({
   gitBlameVisible = false,
   selectedBlameLine = null,
   onGitTraceLineClick,
+  transientPreview = false,
 }: ArkTsEditorProps) {
   recordRenderPressure("Editor/ArkTsEditor");
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -224,8 +226,8 @@ export function ArkTsEditor({
         ],
       });
       activeEnhancedRef.current = true;
-    });
-  }, [path, reducedPerformanceMode]);
+    }, undefined, transientPreview ? 2_500 : 0);
+  }, [path, reducedPerformanceMode, transientPreview]);
 
   useEffect(() => {
     const view = viewRef.current;

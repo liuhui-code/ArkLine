@@ -8,14 +8,32 @@ export type EditorEnhancementSchedulerHost = {
 export function scheduleEditorEnhancement(
   callback: () => void,
   host: EditorEnhancementSchedulerHost = browserSchedulerHost(),
+  delayMs = 0,
 ) {
-  if (host.requestIdleCallback && host.cancelIdleCallback) {
-    const handle = host.requestIdleCallback(callback, { timeout: 180 });
-    return () => host.cancelIdleCallback?.(handle);
+  let idleHandle: number | null = null;
+  let timerHandle: number | null = null;
+  let cancelled = false;
+  const scheduleIdle = () => {
+    timerHandle = null;
+    if (cancelled) return;
+    if (host.requestIdleCallback && host.cancelIdleCallback) {
+      idleHandle = host.requestIdleCallback(callback);
+      return;
+    }
+    timerHandle = host.setTimeout(callback, 32);
+  };
+
+  if (delayMs > 0) {
+    timerHandle = host.setTimeout(scheduleIdle, delayMs);
+  } else {
+    scheduleIdle();
   }
 
-  const handle = host.setTimeout(callback, 32);
-  return () => host.clearTimeout(handle);
+  return () => {
+    cancelled = true;
+    if (idleHandle != null) host.cancelIdleCallback?.(idleHandle);
+    if (timerHandle != null) host.clearTimeout(timerHandle);
+  };
 }
 
 function browserSchedulerHost(): EditorEnhancementSchedulerHost {

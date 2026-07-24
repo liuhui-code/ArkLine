@@ -26,6 +26,7 @@ type EditorTab = {
   path: string;
   title: string;
   isDirty: boolean;
+  isPreview?: true;
 };
 
 type EditorSurfaceProps = {
@@ -92,6 +93,7 @@ export function EditorSurface({
   onToggleGitBlame,
 }: EditorSurfaceProps) {
   const surfaceStateClass = activePath ? "editor-surface--active" : "editor-surface--empty";
+  const activeTab = openTabs.find((tab) => tab.path === activePath);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const document = useActiveDocumentText({ documentsRef, activePath });
 
@@ -152,7 +154,7 @@ export function EditorSurface({
               <button
                 key={tab.path}
                 type="button"
-                className={`editor-tab${isActive ? " editor-tab--active" : ""}`}
+                className={`editor-tab${isActive ? " editor-tab--active" : ""}${tab.isPreview ? " editor-tab--preview" : ""}`}
                 aria-pressed={isActive}
                 title={tab.path}
                 onClick={() => onSelectTab(tab.path)}
@@ -190,6 +192,7 @@ export function EditorSurface({
             gitBlameVisible={gitBlameVisible}
             selectedBlameLine={selectedBlameLine}
             onGitTraceLineClick={onGitTraceLineClick}
+            transientPreview={activeTab?.isPreview}
           />
         </EditorCrashBoundary>
       ) : (

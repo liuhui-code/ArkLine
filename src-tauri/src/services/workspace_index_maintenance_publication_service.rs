@@ -153,9 +153,16 @@ fn run_store_maintenance(
                 })?,
         }
         if checkpoint {
-            profiler.measure("maintenancePassiveCheckpoint", || {
-                passive_wal_checkpoint(connection)
-            })?;
+            let started = Instant::now();
+            let checkpointed = truncate_wal_checkpoint(connection)?;
+            profiler.record(
+                if checkpointed {
+                    "maintenanceTruncateCheckpoint"
+                } else {
+                    "maintenanceCheckpointDeferred"
+                },
+                started.elapsed(),
+            );
         }
         if incremental_vacuum_pages > 0 {
             profiler.measure("maintenanceIncrementalVacuum", || {
@@ -175,16 +182,16 @@ fn execute_pragma(connection: &Connection, sql: &str) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-fn passive_wal_checkpoint(connection: &Connection) -> Result<(), String> {
+fn truncate_wal_checkpoint(connection: &Connection) -> Result<bool, String> {
     connection
-        .query_row("pragma wal_checkpoint(passive)", [], |row| {
+        .query_row("pragma wal_checkpoint(truncate)", [], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, i64>(1)?,
                 row.get::<_, i64>(2)?,
             ))
         })
-        .map(|_| ())
+        .map(|(busy, _, _)| busy == 0)
         .map_err(|error| error.to_string())
 }
 
@@ -212,9 +219,11 @@ fn reset_workspace_schema_versions(connection: &Connection) -> Result<(), String
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use rusqlite::Connection;
 
-    use super::WORKSPACE_INDEX_RESET_TABLES;
+    use super::{truncate_wal_checkpoint, WORKSPACE_INDEX_RESET_TABLES};
     use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
     #[test]
@@ -241,6 +250,37 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(missing.is_empty(), "reset registry missed {missing:?}");
+    }
+
+    #[test]
+    fn maintenance_checkpoint_truncates_the_wal_file() {
+        let root = std::env::temp_dir().join(format!(
+            "arkline-maintenance-checkpoint-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let store_path = root.join("index.sqlite");
+        let connection = Connection::open(&store_path).unwrap();
+        connection.execute_batch(
+            "pragma journal_mode=wal;
+             pragma wal_autocheckpoint=0;
+             create table sample(value text not null);
+             begin;
+             insert into sample
+             select hex(randomblob(4096))
+             from json_each('[1,2,3,4,5,6,7,8,9,10]');
+             commit;",
+        ).unwrap();
+        let wal_path = root.join("index.sqlite-wal");
+        let before = fs::metadata(&wal_path).unwrap().len();
+
+        assert!(truncate_wal_checkpoint(&connection).unwrap());
+
+        let after = fs::metadata(&wal_path).map(|metadata| metadata.len()).unwrap_or(0);
+        assert!(before > 0);
+        assert_eq!(after, 0, "maintenance left {after} WAL bytes");
+        drop(connection);
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn is_fts_shadow_table(table: &str) -> bool {

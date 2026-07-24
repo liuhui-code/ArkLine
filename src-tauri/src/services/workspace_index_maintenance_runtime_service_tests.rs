@@ -41,7 +41,7 @@ fn periodic_optimize_waits_for_writes_and_interval() {
 }
 
 #[test]
-fn passive_checkpoint_uses_wal_size_and_cooldown() {
+fn truncate_checkpoint_uses_wal_size_and_cooldown() {
     let stats = WorkspaceIndexStoreStats {
         wal_size_bytes: WAL_CHECKPOINT_THRESHOLD_BYTES,
         ..WorkspaceIndexStoreStats::default()

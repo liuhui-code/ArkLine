@@ -345,7 +345,7 @@ fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
     assert!(profile
         .stages
         .iter()
-        .any(|stage| stage.name == "maintenancePassiveCheckpoint"));
+        .any(|stage| stage.name == "maintenanceTruncateCheckpoint"));
     assert_eq!(actor.snapshot().maintenance_publication_count, 1);
     fs::remove_dir_all(root).unwrap();
 }

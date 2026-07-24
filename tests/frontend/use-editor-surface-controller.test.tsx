@@ -204,7 +204,7 @@ describe("useEditorSurfaceController", () => {
     });
 
     expect(openFile).not.toHaveBeenCalled();
-    expect(openTab).toHaveBeenCalledWith("/workspace/Closed.ets");
+    expect(openTab).toHaveBeenCalledWith("/workspace/Closed.ets", "preview");
     expect(documents.get("/workspace/Closed.ets")?.currentContent).toBe("cached content");
   });
 
@@ -323,7 +323,7 @@ describe("useEditorSurfaceController", () => {
     expect(openDocument).toHaveBeenCalledTimes(1);
     expect(openDocument).toHaveBeenCalledWith("/workspace/File19.ets", "content 19");
     expect(openTab).toHaveBeenCalledTimes(1);
-    expect(openTab).toHaveBeenCalledWith("/workspace/File19.ets");
+    expect(openTab).toHaveBeenCalledWith("/workspace/File19.ets", "preview");
     expect(setActiveDocument).toHaveBeenCalledTimes(1);
     expect(setActiveDocument).toHaveBeenCalledWith("/workspace/File19.ets");
   });

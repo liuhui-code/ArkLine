@@ -34,6 +34,10 @@ export function createDocumentStore() {
   let dirtyCount = 0;
 
   function notify(path: string, document: InternalDocumentRecord, kind: DocumentNotificationKind) {
+    if (kind === "metadata") {
+      listeners.forEach((listener) => listener(path, document, kind));
+      return;
+    }
     const pending = pendingNotifications.get(path);
     pendingNotifications.set(path, {
       document,
@@ -86,7 +90,8 @@ export function createDocumentStore() {
       const existing = requireDocument(documents, normalized);
       const wasDirty = existing.isDirty;
       replaceText(existing, textFromString(content), content);
-      setDirtyState(existing, content !== existing.originalContent);
+      const dirtyChanged = setDirtyState(existing, content !== existing.originalContent);
+      if (dirtyChanged) notify(normalized, existing, "metadata");
       notify(normalized, existing, "content");
       return { dirtyChanged: wasDirty !== existing.isDirty };
     },
@@ -138,6 +143,13 @@ export function createDocumentStore() {
     },
     getDocuments(): DocumentRecord[] {
       return [...documents.values()];
+    },
+    releaseDocument(path: string) {
+      const normalized = normalizePath(path);
+      const existing = documents.get(normalized);
+      if (!existing || existing.isDirty) return false;
+      pendingNotifications.delete(normalized);
+      return documents.delete(normalized);
     },
     hasDirtyDocuments() {
       return dirtyCount > 0;

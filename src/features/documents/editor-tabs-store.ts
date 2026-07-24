@@ -7,6 +7,7 @@ export type EditorTab = {
   path: string;
   title: string;
   isDirty: boolean;
+  isPreview?: true;
 };
 
 export type EditorTabsState = {
@@ -32,7 +33,24 @@ export function createEditorTabsStore(documents: DocumentStore) {
 
     if (record && tab) {
       tab.isDirty = record.isDirty;
+      if (record.isDirty) delete tab.isPreview;
     }
+  }
+
+  function replaceCleanPreview(nextPath: string) {
+    const previewIndex = state.openTabs.findIndex((tab) => (
+      tab.isPreview && tab.path !== nextPath
+    ));
+    if (previewIndex < 0) return;
+    const preview = state.openTabs[previewIndex];
+    if (!preview) return;
+    if (documents.getDocument(preview.path)?.isDirty) {
+      delete preview.isPreview;
+      preview.isDirty = true;
+      return;
+    }
+    state.openTabs.splice(previewIndex, 1);
+    documents.releaseDocument(preview.path);
   }
 
   documents.subscribe((path) => {
@@ -41,21 +59,29 @@ export function createEditorTabsStore(documents: DocumentStore) {
 
   return {
     state,
-    openTab(path: string) {
+    openTab(path: string, disposition: "pinned" | "preview" = "pinned") {
       const normalized = normalizePath(path);
       const existing = state.openTabs.find((entry) => entry.path === normalized);
 
       if (!existing) {
+        if (disposition === "preview") replaceCleanPreview(normalized);
         state.openTabs.push({
           path: normalized,
           title: getPathBasename(normalized),
-          isDirty: documents.getDocument(normalized)?.isDirty ?? false
+          isDirty: documents.getDocument(normalized)?.isDirty ?? false,
+          ...(disposition === "preview" ? { isPreview: true as const } : {}),
         });
+      } else if (disposition === "pinned") {
+        delete existing.isPreview;
       }
 
       state.activePath = normalized;
       state.recentFiles = dedupeMostRecent(state.recentFiles, normalized);
       syncDirtyState(normalized);
+    },
+    pinTab(path: string) {
+      const tab = state.openTabs.find((entry) => entry.path === normalizePath(path));
+      if (tab) delete tab.isPreview;
     },
     closeTab(path?: string) {
       const targetPath = normalizePath(path ?? state.activePath ?? "");
