@@ -15,6 +15,7 @@ export type SearchFallbackRunnerInput = {
   rootPath: string;
   options: WorkspaceTextSearchOptions;
   paths: string[];
+  dirtyPaths: string[];
   canUseNativeTextSearch: boolean;
   searchNative?: Parameters<typeof runFallbackTextSearch>[0]["searchNative"];
   readFile: (path: string) => Promise<string | null>;
@@ -28,6 +29,7 @@ export function runSearchFallbackText({
   rootPath,
   options,
   paths,
+  dirtyPaths,
   canUseNativeTextSearch,
   searchNative,
   readFile,
@@ -40,6 +42,7 @@ export function runSearchFallbackText({
     rootPath,
     options,
     paths,
+    dirtyPaths,
     canUseNativeTextSearch,
     searchNative,
     readFile,

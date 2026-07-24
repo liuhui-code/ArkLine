@@ -33,6 +33,10 @@ export function useSearchSessionInput(
   }, [committedQuery, mode]);
 
   useEffect(() => {
+    inputRef.current?.focus({ preventScroll: true });
+  }, [mode]);
+
+  useEffect(() => {
     return () => {
       if (timeoutRef.current != null) {
         window.clearTimeout(timeoutRef.current);

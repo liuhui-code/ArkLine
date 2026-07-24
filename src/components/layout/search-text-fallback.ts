@@ -4,6 +4,7 @@ import {
   type WorkspaceTextSearchOptions,
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
+import { mergeDirtySearchOverlay } from "@/components/layout/search-dirty-overlay";
 import { normalizePath } from "@/features/workspace/workspace-store";
 
 export type ReadSearchFileForSearchInput = {
@@ -23,6 +24,7 @@ export type RunFallbackTextSearchInput = {
   rootPath: string;
   options: WorkspaceTextSearchOptions;
   paths: string[];
+  dirtyPaths: string[];
   canUseNativeTextSearch: boolean;
   searchNative?: (options: {
     query: string;
@@ -60,19 +62,22 @@ export function runFallbackTextSearch({
   rootPath,
   options,
   paths,
+  dirtyPaths,
   canUseNativeTextSearch,
   searchNative,
   readFile,
 }: RunFallbackTextSearchInput) {
-  if (rootPath && canUseNativeTextSearch && searchNative && !dirty) {
-    return searchNative({
+  if (rootPath && canUseNativeTextSearch && searchNative) {
+    return runNativeTextSearchWithDirtyOverlay({
       query,
+      dirty,
+      dirtyPaths,
       generation,
       cursor,
       rootPath,
       options,
-      limit: 50,
-      contextLines: 0,
+      searchNative,
+      readFile,
     });
   }
   return searchWorkspaceText({
@@ -89,6 +94,48 @@ export function runFallbackTextSearch({
     },
     limit: 50,
     cursor,
+  });
+}
+
+async function runNativeTextSearchWithDirtyOverlay({
+  query,
+  dirty,
+  dirtyPaths,
+  generation,
+  cursor,
+  rootPath,
+  options,
+  searchNative,
+  readFile,
+}: Pick<RunFallbackTextSearchInput,
+  "query" | "dirty" | "dirtyPaths" | "generation" | "cursor" | "rootPath"
+  | "options" | "searchNative" | "readFile"
+>) {
+  const limit = 50;
+  const indexed = await searchNative!({
+    query,
+    generation,
+    cursor,
+    rootPath,
+    options,
+    limit,
+    contextLines: 0,
+  });
+  if (!dirty || dirtyPaths.length === 0) return indexed;
+
+  const dirtyResult = cursor ? null : await searchWorkspaceText({
+    query,
+    rootPath,
+    paths: dirtyPaths,
+    options,
+    readFile,
+    limit,
+  });
+  return mergeDirtySearchOverlay({
+    indexed,
+    dirty: dirtyResult,
+    dirtyPaths,
+    limit,
   });
 }
 

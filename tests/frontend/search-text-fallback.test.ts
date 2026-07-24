@@ -70,6 +70,7 @@ describe("search text fallback", () => {
       rootPath: "/workspace",
       options: plainOptions,
       paths: ["/workspace/Entry.ets"],
+      dirtyPaths: [],
       canUseNativeTextSearch: true,
       searchNative,
       readFile: vi.fn(async () => "width"),
@@ -83,7 +84,7 @@ describe("search text fallback", () => {
     }));
   });
 
-  it("falls back to frontend text search and ignores unreadable files", async () => {
+  it("uses frontend text search when native search is unavailable", async () => {
     const result = await runFallbackTextSearch({
       query: "width",
       dirty: true,
@@ -92,10 +93,8 @@ describe("search text fallback", () => {
       rootPath: "/workspace",
       options: plainOptions,
       paths: ["/workspace/Entry.ets", "/workspace/Broken.ets"],
-      canUseNativeTextSearch: true,
-      searchNative: vi.fn(async () => {
-        throw new Error("native should not run");
-      }),
+      dirtyPaths: ["/workspace/Entry.ets"],
+      canUseNativeTextSearch: false,
       readFile: async (path) => {
         if (path.endsWith("Broken.ets")) throw new Error("unreadable");
         return "const width = 1;";

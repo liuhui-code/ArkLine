@@ -51,6 +51,7 @@ export type UseSearchEverywhereControllerOptions = {
   setActiveOverlay: Dispatch<SetStateAction<OverlayKey>>;
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
   getTextSearchPaths: () => string[];
+  getDirtyDocumentPaths?: () => string[];
   getRecentPaths: () => string[];
   getOpenedPaths: () => string[];
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
@@ -78,6 +79,7 @@ export function useSearchEverywhereController({
   setActiveOverlay,
   queryIndexCandidates,
   getTextSearchPaths,
+  getDirtyDocumentPaths,
   getRecentPaths,
   getOpenedPaths,
   replaceQueryReadiness,
@@ -326,6 +328,7 @@ export function useSearchEverywhereController({
       rootPath: workspace?.rootPath ?? "",
       options: searchEverywhereOptions,
       paths: getTextSearchPaths(),
+      dirtyPaths: getDirtyDocumentPaths?.() ?? [],
       canUseNativeTextSearch: canUseNativeTextSearchRuntime(),
       searchNative: workspaceApi.searchWorkspaceText,
       readFile: readSearchFile,

@@ -16,6 +16,7 @@ describe("search fallback runner", () => {
       rootPath: "/workspace",
       options: { caseSensitive: false, wholeWord: false },
       paths: ["/workspace/Entry.ets"],
+      dirtyPaths: [],
       canUseNativeTextSearch: true,
       searchNative,
       readFile: vi.fn(async () => "width"),
@@ -29,8 +30,24 @@ describe("search fallback runner", () => {
     }));
   });
 
-  it("uses the provided reader when dirty content requires frontend search", async () => {
+  it("overlays only dirty documents on the native index result", async () => {
     const readFile = vi.fn(async () => "const width = 1;");
+    const searchNative = vi.fn(async () => ({
+      query: { kind: "text" as const, query: "width" },
+      matches: [{
+        path: "/workspace/Entry.ets",
+        relativePath: "Entry.ets",
+        fileName: "Entry.ets",
+        line: 1,
+        column: 1,
+        summary: "const width = 0;",
+        preview: "const width = 0;",
+        previewStart: 6,
+        previewEnd: 11,
+        contextBefore: [],
+        contextAfter: [],
+      }],
+    }));
     const result = await runSearchFallbackText({
       query: "width",
       dirty: true,
@@ -38,15 +55,16 @@ describe("search fallback runner", () => {
       cursor: null,
       rootPath: "/workspace",
       options: { caseSensitive: false, wholeWord: false },
-      paths: ["/workspace/Entry.ets"],
+      paths: ["/workspace/Entry.ets", "/workspace/Other.ets"],
+      dirtyPaths: ["/workspace/Entry.ets"],
       canUseNativeTextSearch: true,
-      searchNative: vi.fn(async () => {
-        throw new Error("native should not run");
-      }),
+      searchNative,
       readFile,
     });
 
+    expect(searchNative).toHaveBeenCalledTimes(1);
     expect(readFile).toHaveBeenCalledWith("/workspace/Entry.ets");
+    expect(readFile).not.toHaveBeenCalledWith("/workspace/Other.ets");
     expect(result.matches[0]?.summary).toBe("const width = 1;");
   });
 });

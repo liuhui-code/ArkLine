@@ -192,6 +192,9 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setActiveOverlay,
     queryIndexCandidates: (query, scope, limit) => workspaceIndexRef.current.queryCandidates(query, scope, limit),
     getTextSearchPaths: () => workspaceIndexRef.current.getTextSearchPaths(),
+    getDirtyDocumentPaths: () => documentsRef.current.getDocuments()
+      .filter((document) => document.isDirty)
+      .map((document) => document.path),
     getRecentPaths: () => tabsRef.current.state.recentFiles,
     getOpenedPaths: () => tabsRef.current.state.openTabs.map((tab) => tab.path),
     replaceQueryReadiness: (readiness) => {
