@@ -17,7 +17,9 @@ use crate::services::workspace_index_layer_readiness_service::get_workspace_inde
 use crate::services::workspace_index_layer_readiness_store_service::{
     count_rows, normalize_layer_index_path, with_layer_readiness_store,
 };
-use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
+use crate::services::workspace_index_query_service::{
+    readiness_for_index_runtime, WorkspaceIndexQueryScope,
+};
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 #[path = "workspace_parallel_text_search_service.rs"]
 mod parallel_text_search;
@@ -198,16 +200,14 @@ pub(crate) fn query_facade_text_search_with_cancellation<F>(
 where
     F: FnMut() -> bool + Send + 'static,
 {
-    let mut readiness = crate::services::workspace_index_query_service::readiness_for_index_state(
-        &index_runtime.get_index_state(&request.root_path)?,
-    );
+    let mut readiness = readiness_for_index_runtime(index_runtime, &request.root_path)?;
     let coverage = text_index_coverage_for_request(&request)?;
     apply_text_index_coverage(&mut readiness, coverage);
     let result = raw_text_search_result_with_cancellation(
         index_runtime,
         request,
         is_cancelled,
-        Some(coverage.is_missing()),
+        Some(coverage),
     )?;
     let confidence = coverage.confidence();
     let explain = text_explain(
@@ -245,9 +245,7 @@ fn query_facade_search_text_scope(
         limit,
         context_lines: 0,
     };
-    let mut readiness = crate::services::workspace_index_query_service::readiness_for_index_state(
-        &index_runtime.get_index_state(root_path)?,
-    );
+    let mut readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     let coverage = text_index_coverage_for_request(&request)?;
     apply_text_index_coverage(&mut readiness, coverage);
     let result = raw_text_search_result(index_runtime, request)?;
@@ -284,13 +282,16 @@ fn raw_text_search_result_with_cancellation<F>(
     index_runtime: &WorkspaceIndexRuntime,
     request: WorkspaceTextSearchRequest,
     is_cancelled: F,
-    missing_text_index: Option<bool>,
+    coverage: Option<TextIndexCoverage>,
 ) -> Result<WorkspaceTextSearchResult, String>
 where
     F: FnMut() -> bool + Send + 'static,
 {
-    let coverage = text_index_coverage_for_request(&request)?;
-    let missing_text_index = missing_text_index.unwrap_or_else(|| coverage.is_missing());
+    let coverage = match coverage {
+        Some(coverage) => coverage,
+        None => text_index_coverage_for_request(&request)?,
+    };
+    let missing_text_index = coverage.is_missing();
     if is_filesystem_cursor(&request) {
         let file_paths = filesystem_search_paths(index_runtime, &request.root_path)?;
         return Ok(search_workspace_files_responsive(
@@ -338,11 +339,11 @@ fn filesystem_search_paths(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
 ) -> Result<Vec<String>, String> {
-    let index_state = index_runtime.get_index_state(root_path)?;
-    Ok(
-        load_ready_discovered_files(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
-            .unwrap_or(index_state.file_paths),
-    )
+    if let Some(paths) = load_ready_discovered_files(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
+    {
+        return Ok(paths);
+    }
+    index_runtime.inspect_index_state(root_path, |state| state.file_paths.clone())
 }
 
 fn is_filesystem_cursor(request: &WorkspaceTextSearchRequest) -> bool {

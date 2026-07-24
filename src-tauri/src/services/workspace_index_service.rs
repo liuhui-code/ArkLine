@@ -216,29 +216,30 @@ impl WorkspaceIndexRuntime {
     }
 
     pub fn get_index_state(&self, root_path: &str) -> Result<WorkspaceIndexState, String> {
+        self.inspect_index_state(root_path, Clone::clone)
+    }
+
+    pub(crate) fn inspect_index_state<T>(
+        &self,
+        root_path: &str,
+        inspect: impl FnOnce(&WorkspaceIndexState) -> T,
+    ) -> Result<T, String> {
         let normalized_root = normalize_index_path(root_path);
-        let existing_state = {
+        {
             let workspaces = self
                 .workspaces
                 .lock()
                 .map_err(|_| "Workspace index lock poisoned".to_string())?;
-            workspaces
-                .get(&normalized_root)
-                .map(|workspace| workspace.state.clone())
-        };
-        if let Some(state) = existing_state {
-            return Ok(state);
+            if let Some(workspace) = workspaces.get(&normalized_root) {
+                return Ok(inspect(&workspace.state));
+            }
         }
 
-        self.restore_catalog_cache(root_path)
-            .map(|workspace| workspace.state)
-            .or_else(|error| {
-                if error.contains("does not exist") {
-                    Ok(empty_state())
-                } else {
-                    Err(error)
-                }
-            })
+        match self.restore_catalog_cache(root_path) {
+            Ok(workspace) => Ok(inspect(&workspace.state)),
+            Err(error) if error.contains("does not exist") => Ok(inspect(&empty_state())),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn clear_workspace_index_state(&self, root_path: &str) -> Result<(), String> {

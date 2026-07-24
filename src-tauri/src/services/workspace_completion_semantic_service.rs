@@ -3,9 +3,7 @@
 use rusqlite::{params, Connection};
 
 use crate::models::language::{CompletionItem, LanguageQueryRequest};
-use crate::models::workspace::{
-    WorkspaceIndexQueryEnvelope, WorkspaceIndexReadiness, WorkspaceIndexState, WorkspaceIndexStatus,
-};
+use crate::models::workspace::WorkspaceIndexQueryEnvelope;
 use crate::services::workspace_completion_expected_type_service::expected_completion_type;
 use crate::services::workspace_completion_item_service::{
     completion_item, dedupe_completion_items, snippet_completion_item, symbol_completion_from_row,
@@ -19,7 +17,7 @@ use crate::services::workspace_completion_sdk_service::{
 use crate::services::workspace_index_connection_service::{
     require_existing_workspace_index_reader, workspace_index_store_path, WorkspaceIndexReader,
 };
-use crate::services::workspace_index_readiness_service::readiness_for_query;
+use crate::services::workspace_index_query_service::readiness_for_index_runtime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_reference_receiver_type_service::receiver_type_map;
 
@@ -88,7 +86,7 @@ pub fn query_semantic_completions_with_readiness(
     request: &LanguageQueryRequest,
     limit: usize,
 ) -> Result<WorkspaceIndexQueryEnvelope<CompletionItem>, String> {
-    let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
+    let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     let items = query_semantic_completions(root_path, request, limit)?;
     Ok(WorkspaceIndexQueryEnvelope {
         items,
@@ -278,29 +276,6 @@ fn project_symbol_items(
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
-}
-
-fn readiness_for_index_state(state: &WorkspaceIndexState) -> WorkspaceIndexReadiness {
-    let root_path = state.root_path.as_deref().unwrap_or_default();
-    let served_generation = state.indexed_at.and_then(|value| u64::try_from(value).ok());
-    let requested_generation = match state.status {
-        WorkspaceIndexStatus::Stale | WorkspaceIndexStatus::Failed => {
-            served_generation.unwrap_or_default().saturating_add(1)
-        }
-        _ => served_generation.unwrap_or_default(),
-    };
-    let partial_reason = match state.status {
-        WorkspaceIndexStatus::Partial => {
-            state.partial_reason.as_deref().or(Some("Index is partial"))
-        }
-        _ => None,
-    };
-    readiness_for_query(
-        root_path,
-        requested_generation,
-        served_generation,
-        partial_reason,
-    )
 }
 
 fn resolved_import_target_name(

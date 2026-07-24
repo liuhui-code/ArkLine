@@ -109,7 +109,7 @@ pub fn query_definition_candidates_with_readiness(
     semantic_target: Option<DefinitionTarget>,
     semantic_candidates: Vec<DefinitionCandidate>,
 ) -> Result<WorkspaceIndexQueryEnvelope<DefinitionCandidate>, String> {
-    let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
+    let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     let mut items = Vec::new();
     if let Some(target) = semantic_target {
         items.push(candidate_from_target(target, "Language service definition"));
@@ -159,6 +159,13 @@ pub(crate) fn readiness_for_index_state(state: &WorkspaceIndexState) -> Workspac
         served_generation,
         partial_reason,
     )
+}
+
+pub(crate) fn readiness_for_index_runtime(
+    index_runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+) -> Result<WorkspaceIndexReadiness, String> {
+    index_runtime.inspect_index_state(root_path, readiness_for_index_state)
 }
 
 fn should_use_indexed_text_search(request: &WorkspaceTextSearchRequest) -> bool {

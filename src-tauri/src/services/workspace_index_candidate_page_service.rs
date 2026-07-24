@@ -1,7 +1,7 @@
 use crate::models::workspace::{WorkspaceIndexQueryEnvelope, WorkspaceSearchCandidate};
 use crate::services::workspace_index_entity_query_service::query_workspace_file_symbols;
 use crate::services::workspace_index_query_service::{
-    query_workspace_candidates, readiness_for_index_state, WorkspaceIndexQueryScope,
+    query_workspace_candidates, readiness_for_index_runtime, WorkspaceIndexQueryScope,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
@@ -22,7 +22,7 @@ pub(crate) fn query_workspace_candidate_page(
         query_workspace_candidates(index_runtime, root_path, query, scope, fetch_limit)?;
     let has_more = candidates.len() > offset.saturating_add(limit);
     let items = candidates.into_iter().skip(offset).take(limit).collect();
-    let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
+    let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     Ok(WorkspaceIndexQueryEnvelope {
         items,
         readiness,
@@ -45,7 +45,7 @@ pub(crate) fn query_workspace_file_symbol_page(
     let candidates = query_workspace_file_symbols(root_path, file_path, query, fetch_limit)?;
     let has_more = candidates.len() > offset.saturating_add(limit);
     let items = candidates.into_iter().skip(offset).take(limit).collect();
-    let readiness = readiness_for_index_state(&index_runtime.get_index_state(root_path)?);
+    let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     Ok(WorkspaceIndexQueryEnvelope {
         items,
         readiness,
