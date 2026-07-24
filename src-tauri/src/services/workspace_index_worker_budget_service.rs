@@ -1,7 +1,7 @@
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 
 pub const WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET: usize = 128;
-pub const WORKSPACE_INDEX_UI_ACTIVE_DEEP_PATH_BUDGET: usize = 32;
+pub const WORKSPACE_INDEX_UI_ACTIVE_DEEP_PATH_BUDGET: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceIndexBudgetedPaths {

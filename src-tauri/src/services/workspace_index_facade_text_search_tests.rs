@@ -275,6 +275,55 @@ fn text_search_falls_back_when_text_index_layer_is_missing() {
 }
 
 #[test]
+fn text_search_uses_partial_content_index_without_scanning_the_workspace() {
+    let root = create_empty_workspace("facade-text-search-partial-usable");
+    let source_dir = create_workspace_source_dir(&root);
+    let indexed = source_dir.join("Indexed.ets");
+    let deferred = source_dir.join("Deferred.ets");
+    fs::write(&indexed, "Text(\"PartialIndexedTarget\")\n").unwrap();
+    fs::write(&deferred, "Text(\"DeferredNoise\")\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    remove_content_rows(&root, &deferred.to_string_lossy());
+    fs::remove_file(&indexed).unwrap();
+
+    let envelope = query_facade_text_search(
+        &runtime,
+        WorkspaceTextSearchRequest {
+            root_path: root_path.clone(),
+            query: "partialindexedtarget".to_string(),
+            generation: None,
+            cursor: None,
+            options: WorkspaceTextSearchOptions {
+                case_sensitive: false,
+                whole_word: false,
+            },
+            limit: 8,
+            context_lines: 0,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert_eq!(envelope.confidence.as_deref(), Some("indexedPartial"));
+    assert!(envelope
+        .explain
+        .iter()
+        .any(|line| line.starts_with("used:TextIndex:partial:")));
+    assert!(!envelope.explain.iter().any(|line| line.contains("missing")));
+    assert!(matches!(
+        envelope.items.as_slice(),
+        [WorkspaceIndexFacadeItem::TextSearch(result)]
+            if result.matches[0].summary.contains("PartialIndexedTarget")
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn text_search_fallback_uses_ready_discovery_when_runtime_paths_are_empty() {
     let root = create_empty_workspace("facade-text-search-discovery-fallback");
     let source = create_workspace_source_dir(&root).join("Discovered.ets");
@@ -385,6 +434,26 @@ fn clear_content_index(root: &std::path::Path) {
     connection
         .execute("delete from workspace_content_files", [])
         .unwrap();
+}
+
+fn remove_content_rows(root: &std::path::Path, path: &str) {
+    let connection = Connection::open(
+        root.join(".arkline")
+            .join("index")
+            .join("workspace-catalog.sqlite"),
+    )
+    .unwrap();
+    let path = path.replace('/', "\\");
+    for table in [
+        "workspace_content_lines",
+        "workspace_content_fts",
+        "workspace_content_trigram_fts",
+        "workspace_content_files",
+    ] {
+        connection
+            .execute(&format!("delete from {table} where path = ?1"), [&path])
+            .unwrap();
+    }
 }
 
 fn assert_explain_contains(explain: &[String], expected: &str) {

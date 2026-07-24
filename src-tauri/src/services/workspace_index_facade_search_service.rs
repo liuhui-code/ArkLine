@@ -26,6 +26,32 @@ use crate::services::workspace_text_search_service::search_workspace_text_with_c
 
 const FILESYSTEM_TEXT_SEARCH_FILE_LIMIT: usize = 200_000;
 
+#[derive(Clone, Copy)]
+struct TextIndexCoverage {
+    expected: i64,
+    ready: i64,
+}
+
+impl TextIndexCoverage {
+    fn is_missing(self) -> bool {
+        self.expected == 0 || self.ready == 0
+    }
+
+    fn is_partial(self) -> bool {
+        !self.is_missing() && self.ready < self.expected
+    }
+
+    fn confidence(self) -> &'static str {
+        if self.is_missing() {
+            "filesystemFallback"
+        } else if self.is_partial() {
+            "indexedPartial"
+        } else {
+            "indexed"
+        }
+    }
+}
+
 pub(crate) fn query_facade_search_everywhere(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
@@ -173,27 +199,21 @@ where
     let mut readiness = crate::services::workspace_index_query_service::readiness_for_index_state(
         &index_runtime.get_index_state(&request.root_path)?,
     );
-    let missing_text_index = text_index_missing_for_request(&request)?;
-    if missing_text_index {
-        downgrade_missing_text_index(&mut readiness);
-    }
+    let coverage = text_index_coverage_for_request(&request)?;
+    apply_text_index_coverage(&mut readiness, coverage);
     let result = raw_text_search_result_with_cancellation(
         index_runtime,
         request,
         is_cancelled,
-        Some(missing_text_index),
+        Some(coverage.is_missing()),
     )?;
-    let confidence = if missing_text_index {
-        "filesystemFallback"
-    } else {
-        "indexed"
-    };
+    let confidence = coverage.confidence();
     let explain = text_explain(
         "textSearch",
         &readiness,
         1,
         confidence,
-        missing_text_index,
+        coverage,
         Some(&result),
     );
     Ok(WorkspaceIndexFacadeEnvelope {
@@ -226,22 +246,16 @@ fn query_facade_search_text_scope(
     let mut readiness = crate::services::workspace_index_query_service::readiness_for_index_state(
         &index_runtime.get_index_state(root_path)?,
     );
-    let missing_text_index = text_index_missing_for_request(&request)?;
-    if missing_text_index {
-        downgrade_missing_text_index(&mut readiness);
-    }
+    let coverage = text_index_coverage_for_request(&request)?;
+    apply_text_index_coverage(&mut readiness, coverage);
     let result = raw_text_search_result(index_runtime, request)?;
-    let confidence = if missing_text_index {
-        "filesystemFallback"
-    } else {
-        "indexed"
-    };
+    let confidence = coverage.confidence();
     let explain = text_explain(
         "searchEverywhere",
         &readiness,
         result.matches.len(),
         confidence,
-        missing_text_index,
+        coverage,
         Some(&result),
     );
     let items = text_search_candidates_from_result(result, query, limit)
@@ -296,12 +310,17 @@ fn text_explain(
     readiness: &WorkspaceIndexReadiness,
     item_count: usize,
     confidence: &str,
-    missing_text_index: bool,
+    coverage: TextIndexCoverage,
     result: Option<&WorkspaceTextSearchResult>,
 ) -> Vec<String> {
     let mut explain = explain_facade_query(kind, readiness, item_count, Some(confidence));
-    if missing_text_index {
+    if coverage.is_missing() {
         explain.push("skipped:TextIndex:missing".to_string());
+    } else if coverage.is_partial() {
+        explain.push(format!(
+            "used:TextIndex:partial:{}/{}",
+            coverage.ready, coverage.expected
+        ));
     }
     if let Some(result) = result {
         explain.push(format!("searchedFiles:{}", result.searched_files));
@@ -344,23 +363,45 @@ fn layer_status_label(status: &WorkspaceIndexLayerStatus) -> &'static str {
     }
 }
 
-fn downgrade_missing_text_index(readiness: &mut WorkspaceIndexReadiness) {
-    if readiness.state == WorkspaceIndexReadinessState::Ready {
+fn apply_text_index_coverage(readiness: &mut WorkspaceIndexReadiness, coverage: TextIndexCoverage) {
+    if (coverage.is_missing() || coverage.is_partial())
+        && readiness.state == WorkspaceIndexReadinessState::Ready
+    {
         readiness.state = WorkspaceIndexReadinessState::Partial;
         readiness.retryable = true;
     }
-    readiness.reason = Some("Text index layer is missing; served filesystem fallback".to_string());
+    if coverage.is_missing() {
+        readiness.reason =
+            Some("Text index layer is missing; served filesystem fallback".to_string());
+    } else if coverage.is_partial() {
+        readiness.reason = Some(format!(
+            "Text index is usable with partial coverage ({}/{} files)",
+            coverage.ready, coverage.expected
+        ));
+    }
 }
 
 fn text_index_missing_for_request(request: &WorkspaceTextSearchRequest) -> Result<bool, String> {
+    Ok(text_index_coverage_for_request(request)?.is_missing())
+}
+
+fn text_index_coverage_for_request(
+    request: &WorkspaceTextSearchRequest,
+) -> Result<TextIndexCoverage, String> {
     if !should_use_indexed_text_search(request) {
-        return Ok(false);
+        return Ok(TextIndexCoverage {
+            expected: 1,
+            ready: 1,
+        });
     }
     with_layer_readiness_store(&request.root_path, |connection| {
         let root_key = normalize_layer_index_path(&request.root_path);
         let expected = count_rows(connection, "workspace_files", &root_key)?;
         let content = load_content_layer_summary(connection, &root_key)?;
-        Ok(expected == 0 || content.ready_count < expected)
+        Ok(TextIndexCoverage {
+            expected,
+            ready: content.ready_count,
+        })
     })
 }
 
