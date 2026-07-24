@@ -71,12 +71,15 @@ export function useQuickOpenController({
 
   const results = useMemo(() => {
     if (!active) return [];
-    if (
-      remoteState.rootPath === rootPath
-      && remoteState.query === trimmedQuery
-    ) return remoteState.results;
+    if (queryWorkspace && rootPath && trimmedQuery) {
+      if (
+        remoteState.rootPath === rootPath
+        && remoteState.query === trimmedQuery
+      ) return remoteState.results;
+      return [];
+    }
     return localResults;
-  }, [active, localResults, remoteState, rootPath, trimmedQuery]);
+  }, [active, localResults, queryWorkspace, remoteState, rootPath, trimmedQuery]);
 
   useEffect(() => {
     if (results.length === 0) {

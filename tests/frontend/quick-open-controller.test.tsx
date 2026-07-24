@@ -81,6 +81,25 @@ describe("Quick Open", () => {
     ]);
   });
 
+  it("does not expose partial local candidates while the persistent query is pending", async () => {
+    let resolveQuery: ((value: never[]) => void) | null = null;
+    const queryWorkspace = vi.fn(() => new Promise<never[]>((resolve) => {
+      resolveQuery = resolve;
+    }));
+    const { result } = renderHook(() => useQuickOpenController({
+      active: true,
+      rootPath: "/workspace",
+      query: "Page000067",
+      localResults: [{ path: "/workspace/Page000679.ets" }],
+      queryWorkspace,
+    }));
+
+    expect(result.current.results).toEqual([]);
+    await waitFor(() => expect(queryWorkspace).toHaveBeenCalled());
+    await act(async () => resolveQuery?.([]));
+    expect(result.current.results).toEqual([]);
+  });
+
   it("opens the keyboard-selected result and tracks pointer selection", () => {
     const onMoveSelection = vi.fn();
     const onSelectResult = vi.fn();
