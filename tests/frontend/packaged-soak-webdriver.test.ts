@@ -9,6 +9,10 @@ import {
   packagedApplicationArguments,
   probeWebView2DebugEndpoints,
 } from "../../scripts/packaged-soak-windows-session.mjs";
+import {
+  SEARCH_RESULT_READINESS_SCRIPT,
+  waitForSearchResult,
+} from "../../scripts/packaged-soak-readiness.mjs";
 
 describe("packaged Windows WebView2 attachment", () => {
   it("builds an explicit WebView2 attachment session", async () => {
@@ -121,5 +125,28 @@ describe("packaged Windows WebView2 attachment", () => {
       ok: false,
       error: "Error: connection refused",
     });
+  });
+
+  it("measures search readiness from DOM mutation rather than polling", async () => {
+    const driver = {
+      executeAsync: vi.fn().mockResolvedValue({
+        at: 120,
+        count: 2,
+        query: "needle",
+      }),
+    };
+
+    await expect(waitForSearchResult(
+      driver,
+      "Find in Files Results",
+      "needle",
+      5_000,
+    )).resolves.toMatchObject({ at: 120, count: 2 });
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      SEARCH_RESULT_READINESS_SCRIPT,
+      ["Find in Files Results", "needle", 5_000],
+      6_000,
+    );
+    expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("MutationObserver");
   });
 });

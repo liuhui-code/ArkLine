@@ -54,12 +54,13 @@ export async function waitForSearchResult(
   expectedQuery,
   timeoutMs,
 ) {
-  return pollUntil(async () => {
-    const snapshot = await driver.execute(UI_READINESS_SCRIPT, [resultsLabel]);
-    return snapshot?.query === expectedQuery && snapshot.count > 0
-      ? snapshot
-      : null;
-  }, timeoutMs, `${resultsLabel} did not render results`);
+  const snapshot = await driver.executeAsync(
+    SEARCH_RESULT_READINESS_SCRIPT,
+    [resultsLabel, expectedQuery, timeoutMs],
+    timeoutMs + 1_000,
+  );
+  if (snapshot) return snapshot;
+  throw new Error(`${resultsLabel} did not render results`);
 }
 
 export async function waitForActiveTab(driver, pageName, timeoutMs) {
@@ -104,3 +105,50 @@ async function pollUntil(operation, timeoutMs, timeoutMessage) {
     typeof timeoutMessage === "function" ? timeoutMessage() : timeoutMessage,
   );
 }
+
+export const SEARCH_RESULT_READINESS_SCRIPT = `
+  const label = arguments[0];
+  const expectedQuery = arguments[1];
+  const timeoutMs = arguments[2];
+  const done = arguments[arguments.length - 1];
+  const selectors = {
+    "Find in Files Results": {
+      results: '[aria-label="Find in Files Results"]',
+      query: '[aria-label="Find in Files Query"]'
+    },
+    "Quick Open Results": {
+      results: '[aria-label="Quick Open Results"]',
+      query: '[aria-label="Quick Open Query"]'
+    }
+  };
+  const selector = selectors[label];
+  let observer;
+  let timer;
+  let finished = false;
+  const finish = (value) => {
+    if (finished) return;
+    finished = true;
+    observer?.disconnect();
+    clearTimeout(timer);
+    done(value);
+  };
+  const inspect = () => {
+    if (!selector) return finish(null);
+    const results = document.querySelector(selector.results);
+    const query = document.querySelector(selector.query)?.value || "";
+    const count = results?.querySelectorAll("button").length || 0;
+    if (query === expectedQuery && count > 0) {
+      finish({ at: performance.now(), count, query });
+    }
+  };
+  inspect();
+  if (!finished) {
+    observer = new MutationObserver(inspect);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+    timer = setTimeout(() => finish(null), timeoutMs);
+  }
+`;
