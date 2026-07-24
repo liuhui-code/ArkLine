@@ -177,7 +177,7 @@ pub fn query_workspace_index_facade(
             ))
         }
     }?;
-    record_facade_query_event(&root_path, kind, &envelope)?;
+    record_facade_query_event(&root_path, kind, &envelope);
     Ok(envelope)
 }
 
@@ -189,7 +189,7 @@ pub fn query_facade_file_symbols_with_readiness(
     limit: usize,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     let envelope = query_facade_file_symbols(index_runtime, root_path, file_path, query, limit)?;
-    record_facade_query_event(root_path, "fileSymbols", &envelope)?;
+    record_facade_query_event(root_path, "fileSymbols", &envelope);
     Ok(search_query_envelope(envelope))
 }
 
@@ -211,7 +211,7 @@ where
     let root_path = request.root_path.clone();
     let envelope =
         query_facade_text_search_with_cancellation(index_runtime, request, is_cancelled)?;
-    record_facade_query_event(&root_path, "textSearch", &envelope)?;
+    record_facade_query_event(&root_path, "textSearch", &envelope);
     envelope
         .items
         .into_iter()
@@ -255,7 +255,7 @@ pub fn query_facade_search_everywhere_with_readiness_context(
         limit,
         context,
     )?;
-    record_facade_query_event(root_path, "searchEverywhere", &envelope)?;
+    record_facade_query_event(root_path, "searchEverywhere", &envelope);
     Ok(search_query_envelope(envelope))
 }
 
@@ -273,7 +273,7 @@ pub fn query_facade_definition_candidates_with_readiness(
         semantic_target,
         semantic_candidates,
     )?;
-    record_facade_query_event(root_path, "definition", &envelope)?;
+    record_facade_query_event(root_path, "definition", &envelope);
     Ok(definition_query_envelope(envelope))
 }
 
@@ -284,7 +284,7 @@ pub fn query_facade_usages_with_readiness(
     limit: usize,
 ) -> Result<WorkspaceIndexQueryEnvelope<UsageResult>, String> {
     let envelope = query_facade_usages(index_runtime, root_path, request, limit)?;
-    record_facade_query_event(root_path, "usages", &envelope)?;
+    record_facade_query_event(root_path, "usages", &envelope);
     Ok(usage_query_envelope(envelope))
 }
 
@@ -295,7 +295,7 @@ pub fn query_facade_completions_with_readiness(
     limit: usize,
 ) -> Result<WorkspaceIndexQueryEnvelope<CompletionItem>, String> {
     let envelope = query_facade_completion(index_runtime, root_path, request, limit)?;
-    record_facade_query_event(root_path, "completion", &envelope)?;
+    record_facade_query_event(root_path, "completion", &envelope);
     Ok(completion_query_envelope(envelope))
 }
 

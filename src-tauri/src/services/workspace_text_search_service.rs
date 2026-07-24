@@ -31,6 +31,51 @@ pub fn search_workspace_text(
 pub fn search_workspace_text_with_cancellation<F>(
     request: &WorkspaceTextSearchRequest,
     indexed_paths: &[String],
+    is_cancelled: F,
+) -> WorkspaceTextSearchResult
+where
+    F: FnMut() -> bool,
+{
+    let start_path_index = request
+        .cursor
+        .as_ref()
+        .map_or(0, |cursor| cursor.path_index.min(indexed_paths.len()));
+    search_workspace_text_entries_with_cancellation(
+        request,
+        indexed_paths.len(),
+        indexed_paths
+            .iter()
+            .enumerate()
+            .skip(start_path_index)
+            .map(|(index, path)| (index, path.as_str())),
+        is_cancelled,
+    )
+}
+
+pub(crate) fn search_workspace_text_in_order_with_cancellation<F, I>(
+    request: &WorkspaceTextSearchRequest,
+    indexed_paths: &[String],
+    path_indices: I,
+    is_cancelled: F,
+) -> WorkspaceTextSearchResult
+where
+    F: FnMut() -> bool,
+    I: IntoIterator<Item = usize>,
+{
+    search_workspace_text_entries_with_cancellation(
+        request,
+        indexed_paths.len(),
+        path_indices
+            .into_iter()
+            .filter_map(|index| indexed_paths.get(index).map(|path| (index, path.as_str()))),
+        is_cancelled,
+    )
+}
+
+fn search_workspace_text_entries_with_cancellation<'a, F>(
+    request: &WorkspaceTextSearchRequest,
+    path_count: usize,
+    indexed_paths: impl Iterator<Item = (usize, &'a str)>,
     mut is_cancelled: F,
 ) -> WorkspaceTextSearchResult
 where
@@ -60,8 +105,8 @@ where
     let start_path_index = request
         .cursor
         .as_ref()
-        .map_or(0, |cursor| cursor.path_index.min(indexed_paths.len()));
-    for (path_index, indexed_path) in indexed_paths.iter().enumerate().skip(start_path_index) {
+        .map_or(0, |cursor| cursor.path_index.min(path_count));
+    for (path_index, indexed_path) in indexed_paths {
         if is_cancelled() {
             partial = true;
             break;

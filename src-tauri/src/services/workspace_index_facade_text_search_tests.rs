@@ -10,6 +10,7 @@ use crate::services::workspace_discovery_store_service::{
     replace_discovered_file_chunk, update_discovery_state, WorkspaceDiscoveryState,
 };
 use crate::services::workspace_index_event_service::load_recent_index_events;
+use crate::services::workspace_index_event_sink_service::flush_index_events;
 use crate::services::workspace_index_facade_search_service::query_facade_text_search;
 use crate::services::workspace_index_facade_service::{
     query_facade_text_search_result, query_workspace_index_facade, WorkspaceIndexFacadeItem,
@@ -122,6 +123,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
     assert_eq!(regex.matches.len(), 1);
     assert_eq!(regex.prefilter_skipped_files, 1);
     assert!(plain.matches[0].summary.contains("GlobalFacadeTarget"));
+    flush_index_events();
     let events = load_recent_index_events(&root_path, 8).unwrap();
     assert!(events.iter().any(|event| {
         event.scope == "query"

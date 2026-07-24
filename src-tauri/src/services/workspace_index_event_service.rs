@@ -8,6 +8,8 @@ use crate::services::workspace_index_connection_service::{
 };
 use crate::services::workspace_index_task_status_service::current_time_millis;
 
+const RETAINED_QUERY_EVENT_LIMIT: i64 = 200;
+
 pub fn create_index_event_tables(connection: &Connection) -> Result<(), String> {
     connection
         .execute(
@@ -45,11 +47,25 @@ pub fn create_index_event_tables(connection: &Connection) -> Result<(), String> 
 }
 
 pub fn store_index_event(root_path: &str, event: &WorkspaceIndexEvent) -> Result<(), String> {
+    store_index_events(root_path, std::slice::from_ref(event))
+}
+
+pub(crate) fn store_index_events(
+    root_path: &str,
+    events: &[WorkspaceIndexEvent],
+) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
     with_workspace_index_writer(root_path, |connection| {
-        store_index_event_in_connection(connection, event)
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        for event in events {
+            store_index_event_in_connection(&transaction, event)?;
+        }
+        trim_query_events(&transaction, &normalize_index_path(root_path))?;
+        transaction.commit().map_err(|error| error.to_string())
     })
 }
 
@@ -77,6 +93,22 @@ pub fn store_index_event_in_connection(
                 event.payload_json,
                 event.created_at as i64,
             ],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn trim_query_events(connection: &Connection, root_key: &str) -> Result<(), String> {
+    connection
+        .execute(
+            "delete from workspace_index_events
+             where root_path = ?1 and scope = 'query' and event_id not in (
+                select event_id from workspace_index_events
+                where root_path = ?1 and scope = 'query'
+                order by created_at desc
+                limit ?2
+             )",
+            params![root_key, RETAINED_QUERY_EVENT_LIMIT],
         )
         .map_err(|error| error.to_string())?;
     Ok(())

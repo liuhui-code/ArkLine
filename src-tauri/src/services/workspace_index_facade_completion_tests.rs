@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use crate::models::language::LanguageQueryRequest;
 use crate::models::workspace::WorkspaceIndexReadinessState;
 use crate::services::workspace_index_event_service::load_recent_index_events;
+use crate::services::workspace_index_event_sink_service::flush_index_events;
 use crate::services::workspace_index_facade_service::{
     query_workspace_index_facade, WorkspaceIndexFacadeItem, WorkspaceIndexFacadeRequest,
 };
@@ -50,6 +51,7 @@ fn facade_routes_completion_queries_with_readiness_and_explain() {
         [WorkspaceIndexFacadeItem::Completion(item)] if item.label == "private"
     ));
 
+    flush_index_events();
     let events = load_recent_index_events(&root_path, 8).unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0].scope, "query");

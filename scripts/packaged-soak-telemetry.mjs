@@ -7,6 +7,7 @@ const TRACKED_INTERACTION_LABELS = new Set([
 export const TELEMETRY_INSTALL_SCRIPT = `
   if (!window.__arklinePackagedSoak) {
     const supported = new Set(PerformanceObserver.supportedEntryTypes || []);
+    const trackedInteractionLabels = new Set(${JSON.stringify([...TRACKED_INTERACTION_LABELS])});
     const state = {
       capabilities: {
         eventTiming: supported.has("event"),
@@ -15,9 +16,10 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         jsHeap: Boolean(performance.memory)
       },
       errors: [], eventTimings: [], frameGaps: [], longAnimationFrames: [],
-      longTasks: [], frames: 0, errorCount: 0,
+      longTasks: [], frames: 0, errorCount: 0, expectedInterruptionCount: 0,
       eventTimingCount: 0, frameGapCount: 0, longAnimationFrameCount: 0,
-      longTaskCount: 0, interactionStarts: {}, scriptAttributions: {}
+      longTaskCount: 0, eventTimingSamplingComplete: false,
+      interactionStarts: {}, scriptAttributions: {}
     };
     const retain = (items, value, limit = ${SAMPLE_LIMIT}) => {
       if (items.length < limit) items.push(value);
@@ -25,12 +27,20 @@ export const TELEMETRY_INSTALL_SCRIPT = `
     const observe = (type, callback, options = {}) => {
       if (!supported.has(type)) return;
       try {
-        new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) callback(entry);
-        }).observe({ type, buffered: true, ...options });
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            if (callback(entry) === false) {
+              observer.disconnect();
+              break;
+            }
+          }
+        });
+        observer.observe({ type, buffered: true, ...options });
       } catch {}
     };
     observe("event", (entry) => {
+      const targetLabel = entry.target?.getAttribute?.("aria-label") || null;
+      if (!trackedInteractionLabels.has(targetLabel)) return true;
       state.eventTimingCount += 1;
       retain(state.eventTimings, {
         name: entry.name,
@@ -38,8 +48,13 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         processingStart: entry.processingStart,
         processingEnd: entry.processingEnd,
         interactionId: entry.interactionId || 0,
-        targetLabel: entry.target?.getAttribute?.("aria-label") || null
+        targetLabel
       });
+      if (state.eventTimings.length >= ${SAMPLE_LIMIT}) {
+        state.eventTimingSamplingComplete = true;
+        return false;
+      }
+      return true;
     }, { durationThreshold: 16 });
     observe("long-animation-frame", (entry) => {
       state.longAnimationFrameCount += 1;
@@ -76,11 +91,22 @@ export const TELEMETRY_INSTALL_SCRIPT = `
       retain(state.longTasks, entry.duration);
     });
     const recordError = (value) => {
+      const message = String(value);
+      if (
+        message.includes("Workspace query superseded")
+        || message.includes("Workspace query deadline exceeded")
+      ) {
+        state.expectedInterruptionCount += 1;
+        return false;
+      }
       state.errorCount += 1;
-      retain(state.errors, String(value), 100);
+      retain(state.errors, message, 100);
+      return true;
     };
     addEventListener("error", (event) => recordError(event.error || event.message));
-    addEventListener("unhandledrejection", (event) => recordError(event.reason));
+    addEventListener("unhandledrejection", (event) => {
+      if (!recordError(event.reason)) event.preventDefault();
+    });
     addEventListener("beforeinput", (event) => {
       const label = event.target?.getAttribute?.("aria-label");
       if (label) {
@@ -109,7 +135,9 @@ export const TELEMETRY_SNAPSHOT_SCRIPT = `
     longTasks: state.longTasks || [],
     frames: state.frames || 0,
     errorCount: state.errorCount || 0,
+    expectedInterruptionCount: state.expectedInterruptionCount || 0,
     eventTimingCount: state.eventTimingCount || 0,
+    eventTimingSamplingComplete: Boolean(state.eventTimingSamplingComplete),
     frameGapCount: state.frameGapCount || 0,
     longAnimationFrameCount: state.longAnimationFrameCount || 0,
     longTaskCount: state.longTaskCount || 0,

@@ -1,17 +1,17 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexReadinessState};
-use crate::services::workspace_index_event_service::store_index_event;
+use crate::services::workspace_index_event_sink_service::enqueue_index_event;
 use crate::services::workspace_index_facade_service::WorkspaceIndexFacadeEnvelope;
 
 pub(crate) fn record_facade_query_event(
     root_path: &str,
     kind: &str,
     envelope: &WorkspaceIndexFacadeEnvelope,
-) -> Result<(), String> {
-    store_index_event(
+) {
+    enqueue_index_event(
         root_path,
-        &WorkspaceIndexEvent {
+        WorkspaceIndexEvent {
             event_id: format!(
                 "facade:{kind}:{}:{}",
                 envelope.readiness.requested_generation,
@@ -35,7 +35,7 @@ pub(crate) fn record_facade_query_event(
             .to_string(),
             created_at: current_time_millis(),
         },
-    )
+    );
 }
 
 fn facade_event_phase(envelope: &WorkspaceIndexFacadeEnvelope) -> &'static str {

@@ -4,7 +4,9 @@ use std::sync::{Mutex, OnceLock};
 use crate::models::workspace::{
     WorkspaceTextSearchCursor, WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
-use crate::services::workspace_text_search_service::search_workspace_text_with_cancellation;
+use crate::services::workspace_text_search_service::{
+    search_workspace_text_in_order_with_cancellation, search_workspace_text_with_cancellation,
+};
 use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
@@ -56,34 +58,32 @@ where
     let first = pool.install(|| {
         (0..worker_count).into_par_iter().find_map_any(|shard| {
             let (start, end) = shard_bounds(file_paths.len(), worker_count, shard);
-            for path_index in centered_indices(start, end) {
-                if search_finished.load(Ordering::Relaxed) {
-                    return None;
-                }
-                let result = search_workspace_text_with_cancellation(
-                    &first_request,
-                    std::slice::from_ref(&file_paths[path_index]),
-                    || {
-                        if cancellation_observed.load(Ordering::Relaxed) {
-                            return true;
-                        }
-                        let poll = cancellation_poll_count.fetch_add(1, Ordering::Relaxed);
-                        if poll % CANCELLATION_POLL_INTERVAL != 0 {
-                            return false;
-                        }
-                        let cancelled = cancellation
-                            .lock()
-                            .map(|mut is_cancelled| is_cancelled())
-                            .unwrap_or(true);
-                        cancellation_observed.fetch_or(cancelled, Ordering::Relaxed);
-                        cancelled
-                    },
-                );
-                searched_files.fetch_add(result.searched_files, Ordering::Relaxed);
-                prefilter_skipped_files
-                    .fetch_add(result.prefilter_skipped_files, Ordering::Relaxed);
-                if !result.matches.is_empty() {
-                    search_finished.store(true, Ordering::Relaxed);
+            let result = search_workspace_text_in_order_with_cancellation(
+                &first_request,
+                file_paths,
+                centered_indices(start, end),
+                || {
+                    if search_finished.load(Ordering::Relaxed)
+                        || cancellation_observed.load(Ordering::Relaxed)
+                    {
+                        return true;
+                    }
+                    let poll = cancellation_poll_count.fetch_add(1, Ordering::Relaxed);
+                    if poll % CANCELLATION_POLL_INTERVAL != 0 {
+                        return false;
+                    }
+                    let cancelled = cancellation
+                        .lock()
+                        .map(|mut is_cancelled| is_cancelled())
+                        .unwrap_or(true);
+                    cancellation_observed.fetch_or(cancelled, Ordering::Relaxed);
+                    cancelled
+                },
+            );
+            searched_files.fetch_add(result.searched_files, Ordering::Relaxed);
+            prefilter_skipped_files.fetch_add(result.prefilter_skipped_files, Ordering::Relaxed);
+            if !result.matches.is_empty() {
+                if !search_finished.swap(true, Ordering::Relaxed) {
                     return Some(result);
                 }
             }

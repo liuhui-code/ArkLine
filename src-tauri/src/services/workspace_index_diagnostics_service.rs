@@ -14,6 +14,7 @@ use crate::services::workspace_index_connection_service::{
     workspace_index_store_path, WorkspaceIndexReader,
 };
 use crate::services::workspace_index_event_service::load_recent_index_events;
+use crate::services::workspace_index_event_sink_service::flush_index_events;
 use crate::services::workspace_index_freshness_service::load_index_freshness_layers;
 use crate::services::workspace_index_maintenance_runtime_service::workspace_index_store_stats;
 use crate::services::workspace_index_repair_action_service::{
@@ -39,6 +40,7 @@ const DIAGNOSTICS_PARSER_FAILURE_LIMIT: usize = 5;
 const DIAGNOSTICS_UNRESOLVED_IMPORT_LIMIT: usize = 5;
 
 pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnostics, String> {
+    flush_index_events();
     ensure_diagnostics_store_schema(root_path)?;
     let cache_path = workspace_index_store_path(root_path);
     let connection = open_index_store(root_path)?;

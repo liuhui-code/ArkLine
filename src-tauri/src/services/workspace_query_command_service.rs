@@ -57,7 +57,7 @@ pub async fn query_workspace_candidates_facade_blocking(
             cursor,
             &context,
         )?;
-        record_facade_query_event(&root_path, "searchEverywhere", &envelope)?;
+        record_facade_query_event(&root_path, "searchEverywhere", &envelope);
         Ok(search_query_envelope(envelope))
     })
     .await
@@ -103,7 +103,7 @@ pub async fn query_workspace_candidates_brokered_blocking(
                 cursor,
                 &context,
             )?;
-            record_facade_query_event(&root_path, "searchEverywhere", &envelope)?;
+            record_facade_query_event(&root_path, "searchEverywhere", &envelope);
             Ok(search_query_envelope(envelope))
         }?;
         ticket.check()?;
@@ -162,7 +162,7 @@ pub async fn query_workspace_file_symbols_facade_blocking(
             limit,
             cursor,
         )?;
-        record_facade_query_event(&root_path, "fileSymbols", &envelope)?;
+        record_facade_query_event(&root_path, "fileSymbols", &envelope);
         Ok(search_query_envelope(envelope))
     })
     .await

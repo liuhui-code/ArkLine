@@ -1,8 +1,8 @@
 use std::fs;
 
-use crate::models::workspace::WorkspaceIndexTaskStatus;
+use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexTaskStatus};
 use crate::services::workspace_index_event_service::{
-    event_from_task_status, load_recent_index_events, store_index_event,
+    event_from_task_status, load_recent_index_events, store_index_event, store_index_events,
 };
 use crate::services::workspace_index_test_fixture_service::create_empty_workspace;
 
@@ -77,5 +77,41 @@ fn maps_failed_task_status_to_error_event() {
     assert_eq!(event.severity, "error");
     assert_eq!(event.message, "parser crashed");
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn bounds_persisted_query_event_history() {
+    let root = create_empty_workspace("index-events-bounded-query-history");
+    let root_path = root.to_string_lossy().to_string();
+    let root_key = root_path.replace('/', "\\");
+    let events = (0..205)
+        .map(|index| WorkspaceIndexEvent {
+            event_id: format!("query-{index:03}"),
+            root_path: root_key.clone(),
+            scope: "query".to_string(),
+            kind: "textSearch".to_string(),
+            phase: "hit".to_string(),
+            severity: "info".to_string(),
+            message: "search hit".to_string(),
+            task_id: None,
+            generation: Some(index),
+            payload_json: "{}".to_string(),
+            created_at: index as u128,
+        })
+        .collect::<Vec<_>>();
+
+    store_index_events(&root_path, &events).unwrap();
+    let retained = load_recent_index_events(&root_path, 300).unwrap();
+
+    assert_eq!(retained.len(), 200);
+    assert_eq!(
+        retained.first().map(|event| event.event_id.as_str()),
+        Some("query-005")
+    );
+    assert_eq!(
+        retained.last().map(|event| event.event_id.as_str()),
+        Some("query-204")
+    );
     fs::remove_dir_all(root).unwrap();
 }

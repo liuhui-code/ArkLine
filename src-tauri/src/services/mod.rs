@@ -188,8 +188,8 @@ pub(crate) mod workspace_index_entity_query_service;
 mod workspace_index_entity_query_service_tests;
 pub(crate) mod workspace_index_entity_store_service;
 pub mod workspace_index_event_service;
-#[cfg(test)]
-mod workspace_index_event_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_event_service_tests;
+pub(crate) mod workspace_index_event_sink_service;
 pub mod workspace_index_explain_service;
 #[cfg(test)]
 mod workspace_index_explain_service_tests;

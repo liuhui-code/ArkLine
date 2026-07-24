@@ -167,6 +167,10 @@ describe("packaged Windows soak foundation", () => {
       'supported.has("long-animation-frame")',
     );
     expect(TELEMETRY_INSTALL_SCRIPT).toContain("items.length < limit");
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain("trackedInteractionLabels.has");
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain("observer.disconnect()");
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain("Workspace query superseded");
+    expect(TELEMETRY_INSTALL_SCRIPT).toContain("event.preventDefault()");
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('addEventListener("beforeinput"');
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('event.key === "Enter"');
     expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("MutationObserver");
