@@ -107,6 +107,16 @@ Publish from the GitHub UI:
 4. Open `Releases`, verify `ArkLine-windows-x64.zip` is attached to the tag,
    and download it once before announcing the release.
 
+Publish from a pushed tag:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Pushing a `v*` tag runs the same `macos-windows-exe` workflow and uploads
+`ArkLine-windows-x64.zip` to the matching GitHub Release.
+
 The equivalent GitHub CLI command is:
 
 ```bash
