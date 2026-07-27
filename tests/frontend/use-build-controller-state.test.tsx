@@ -108,8 +108,53 @@ describe("useBuildControllerState", () => {
       await result.current.runBuild();
     });
 
-    expect(inspectHarmonyBuildProject).toHaveBeenCalledWith("/project");
+    expect(inspectHarmonyBuildProject).toHaveBeenCalledWith("/project/entry/src/main/ets/Index.ets");
     expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      cwd: "/project",
+    }));
+    expect(result.current.buildState.status).toBe("success");
+  });
+
+  it("builds from the detected Harmony project root when a parent workspace is open", async () => {
+    const runTerminalCommand = vi.fn(async () => ({
+      runId: "build-1",
+      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const inspectHarmonyBuildProject = vi.fn(async () => ({
+      rootPath: "/repo/apps/Demo",
+      isHarmonyProject: true,
+      hasHvigorWrapper: true,
+      hvigorWrapperCommand: "./hvigorw",
+      hasHvigorFile: true,
+      hasBuildProfile: true,
+      hasOhPackage: true,
+      modules: ["entry"],
+      defaultModule: "entry",
+    }));
+    const { result } = renderHarness({
+      workspace: {
+        ...workspace(),
+        rootPath: "/repo",
+        rootName: "repo",
+        visibleFiles: [],
+      },
+      activePath: "/repo/apps/Demo/entry/src/main/ets/Index.ets",
+      workspaceApi: workspaceApi({ inspectHarmonyBuildProject, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(inspectHarmonyBuildProject).toHaveBeenCalledWith("/repo/apps/Demo/entry/src/main/ets/Index.ets");
+    expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      cwd: "/repo/apps/Demo",
       command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
     }));
     expect(result.current.buildState.status).toBe("success");

@@ -34,7 +34,7 @@ pub async fn hover_symbol(
     request: LanguageQueryRequest,
 ) -> Result<Option<HoverResponse>, String> {
     run_language_request(
-        language_request(LanguageClientSource::Hover),
+        language_request(LanguageClientSource::Hover, None),
         hover_symbol_blocking(app, runtime.inner().clone(), request),
     )
     .await
@@ -47,7 +47,7 @@ pub async fn goto_definition(
     request: LanguageQueryRequest,
 ) -> Result<Option<DefinitionTarget>, String> {
     run_language_request(
-        language_request(LanguageClientSource::Definition),
+        language_request(LanguageClientSource::Definition, None),
         goto_definition_blocking(app, runtime.inner().clone(), request),
     )
     .await
@@ -60,7 +60,7 @@ pub async fn goto_definition_candidates(
     request: LanguageQueryRequest,
 ) -> Result<Vec<DefinitionCandidate>, String> {
     run_language_request(
-        language_request(LanguageClientSource::DefinitionCandidates),
+        language_request(LanguageClientSource::DefinitionCandidates, None),
         goto_definition_candidates_blocking(app, runtime.inner().clone(), request),
     )
     .await
@@ -71,9 +71,10 @@ pub async fn complete_symbol(
     app: AppHandle,
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
+    request_generation: Option<u64>,
 ) -> Result<Vec<CompletionItem>, String> {
     run_language_request(
-        language_request(LanguageClientSource::Completion),
+        language_request(LanguageClientSource::Completion, request_generation),
         complete_symbol_blocking(app, runtime.inner().clone(), request),
     )
     .await
@@ -86,7 +87,7 @@ pub async fn document_symbols(
     request: LanguageQueryRequest,
 ) -> Result<Vec<DocumentSymbol>, String> {
     run_language_request(
-        language_request(LanguageClientSource::DocumentSymbols),
+        language_request(LanguageClientSource::DocumentSymbols, None),
         document_symbols_blocking(app, runtime.inner().clone(), request),
     )
     .await
@@ -99,13 +100,21 @@ pub async fn find_usages(
     request: LanguageQueryRequest,
 ) -> Result<Vec<UsageResult>, String> {
     run_language_request(
-        language_request(LanguageClientSource::Usages),
+        language_request(LanguageClientSource::Usages, None),
         find_usages_blocking(app, runtime.inner().clone(), request),
     )
     .await
 }
 
-fn language_request(source: LanguageClientSource) -> LanguageClientRequest {
+fn language_request(
+    source: LanguageClientSource,
+    requested_generation: Option<u64>,
+) -> LanguageClientRequest {
     let request_id = LANGUAGE_COMMAND_REQUEST_ID.fetch_add(1, Ordering::Relaxed) + 1;
-    LanguageClientRequest::new(source, request_id, request_id, LANGUAGE_COMMAND_TIMEOUT_MS)
+    LanguageClientRequest::new(
+        source,
+        request_id,
+        requested_generation.unwrap_or(request_id),
+        LANGUAGE_COMMAND_TIMEOUT_MS,
+    )
 }

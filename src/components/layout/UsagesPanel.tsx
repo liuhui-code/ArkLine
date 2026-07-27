@@ -45,12 +45,15 @@ export function UsagesPanel({ state, onOpenUsage }: UsagesPanelProps) {
               <button
                 key={`${item.path}:${item.line}:${item.column}`}
                 type="button"
-                aria-label={`${item.path} ${item.line}:${item.column} ${item.preview} ${item.kind} ${item.confidence}`}
+                aria-label={`${item.path} ${item.line}:${item.column} ${callerLabel(item)} ${item.preview} ${item.kind} ${item.confidence}`}
                 className="search-result search-result--match usages-panel__item"
                 onClick={() => onOpenUsage(item)}
               >
                 <span className="search-result__location">{item.line}:{item.column}</span>
-                <span className="search-result__preview">{item.preview}</span>
+                <span className="usages-panel__context">
+                  <span className="usages-panel__caller">{callerLabel(item)}</span>
+                  <span className="search-result__preview">{item.preview}</span>
+                </span>
                 <span className="search-result__meta usages-panel__meta">
                   <span>{item.kind}</span>
                   <span>{item.confidence}</span>
@@ -62,6 +65,10 @@ export function UsagesPanel({ state, onOpenUsage }: UsagesPanelProps) {
       ))}
     </div>
   );
+}
+
+function callerLabel(item: UsageResult): string {
+  return item.caller ? `${item.caller.qualifiedName}()` : "Top level";
 }
 
 type UsageGroup = {

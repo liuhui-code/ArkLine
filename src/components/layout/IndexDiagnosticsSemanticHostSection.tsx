@@ -10,6 +10,7 @@ export function IndexDiagnosticsSemanticHostSection({
 }: IndexDiagnosticsSemanticHostSectionProps) {
   const supervisor = semanticState.supervisor;
   const runtime = supervisor?.runtime;
+  const requestActor = supervisor?.requestActor;
 
   return (
     <section
@@ -31,6 +32,15 @@ export function IndexDiagnosticsSemanticHostSection({
         <IndexDiagnosticsMetric label="Heap" value={formatBytes(runtime?.heapUsedBytes)} />
         <IndexDiagnosticsMetric label="Memory budget" value={formatBytes(supervisor?.memoryBudgetBytes)} />
         <IndexDiagnosticsMetric label="Uptime" value={formatDuration(runtime?.uptimeMs ?? 0)} />
+        <IndexDiagnosticsMetric
+          label="Semantic requests"
+          value={requestActor ? `${requestActor.running ? 1 : 0} running / ${requestActor.queued} queued` : "not sampled"}
+        />
+        <IndexDiagnosticsMetric
+          label="Completed / superseded"
+          value={requestActor ? `${requestActor.completed} / ${requestActor.superseded}` : "not sampled"}
+        />
+        <IndexDiagnosticsMetric label="Request failures" value={String(requestActor?.failed ?? 0)} />
         <IndexDiagnosticsMetric
           label="Heartbeat"
           value={formatHeartbeat(supervisor?.lastHeartbeatEpochMs)}

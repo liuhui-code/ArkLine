@@ -3,6 +3,7 @@ import {
   buildDeviceLogLiveWindowText,
   buildDeviceLogRenderWindow,
   createStatsPollingErrorStats,
+  mergeDeviceLogSnapshotWithLive,
 } from "@/components/layout/device-log-panel-model";
 import type { DeviceLogEntry } from "@/features/device-log/device-log-model";
 
@@ -64,6 +65,17 @@ describe("device log panel model", () => {
       streamStatus: "error",
       lastError: "boom",
     });
+  });
+
+  it("deduplicates snapshot overlap while retaining later repeated live lines", () => {
+    const snapshot = [{ ...entry(1), raw: "same line" }];
+    const live = [
+      { ...entry(2), raw: "same line" },
+      { ...entry(3), raw: "same line" },
+      { ...entry(4), raw: "new line" },
+    ];
+
+    expect(mergeDeviceLogSnapshotWithLive(snapshot, live).map((item) => item.id)).toEqual(["1", "3", "4"]);
   });
 });
 

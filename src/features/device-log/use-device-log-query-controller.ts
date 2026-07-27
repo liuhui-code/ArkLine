@@ -17,8 +17,6 @@ type PendingQuery = {
   request: DeviceLogQueryRequest;
 };
 
-const LIVE_QUERY_REFRESH_MS = 500;
-
 export function useDeviceLogQueryController({
   active,
   deviceId,
@@ -86,10 +84,8 @@ export function useDeviceLogQueryController({
       void runForegroundQuery({ generation, request });
     };
     const timer = window.setTimeout(runQuery, 150);
-    const refreshTimer = window.setInterval(runQuery, LIVE_QUERY_REFRESH_MS);
     return () => {
       window.clearTimeout(timer);
-      window.clearInterval(refreshTimer);
     };
   }, [active, deviceId, filter, streamId, workspaceApi]);
 

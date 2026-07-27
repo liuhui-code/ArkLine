@@ -79,6 +79,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-shell",
+ "tokio",
  "uuid",
  "windows-sys 0.61.2",
 ]

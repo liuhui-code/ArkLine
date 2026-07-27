@@ -41,6 +41,18 @@ pub struct SemanticSupervisorSnapshot {
     pub last_error: Option<String>,
     pub runtime: Option<SemanticWorkerRuntime>,
     pub memory_budget_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_actor: Option<SemanticRequestActorSnapshot>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticRequestActorSnapshot {
+    pub running: bool,
+    pub queued: usize,
+    pub completed: u64,
+    pub superseded: u64,
+    pub failed: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -128,6 +140,19 @@ pub struct UsageResult {
     pub preview: String,
     pub kind: String,
     pub confidence: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub caller: Option<UsageCaller>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageCaller {
+    pub symbol_id: String,
+    pub name: String,
+    pub qualified_name: String,
+    pub kind: String,
+    pub line: u32,
+    pub column: u32,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

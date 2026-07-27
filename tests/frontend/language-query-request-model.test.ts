@@ -75,6 +75,24 @@ describe("language query request model", () => {
     expect(getActiveContentSlice).toHaveBeenCalledWith(0, LANGUAGE_QUERY_CONTENT_BUDGET);
   });
 
+  it("uses a cursor-aware content window instead of an invalid leading slice", () => {
+    const getActiveContentWindow = vi.fn(() => "import { A } from './A'\n\n\nvalue.wi");
+    const snapshot = buildLanguageQuerySnapshot({
+      activePath: "/workspace/Large.ets",
+      editorSelection: { line: 4, column: 9 },
+      getActiveContent: vi.fn(() => "unused"),
+      getActiveContentLength: () => 200_000,
+      getActiveContentSlice: vi.fn(() => "invalid leading slice"),
+      getActiveContentWindow,
+    });
+
+    expect(snapshot.request.content).toContain("value.wi");
+    expect(getActiveContentWindow).toHaveBeenCalledWith(
+      { line: 4, column: 9 },
+      LANGUAGE_QUERY_CONTENT_BUDGET,
+    );
+  });
+
   it("classifies normal large and oversized language query content", () => {
     expect(classifyLanguageQueryContent("x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD - 1))).toBe("normal");
     expect(classifyLanguageQueryContent("x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD))).toBe("large");

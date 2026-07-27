@@ -1,5 +1,3 @@
-use std::fs;
-
 use crate::models::language::{LanguageQueryRequest, UsageResult};
 use crate::models::workspace::WorkspaceIndexQueryEnvelope;
 use crate::services::workspace_index_query_service::readiness_for_index_runtime;
@@ -11,6 +9,7 @@ use crate::services::workspace_symbol_identity_merge_service::query_merged_symbo
 use crate::services::workspace_symbol_resolution_query_service::{
     query_resolved_symbols_by_name, query_resolved_symbols_by_name_and_path,
 };
+use crate::services::workspace_usage_caller_context_service::resolve_usage_reference_contexts;
 
 pub fn query_usages_with_readiness(
     index_runtime: &WorkspaceIndexRuntime,
@@ -28,16 +27,21 @@ pub fn query_usages_with_readiness(
         });
     };
     let references = query_references_for_merged_symbols(root_path, &symbol_id, limit)?;
+    let contexts = resolve_usage_reference_contexts(root_path, &references)?;
     let items = references
         .into_iter()
         .filter(|reference| reference.kind != "declaration")
-        .map(|reference| UsageResult {
-            path: denormalize_index_path(&reference.path),
-            line: u32::try_from(reference.line).unwrap_or_default(),
-            column: u32::try_from(reference.column).unwrap_or_default(),
-            preview: preview_line(&reference.path, reference.line),
-            kind: reference.kind,
-            confidence: reference.confidence,
+        .map(|reference| {
+            let context = contexts.get(&reference.reference_id);
+            UsageResult {
+                path: denormalize_index_path(&reference.path),
+                line: u32::try_from(reference.line).unwrap_or_default(),
+                column: u32::try_from(reference.column).unwrap_or_default(),
+                preview: context.map(|item| item.preview.clone()).unwrap_or_default(),
+                kind: reference.kind,
+                confidence: reference.confidence,
+                caller: context.and_then(|item| item.caller.clone()),
+            }
         })
         .collect();
     Ok(WorkspaceIndexQueryEnvelope {
@@ -127,18 +131,6 @@ fn symbol_at_position(request: &LanguageQueryRequest) -> Option<String> {
         end += 1;
     }
     line.get(start..end).map(|value| value.to_string())
-}
-
-fn preview_line(path: &str, line: i64) -> String {
-    fs::read_to_string(denormalize_index_path(path))
-        .ok()
-        .and_then(|content| {
-            content
-                .lines()
-                .nth(line.saturating_sub(1) as usize)
-                .map(|line| line.trim().to_string())
-        })
-        .unwrap_or_default()
 }
 
 fn is_identifier_byte(value: u8) -> bool {

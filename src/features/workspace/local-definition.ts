@@ -70,7 +70,7 @@ function previewDeclarationLine(content: string, line: number) {
 function findDeclarationInContent(path: string, content: string, identifier: string): DefinitionLocation | null {
   const escapedIdentifier = escapeRegExp(identifier);
   const declarationMatchers = [
-    new RegExp(`^\\s*(?:export\\s+)?(?:default\\s+)?(?:struct|class|interface|enum|type|function|const|let|var)\\s+(${escapedIdentifier})\\b`),
+    new RegExp(`^\\s*(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:async\\s+)?(?:struct|class|interface|enum|type|function|const|let|var)\\s+(${escapedIdentifier})\\b`),
     new RegExp(`^\\s*(?:@\\w+(?:\\([^)]*\\))?\\s*)*(?:public\\s+|private\\s+|protected\\s+|static\\s+|readonly\\s+|declare\\s+|abstract\\s+|override\\s+|async\\s+)*(?:get\\s+|set\\s+)?(${escapedIdentifier})\\s*\\([^)]*\\)\\s*(?::[^={]+)?\\s*(?:\\{|=>)`),
     new RegExp(`^\\s*(?:@\\w+(?:\\([^)]*\\))?\\s*)*(?:public\\s+|private\\s+|protected\\s+|static\\s+|readonly\\s+|declare\\s+|abstract\\s+|override\\s+)*(?:const\\s+|let\\s+|var\\s+)?(${escapedIdentifier})\\s*(?::|=)`),
     new RegExp(`^\\s*export\\s+default\\s+(?:struct|class|interface|enum|type|function)\\s+(${escapedIdentifier})\\b`),

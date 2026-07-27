@@ -111,6 +111,7 @@ impl SemanticHostSupervisor {
             last_error: state.last_error.clone(),
             runtime: state.runtime,
             memory_budget_bytes: self.memory_budget_bytes,
+            request_actor: None,
         }
     }
 

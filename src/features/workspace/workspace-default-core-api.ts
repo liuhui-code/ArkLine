@@ -194,9 +194,9 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       }
       return [];
     },
-    async completeSymbol(request) {
+    async completeSymbol(request, requestGeneration) {
       if (hasTauriRuntime()) {
-        return invoke<LanguageCompletionItem[]>("complete_symbol", { request });
+        return invoke<LanguageCompletionItem[]>("complete_symbol", { request, requestGeneration });
       }
       if (!isDemoWorkspacePath(request.path)) return [];
 

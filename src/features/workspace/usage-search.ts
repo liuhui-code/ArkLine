@@ -5,6 +5,16 @@ export type UsageResult = {
   preview: string;
   kind: string;
   confidence: string;
+  caller?: UsageCaller;
+};
+
+export type UsageCaller = {
+  symbolId: string;
+  name: string;
+  qualifiedName: string;
+  kind: string;
+  line: number;
+  column: number;
 };
 
 export type UsageSearchState = {

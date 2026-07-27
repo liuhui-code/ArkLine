@@ -11,6 +11,9 @@ use crate::services::workspace_index_test_fixture_service::{
 };
 use crate::services::workspace_sdk_index_service::index_workspace_sdk_symbols;
 
+#[path = "workspace_completion_member_context_tests.rs"]
+mod member_context_tests;
+
 #[test]
 fn semantic_completion_returns_arkts_keywords_by_prefix() {
     let root = create_empty_workspace("completion-keywords");

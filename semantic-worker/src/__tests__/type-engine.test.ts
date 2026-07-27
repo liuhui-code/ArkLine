@@ -35,13 +35,13 @@ describe("incremental semantic type engine", () => {
     const filePath = createFile(
       root,
       "Index.ts",
-      "const user = { name: 'Ada', age: 1 }\nuser.na\n",
+      "function navigateHome() {}\nconst user = { name: 'Ada', age: 1 }\nuser.na\n",
     )
 
     const response = new SemanticWorkerSession().handle({
       id: "type-completion",
       method: "completion",
-      position: { path: filePath, line: 2, column: 8 },
+      position: { path: filePath, line: 3, column: 8 },
     })
 
     expect(response.ok).toBe(true)
@@ -51,6 +51,9 @@ describe("incremental semantic type engine", () => {
     })
     expect(response.payload).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "name", source: "type", kind: "property" }),
+    ]))
+    expect(response.payload).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "navigateHome()", source: "workspace" }),
     ]))
   })
 

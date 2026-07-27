@@ -37,6 +37,62 @@ function createWorkspaceApi(queryDeviceLogs: WorkspaceApi["queryDeviceLogs"]): W
 }
 
 describe("Device Log query pagination", () => {
+  it("keeps a stable snapshot instead of polling and replacing the log window", async () => {
+    const queryDeviceLogs = vi.fn(async () => ({
+      rows: [makeRow(10, "snapshot log")],
+      totalCandidates: 1,
+      scannedLines: 1,
+      truncated: false,
+      nextCursorSeq: null,
+      budgetExceeded: false,
+      queryMs: 2,
+    }));
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi(queryDeviceLogs)} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+
+    expect(await within(panel).findByLabelText("snapshot log")).toBeVisible();
+    await new Promise((resolve) => window.setTimeout(resolve, 650));
+
+    expect(queryDeviceLogs).toHaveBeenCalledTimes(1);
+    expect(within(panel).getByLabelText("snapshot log")).toBeVisible();
+  });
+
+  it("appends live events after the initial persisted snapshot", async () => {
+    const queryDeviceLogs = vi.fn(async () => ({
+      rows: [makeRow(10, "snapshot log")],
+      totalCandidates: 1,
+      scannedLines: 1,
+      truncated: false,
+      nextCursorSeq: null,
+      budgetExceeded: false,
+      queryMs: 2,
+    }));
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi(queryDeviceLogs)} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+    expect(await within(panel).findByLabelText("snapshot log")).toBeVisible();
+
+    fireEvent(panel, new CustomEvent("arkline-device-log-lines", {
+      bubbles: true,
+      detail: {
+        deviceId: "device-1",
+        lines: ["06-25 15:21:51.123  1234  5678 I C03F00/AppTag com.example.demo: live delta log"],
+      },
+    }));
+
+    expect(await within(panel).findByLabelText("live delta log")).toBeVisible();
+    expect(within(panel).getByLabelText("snapshot log")).toBeVisible();
+  });
+
   it("coalesces filter changes while a backend query is still running", async () => {
     const firstQuery = createDeferred<Awaited<ReturnType<NonNullable<WorkspaceApi["queryDeviceLogs"]>>>>();
     const queryDeviceLogs = vi.fn(async (request) => {

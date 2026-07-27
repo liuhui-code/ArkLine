@@ -493,8 +493,8 @@ mod workspace_text_search_prefilter_service_tests;
 pub mod workspace_text_search_service;
 #[cfg(test)]
 mod workspace_text_search_service_tests;
-#[cfg(test)]
-mod workspace_usage_confidence_tests;
+pub(crate) mod workspace_usage_caller_context_service;
+#[rustfmt::skip] #[cfg(test)] mod workspace_usage_caller_context_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_usage_confidence_tests;
 pub mod workspace_usage_query_service;
-#[cfg(test)]
-mod workspace_usage_query_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_usage_query_service_tests;

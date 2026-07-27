@@ -49,6 +49,29 @@ export function buildDeviceLogLiveWindowText({
   return `${sourceEntryCount.toLocaleString()} total · ${visibleEntryCount.toLocaleString()} matched`;
 }
 
+export function mergeDeviceLogSnapshotWithLive(
+  snapshotEntries: DeviceLogEntry[] | null,
+  liveEntries: DeviceLogEntry[],
+) {
+  if (snapshotEntries == null) {
+    return liveEntries;
+  }
+
+  const snapshotOccurrences = new Map<string, number>();
+  for (const entry of snapshotEntries) {
+    snapshotOccurrences.set(entry.raw, (snapshotOccurrences.get(entry.raw) ?? 0) + 1);
+  }
+  const liveDelta = liveEntries.filter((entry) => {
+    const remaining = snapshotOccurrences.get(entry.raw) ?? 0;
+    if (remaining === 0) {
+      return true;
+    }
+    snapshotOccurrences.set(entry.raw, remaining - 1);
+    return false;
+  });
+  return [...snapshotEntries, ...liveDelta];
+}
+
 export function createStatsPollingErrorStats(
   streamId: string,
   deviceId: string,

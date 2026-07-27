@@ -84,6 +84,43 @@ describe("completion candidate provider", () => {
     ]);
   });
 
+  it("uses only receiver-aware semantic candidates after a member-access dot", async () => {
+    const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => envelope([
+      candidate({ title: "privateData", kind: "variable" }),
+    ]));
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => envelope([
+      candidate({ source: "class", kind: "class", title: "PrivateProfile" }),
+    ]));
+    const api = workspaceApi({
+      semanticCompleteSymbol: async () => ({
+        items: [{ label: "profile", detail: "UserService property", kind: "property", source: "type" as const }],
+        readiness: {
+          rootPath: "/workspace",
+          requestedGeneration: 1,
+          servedGeneration: 1,
+          state: "ready" as const,
+          retryable: false,
+        },
+      }),
+      queryWorkspaceFileSymbolsWithReadiness,
+      queryWorkspaceCandidatesWithReadiness,
+    });
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: api,
+      line: 1,
+      column: 11,
+      content: "service.pr",
+      query: "pr",
+      replacePrefix: "pr",
+    });
+
+    expect(items.map((item) => item.label)).toEqual(["profile"]);
+    expect(queryWorkspaceFileSymbolsWithReadiness).not.toHaveBeenCalled();
+    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
+  });
+
   it("uses readiness-envelope APIs when available", async () => {
     const queryWorkspaceFileSymbolsWithReadiness = vi.fn(async () => envelope([candidate({ title: "localBuild" })]));
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => envelope([
@@ -181,6 +218,7 @@ describe("completion candidate provider", () => {
       workspaceApi: api,
       query: "indexed",
       replacePrefix: "indexed",
+      requestGeneration: 42,
     });
 
     expect(semanticCompleteSymbol).toHaveBeenCalledWith("/workspace", {
@@ -188,7 +226,7 @@ describe("completion candidate provider", () => {
       line: 3,
       column: 12,
       content: "struct Index {}",
-    });
+    }, 42);
     expect(completeSymbol).not.toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual(["indexedBuild()"]);
   });
@@ -375,6 +413,24 @@ describe("completion candidate provider", () => {
 
     expect(scheduleForegroundCompletionIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/main.ets"]);
     expect(events.slice(0, 2)).toEqual(["schedule-completion-index", "semantic-completion"]);
+  });
+
+  it("does not wait for foreground indexing before returning completion results", async () => {
+    const scheduleForegroundCompletionIndex = vi.fn(() => new Promise<void>(() => undefined));
+    const completeSymbol = vi.fn(async () => [
+      { label: "build()", detail: "Semantic method", kind: "method", source: "arkts" as const },
+    ]);
+
+    const items = await collectCompletionCandidates({
+      ...baseRequest,
+      workspaceApi: workspaceApi({ scheduleForegroundCompletionIndex, completeSymbol }),
+      query: "build",
+      replacePrefix: "build",
+    });
+
+    expect(scheduleForegroundCompletionIndex).toHaveBeenCalled();
+    expect(completeSymbol).toHaveBeenCalled();
+    expect(items.map((item) => item.label)).toEqual(["build()"]);
   });
 
   it("deduplicates rapid foreground completion indexing for the same file", async () => {

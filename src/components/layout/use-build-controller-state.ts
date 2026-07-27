@@ -38,7 +38,8 @@ export function useBuildControllerState({
     [workspace],
   );
   const [inspectedBuildProject, setInspectedBuildProject] = useState<HarmonyBuildProject | null>(null);
-  const buildProject = inspectedBuildProject?.rootPath === workspace?.rootPath
+  const buildInspectionPath = selectedProjectPath ?? activePath ?? workspace?.rootPath ?? null;
+  const buildProject = inspectedBuildProject && isBuildProjectInWorkspace(inspectedBuildProject, workspace)
     ? inspectedBuildProject
     : visibleBuildProject;
   const buildProfilePath = useMemo(
@@ -47,13 +48,13 @@ export function useBuildControllerState({
   );
 
   useEffect(() => {
-    if (!workspace?.rootPath || !workspaceApi.inspectHarmonyBuildProject) {
+    if (!workspace?.rootPath || !buildInspectionPath || !workspaceApi.inspectHarmonyBuildProject) {
       setInspectedBuildProject(null);
       return;
     }
 
     let cancelled = false;
-    void workspaceApi.inspectHarmonyBuildProject(workspace.rootPath)
+    void workspaceApi.inspectHarmonyBuildProject(buildInspectionPath)
       .then((project) => {
         if (!cancelled) {
           setInspectedBuildProject(project.isHarmonyProject || !visibleBuildProject?.isHarmonyProject ? project : null);
@@ -67,7 +68,7 @@ export function useBuildControllerState({
     return () => {
       cancelled = true;
     };
-  }, [visibleBuildProject?.isHarmonyProject, workspace?.rootPath, workspaceApi]);
+  }, [buildInspectionPath, visibleBuildProject?.isHarmonyProject, workspace?.rootPath, workspaceApi]);
 
   function syncBuildState() {
     setBuildState({ ...buildStoreRef.current.state });
@@ -175,7 +176,7 @@ export function useBuildControllerState({
     }
 
     const project = workspaceApi.inspectHarmonyBuildProject
-      ? await resolveBuildProject(workspace.rootPath)
+      ? await resolveBuildProject(buildInspectionPath ?? workspace.rootPath)
       : buildProject;
     const currentState = buildStoreRef.current.state;
     if (currentState.lastTarget !== "app" && !project?.modules.includes(currentState.moduleName) && project?.defaultModule) {
@@ -198,7 +199,7 @@ export function useBuildControllerState({
     }
 
     const plan = createHarmonyBuildPlanFromState({
-      rootPath: workspace.rootPath,
+      rootPath: project?.rootPath ?? workspace.rootPath,
       state,
       clean,
       project,
@@ -268,4 +269,17 @@ export function useBuildControllerState({
     runBuild,
     stopBuild,
   };
+}
+
+function isBuildProjectInWorkspace(project: HarmonyBuildProject, workspace: WorkspaceViewModel | null) {
+  if (!workspace?.rootPath) {
+    return false;
+  }
+  const workspaceRoot = normalizeComparablePath(workspace.rootPath);
+  const projectRoot = normalizeComparablePath(project.rootPath);
+  return projectRoot === workspaceRoot || projectRoot.startsWith(`${workspaceRoot}/`);
+}
+
+function normalizeComparablePath(path: string) {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "");
 }

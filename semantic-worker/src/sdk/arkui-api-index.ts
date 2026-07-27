@@ -27,9 +27,11 @@ type ComponentMetadata = {
 }
 
 const cache = new Map<string, ArkuiApiEntry[]>()
+const completionCache = new Map<string, Map<string, ArkuiApiEntry[]>>()
 
 export function clearArkuiApiIndexCache(): void {
   cache.clear()
+  completionCache.clear()
 }
 
 export function loadArkuiApiIndex(sdkRoot: string | undefined): ArkuiApiEntry[] {
@@ -43,6 +45,7 @@ export function loadArkuiApiIndex(sdkRoot: string | undefined): ArkuiApiEntry[] 
 
   const entries = buildArkuiApiIndex(sdkRoot)
   cache.set(sdkRoot, entries)
+  completionCache.delete(sdkRoot)
   return entries
 }
 
@@ -70,8 +73,30 @@ export function findArkuiApiDefinition(
 export function completeArkuiApis(
   sdkRoot: string | undefined,
   component?: string | null,
+  prefix = "",
 ): ArkuiApiEntry[] {
-  const entries = loadArkuiApiIndex(sdkRoot)
+  if (!sdkRoot) return []
+  const componentKey = component ?? ""
+  let byComponent = completionCache.get(sdkRoot)
+  if (!byComponent) {
+    byComponent = new Map()
+    completionCache.set(sdkRoot, byComponent)
+  }
+  let matchingEntries = byComponent.get(componentKey)
+  if (!matchingEntries) {
+    matchingEntries = buildComponentCompletions(loadArkuiApiIndex(sdkRoot), component)
+    byComponent.set(componentKey, matchingEntries)
+  }
+  const normalizedPrefix = prefix.toLowerCase()
+  return normalizedPrefix
+    ? matchingEntries.filter((entry) => entry.name.toLowerCase().startsWith(normalizedPrefix))
+    : matchingEntries
+}
+
+function buildComponentCompletions(
+  entries: ArkuiApiEntry[],
+  component?: string | null,
+): ArkuiApiEntry[] {
   const seen = new Set<string>()
   const matchingEntries = entries
     .filter((entry) => !entry.component || entry.component === component)

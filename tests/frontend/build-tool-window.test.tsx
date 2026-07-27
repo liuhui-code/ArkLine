@@ -352,7 +352,7 @@ describe("build tool window", () => {
     await openProject(user);
     await user.click(screen.getByRole("tab", { name: "Build" }));
     await user.selectOptions(screen.getByLabelText("Build Mode"), "release");
-    await user.click(screen.getByRole("button", { name: "Save Config" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await user.selectOptions(screen.getByLabelText("Build Mode"), "debug");
     await user.selectOptions(screen.getByLabelText("Build Configuration"), "HAP entry release");
     await user.click(screen.getByRole("button", { name: "Run Build Configuration" }));
@@ -370,7 +370,7 @@ describe("build tool window", () => {
     await openProject(user);
     await user.click(screen.getByRole("tab", { name: "Build" }));
     await user.selectOptions(screen.getByLabelText("Build Mode"), "release");
-    await user.click(screen.getByRole("button", { name: "Save Config" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(saveBuildConfigurations).toHaveBeenCalledWith("/workspace/Demo", [
       expect.objectContaining({
@@ -419,7 +419,7 @@ describe("build tool window", () => {
     await user.selectOptions(screen.getByLabelText("Build Configuration"), "HAP entry release");
     await user.selectOptions(screen.getByLabelText("Build Mode"), "debug");
 
-    expect(screen.getByText("Modified")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Build Options.*Modified/)).toBeInTheDocument());
   });
 
   it("copies and deletes build configurations", async () => {
@@ -441,11 +441,11 @@ describe("build tool window", () => {
     await openProject(user);
     await user.click(screen.getByRole("tab", { name: "Build" }));
     await user.selectOptions(screen.getByLabelText("Build Configuration"), "HAP entry release");
-    await user.click(screen.getByRole("button", { name: "Copy Config" }));
+    await user.click(screen.getByRole("button", { name: "Duplicate" }));
 
     expect(within(screen.getByLabelText("Build Configuration")).getByRole("option", { name: "HAP entry release copy" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Delete Config" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(within(screen.getByLabelText("Build Configuration")).queryByRole("option", { name: "HAP entry release copy" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("Build Configuration")).toHaveValue("");

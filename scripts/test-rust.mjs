@@ -15,7 +15,13 @@ export function testTauriConfig(existing = process.env.TAURI_CONFIG) {
 export function main() {
   const result = spawnSync(
     "cargo",
-    ["test", "--manifest-path", "src-tauri/Cargo.toml"],
+    [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--",
+      "--test-threads=8",
+    ],
     {
       stdio: "inherit",
       env: { ...process.env, TAURI_CONFIG: testTauriConfig() },

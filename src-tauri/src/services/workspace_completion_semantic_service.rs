@@ -9,7 +9,8 @@ use crate::services::workspace_completion_item_service::{
     completion_item, dedupe_completion_items, snippet_completion_item, symbol_completion_from_row,
 };
 use crate::services::workspace_completion_parser_service::{
-    completion_prefix, local_function_name, local_variable_name, member_owner_at_position,
+    completion_prefix, is_member_access_context, local_function_name, local_variable_name,
+    member_owner_at_position,
 };
 use crate::services::workspace_completion_sdk_service::{
     sdk_member_completion_items, sdk_symbol_completion_items,
@@ -64,14 +65,16 @@ pub fn query_semantic_completions(
     limit: usize,
 ) -> Result<Vec<CompletionItem>, String> {
     let prefix = completion_prefix(request);
+    if let Some(content) = request.content.as_deref() {
+        if is_member_access_context(request) {
+            let items = member_items(root_path, request, content, &prefix)?;
+            return Ok(dedupe_completion_items(items, limit));
+        }
+    }
     let mut items = Vec::new();
     items.extend(keyword_items(&prefix));
     if let Some(content) = request.content.as_deref() {
         items.extend(local_scope_items(content, &prefix));
-        if member_owner_at_position(request).is_some() {
-            items.extend(member_items(root_path, request, content, &prefix)?);
-            return Ok(dedupe_completion_items(items, limit));
-        }
     }
     items.extend(project_symbol_items(root_path, &prefix, limit)?);
     items.extend(sdk_symbol_completion_items(root_path, &prefix, limit)?);

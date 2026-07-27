@@ -32,7 +32,7 @@ export type WorkspaceIndexQueryApi = {
   queryRenameImpact(rootPath: string, request: LanguageQueryRequest): Promise<RenameImpactResult | null>;
   queryCallHierarchy(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
   queryTypeHierarchy(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
-  semanticCompleteSymbol(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
+  semanticCompleteSymbol(rootPath: string, request: LanguageQueryRequest, requestGeneration?: number): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
 };
 
@@ -124,12 +124,16 @@ export function createWorkspaceIndexQueryApi({
       void request;
       return null;
     },
-    async semanticCompleteSymbol(rootPath, request) {
+    async semanticCompleteSymbol(rootPath, request, requestGeneration) {
       if (hasTauriRuntime()) {
-        return invoke<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>("semantic_complete_symbol", { rootPath, request });
+        return invoke<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>(
+          "semantic_complete_symbol",
+          { rootPath, request, requestGeneration },
+        );
       }
 
       void request;
+      void requestGeneration;
       return emptyIndexQueryEnvelope(rootPath);
     },
     async explainWorkspaceIndexQuery(request) {

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { collectCompletionCandidateResult } from "@/components/layout/completion-candidate-provider";
+import {
+  collectCompletionCandidateResult,
+  collectImmediateCompletionCandidates,
+} from "@/components/layout/completion-candidate-provider";
 import { createCompletionHistoryStore } from "@/components/layout/completion-history-store";
 import { buildCompletionInsertTarget, normalizeCompletionItems, rankCompletionItems, type CompletionPresentation } from "@/components/layout/completion-model";
 import { COMPLETION_PAGE_STEP } from "@/components/layout/app-shell-constants";
@@ -12,6 +15,7 @@ import type { CompletionSession } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import { createCompletionAnchorStore } from "@/features/editor/completion-anchor-store";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
+import { createLatestRequestScheduler } from "@/features/language/latest-request-scheduler";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
@@ -30,6 +34,7 @@ export type UseCompletionControllerOptions = {
   getActiveContent: () => string;
   getActiveContentLength?: () => number;
   getActiveContentSlice?: (start: number, end: number) => string;
+  getActiveContentWindow?: (selection: { line: number; column: number }, budget: number) => string;
   setActiveOverlay: Dispatch<SetStateAction<OverlayKey>>;
   setQuickOpenQuery: (query: string) => void;
   setInsertTextTarget: (target: { text: string; replaceBefore?: number; nonce: number } | null) => void;
@@ -51,6 +56,7 @@ export function useCompletionController({
   getActiveContent,
   getActiveContentLength,
   getActiveContentSlice,
+  getActiveContentWindow,
   setActiveOverlay,
   setQuickOpenQuery,
   setInsertTextTarget,
@@ -72,6 +78,7 @@ export function useCompletionController({
   const [completionHistoryVersion, setCompletionHistoryVersion] = useState(0);
   const completionHistoryStore = useMemo(() => createCompletionHistoryStore(), []);
   const languageSessionStore = useMemo(() => createLanguageSessionStore(), []);
+  const completionRequestScheduler = useMemo(() => createLatestRequestScheduler(), []);
   const completionRequestRef = useRef(0);
   const typingCompletionTimerRef = useRef<number | null>(null);
 
@@ -85,6 +92,7 @@ export function useCompletionController({
   function clearCompletionSession() {
     completionRequestRef.current += 1;
     languageSessionStore.cancel("completion");
+    completionRequestScheduler.cancel();
     setCompletionItems([]);
     setCompletionReplacePrefix("");
     setCompletionSelectedIndex(0);
@@ -124,6 +132,7 @@ export function useCompletionController({
       getActiveContent,
       getActiveContentLength,
       getActiveContentSlice,
+      getActiveContentWindow,
     });
     languageQuerySnapshotStore.record({ kind: "completion", snapshot });
     const syncDecision = decideLanguageQuerySync(snapshot);
@@ -145,30 +154,48 @@ export function useCompletionController({
     const request = snapshot.request;
     const replacePrefix = extractCompletionPrefix(request.content, request.line, request.column);
     const query = trigger === "typing" ? replacePrefix : "";
+    const immediateItems = collectImmediateCompletionCandidates(query || replacePrefix, request);
+    if (immediateItems.length > 0) {
+      setCompletionItems(immediateItems);
+      setCompletionReplacePrefix(replacePrefix);
+      setCompletionSession({ path, line: request.line, replacePrefix });
+      setCompletionSelectedIndex(0);
+      setQuickOpenQuery(query);
+      setCompletionTrigger(trigger);
+      setCompletionStatus("ready");
+      setCompletionMessage(undefined);
+      setActiveOverlay("completion");
+    }
     let completionResult: { items: LanguageCompletionItem[]; explain?: string[] };
     try {
-      completionResult = await languageRequestTimeout(collectCompletionCandidateResult({
-        workspaceApi,
-        rootPath,
-        path,
-        line: request.line,
-        column: request.column,
-        content: request.content,
-        query,
-        replacePrefix,
-      }), languageSession.timeoutMs);
+      const outcome = await completionRequestScheduler.schedule(() => languageRequestTimeout(
+        collectCompletionCandidateResult({
+          workspaceApi,
+          rootPath,
+          path,
+          line: request.line,
+          column: request.column,
+          content: request.content,
+          query,
+          replacePrefix,
+          requestGeneration: languageSession.generation,
+        }),
+        languageSession.timeoutMs,
+      ));
+      if (outcome.status === "superseded") return;
+      completionResult = outcome.value;
     } catch (error) {
       if (completionRequestRef.current !== requestId || !languageSessionStore.isCurrent(languageSession)) return;
       languageSessionStore.complete(languageSession);
       const message = error instanceof Error ? error.message : String(error);
-      setCompletionItems([]);
+      setCompletionItems(immediateItems);
       setCompletionReplacePrefix(replacePrefix);
       setCompletionSelectedIndex(0);
       setQuickOpenQuery(query);
       setCompletionTrigger(trigger);
-      setCompletionStatus("error");
-      setCompletionMessage(`Completion failed: ${message}`);
-      if (trigger === "manual") {
+      setCompletionStatus(immediateItems.length > 0 ? "ready" : "error");
+      setCompletionMessage(immediateItems.length > 0 ? undefined : `Completion failed: ${message}`);
+      if (trigger === "manual" || immediateItems.length > 0) {
         setActiveOverlay("completion");
         bumpEditorFocusToken();
       } else {
@@ -235,6 +262,7 @@ export function useCompletionController({
     });
     completionRequestRef.current += 1;
     languageSessionStore.cancel("completion");
+    completionRequestScheduler.cancel();
     completionHistoryStore.recordAccepted(item.label);
     setCompletionHistoryVersion((version) => version + 1);
     setInsertTextTarget({ ...insertTarget, nonce: Date.now() });
@@ -330,6 +358,7 @@ export function useCompletionController({
 
   useEffect(() => () => {
     clearTypingCompletionTimer();
+    completionRequestScheduler.cancel();
   }, []);
 
   useEffect(() => {
@@ -337,6 +366,7 @@ export function useCompletionController({
     clearTypingCompletionTimer();
     completionRequestRef.current += 1;
     languageSessionStore.cancel("completion");
+    completionRequestScheduler.cancel();
   }, [activeOverlay, languageSessionStore]);
 
   useEffect(() => {
@@ -393,6 +423,7 @@ export function useCompletionController({
     completionPresentationResults,
     selectedCompletionPresentation,
     completionPopupVisible,
+    completionRequestStats: completionRequestScheduler.snapshot(),
     clearTypingCompletionTimer,
     clearCompletionSession,
     resetCompletion,

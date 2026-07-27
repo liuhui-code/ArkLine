@@ -35,11 +35,12 @@ describe("workspace api indexing actions", () => {
       content: "pri",
     };
 
-    await expect(defaultWorkspaceApi.semanticCompleteSymbol?.("C:/samples/DemoWorkspace", request)).resolves.toBe(envelope);
+    await expect(defaultWorkspaceApi.semanticCompleteSymbol?.("C:/samples/DemoWorkspace", request, 42)).resolves.toBe(envelope);
 
     expect(invoke).toHaveBeenCalledWith("semantic_complete_symbol", {
       rootPath: "C:/samples/DemoWorkspace",
       request,
+      requestGeneration: 42,
     });
   });
 

@@ -1,4 +1,5 @@
 import { extractCompletionPrefix } from "@/components/layout/app-shell-helpers";
+import { completionItemIdentity } from "@/components/layout/completion-item-identity";
 import type { CompletionImportPreviewEdit, LanguageCompletionItem } from "@/features/workspace/workspace-api";
 
 export type CompletionSurface = "suggestionList" | "inlineGhostText";
@@ -11,6 +12,7 @@ export type CompletionSource =
   | "arkts"
   | "arkui"
   | "sdk"
+  | "type"
   | "fallback"
   | "unknown";
 export type CompletionItemKind =
@@ -90,6 +92,7 @@ const sourceLabels: Record<CompletionSource, string> = {
   arkts: "ArkTS",
   arkui: "ArkUI",
   sdk: "SDK",
+  type: "Type Engine",
   fallback: "Fallback",
   unknown: "Unknown",
 };
@@ -98,14 +101,14 @@ export function normalizeCompletionItems(
   items: LanguageCompletionItem[],
   context: CompletionContext,
 ): CompletionPresentation[] {
-  return items.map((item, index) => {
+  return items.map((item) => {
     const source = inferCompletionSource(item, context);
     const kind = normalizeCompletionKind(item, source);
     const filterText = item.filterText ?? item.label;
     const insertText = item.insertText ?? item.label;
 
     return {
-      id: `${index}:${source}:${kind}:${item.label}`,
+      id: completionItemIdentity(item),
       label: item.label,
       insertText,
       filterText,
@@ -341,6 +344,7 @@ function sourcePriority(item: CompletionPresentation) {
     arkui: 1,
     arkts: 2,
     sdk: 2,
+    type: 2,
     workspace: 3,
     snippet: 4,
     fallback: 5,

@@ -36,6 +36,33 @@ function bootstrap() {}
 }
 
 #[test]
+fn parses_variable_function_declarations_as_navigation_targets() {
+    let stub = parse_arkts_file_stub(
+        "entry/src/main/ets/pages/Index.ets",
+        r#"
+export const submitForm = () => true;
+let createUser = createUserFactory();
+var legacyHandler = handler;
+"#,
+    );
+
+    let names = stub
+        .declarations
+        .iter()
+        .map(|declaration| {
+            (
+                declaration.kind.as_str(),
+                declaration.qualified_name.as_str(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    assert!(names.contains(&("const", "submitForm")));
+    assert!(names.contains(&("let", "createUser")));
+    assert!(names.contains(&("var", "legacyHandler")));
+}
+
+#[test]
 fn parses_visibility_modifiers_and_signatures() {
     let stub = parse_arkts_file_stub(
         "entry/src/main/ets/services/UserService.ets",

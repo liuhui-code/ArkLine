@@ -257,6 +257,7 @@ fn resolves_same_file_semantic_queries_without_sdk() {
                     preview: "struct Index {}".to_string(),
                     kind: "fallback".to_string(),
                     confidence: "fallback".to_string(),
+                    caller: None,
                 },
                 crate::models::language::UsageResult {
                     path: path_text.clone(),
@@ -265,6 +266,7 @@ fn resolves_same_file_semantic_queries_without_sdk() {
                     preview: "Index;".to_string(),
                     kind: "fallback".to_string(),
                     confidence: "fallback".to_string(),
+                    caller: None,
                 },
             ]
         );

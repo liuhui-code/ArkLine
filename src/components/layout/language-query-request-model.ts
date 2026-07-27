@@ -11,6 +11,7 @@ export type LanguageQuerySnapshotInput = {
   getActiveContent: () => string;
   getActiveContentLength?: () => number;
   getActiveContentSlice?: (start: number, end: number) => string;
+  getActiveContentWindow?: (selection: { line: number; column: number }, budget: number) => string;
   contentBudget?: number;
 };
 
@@ -39,11 +40,12 @@ export function buildLanguageQuerySnapshot(input: LanguageQuerySnapshotInput): L
   const budget = input.contentBudget ?? LANGUAGE_QUERY_CONTENT_BUDGET;
   const reportedLength = input.getActiveContentLength?.();
   const getActiveContentSlice = input.getActiveContentSlice;
+  const getActiveContentWindow = input.getActiveContentWindow;
   const shouldUseBudgetedSlice = reportedLength !== undefined
     && reportedLength > budget
     && getActiveContentSlice;
   const content = shouldUseBudgetedSlice
-    ? getActiveContentSlice(0, budget)
+    ? getActiveContentWindow?.(input.editorSelection, budget) ?? getActiveContentSlice(0, budget)
     : input.getActiveContent();
   const contentLength = reportedLength ?? content.length;
   return {

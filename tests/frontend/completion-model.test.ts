@@ -27,7 +27,7 @@ describe("completion presentation model", () => {
 
     expect(items).toEqual([
       {
-        id: "0:arkuiSdk:component:Column()",
+        id: "unknown\u0000class\u0000Column()\u0000\u0000ArkUI component\u0000",
         label: "Column()",
         insertText: "Column()",
         filterText: "Column()",
@@ -41,7 +41,7 @@ describe("completion presentation model", () => {
         original: backendItems[0],
       },
       {
-        id: "1:workspace:method:submit()",
+        id: "unknown\u0000function\u0000submit()\u0000\u0000Workspace symbol\u0000",
         label: "submit()",
         insertText: "submit()",
         filterText: "submit()",
@@ -77,17 +77,20 @@ describe("completion presentation model", () => {
     expect(rankedLabels).toEqual(["build()", "button()", "rebuild()"]);
   });
 
-  it("gives duplicate labels stable distinct presentation ids", () => {
-    const items = normalizeCompletionItems([
+  it("gives duplicate labels stable distinct presentation ids across result order changes", () => {
+    const backendItems: LanguageCompletionItem[] = [
       { label: "format()", detail: "Workspace overload string", kind: "function" },
       { label: "format()", detail: "Workspace overload number", kind: "function" },
-    ], baseContext);
+    ];
+    const items = normalizeCompletionItems(backendItems, baseContext);
+    const reversed = normalizeCompletionItems([...backendItems].reverse(), baseContext);
 
     expect(items.map((item) => item.id)).toEqual([
-      "0:workspace:method:format()",
-      "1:workspace:method:format()",
+      "unknown\u0000function\u0000format()\u0000\u0000Workspace overload string\u0000",
+      "unknown\u0000function\u0000format()\u0000\u0000Workspace overload number\u0000",
     ]);
     expect(new Set(items.map((item) => item.id)).size).toBe(2);
+    expect(new Set(reversed.map((item) => item.id))).toEqual(new Set(items.map((item) => item.id)));
   });
 
   it("prioritizes ArkUI chain modifiers after component calls", () => {

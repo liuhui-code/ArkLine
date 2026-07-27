@@ -181,7 +181,7 @@ describe("useCompletionController", () => {
       line: 1,
       column: 13,
       content: "Button().wid",
-    });
+    }, expect.any(Number));
   });
 
   it("skips oversized completion requests before calling language providers", async () => {
@@ -222,6 +222,29 @@ describe("useCompletionController", () => {
     expect(result.current.completion.completionStatus).toBe("error");
     expect(result.current.completion.completionMessage).toBe("Completion failed: Language request timed out after 2500ms");
     expect(onStatusChange).toHaveBeenCalledWith("Completion failed: Language request timed out after 2500ms");
+  });
+
+  it("shows immediate ArkTS keywords while semantic completion is still running", async () => {
+    vi.useFakeTimers();
+    const { result } = renderHarness({
+      activeContent: "pri",
+      editorSelection: { line: 1, column: 4 },
+      workspaceApi: workspaceApi({
+        completeSymbol: vi.fn(() => new Promise<[]>(() => undefined)),
+      }),
+    });
+
+    act(() => {
+      result.current.completion.triggerTypingCompletion({ line: 1, column: 4 });
+      vi.advanceTimersByTime(120);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.overlay).toBe("completion");
+    expect(result.current.completion.completionPresentationResults.map((item) => item.label)).toEqual(["private"]);
+    expect(result.current.completion.completionRequestStats.running).toBe(true);
   });
 
   it("does not let a stale completion timeout take focus from search", async () => {

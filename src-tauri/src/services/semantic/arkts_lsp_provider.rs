@@ -153,7 +153,7 @@ impl SemanticProvider for ArkTsLspProvider {
 
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem> {
         self.manager
-            .request(|session| session.completion(request))
+            .request_interactive(|session| session.completion(request))
             .unwrap_or_default()
     }
 

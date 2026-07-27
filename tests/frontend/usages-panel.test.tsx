@@ -14,6 +14,14 @@ describe("UsagesPanel", () => {
           preview: "service.load();",
           kind: "memberAccess",
           confidence: "memberResolved",
+          caller: {
+            symbolId: "project:Index.ets:Page.refresh",
+            name: "refresh",
+            qualifiedName: "Page.refresh",
+            kind: "method",
+            line: 3,
+            column: 3,
+          },
         },
         {
           path: "C:/workspace/src/Index.ets",
@@ -41,6 +49,8 @@ describe("UsagesPanel", () => {
     expect(within(indexGroup).getByText("2")).toBeVisible();
     expect(within(indexGroup).getAllByText("memberAccess")).toHaveLength(2);
     expect(within(indexGroup).getAllByText("memberResolved")).toHaveLength(2);
+    expect(within(indexGroup).getByText("Page.refresh()")).toBeVisible();
+    expect(within(indexGroup).getByText("Top level")).toBeVisible();
 
     const serviceGroup = screen.getByRole("group", { name: "UserService.ets 1 usage" });
     expect(within(serviceGroup).getByText("exact")).toBeVisible();

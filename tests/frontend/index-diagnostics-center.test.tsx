@@ -40,6 +40,13 @@ describe("IndexDiagnosticsCenter", () => {
               uptimeMs: 4200,
             },
             memoryBudgetBytes: 1024 * 1024 * 1024,
+            requestActor: {
+              running: true,
+              queued: 2,
+              completed: 41,
+              superseded: 9,
+              failed: 1,
+            },
           },
         }}
         onClose={vi.fn()}
@@ -55,6 +62,8 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(semantic).getByText("128 MiB")).toBeVisible();
     expect(within(semantic).getByText("1024 MiB")).toBeVisible();
     expect(within(semantic).getByText("12")).toBeVisible();
+    expect(within(semantic).getByText("1 running / 2 queued")).toBeVisible();
+    expect(within(semantic).getByText("41 / 9")).toBeVisible();
   });
   it("renders discovery progress facts in health storage", () => {
     const diagnostics = diagnosticsWithBackendQueryEvent();

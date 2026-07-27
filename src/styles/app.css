@@ -2088,6 +2088,22 @@ button:disabled {
   padding: 6px 8px;
 }
 
+.usages-panel__context {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+
+.usages-panel__caller {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .usages-panel__meta {
   display: inline-flex;
   gap: 6px;

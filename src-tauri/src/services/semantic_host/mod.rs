@@ -9,6 +9,9 @@ pub mod protocol;
 mod readiness_publisher;
 #[cfg(test)]
 mod readiness_publisher_tests;
+mod request_actor;
+#[cfg(test)]
+mod request_actor_tests;
 mod response_state;
 pub mod sdk;
 pub mod session;

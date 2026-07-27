@@ -228,6 +228,13 @@ export type SemanticSupervisorSnapshot = {
     uptimeMs: number;
   } | null;
   memoryBudgetBytes: number;
+  requestActor?: {
+    running: boolean;
+    queued: number;
+    completed: number;
+    superseded: number;
+    failed: number;
+  };
 };
 
 export type LanguageServiceReport = {
@@ -319,7 +326,7 @@ export type LanguageCompletionItem = {
   insertText?: string;
   filterText?: string;
   sortText?: string;
-  source?: "workspace" | "arkts" | "arkui" | "sdk" | "fallback";
+  source?: "workspace" | "arkts" | "arkui" | "sdk" | "type" | "fallback";
   documentation?: string;
   replacementRange?: TextRange;
   commitCharacters?: string[];
@@ -412,7 +419,7 @@ export type WorkspaceApi = {
   queryRenameImpact?(rootPath: string, request: LanguageQueryRequest): Promise<RenameImpactResult | null>;
   queryCallHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
   queryTypeHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
-  semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
+  semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest, requestGeneration?: number): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
   scheduleForegroundCompletionIndex?(rootPath: string, changedPaths: string[]): Promise<void>;
@@ -435,7 +442,7 @@ export type WorkspaceApi = {
   hoverSymbol?(request: LanguageQueryRequest): Promise<HoverResponse | null>;
   gotoDefinition?(request: LanguageQueryRequest): Promise<DefinitionTarget | null>;
   gotoDefinitionCandidates?(request: LanguageQueryRequest): Promise<DefinitionCandidate[]>;
-  completeSymbol?(request: LanguageQueryRequest): Promise<LanguageCompletionItem[]>;
+  completeSymbol?(request: LanguageQueryRequest, requestGeneration?: number): Promise<LanguageCompletionItem[]>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
   findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
   listCodeActions?(request: LanguageQueryRequest): Promise<CodeAction[]>;

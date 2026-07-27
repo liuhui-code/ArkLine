@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, TryLockError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -8,13 +8,15 @@ use serde_json::Value;
 use super::generation_tracker::SemanticDocumentGenerationTracker;
 use super::process::SemanticWorkerProcessSpec;
 use super::protocol::{SemanticDocumentPosition, SemanticRequest, SEMANTIC_PROTOCOL_VERSION};
+use super::request_actor::SemanticRequestActor;
 use super::response_state::{
     publish_response_readiness, validate_response_generation, RawSemanticResponseState,
 };
 use super::transport::{DirectSemanticWorkerTransport, SemanticWorkerTransport};
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
-    DefinitionCandidate, DefinitionTarget, LanguageQueryRequest, SemanticWorkerRuntime,
+    DefinitionCandidate, DefinitionTarget, LanguageQueryRequest, SemanticRequestActorSnapshot,
+    SemanticWorkerRuntime,
 };
 
 #[cfg(not(test))]
@@ -33,7 +35,7 @@ struct RawSemanticResponse {
 }
 
 pub struct SemanticWorkerSession {
-    transport: Mutex<Box<dyn SemanticWorkerTransport>>,
+    actor: SemanticRequestActor,
     next_request_id: AtomicU64,
     document_generations: Arc<Mutex<SemanticDocumentGenerationTracker>>,
     latest_runtime: Mutex<Option<SemanticWorkerRuntime>>,
@@ -63,7 +65,7 @@ impl SemanticWorkerSession {
         document_generations: Arc<Mutex<SemanticDocumentGenerationTracker>>,
     ) -> Self {
         Self {
-            transport: Mutex::new(transport),
+            actor: SemanticRequestActor::start(transport),
             next_request_id: AtomicU64::new(1),
             document_generations,
             latest_runtime: Mutex::new(None),
@@ -72,6 +74,10 @@ impl SemanticWorkerSession {
 
     pub fn runtime_snapshot(&self) -> Option<SemanticWorkerRuntime> {
         self.latest_runtime.lock().ok().and_then(|value| *value)
+    }
+
+    pub(crate) fn request_actor_snapshot(&self) -> SemanticRequestActorSnapshot {
+        self.actor.snapshot()
     }
 
     pub fn restore_tracked_documents(&self) -> Result<usize, String> {
@@ -115,27 +121,11 @@ impl SemanticWorkerSession {
     }
 
     pub(super) fn try_health(&self) -> IdleHealthProbe {
-        let mut transport = match self.transport.try_lock() {
-            Ok(transport) => transport,
-            Err(TryLockError::WouldBlock) => return IdleHealthProbe::Busy,
-            Err(TryLockError::Poisoned(_)) => {
-                return IdleHealthProbe::Failed(
-                    "Semantic worker transport lock is poisoned".to_string(),
-                )
-            }
-        };
-        let payload = SemanticRequest {
-            id: self.next_request_id(),
-            method: "health".to_string(),
-            position: None,
-            action: None,
-            documents: None,
-        };
-        match self.exchange_payload(transport.as_mut(), payload, None) {
-            Ok(response) => match parse_health_response(&response) {
-                Ok(_) => IdleHealthProbe::Healthy,
-                Err(error) => IdleHealthProbe::Failed(error),
-            },
+        if self.actor.is_busy() {
+            return IdleHealthProbe::Busy;
+        }
+        match self.health() {
+            Ok(_) => IdleHealthProbe::Healthy,
             Err(error) => IdleHealthProbe::Failed(error),
         }
     }
@@ -234,10 +224,7 @@ impl SemanticWorkerSession {
 
     #[cfg(test)]
     pub fn process_id(&self) -> Option<u32> {
-        self.transport
-            .lock()
-            .ok()
-            .map(|transport| transport.process_id())
+        Some(self.actor.process_id())
     }
 
     fn send_request(
@@ -302,36 +289,18 @@ impl SemanticWorkerSession {
         payload: SemanticRequest,
         expected_response_generation: Option<u64>,
     ) -> Result<RawSemanticResponse, String> {
-        let mut transport = self
-            .transport
-            .lock()
-            .map_err(|_| "Semantic worker transport lock is poisoned".to_string())?;
-        self.exchange_payload(transport.as_mut(), payload, expected_response_generation)
-    }
-
-    fn exchange_payload(
-        &self,
-        transport: &mut dyn SemanticWorkerTransport,
-        payload: SemanticRequest,
-        expected_response_generation: Option<u64>,
-    ) -> Result<RawSemanticResponse, String> {
         let request_id = payload.id.clone();
         let method = payload.method.clone();
         let serialized = serde_json::to_string(&payload).map_err(|error| {
             format!("Failed to serialize semantic worker request {request_id}: {error}")
         })?;
-        transport.write_line(&serialized).map_err(|error| {
-            format!("Failed to write semantic worker request {request_id}: {error}")
-        })?;
-        let line = match transport.recv_line(SEMANTIC_WORKER_REQUEST_TIMEOUT) {
-            Ok(line) => line,
-            Err(error) => {
-                transport.terminate();
-                return Err(format!(
-                    "Failed to read semantic worker response {request_id}: {error}"
-                ));
-            }
-        };
+        let line = self.actor.exchange(
+            request_id.clone(),
+            method.clone(),
+            serialized,
+            expected_response_generation,
+            SEMANTIC_WORKER_REQUEST_TIMEOUT,
+        )?;
 
         if line.trim().is_empty() {
             return Err(format!(
@@ -474,14 +443,6 @@ fn parse_text_range(payload: &Value) -> Option<crate::models::language::TextRang
         end_line: payload.get("endLine")?.as_u64()? as u32,
         end_column: payload.get("endColumn")?.as_u64()? as u32,
     })
-}
-
-impl Drop for SemanticWorkerSession {
-    fn drop(&mut self) {
-        if let Ok(mut transport) = self.transport.lock() {
-            transport.terminate();
-        }
-    }
 }
 
 fn extract_payload<'a>(payload: &'a Value, key: &str) -> &'a Value {

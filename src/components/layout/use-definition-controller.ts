@@ -44,6 +44,7 @@ export type UseDefinitionControllerOptions = {
   getActiveContent: () => string;
   getActiveContentLength?: () => number;
   getActiveContentSlice?: (start: number, end: number) => string;
+  getActiveContentWindow?: (selection: { line: number; column: number }, budget: number) => string;
   settingsApplying: boolean;
   openEditorQueryPanel: () => void;
   setUsageSearch: Dispatch<SetStateAction<UsageSearchState>>;
@@ -76,6 +77,7 @@ export function useDefinitionController({
   getActiveContent,
   getActiveContentLength,
   getActiveContentSlice,
+  getActiveContentWindow,
   settingsApplying,
   openEditorQueryPanel,
   setUsageSearch,
@@ -126,6 +128,7 @@ export function useDefinitionController({
       getActiveContent,
       getActiveContentLength,
       getActiveContentSlice,
+      getActiveContentWindow,
     });
     languageQuerySnapshotStore.record({ kind: "definition", snapshot });
     const syncDecision = decideLanguageQuerySync(snapshot);

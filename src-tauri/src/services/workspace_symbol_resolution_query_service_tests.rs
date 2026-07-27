@@ -79,7 +79,7 @@ fn queries_resolved_symbols_by_path_in_source_order() {
         .map(|symbol| symbol.name.as_str())
         .collect::<Vec<_>>();
 
-    assert_eq!(names, vec!["Bar", "PublicFoo"]);
+    assert_eq!(names, vec!["Bar", "PublicFoo", "value"]);
     fs::remove_dir_all(root).unwrap();
 }
 

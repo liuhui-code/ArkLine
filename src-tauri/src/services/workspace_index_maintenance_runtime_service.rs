@@ -224,15 +224,12 @@ impl WorkspaceIndexMaintenanceRuntime {
         if plan.has_store_maintenance() {
             match publish_idle_operation(root_path, plan.operation(), &mut should_yield)? {
                 Some(profile) => {
-                    let checkpointed = !plan.checkpoint || profile.stages.iter()
-                        .any(|stage| stage.name == "maintenanceTruncateCheckpoint");
-                    self.record_applied(
-                        root_path,
-                        plan,
-                        writer_samples,
-                        now_ms,
-                        checkpointed,
-                    )?;
+                    let checkpointed = !plan.checkpoint
+                        || profile
+                            .stages
+                            .iter()
+                            .any(|stage| stage.name == "maintenanceTruncateCheckpoint");
+                    self.record_applied(root_path, plan, writer_samples, now_ms, checkpointed)?;
                     if !checkpointed {
                         return Ok(false);
                     }

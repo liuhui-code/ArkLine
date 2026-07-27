@@ -104,6 +104,102 @@ fn definition_facade_resolves_re_exported_symbol_through_resolved_symbols() {
 }
 
 #[test]
+fn definition_facade_resolves_same_file_function_call() {
+    let root = unique_temp_dir("workspace-definition-local-function");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let app_path = source_dir.join("Index.ets");
+    fs::write(
+        &app_path,
+        [
+            "function submitForm() {",
+            "  return true;",
+            "}",
+            "",
+            "submitForm();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let envelope = query_definition_candidates_with_readiness(
+        &runtime,
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 5,
+            column: 1,
+            content: Some(fs::read_to_string(&app_path).unwrap()),
+        },
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Ready
+    );
+    assert!(envelope.items.iter().any(|candidate| {
+        candidate.path == app_path.to_string_lossy()
+            && candidate.line == 1
+            && candidate.preview.contains("submitForm")
+    }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn definition_facade_resolves_same_file_arrow_function_call() {
+    let root = unique_temp_dir("workspace-definition-local-arrow-function");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let app_path = source_dir.join("Index.ets");
+    fs::write(
+        &app_path,
+        [
+            "const submitForm = () => {",
+            "  return true;",
+            "};",
+            "",
+            "submitForm();",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let envelope = query_definition_candidates_with_readiness(
+        &runtime,
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 5,
+            column: 1,
+            content: Some(fs::read_to_string(&app_path).unwrap()),
+        },
+        None,
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Ready
+    );
+    assert!(envelope.items.iter().any(|candidate| {
+        candidate.path == app_path.to_string_lossy()
+            && candidate.line == 1
+            && candidate.preview.contains("submitForm")
+    }));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn definition_facade_resolves_active_sdk_api_symbol() {
     let root = unique_temp_dir("workspace-definition-sdk");
     let workspace_dir = root.join("workspace");

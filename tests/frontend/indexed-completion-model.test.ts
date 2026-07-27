@@ -33,6 +33,7 @@ describe("indexed completion model", () => {
       filterText: "build",
       source: "workspace",
       definitionTarget: { path: "/workspace/src/main.ets", line: 4, column: 3 },
+      data: { symbolId: "symbol:/workspace/src/main.ets:4:3" },
     });
   });
 
@@ -95,6 +96,27 @@ describe("indexed completion model", () => {
       { label: "build()", detail: "Semantic method", kind: "method", source: "arkts" },
       { label: "build", detail: "Indexed property", kind: "property", source: "workspace" },
     ]);
+  });
+
+  it("preserves explicitly identified overloads", () => {
+    const overloads: LanguageCompletionItem[] = [
+      {
+        label: "format()",
+        detail: "format(value: string)",
+        kind: "method",
+        source: "type",
+        data: { symbolId: "Formatter.format", overloadId: "string" },
+      },
+      {
+        label: "format()",
+        detail: "format(value: number)",
+        kind: "method",
+        source: "type",
+        data: { symbolId: "Formatter.format", overloadId: "number" },
+      },
+    ];
+
+    expect(mergeCompletionItems(overloads)).toHaveLength(2);
   });
 
   it("converts indexed file symbols into current-class method entries", () => {

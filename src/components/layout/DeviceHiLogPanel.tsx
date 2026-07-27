@@ -9,6 +9,7 @@ import {
   buildDeviceLogLiveWindowText,
   buildDeviceLogRenderWindow,
   createStatsPollingErrorStats,
+  mergeDeviceLogSnapshotWithLive,
 } from "@/components/layout/device-log-panel-model";
 import { applyDeviceLogFilter, compileDeviceLogFilter, hasActiveDeviceLogFilter } from "@/features/device-log/device-log-filter";
 import type { DeviceLogEntry, DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
@@ -102,8 +103,17 @@ export function DeviceHiLogPanel({
     workspaceApi,
   });
   const queryEntries = query.entries;
-  const sourceEntries = queryEntries ?? (queryActive ? store.getRecentEntries(QUERY_RECENT_WINDOW_MS) : stateEntries);
-  const visibleEntries = queryEntries ?? sourceEntries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter));
+  const liveSourceEntries = useMemo(() => (
+    queryActive ? store.getRecentEntries(QUERY_RECENT_WINDOW_MS) : stateEntries
+  ), [queryActive, stateEntries, store]);
+  const filteredLiveEntries = useMemo(() => (
+    liveSourceEntries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter))
+  ), [compiledFilter, liveSourceEntries]);
+  const visibleEntries = useMemo(
+    () => mergeDeviceLogSnapshotWithLive(queryEntries, filteredLiveEntries),
+    [filteredLiveEntries, queryEntries],
+  );
+  const sourceEntries = queryEntries ?? liveSourceEntries;
   const renderWindow = buildDeviceLogRenderWindow({
     entries: visibleEntries,
     followingTail,

@@ -32,6 +32,21 @@ describe("findLocalDefinition", () => {
     });
   });
 
+  it("resolves an async function declaration from a same-file call", () => {
+    const target = findLocalDefinition({
+      path: "C:/samples/DemoWorkspace/src/main.ets",
+      content: "export async function submitForm() {\n  return true;\n}\nsubmitForm();",
+      line: 4,
+      column: 1,
+    });
+
+    expect(target).toEqual({
+      path: "C:/samples/DemoWorkspace/src/main.ets",
+      line: 1,
+      column: 23,
+    });
+  });
+
   it("resolves a same-file property declaration from a member access", () => {
     const target = findLocalDefinition({
       path: "C:/samples/DemoWorkspace/src/main.ets",

@@ -12,6 +12,9 @@ const DECLARATION_KEYWORDS: &[&str] = &[
     "module",
     "type",
     "function",
+    "const",
+    "let",
+    "var",
 ];
 const MEMBER_MODIFIERS: &[&str] = &[
     "public",

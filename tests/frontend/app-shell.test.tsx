@@ -3597,7 +3597,7 @@ describe("App shell", () => {
         line: 3,
         column: 17,
         content: expect.stringContaining("struct Index"),
-      }));
+      }), expect.any(Number));
     });
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -3778,6 +3778,10 @@ describe("App shell", () => {
       "pri",
       "all",
       80,
+      null,
+      undefined,
+      expect.any(Number),
+      250,
     ));
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(within(popup).getByRole("option", { name: /PrivateProfile/ })).toBeVisible();
@@ -3941,7 +3945,7 @@ describe("App shell", () => {
         line: 8,
         column: 8,
         content: expect.stringContaining(".wi"),
-      }));
+      }), expect.any(Number));
     });
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
     await user.click(within(popup).getByRole("option", { name: /width/ }));
@@ -4402,15 +4406,14 @@ describe("App shell", () => {
     await waitFor(() => expect(completeSymbol).toHaveBeenCalledTimes(1));
 
     await user.keyboard("u");
+    expect(completeSymbol).toHaveBeenCalledTimes(1);
+    firstCompletion.resolve([{ label: "build()", detail: "Old one-character result", kind: "method" }]);
     await waitFor(() => expect(completeSymbol).toHaveBeenCalledTimes(2));
     secondCompletion.resolve([{ label: "button()", detail: "New two-character result", kind: "function" }]);
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
     expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
-
-    firstCompletion.resolve([{ label: "build()", detail: "Old one-character result", kind: "method" }]);
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
 
     expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
     expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
@@ -4884,7 +4887,7 @@ describe("App shell", () => {
         line: 3,
         column: 16,
         content: expect.stringContaining("struct Index"),
-      }));
+      }), expect.any(Number));
     });
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });

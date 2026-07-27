@@ -1,4 +1,5 @@
 import type { CurrentClassMethod } from "@/features/workspace/current-class-methods";
+import { completionMergeIdentity } from "@/components/layout/completion-item-identity";
 import type { LanguageCompletionItem } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
@@ -84,6 +85,7 @@ export function candidateToCompletionItem(
     filterText: candidate.title,
     ...(source ? { source } : {}),
     definitionTarget,
+    data: { symbolId: candidate.id },
   };
 }
 
@@ -109,7 +111,7 @@ export function mergeCompletionItems(...groups: LanguageCompletionItem[][]) {
   const seen = new Set<string>();
   const merged: LanguageCompletionItem[] = [];
   for (const item of groups.flat()) {
-    const key = `${item.label}\u0000${item.kind}`;
+    const key = completionMergeIdentity(item);
     if (seen.has(key)) {
       continue;
     }

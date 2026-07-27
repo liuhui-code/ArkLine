@@ -205,6 +205,35 @@ describe("useDefinitionController", () => {
     expect(navigateToLocation).toHaveBeenCalledWith({ path: "/workspace/A.ets", line: 2, column: 3 }, "Definition");
   });
 
+  it("falls back to active content when indexed definition returns no target", async () => {
+    const content = [
+      "function submitForm() {",
+      "  return true;",
+      "}",
+      "",
+      "submitForm();",
+    ].join("\n");
+    const navigateToLocation = vi.fn(async () => undefined);
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({
+        gotoDefinition: vi.fn(async () => null),
+        queryDefinitionCandidatesWithReadiness: vi.fn(async () => ({
+          items: [],
+          readiness: readiness("ready"),
+        })),
+      }),
+      editorSelection: { line: 5, column: 1 },
+      getActiveContent: () => content,
+      navigateToLocation,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor({ line: 5, column: 1 }, "modifierClick");
+    });
+
+    expect(navigateToLocation).toHaveBeenCalledWith({ path: "/workspace/A.ets", line: 1, column: 10 }, "Definition");
+  });
+
   it("skips legacy definition fallback for oversized requests after indexed miss", async () => {
     const gotoDefinition = vi.fn(async () => ({ path: "/workspace/B.ets", line: 1, column: 1 }));
     const onStatusChange = vi.fn();

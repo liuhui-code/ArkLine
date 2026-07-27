@@ -3,6 +3,7 @@ import {
   keywordCompletionItems,
   mergeCompletionItems,
 } from "@/components/layout/indexed-completion-model";
+import { isMemberAccessCompletion } from "@/components/layout/completion-context";
 import { shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
@@ -17,12 +18,20 @@ export type CompletionCandidateRequest = {
   content: string;
   query: string;
   replacePrefix: string;
+  requestGeneration?: number;
 };
 
 export type CompletionCandidateResult = {
   items: LanguageCompletionItem[];
   explain: string[];
 };
+
+export function collectImmediateCompletionCandidates(
+  query: string,
+  position?: { content: string; line: number; column: number },
+): LanguageCompletionItem[] {
+  return position && isMemberAccessCompletion(position) ? [] : keywordCompletionItems(query);
+}
 
 export async function collectCompletionCandidates(request: CompletionCandidateRequest): Promise<LanguageCompletionItem[]> {
   const result = await collectCompletionCandidateResult(request);
@@ -38,16 +47,32 @@ export async function collectCompletionCandidateResult({
   content,
   query,
   replacePrefix,
+  requestGeneration,
 }: CompletionCandidateRequest): Promise<CompletionCandidateResult> {
   const queryText = query || replacePrefix;
   const languageRequest = { path, line, column, content };
-  await scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
-  const semanticRequest = collectSemanticCompletionResult(workspaceApi, rootPath, languageRequest);
-  const fileIndexRequest = rootPath && workspaceApi.queryWorkspaceFileSymbolsWithReadiness
+  const memberAccess = isMemberAccessCompletion(languageRequest);
+  scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
+  const semanticRequest = collectSemanticCompletionResult(
+    workspaceApi,
+    rootPath,
+    languageRequest,
+    requestGeneration,
+  );
+  const fileIndexRequest = !memberAccess && rootPath && workspaceApi.queryWorkspaceFileSymbolsWithReadiness
     ? workspaceApi.queryWorkspaceFileSymbolsWithReadiness(rootPath, path, queryText, 80)
     : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
-  const workspaceIndexRequest = rootPath && workspaceApi.queryWorkspaceCandidatesWithReadiness && queryText
-    ? workspaceApi.queryWorkspaceCandidatesWithReadiness(rootPath, queryText, "all", 80)
+  const workspaceIndexRequest = !memberAccess && rootPath && workspaceApi.queryWorkspaceCandidatesWithReadiness && queryText
+    ? workspaceApi.queryWorkspaceCandidatesWithReadiness(
+      rootPath,
+      queryText,
+      "all",
+      80,
+      null,
+      undefined,
+      requestGeneration,
+      250,
+    )
     : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
 
   const semanticResult = await semanticRequest;
@@ -71,12 +96,17 @@ export async function collectCompletionCandidateResult({
     : [];
 
   return {
-    items: mergeCompletionItems(semanticItems, fileIndexedItems, workspaceIndexedItems, keywordCompletionItems(queryText)),
+    items: mergeCompletionItems(
+      semanticItems,
+      fileIndexedItems,
+      workspaceIndexedItems,
+      collectImmediateCompletionCandidates(queryText, languageRequest),
+    ),
     explain,
   };
 }
 
-async function scheduleForegroundCompletionIndex(
+function scheduleForegroundCompletionIndex(
   workspaceApi: WorkspaceApi,
   rootPath: string | null | undefined,
   path: string,
@@ -87,21 +117,20 @@ async function scheduleForegroundCompletionIndex(
   if (!shouldScheduleForegroundIndex("completion", rootPath, path)) {
     return;
   }
-  try {
-    await workspaceApi.scheduleForegroundCompletionIndex(rootPath, [path]);
-  } catch {
-    // Completion must stay responsive when foreground reindex scheduling is unavailable.
-  }
+  void workspaceApi.scheduleForegroundCompletionIndex(rootPath, [path]).catch(() => {
+    // Index scheduling is a background hint, never a completion prerequisite.
+  });
 }
 
 async function collectSemanticCompletionResult(
   workspaceApi: WorkspaceApi,
   rootPath: string | null | undefined,
   request: { path: string; line: number; column: number; content: string },
+  requestGeneration?: number,
 ): Promise<CompletionCandidateResult> {
   if (rootPath && workspaceApi.semanticCompleteSymbol) {
     try {
-      const envelope = await workspaceApi.semanticCompleteSymbol(rootPath, request);
+      const envelope = await workspaceApi.semanticCompleteSymbol(rootPath, request, requestGeneration);
       if (envelope.items.length > 0 || !workspaceApi.completeSymbol) {
         return {
           items: envelope.items,
@@ -109,7 +138,7 @@ async function collectSemanticCompletionResult(
         };
       }
       return {
-        items: await workspaceApi.completeSymbol(request),
+        items: await completeLanguageSymbol(workspaceApi, request, requestGeneration),
         explain: envelope.explain ?? [],
       };
     } catch {
@@ -117,9 +146,21 @@ async function collectSemanticCompletionResult(
     }
   }
   return {
-    items: workspaceApi.completeSymbol ? await workspaceApi.completeSymbol(request) : [],
+    items: workspaceApi.completeSymbol
+      ? await completeLanguageSymbol(workspaceApi, request, requestGeneration)
+      : [],
     explain: [],
   };
+}
+
+function completeLanguageSymbol(
+  workspaceApi: WorkspaceApi,
+  request: { path: string; line: number; column: number; content: string },
+  requestGeneration?: number,
+) {
+  return requestGeneration === undefined
+    ? workspaceApi.completeSymbol!(request)
+    : workspaceApi.completeSymbol!(request, requestGeneration);
 }
 
 function indexItemsEnvelope<T>(items: T[]): Pick<WorkspaceIndexQueryEnvelope<T>, "items" | "explain"> {

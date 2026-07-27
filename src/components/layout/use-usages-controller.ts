@@ -18,6 +18,7 @@ export type UseUsagesControllerOptions = {
   getActiveContent: () => string;
   getActiveContentLength?: () => number;
   getActiveContentSlice?: (start: number, end: number) => string;
+  getActiveContentWindow?: (selection: { line: number; column: number }, budget: number) => string;
   settingsApplying: boolean;
   rememberCurrentLocation: () => void;
   navigateToUsage: (item: UsageResult) => Promise<void>;
@@ -38,6 +39,7 @@ export function useUsagesController({
   getActiveContent,
   getActiveContentLength,
   getActiveContentSlice,
+  getActiveContentWindow,
   settingsApplying,
   rememberCurrentLocation,
   navigateToUsage,
@@ -76,6 +78,7 @@ export function useUsagesController({
       getActiveContent,
       getActiveContentLength,
       getActiveContentSlice,
+      getActiveContentWindow,
     });
     languageQuerySnapshotStore.record({ kind: "usages", snapshot });
     const request = snapshot.request;

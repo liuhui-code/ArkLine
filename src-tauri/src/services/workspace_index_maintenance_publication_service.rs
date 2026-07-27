@@ -262,8 +262,9 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let store_path = root.join("index.sqlite");
         let connection = Connection::open(&store_path).unwrap();
-        connection.execute_batch(
-            "pragma journal_mode=wal;
+        connection
+            .execute_batch(
+                "pragma journal_mode=wal;
              pragma wal_autocheckpoint=0;
              create table sample(value text not null);
              begin;
@@ -271,13 +272,16 @@ mod tests {
              select hex(randomblob(4096))
              from json_each('[1,2,3,4,5,6,7,8,9,10]');
              commit;",
-        ).unwrap();
+            )
+            .unwrap();
         let wal_path = root.join("index.sqlite-wal");
         let before = fs::metadata(&wal_path).unwrap().len();
 
         assert!(truncate_wal_checkpoint(&connection).unwrap());
 
-        let after = fs::metadata(&wal_path).map(|metadata| metadata.len()).unwrap_or(0);
+        let after = fs::metadata(&wal_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
         assert!(before > 0);
         assert_eq!(after, 0, "maintenance left {after} WAL bytes");
         drop(connection);

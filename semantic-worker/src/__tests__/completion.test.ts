@@ -122,7 +122,13 @@ describe("semantic worker completion", () => {
       { label: "@Entry", detail: "ArkTS decorator", kind: "keyword", source: "arkts" },
       { label: "@Component", detail: "ArkTS decorator", kind: "keyword", source: "arkts" },
       { label: "build()", detail: "Component lifecycle method", kind: "method", source: "arkts" },
-      { label: "sharedSubmit()", detail: "Semantic workspace function", kind: "function", source: "workspace" },
+      expect.objectContaining({
+        label: "sharedSubmit()",
+        detail: "Semantic workspace function",
+        kind: "function",
+        source: "workspace",
+        data: expect.objectContaining({ provider: "workspace-symbol-cache" }),
+      }),
     ])
   })
 
@@ -241,7 +247,7 @@ describe("semantic worker completion", () => {
       replacementRange: { startLine: 8, startColumn: 6, endLine: 8, endColumn: 8 },
       commitCharacters: ["("],
       definitionTarget: expect.objectContaining({ path: expect.stringContaining("common.d.ts"), line: 3, column: 5 }),
-      data: { provider: "arkui-sdk", component: null },
+      data: expect.objectContaining({ provider: "arkui-sdk", component: null }),
     }))
   })
 
@@ -337,7 +343,7 @@ describe("semantic worker completion", () => {
       detail: "width(value: ColumnLength): T",
       documentation: "Sets the column width.",
       definitionTarget: expect.objectContaining({ path: expect.stringContaining("column.d.ts"), line: 3, column: 5 }),
-      data: { provider: "arkui-sdk", component: "Column" },
+      data: expect.objectContaining({ provider: "arkui-sdk", component: "Column" }),
     }))
   })
 
@@ -376,7 +382,7 @@ describe("semantic worker completion", () => {
     })
 
     expect(response.ok).toBe(true)
-    expect(response.payload).not.toContainEqual(expect.objectContaining({ label: "width", source: "arkui" }))
+    expect(response.payload).toEqual([])
   })
 
   it("uses the block receiver for component-specific chained completion", () => {
@@ -414,7 +420,7 @@ describe("semantic worker completion", () => {
     expect(response.ok).toBe(true)
     expect(response.payload).toContainEqual(expect.objectContaining({
       label: "justifyContent",
-      data: { provider: "arkui-sdk", component: "Column" },
+      data: expect.objectContaining({ provider: "arkui-sdk", component: "Column" }),
     }))
   })
 })

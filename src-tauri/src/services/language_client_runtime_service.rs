@@ -1,7 +1,4 @@
-use std::sync::mpsc;
 use std::time::Duration;
-
-use tauri::async_runtime::spawn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LanguageClientSource {
@@ -58,12 +55,8 @@ where
     T: Send + 'static,
     Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
 {
-    let (sender, receiver) = mpsc::channel();
-    spawn(async move {
-        let _ = sender.send(operation.await);
-    });
-    receiver
-        .recv_timeout(Duration::from_millis(request.timeout_ms))
+    tokio::time::timeout(Duration::from_millis(request.timeout_ms), operation)
+        .await
         .map_err(|_| timeout_message(request))?
 }
 
@@ -80,8 +73,6 @@ fn timeout_message(request: LanguageClientRequest) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
-
     #[test]
     fn timeout_message_includes_request_metadata() {
         let request = LanguageClientRequest::new(LanguageClientSource::Completion, 7, 11, 2500);
@@ -97,7 +88,7 @@ mod tests {
         let request = LanguageClientRequest::new(LanguageClientSource::Usages, 3, 3, 5);
 
         let error = tauri::async_runtime::block_on(run_language_request(request, async move {
-            thread::sleep(Duration::from_millis(50));
+            tokio::time::sleep(Duration::from_millis(50)).await;
             Ok::<_, String>(Vec::<String>::new())
         }))
         .expect_err("slow language request should time out");

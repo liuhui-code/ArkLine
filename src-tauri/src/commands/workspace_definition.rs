@@ -70,7 +70,19 @@ pub fn query_type_hierarchy(
 pub fn semantic_complete_symbol(
     root_path: String,
     request: LanguageQueryRequest,
+    request_generation: Option<u64>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<CompletionItem>, String> {
-    query_semantic_completions_with_readiness_service(&index_runtime, &root_path, &request, 100)
+    let mut envelope = query_semantic_completions_with_readiness_service(
+        &index_runtime,
+        &root_path,
+        &request,
+        100,
+    )?;
+    if let Some(generation) = request_generation {
+        envelope
+            .explain
+            .push(format!("requestGeneration:{generation}"));
+    }
+    Ok(envelope)
 }

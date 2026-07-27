@@ -178,6 +178,7 @@ impl SemanticProvider for FallbackProvider {
                 preview,
                 kind: "fallback".to_string(),
                 confidence: "fallback".to_string(),
+                caller: None,
             })
             .collect()
     }
