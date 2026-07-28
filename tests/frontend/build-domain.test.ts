@@ -23,7 +23,10 @@ describe("build run model", () => {
     })).toEqual({
       pathEntries: ["/tools/node"],
       environment: {
+        ARKLINE_HARMONY_SDK_PATH: "/sdk/harmony",
+        DEVECO_SDK_HOME: "/sdk/harmony",
         HARMONY_SDK_HOME: "/sdk/harmony",
+        HOS_SDK_HOME: "/sdk/harmony",
         OHOS_SDK_HOME: "/sdk/harmony",
       },
     });
@@ -92,6 +95,77 @@ describe("build run model", () => {
     expect(result.status).toBe("failed");
     expect(result.output).toContain("Property width does not exist.");
     expect(result.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("build configuration memory", () => {
+  it("restores the most recently used project configuration", () => {
+    const store = createBuildStore();
+
+    store.loadConfigurations([
+      {
+        id: "hap-entry-debug",
+        name: "HAP entry debug",
+        target: "hap",
+        moduleName: "entry",
+        product: "default",
+        buildMode: "debug",
+        fastMode: false,
+        lastUsedAt: 10,
+      },
+      {
+        id: "app-project-release",
+        name: "APP project release",
+        target: "app",
+        moduleName: "entry",
+        product: "china",
+        buildMode: "release",
+        fastMode: true,
+        lastUsedAt: 20,
+      },
+    ]);
+
+    expect(store.state.activeConfigurationId).toBe("app-project-release");
+    expect(store.state.lastTarget).toBe("app");
+    expect(store.state.product).toBe("china");
+    expect(store.state.buildMode).toBe("release");
+    expect(store.state.fastMode).toBe(true);
+  });
+
+  it("uses the only legacy configuration when it has no usage timestamp", () => {
+    const store = createBuildStore();
+
+    store.loadConfigurations([{
+      id: "hap-entry-release",
+      name: "HAP entry release",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "release",
+      fastMode: false,
+    }]);
+
+    expect(store.state.activeConfigurationId).toBe("hap-entry-release");
+    expect(store.state.buildMode).toBe("release");
+  });
+
+  it("returns to current settings when the configuration selection is cleared", () => {
+    const store = createBuildStore();
+    store.loadConfigurations([{
+      id: "hap-entry-debug",
+      name: "HAP entry debug",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      fastMode: false,
+      lastUsedAt: 10,
+    }]);
+
+    store.selectConfiguration("");
+
+    expect(store.state.activeConfigurationId).toBeNull();
+    expect(store.state.message).toBe("Using current build settings");
   });
 });
 
@@ -350,6 +424,19 @@ describe("Harmony build command planner", () => {
       {
         label: "Build",
         command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+        program: "./hvigorw",
+        args: [
+          "assembleHap",
+          "--mode",
+          "module",
+          "-p",
+          "module=entry@default",
+          "-p",
+          "product=default",
+          "-p",
+          "buildMode=debug",
+          "--no-daemon",
+        ],
       },
     ]);
   });
@@ -504,6 +591,40 @@ describe("build controller", () => {
         message: "Packager failed",
       },
     ]);
+  });
+
+  it("does not start the build step when clean fails", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: true,
+      fastMode: false,
+    });
+    const runTerminalCommand = vi.fn(async (request) => ({
+      runId: request.runId,
+      command: request.command,
+      stdout: "",
+      stderr: "clean failed",
+      exitCode: 1,
+      durationMs: 15,
+      stopped: false,
+    }));
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-clean-failed",
+      plan,
+      runTerminalCommand,
+    });
+
+    expect(runTerminalCommand).toHaveBeenCalledTimes(1);
+    expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      program: "./hvigorw",
+      args: ["clean", "--no-daemon"],
+    }));
+    expect(result.status).toBe("failed");
   });
 });
 

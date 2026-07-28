@@ -3,6 +3,8 @@ import type { EditorInsertTextTarget, EditorSelectionTarget } from "@/components
 import type { DefinitionHoverState, EditorCaretRect, EditorContextMenuRequest, EditorLineColumn } from "@/editor/editor-events";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
+import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 import type { Text } from "@codemirror/state";
 
 const ArkTsEditor = lazy(async () => {
@@ -26,6 +28,8 @@ type LazyArkTsEditorProps = {
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
@@ -52,6 +56,14 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
   const onTypingCompletionTrigger = useCallback((selection: EditorLineColumn) => {
     callbacksRef.current.onTypingCompletionTrigger?.(selection);
   }, []);
+  const onCodeMirrorCompletionRequest = useCallback<CodeMirrorCompletionBroker>(
+    (request) => callbacksRef.current.onCodeMirrorCompletionRequest?.(request) ?? Promise.resolve([]),
+    [],
+  );
+  const onCodeMirrorSignatureHelpRequest = useCallback<CodeMirrorSignatureHelpBroker>(
+    (request, signal) => callbacksRef.current.onCodeMirrorSignatureHelpRequest?.(request, signal) ?? Promise.resolve(null),
+    [],
+  );
   const onContextMenu = useCallback((request: EditorContextMenuRequest) => {
     callbacksRef.current.onContextMenu?.(request);
   }, []);
@@ -68,6 +80,8 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
         onDefinitionTrigger={props.onDefinitionTrigger ? onDefinitionTrigger : undefined}
         onDefinitionHoverChange={props.onDefinitionHoverChange ? onDefinitionHoverChange : undefined}
         onTypingCompletionTrigger={props.onTypingCompletionTrigger ? onTypingCompletionTrigger : undefined}
+        onCodeMirrorCompletionRequest={props.onCodeMirrorCompletionRequest ? onCodeMirrorCompletionRequest : undefined}
+        onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
         onContextMenu={props.onContextMenu ? onContextMenu : undefined}
         onGitTraceLineClick={props.onGitTraceLineClick ? onGitTraceLineClick : undefined}
       />

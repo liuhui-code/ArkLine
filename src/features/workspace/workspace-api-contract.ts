@@ -1,4 +1,5 @@
-import type { BuildConfiguration, HarmonyBuildProject } from "@/features/build/build-model";
+import type { BuildConfiguration, BuildEnvironmentResolution, HarmonyBuildProject } from "@/features/build/build-model";
+import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type {
   CodeAction,
   EditConflict,
@@ -46,7 +47,9 @@ import type {
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import type { UsageResult } from "@/features/workspace/usage-search";
+import type { LanguageSignatureHelp } from "@/features/workspace/workspace-signature-help-api";
 
+export type { LanguageSignature, LanguageSignatureHelp, LanguageSignatureHelpParameter } from "@/features/workspace/workspace-signature-help-api";
 export type {
   DeviceConnectionStatus,
   DeviceLogDevice,
@@ -91,7 +94,6 @@ export type {
   WorkspaceSdkIndexSummary,
   WorkspaceTextSearchRequest,
 } from "@/features/workspace/workspace-index-api-types";
-
 export type WorkspaceSnapshot = {
   rootName: string;
   rootPath: string;
@@ -166,6 +168,7 @@ export type TerminalRunRequest = {
   command: string;
   cwd: string | null;
   source: "preset" | "manual";
+  program?: string; args?: string[];
   pathEntries?: string[];
   environment?: Record<string, string>;
 };
@@ -179,7 +182,6 @@ export type TerminalRunResult = {
   durationMs: number;
   stopped: boolean;
 };
-
 export type TerminalSessionStatus = "starting" | "idle" | "running" | "closed" | "error";
 
 export type TerminalSessionSummary = {
@@ -210,6 +212,19 @@ export type LanguageQueryRequest = {
   line: number;
   column: number;
   content?: string;
+  documentVersion?: number;
+};
+
+export type SemanticDocumentSyncRequest = {
+  method: "didOpen" | "didChange";
+  path: string;
+  content: string;
+  documentVersion: number;
+  workspaceRoot?: string;
+};
+
+export type SemanticDocumentCloseRequest = {
+  path: string;
 };
 
 export type SemanticSupervisorSnapshot = {
@@ -435,6 +450,8 @@ export type WorkspaceApi = {
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;
   openFile(path: string): Promise<string>;
   saveFile(path: string, content: string): Promise<void>;
+  syncSemanticDocument?(request: SemanticDocumentSyncRequest): Promise<void>;
+  closeSemanticDocument?(request: SemanticDocumentCloseRequest): Promise<void>;
   runValidation(path: string, content: string): Promise<ValidationProblem[]>;
   loadDiff(rootPath: string | null): Promise<string>;
   inspectEnvironment(): Promise<EnvironmentReport>;
@@ -442,7 +459,8 @@ export type WorkspaceApi = {
   hoverSymbol?(request: LanguageQueryRequest): Promise<HoverResponse | null>;
   gotoDefinition?(request: LanguageQueryRequest): Promise<DefinitionTarget | null>;
   gotoDefinitionCandidates?(request: LanguageQueryRequest): Promise<DefinitionCandidate[]>;
-  completeSymbol?(request: LanguageQueryRequest, requestGeneration?: number): Promise<LanguageCompletionItem[]>;
+  completeSymbol?(request: LanguageQueryRequest, requestGeneration?: number, documentVersion?: number): Promise<LanguageCompletionItem[]>;
+  signatureHelp?(request: LanguageQueryRequest): Promise<LanguageSignatureHelp | null>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
   findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
   listCodeActions?(request: LanguageQueryRequest): Promise<CodeAction[]>;
@@ -456,6 +474,7 @@ export type WorkspaceApi = {
   loadBuildConfigurations?(rootPath: string): Promise<BuildConfiguration[]>;
   saveBuildConfigurations?(rootPath: string, configurations: BuildConfiguration[]): Promise<void>;
   inspectHarmonyBuildProject?(rootPath: string): Promise<HarmonyBuildProject>;
+  resolveBuildEnvironment?(request: BuildEnvironmentRequest): Promise<BuildEnvironmentResolution>;
   createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionSummary>;
   listTerminalSessions(): Promise<TerminalSessionSummary[]>;
   writeTerminalInput(request: TerminalInputWriteRequest): Promise<void>;

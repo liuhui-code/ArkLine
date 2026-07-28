@@ -7,9 +7,18 @@ on:
       - "codex/**"
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: arkline-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  verify-and-package:
-    runs-on: windows-latest
+  quality:
+    name: Quality Gate / Fast
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -29,11 +38,47 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Run fast quality gate
         run: pnpm check:fast
+
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-quality-gate
+          path: artifacts/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  package:
+    name: Windows / Package
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build desktop bundle
         run: pnpm package:windows
@@ -44,4 +89,4 @@ jobs:
           name: arkline-windows-bundle
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          if-no-files-found: warn
+          if-no-files-found: error

@@ -2,6 +2,7 @@ import type {
   SemanticCompletionItem,
   SemanticDefinitionCandidate,
   SemanticDocumentPosition,
+  SemanticSignatureHelp,
 } from "../protocol.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
@@ -21,6 +22,7 @@ export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
+  signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null
 }
 
 interface WorkspaceEngineEntry {
@@ -48,6 +50,7 @@ export class SemanticTypeEngineRegistry {
       state,
       complete: (position) => entry.engine.complete(position),
       define: (position) => entry.engine.define(position),
+      signatureHelp: (position) => entry.engine.signatureHelp(position),
     }
   }
 

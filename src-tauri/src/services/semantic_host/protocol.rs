@@ -2,7 +2,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::language::CodeActionResolveRequest;
 
-pub const SEMANTIC_PROTOCOL_VERSION: u64 = 3;
+pub const SEMANTIC_PROTOCOL_VERSION: u64 = 4;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticDocumentSync {
+    pub path: String,
+    pub content: String,
+    pub document_version: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_root: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -14,6 +24,8 @@ pub struct SemanticDocumentPosition {
     pub content: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_generation: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_version: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,6 +47,10 @@ pub struct SemanticRequest {
     pub action: Option<CodeActionResolveRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub documents: Option<Vec<SemanticReplayDocument>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document: Option<SemanticDocumentSync>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_path: Option<String>,
 }
 
 impl SemanticRequest {
@@ -49,9 +65,12 @@ impl SemanticRequest {
                 column,
                 content: None,
                 content_generation: None,
+                document_version: None,
             }),
             action: None,
             documents: None,
+            document: None,
+            document_path: None,
         }
     }
 }

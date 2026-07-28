@@ -1,6 +1,7 @@
 import type {
   BuildPreflightIssue,
   BuildPreflightResult,
+  BuildEnvironmentResolution,
   BuildTarget,
   HarmonyBuildProject,
 } from "@/features/build/build-model";
@@ -11,6 +12,7 @@ type PreflightInput = {
   settings?: AppSettings["sdk"] | null;
   target: BuildTarget;
   moduleName: string | null;
+  environment?: BuildEnvironmentResolution | null;
 };
 
 function issue(issue: BuildPreflightIssue): BuildPreflightIssue {
@@ -100,6 +102,20 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
       code: "missing-node-path",
       message: "Node path is not configured.",
       hint: "Set the Node installation directory in Settings before building.",
+    }));
+  }
+
+  for (const check of input.environment?.checks ?? []) {
+    if (check.available) {
+      continue;
+    }
+    const isNode = check.name === "node";
+    const isHvigor = check.name === "hvigor";
+    issues.push(issue({
+      severity: "error",
+      code: isNode ? "build-environment-node" : isHvigor ? "build-environment-hvigor" : "build-environment-sdk",
+      message: `${isNode ? "Node" : isHvigor ? "Hvigor wrapper" : "HarmonyOS SDK"} is not available to the build.`,
+      hint: check.detail,
     }));
   }
 

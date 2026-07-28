@@ -1,8 +1,9 @@
 {
   "gates": {
     "fast": {
-      "command": "pnpm check:fast",
+      "command": "node scripts/run-quality-gate.mjs --gate=fast --strict",
       "description": "Default local and CI quality gate for incremental changes.",
+      "stepTimeoutMs": 900000,
       "steps": [
         "pnpm check:whitespace",
         "pnpm check:line-count",
@@ -14,8 +15,9 @@
       ]
     },
     "full": {
-      "command": "pnpm check",
+      "command": "node scripts/run-quality-gate.mjs --gate=full --strict",
       "description": "Merge-ready quality gate that includes the full frontend suite.",
+      "stepTimeoutMs": 1200000,
       "steps": [
         "pnpm check:whitespace",
         "pnpm check:line-count",
@@ -28,6 +30,7 @@
   },
   "frontendQualityTests": [
     "tests/frontend/package-scripts.test.ts",
+    "tests/frontend/run-quality-gate.test.ts",
     "tests/frontend/quality-gate-manifest.test.ts",
     "tests/frontend/indexing-roadmap-status.test.ts",
     "tests/frontend/ci-workflow-gates.test.ts",

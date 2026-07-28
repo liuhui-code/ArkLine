@@ -974,9 +974,11 @@ button:disabled {
 .editor-query-panel {
   display: grid;
   grid-template-rows: 30px minmax(0, auto);
-  max-height: 184px;
+  width: 100%;
+  max-height: 420px;
   min-height: 0;
-  border-bottom: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
   background: #25272b;
 }
 
@@ -1718,6 +1720,35 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #b7bcc3;
+}
+
+.build-tool-window__environment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0 12px 8px;
+  list-style: none;
+}
+
+.build-tool-window__environment-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.build-tool-window__environment-item strong {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.build-tool-window__environment-item--missing strong {
+  color: var(--danger);
 }
 
 .build-tool-window__preflight {
@@ -4135,6 +4166,32 @@ button:disabled {
   border: 1px solid rgba(223, 107, 117, 0.4);
   background: rgba(223, 107, 117, 0.1);
   color: #df8a92;
+}
+
+.cm-arkline-signature-help {
+  min-width: 280px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.cm-arkline-signature-help__label {
+  white-space: pre-wrap;
+}
+
+.cm-arkline-signature-help__detail {
+  margin-top: 5px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 760px) {

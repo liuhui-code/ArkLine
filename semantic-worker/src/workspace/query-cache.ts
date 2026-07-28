@@ -27,6 +27,10 @@ export class SemanticQueryCache {
       this.entries.delete(oldest)
     }
   }
+
+  clear(): void {
+    this.entries.clear()
+  }
 }
 
 export function semanticQueryCacheKey(

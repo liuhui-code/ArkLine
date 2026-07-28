@@ -1,5 +1,6 @@
 import { useRef, type RefObject } from "react";
 import type { NavigationLocation } from "@/components/layout/app-shell-types";
+import type { RestoreFileResult } from "@/components/layout/use-editor-surface-controller";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 
@@ -9,7 +10,8 @@ export type UseEditorNavigationOptions = {
   activePath: string | null;
   editorSelection: { line: number; column: number };
   editorSurfaceRef: RefObject<HTMLElement | null>;
-  openFile: (path: string) => Promise<void>;
+  openFile: (path: string) => Promise<RestoreFileResult | void>;
+  cancelPendingOpen?: () => void;
   setSelectionTarget: (target: { line: number; column: number; nonce: number } | null) => void;
   bumpEditorFocusToken: () => void;
   onStatusChange: (message: string) => void;
@@ -21,6 +23,7 @@ export function useEditorNavigation({
   editorSelection,
   editorSurfaceRef,
   openFile,
+  cancelPendingOpen,
   setSelectionTarget,
   bumpEditorFocusToken,
   onStatusChange,
@@ -78,8 +81,15 @@ export function useEditorNavigation({
     const startedAt = Date.now();
     const requestId = navigationRequestRef.current + 1;
     navigationRequestRef.current = requestId;
+    cancelPendingOpen?.();
     if (normalizePath(location.path) !== normalizePath(activePath ?? "")) {
-      await openFile(location.path);
+      const openResult = await openFile(location.path);
+      if (isFailedOpenResult(openResult)) {
+        if (navigationRequestRef.current === requestId && openResult.errorMessage !== "superseded") {
+          onStatusChange(`${statusPrefix} failed: ${getPathBasename(location.path)} ${openResult.errorMessage}`);
+        }
+        return;
+      }
     }
     if (navigationRequestRef.current !== requestId) {
       return;
@@ -113,4 +123,8 @@ export function useEditorNavigation({
     navigateToLocation,
     navigateBackFromHistory,
   };
+}
+
+function isFailedOpenResult(result: RestoreFileResult | void): result is RestoreFileResult {
+  return result !== undefined && !result.ok;
 }

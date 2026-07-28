@@ -34,6 +34,36 @@ pub fn member_owner_at_position(request: &LanguageQueryRequest) -> Option<String
         .map(|value| value.to_string())
 }
 
+pub fn current_class_name_at_position(content: &str, caret_line: u32) -> Option<String> {
+    let target_line = caret_line.max(1) as usize;
+    let mut depth = 0_i32;
+    let mut classes: Vec<(String, i32)> = Vec::new();
+    let mut current = None;
+
+    for (index, raw_line) in content.lines().enumerate() {
+        let line = index + 1;
+        let code = raw_line.split("//").next().unwrap_or_default();
+        let trimmed = code.trim_start();
+        let before = depth;
+        if let Some(name) = class_name_in_declaration(trimmed) {
+            classes.push((name, before));
+        }
+
+        depth += brace_delta(code);
+        while classes
+            .last()
+            .is_some_and(|(_, class_depth)| depth <= *class_depth)
+        {
+            classes.pop();
+        }
+        if line == target_line {
+            current = classes.last().map(|(name, _)| name.clone());
+            break;
+        }
+    }
+    current
+}
+
 pub fn is_member_access_context(request: &LanguageQueryRequest) -> bool {
     let Some(content) = request.content.as_deref() else {
         return false;
@@ -65,6 +95,30 @@ fn strip_identifier_suffix(value: &str) -> &str {
         .map(|(index, _)| index)
         .unwrap_or(value.len());
     value.get(..suffix_start).unwrap_or(value)
+}
+
+fn class_name_in_declaration(value: &str) -> Option<String> {
+    let mut words = value.split_whitespace();
+    let mut word = words.next()?;
+    while word.starts_with('@') || matches!(word, "export" | "default" | "abstract" | "declare") {
+        word = words.next()?;
+    }
+    if !matches!(word, "class" | "struct") {
+        return None;
+    }
+    words
+        .next()
+        .map(|name| name.trim_matches(|value: char| !is_identifier_part(value as u8)))
+        .filter(|name| is_identifier(name))
+        .map(str::to_string)
+}
+
+fn brace_delta(value: &str) -> i32 {
+    value.chars().fold(0, |depth, character| match character {
+        '{' => depth + 1,
+        '}' => depth - 1,
+        _ => depth,
+    })
 }
 
 pub fn local_variable_name(line: &str) -> Option<&str> {
@@ -109,7 +163,9 @@ fn is_identifier_part(value: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_member_access_context, member_owner_at_position};
+    use super::{
+        current_class_name_at_position, is_member_access_context, member_owner_at_position,
+    };
     use crate::models::language::LanguageQueryRequest;
 
     #[test]
@@ -126,6 +182,30 @@ mod tests {
     #[test]
     fn member_context_does_not_treat_decimal_literals_as_access() {
         assert!(!is_member_access_context(&request("const value = 1.25")));
+    }
+
+    #[test]
+    fn current_class_name_tracks_the_class_at_the_caret() {
+        let content = "class Outer {\n  class Inner {\n    render() { this.pr }\n  }\n}";
+
+        assert_eq!(
+            current_class_name_at_position(content, 3).as_deref(),
+            Some("Inner")
+        );
+        assert_eq!(
+            current_class_name_at_position(content, 1).as_deref(),
+            Some("Outer")
+        );
+    }
+
+    #[test]
+    fn current_class_name_skips_arkts_decorators() {
+        let content = "@Entry\n@Component\nstruct Index {\n  build() { this. }\n}";
+
+        assert_eq!(
+            current_class_name_at_position(content, 4).as_deref(),
+            Some("Index")
+        );
     }
 
     fn request(content: &str) -> LanguageQueryRequest {

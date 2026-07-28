@@ -106,6 +106,16 @@ export function BuildToolWindow({
         {duration ? <span>{duration}</span> : null}
         {state.currentRun ? <code>{state.currentRun.command}</code> : null}
       </div>
+      {state.environment ? (
+        <ul className="build-tool-window__environment" aria-label="Build Environment">
+          {state.environment.checks.map((check) => (
+            <li key={check.name} className={`build-tool-window__environment-item build-tool-window__environment-item--${check.available ? "ready" : "missing"}`} title={check.detail}>
+              <span>{check.name === "harmonySdk" ? "SDK" : check.name === "hvigor" ? "Hvigor" : "Node"}</span>
+              <strong>{check.available ? "Ready" : "Missing"}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {pipelineSteps.length > 0 ? (
         <ol className="build-tool-window__pipeline" aria-label="Build Pipeline">
           {pipelineSteps.map((step) => (

@@ -28,12 +28,32 @@ export function mergeIndexDiagnosticsProjection(
     lastExplainStatus: projection.explainSummary?.lastExplainStatus ?? diagnostics.lastExplainStatus,
     retryBackoffCount: projection.healthSummary?.retryBackoffCount ?? diagnostics.retryBackoffCount,
     latestRetryBackoff: projection.healthSummary?.latestRetryBackoff ?? diagnostics.latestRetryBackoff,
-    repairActions: projection.repairSummary?.repairActions.length
-      ? projection.repairSummary.repairActions
-      : diagnostics.repairActions,
+    repairActions: mergeRepairActions(diagnostics.repairActions, projection.repairSummary?.repairActions ?? []),
     recentEvents: projection.recentEvents.length > 0 ? projection.recentEvents : diagnostics.recentEvents,
-    timeline: projection.timeline.length > 0 ? projection.timeline : diagnostics.timeline,
+    timeline: mergeDiagnosticsTimeline(diagnostics.timeline, projection.timeline),
   };
+}
+
+function mergeDiagnosticsTimeline(
+  backendTimeline: WorkspaceIndexDiagnostics["timeline"],
+  projectedTimeline: WorkspaceIndexProjectionSnapshot["timeline"],
+) {
+  const merged = new Map<string, WorkspaceIndexDiagnostics["timeline"][number]>();
+  for (const item of backendTimeline) {
+    merged.set(timelineIdentity(item), item);
+  }
+  for (const item of projectedTimeline) {
+    merged.set(timelineIdentity(item), item);
+  }
+  return [...merged.values()].sort((left, right) => left.occurredAt - right.occurredAt);
+}
+
+function timelineIdentity(item: WorkspaceIndexDiagnostics["timeline"][number]) {
+  return [item.taskId ?? "", item.occurredAt, item.scope, item.kind, item.phase, item.message].join("\u0000");
+}
+
+function mergeRepairActions(base: string[], projected: string[]) {
+  return [...new Set([...base, ...projected])];
 }
 
 export function workspaceIndexStatusSummary(input: {

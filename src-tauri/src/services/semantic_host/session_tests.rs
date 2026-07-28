@@ -31,7 +31,7 @@ import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const request = JSON.parse(line);
-  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 3 } } : {};
+  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 4 } } : {};
   const runtime = { rssBytes: 104857600, heapUsedBytes: 40, heapTotalBytes: 80, externalBytes: 2, uptimeMs: 10 };
   process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, runtime, error: null })}\n`);
 });
@@ -136,7 +136,7 @@ const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.P
 rl.on("line", (line) => {{
   const request = JSON.parse(line);
   if (request.method === "health") {{
-    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 3 }} }})}}\n`);
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 4 }} }})}}\n`);
     return;
   }}
   fs.writeFileSync(marker, "query-started");

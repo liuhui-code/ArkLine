@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 
 import type {
+  SemanticDocumentSync,
   SemanticDocumentPosition,
   SemanticReplayDocument,
   SemanticResponseState,
@@ -18,9 +19,11 @@ const MAX_REPLAY_BYTES = 4 * 1024 * 1024
 
 interface DocumentRecord extends WorkspaceDocument {
   contentGeneration: number
+  documentVersion?: number
   diskFingerprint: string | null
   lastAccess: number
   available: boolean
+  overlay: boolean
 }
 
 export interface SemanticWorkspaceView {
@@ -47,15 +50,56 @@ export class SemanticDocumentStore {
       if (document.contentGeneration < 1) {
         throw new Error(`Semantic replay generation must be positive for ${document.path}`)
       }
-      this.loadCurrent(path.resolve(document.path), {
-        path: document.path,
-        line: 1,
-        column: 1,
-        content: document.content,
-        contentGeneration: document.contentGeneration,
-      })
+      const filePath = path.resolve(document.path)
+      const cached = this.documents.get(filePath)
+      if (cached && document.contentGeneration < cached.contentGeneration) {
+        throw new Error(
+          `Stale semantic document generation for ${filePath}: ${document.contentGeneration} < ${cached.contentGeneration}`,
+        )
+      }
+      if (cached && document.contentGeneration === cached.contentGeneration && cached.content !== document.content) {
+        throw new Error(`Semantic document generation ${document.contentGeneration} changed content for ${filePath}`)
+      }
+      this.store(
+        filePath,
+        document.content,
+        document.contentGeneration,
+        null,
+        true,
+        document.documentVersion,
+        true,
+      )
     }
     return documents.length
+  }
+
+  sync(document: SemanticDocumentSync): DocumentRecord {
+    const filePath = path.resolve(document.path)
+    const cached = this.documents.get(filePath)
+    if (cached?.documentVersion !== undefined && document.documentVersion < cached.documentVersion) {
+      throw new Error(
+        `Stale semantic document version for ${filePath}: ${document.documentVersion} < ${cached.documentVersion}`,
+      )
+    }
+    if (cached?.documentVersion === document.documentVersion && cached.content !== document.content) {
+      throw new Error(`Semantic document version ${document.documentVersion} changed content for ${filePath}`)
+    }
+    if (cached?.documentVersion === document.documentVersion && cached.content === document.content) {
+      cached.lastAccess = ++this.accessClock
+      return cached
+    }
+    const generation = cached?.content === document.content
+      ? cached.contentGeneration
+      : (cached?.contentGeneration ?? 0) + 1
+    return this.store(filePath, document.content, generation, null, true, document.documentVersion, true)
+  }
+
+  close(filePath: string): void {
+    const resolved = path.resolve(filePath)
+    const cached = this.documents.get(resolved)
+    if (!cached) return
+    this.documents.delete(resolved)
+    this.cachedBytes -= Buffer.byteLength(cached.content)
   }
 
   prepare(position: SemanticDocumentPosition): SemanticWorkspaceView {
@@ -77,6 +121,7 @@ export class SemanticDocumentStore {
       state: {
         path: currentPath,
         contentGeneration: current.contentGeneration,
+        documentVersion: current.documentVersion,
         dependencyGeneration,
         documentCacheHit,
         queryCacheHit: false,
@@ -89,9 +134,20 @@ export class SemanticDocumentStore {
   private loadCurrent(filePath: string, position: SemanticDocumentPosition): DocumentRecord {
     const cached = this.documents.get(filePath)
     const requestedGeneration = position.contentGeneration
+    const requestedVersion = position.documentVersion
     if (cached && requestedGeneration !== undefined && requestedGeneration < cached.contentGeneration) {
       throw new Error(
         `Stale semantic document generation for ${filePath}: ${requestedGeneration} < ${cached.contentGeneration}`,
+      )
+    }
+    if (cached?.documentVersion !== undefined && requestedVersion !== undefined && requestedVersion < cached.documentVersion) {
+      throw new Error(
+        `Stale semantic document version for ${filePath}: ${requestedVersion} < ${cached.documentVersion}`,
+      )
+    }
+    if (cached?.documentVersion !== undefined && requestedVersion !== undefined && requestedVersion > cached.documentVersion) {
+      throw new Error(
+        `Semantic document version ${requestedVersion} is not synchronized for ${filePath}; latest is ${cached.documentVersion}`,
       )
     }
 
@@ -107,6 +163,10 @@ export class SemanticDocumentStore {
       return this.store(filePath, position.content, generation, null, true)
     }
 
+    if (cached?.overlay) {
+      cached.lastAccess = ++this.accessClock
+      return cached
+    }
     return this.loadFromDisk(filePath, cached)
   }
 
@@ -120,9 +180,9 @@ export class SemanticDocumentStore {
     const content = safeRead(filePath)
     if (content === null) {
       if (cached) return cached
-      return this.store(filePath, "", 1, fingerprint, false)
+      return this.store(filePath, "", 1, fingerprint, false, undefined, false)
     }
-    return this.store(filePath, content, (cached?.contentGeneration ?? 0) + 1, fingerprint, true)
+    return this.store(filePath, content, (cached?.contentGeneration ?? 0) + 1, fingerprint, true, undefined, false)
   }
 
   private collectDependencyClosure(current: DocumentRecord, currentCacheHit: boolean) {
@@ -158,6 +218,8 @@ export class SemanticDocumentStore {
     contentGeneration: number,
     diskFingerprint: string | null,
     available: boolean,
+    documentVersion?: number,
+    overlay = false,
   ): DocumentRecord {
     const previous = this.documents.get(filePath)
     if (previous) this.cachedBytes -= Buffer.byteLength(previous.content)
@@ -165,9 +227,11 @@ export class SemanticDocumentStore {
       path: filePath,
       content,
       contentGeneration,
+      documentVersion,
       diskFingerprint,
       lastAccess: ++this.accessClock,
       available,
+      overlay,
     }
     this.documents.set(filePath, record)
     this.cachedBytes += Buffer.byteLength(content)

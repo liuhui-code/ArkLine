@@ -27,34 +27,41 @@ function labelForTarget(target: BuildTarget) {
   return target.toUpperCase();
 }
 
-function commandForIntent(intent: BuildIntent, wrapperCommand: string) {
-  const daemonArg = intent.fastMode ? "" : " --no-daemon";
+function argsForIntent(intent: BuildIntent) {
   const task = taskForTarget(intent.target);
-  const moduleArg = intent.scope === "module" && intent.moduleName
-    ? ` -p module=${quoteValue(`${intent.moduleName}@${intent.product}`)}`
-    : "";
+  const moduleArgs = intent.scope === "module" && intent.moduleName
+    ? ["-p", `module=${intent.moduleName}@${intent.product}`]
+    : [];
 
   return [
-    wrapperCommand,
     task,
-    `--mode ${intent.scope}`,
-    moduleArg.trim(),
-    `-p product=${quoteValue(intent.product)}`,
-    `-p buildMode=${quoteValue(intent.buildMode)}`,
-  ].filter(Boolean).join(" ") + daemonArg;
+    "--mode",
+    intent.scope,
+    ...moduleArgs,
+    "-p",
+    `product=${intent.product}`,
+    "-p",
+    `buildMode=${intent.buildMode}`,
+    ...(intent.fastMode ? [] : ["--no-daemon"]),
+  ];
+}
+
+function renderCommand(program: string, args: string[]) {
+  return [program, ...args].map(quoteValue).join(" ");
 }
 
 export function planHarmonyBuildCommand(request: HarmonyBuildRequest): BuildPlan {
   const intent = createBuildIntent(request);
-  const daemonArg = intent.fastMode ? "" : " --no-daemon";
   const wrapperCommand = request.wrapperCommand?.trim() || "./hvigorw";
-  const buildCommand = commandForIntent(intent, wrapperCommand);
+  const buildArgs = argsForIntent(intent);
+  const buildCommand = renderCommand(wrapperCommand, buildArgs);
+  const cleanArgs = ["clean", ...(intent.fastMode ? [] : ["--no-daemon"])];
   const steps = intent.clean
     ? [
-      { label: "Clean", command: `${wrapperCommand} clean${daemonArg}` },
-      { label: "Build", command: buildCommand },
+      { label: "Clean", command: renderCommand(wrapperCommand, cleanArgs), program: wrapperCommand, args: cleanArgs },
+      { label: "Build", command: buildCommand, program: wrapperCommand, args: buildArgs },
     ]
-    : [{ label: "Build", command: buildCommand }];
+    : [{ label: "Build", command: buildCommand, program: wrapperCommand, args: buildArgs }];
 
   return {
     label: `Build ${labelForTarget(intent.target)} ${intent.moduleName ?? "project"} ${intent.buildMode}`,

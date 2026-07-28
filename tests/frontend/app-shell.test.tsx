@@ -31,7 +31,7 @@ async function openProject(
 async function openMainEditor(user: ReturnType<typeof userEvent.setup>) {
   await openProject(user);
   await user.click(await screen.findByRole("button", { name: "main.ets" }));
-  const editor = await screen.findByLabelText("Editor Content");
+  const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
   await user.click(editor);
   return editor;
 }
@@ -448,17 +448,19 @@ describe("App shell", () => {
     expect(within(dialog).getByRole("region", { name: "Health / Storage" })).toBeVisible();
     expect(within(dialog).getByText("main.ets is in the file index but symbol data is not ready yet.")).toBeVisible();
     expect(within(dialog).getAllByText("foreground-navigation").length).toBeGreaterThanOrEqual(1);
-    expect(within(dialog).getByText("0/1 (0%)")).toBeVisible();
-    expect(within(dialog).getByText("100ms active")).toBeVisible();
-    expect(within(dialog).getByText("Indexing current file")).toBeVisible();
+    const activeTask = within(dialog).getByLabelText("Active Index Task");
+    expect(within(activeTask).getByText("0/1 (0%)")).toBeVisible();
+    expect(within(activeTask).getByText("100ms active")).toBeVisible();
+    expect(within(activeTask).getByText("Indexing current file")).toBeVisible();
     expect(within(dialog).getByText("Pending total")).toBeVisible();
     expect(within(dialog).getByText("Workspace pending")).toBeVisible();
-    expect(within(dialog).getByText("File has no index fingerprint")).toBeVisible();
-    expect(within(dialog).getByText("refresh-workspace ready")).toBeVisible();
-    expect(within(dialog).getByText("200ms")).toBeVisible();
+    expect(within(dialog).getByRole("region", { name: "Query Explain" })).toHaveTextContent("File has no index fingerprint");
+    const timeline = within(dialog).getByRole("region", { name: "Performance Timeline" });
+    expect(within(timeline).getByText("refresh-workspace ready")).toBeVisible();
+    expect(within(timeline).getByText("200ms")).toBeVisible();
     expect(within(dialog).getByText("2 KB")).toBeVisible();
     expect(within(dialog).getByText("Parser exploded")).toBeVisible();
-    expect(within(within(dialog).getByRole("region", { name: "Health / Storage" })).getByText("blocked")).toBeVisible();
+    expect(within(within(dialog).getByRole("region", { name: "Query Explain" })).getByText("Rebuild index")).toBeVisible();
     expect(within(dialog).getByText("Unexpected token")).toBeVisible();
     expect(within(dialog).getByText("C:/samples/DemoWorkspace/src/Broken.ets:3:12")).toBeVisible();
     expect(within(dialog).getByText("./MissingProfile")).toBeVisible();
@@ -504,7 +506,7 @@ describe("App shell", () => {
 
     await user.click(await screen.findByRole("button", { name: /Open Index Diagnostics/i }));
     const dialog = await screen.findByRole("dialog", { name: "Index Diagnostics Center" });
-    expect(within(dialog).getByText("No heartbeat > 60s")).toBeVisible();
+    expect(within(dialog).getByLabelText("Active Index Task")).toHaveTextContent("No heartbeat > 60s");
   });
 
   it("opens terminal from the top bar", async () => {

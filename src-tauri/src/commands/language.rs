@@ -3,16 +3,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, State};
 
 use crate::models::language::{
-    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
-    LanguageQueryRequest, LanguageServiceReport, UsageResult,
+    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, SignatureHelp,
+    LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
+    SemanticDocumentSyncRequest, UsageResult,
 };
 use crate::services::language_client_runtime_service::{
     run_language_request, LanguageClientRequest, LanguageClientSource,
 };
 use crate::services::language_command_service::{
-    complete_symbol_blocking, document_symbols_blocking, find_usages_blocking,
-    goto_definition_blocking, goto_definition_candidates_blocking, hover_symbol_blocking,
-    inspect_language_service_blocking,
+    close_document_blocking, complete_symbol_with_document_version_blocking,
+    document_symbols_blocking, find_usages_blocking, goto_definition_blocking,
+    goto_definition_candidates_blocking, hover_symbol_blocking, inspect_language_service_blocking,
+    signature_help_blocking,
+    sync_document_blocking,
 };
 use crate::services::language_service::LanguageRuntime;
 
@@ -72,10 +75,29 @@ pub async fn complete_symbol(
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
     request_generation: Option<u64>,
+    document_version: Option<u64>,
 ) -> Result<Vec<CompletionItem>, String> {
     run_language_request(
         language_request(LanguageClientSource::Completion, request_generation),
-        complete_symbol_blocking(app, runtime.inner().clone(), request),
+        complete_symbol_with_document_version_blocking(
+            app,
+            runtime.inner().clone(),
+            request,
+            document_version,
+        ),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn signature_help(
+    app: AppHandle,
+    runtime: State<'_, LanguageRuntime>,
+    request: LanguageQueryRequest,
+) -> Result<Option<SignatureHelp>, String> {
+    run_language_request(
+        language_request(LanguageClientSource::SignatureHelp, None),
+        signature_help_blocking(app, runtime.inner().clone(), request),
     )
     .await
 }
@@ -104,6 +126,24 @@ pub async fn find_usages(
         find_usages_blocking(app, runtime.inner().clone(), request),
     )
     .await
+}
+
+#[tauri::command]
+pub async fn sync_language_document(
+    app: AppHandle,
+    runtime: State<'_, LanguageRuntime>,
+    request: SemanticDocumentSyncRequest,
+) -> Result<(), String> {
+    sync_document_blocking(app, runtime.inner().clone(), request).await
+}
+
+#[tauri::command]
+pub async fn close_language_document(
+    app: AppHandle,
+    runtime: State<'_, LanguageRuntime>,
+    request: SemanticDocumentCloseRequest,
+) -> Result<(), String> {
+    close_document_blocking(app, runtime.inner().clone(), request).await
 }
 
 fn language_request(

@@ -1,4 +1,5 @@
 pub mod build_configuration_store;
+pub mod build_environment_service;
 pub mod build_project_service;
 pub mod device_fault_log_service;
 pub mod device_log_buffer_service;
@@ -16,8 +17,7 @@ pub mod device_log_query_matcher_service;
 pub mod device_log_query_parser_service;
 pub mod device_log_query_pruning_service;
 pub mod device_log_query_response_service;
-#[cfg(test)]
-mod device_log_query_response_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod device_log_query_response_service_tests;
 pub mod device_log_query_service;
 #[cfg(test)]
 mod device_log_query_service_tests;

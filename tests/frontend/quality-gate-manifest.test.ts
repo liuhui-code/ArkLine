@@ -11,10 +11,12 @@ type QualityGateManifest = {
     fast: {
       command: string;
       steps: string[];
+      stepTimeoutMs: number;
     };
     full: {
       command: string;
       steps: string[];
+      stepTimeoutMs: number;
     };
   };
   frontendQualityTests: string[];
@@ -34,10 +36,16 @@ describe("quality gate manifest", () => {
     const packageJson = await readJson<PackageJson>("package.json");
     const scripts = packageJson.scripts ?? {};
 
-    expect(manifest.gates.fast.command).toBe("pnpm check:fast");
-    expect(manifest.gates.full.command).toBe("pnpm check");
-    expect(scripts["check:fast"]).toBe(manifest.gates.fast.steps.join(" && "));
-    expect(scripts.check).toBe(manifest.gates.full.steps.join(" && "));
+    expect(manifest.gates.fast.command).toBe(
+      "node scripts/run-quality-gate.mjs --gate=fast --strict",
+    );
+    expect(manifest.gates.full.command).toBe(
+      "node scripts/run-quality-gate.mjs --gate=full --strict",
+    );
+    expect(manifest.gates.fast.stepTimeoutMs).toBe(900000);
+    expect(manifest.gates.full.stepTimeoutMs).toBe(1200000);
+    expect(scripts["check:fast"]).toBe(manifest.gates.fast.command);
+    expect(scripts.check).toBe(manifest.gates.full.command);
     expect(scripts["test:frontend:quality"]).toBe(
       `vitest run ${manifest.frontendQualityTests.join(" ")}`,
     );

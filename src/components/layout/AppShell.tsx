@@ -44,6 +44,8 @@ import { recordRenderPressure, useUiLatencyMonitor } from "@/features/performanc
 import { createEditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
 import { createDocumentLoadCoordinator } from "@/features/documents/document-load-coordinator";
 import { createStatusMessageStore } from "@/features/status/status-message-store";
+import { createSemanticDocumentSyncQueue } from "@/features/semantic/semantic-document-sync";
+import { createCodeMirrorSignatureHelpBroker } from "@/components/layout/codemirror-signature-help-broker";
 
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 
@@ -56,6 +58,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const [insertTextTarget, setInsertTextTarget] = useState<{ text: string; replaceBefore?: number; nonce: number } | null>(null);
   const editorSelectionRuntimeRef = useRef(createEditorSelectionRuntime());
   const documentLoadCoordinatorRef = useRef(createDocumentLoadCoordinator());
+  const semanticDocumentSyncRef = useRef(createSemanticDocumentSyncQueue(workspaceApi));
   const editorSelection = editorSelectionRuntimeRef.current.selection;
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const { recentQueryExplains, recordRecentQueryExplain } = useWorkspaceQueryExplains();
@@ -78,6 +81,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     editorSelection,
     editorSurfaceRef,
     openFile: (path) => editorActionsRef.current.openFile(path),
+    cancelPendingOpen: () => editorActionsRef.current.cancelPendingOpen(),
     setSelectionTarget,
     bumpEditorFocusToken: () => setEditorFocusToken((token) => token + 1),
     onStatusChange,
@@ -144,6 +148,12 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     },
     onStatusChange,
   });
+  const workspaceRootRef = useRef<string | null>(null);
+  workspaceRootRef.current = workspace?.rootPath ?? null;
+  const signatureHelpBroker = useMemo(
+    () => createCodeMirrorSignatureHelpBroker({ workspaceApi, getRootPath: () => workspaceRootRef.current }),
+    [workspaceApi],
+  );
   const { semanticState, refreshSemanticState } = useSemanticState(workspaceApi);
   const { buildState, buildProject, loadBuildConfigurationsForRoot, updateBuildState, saveBuildConfiguration, copyBuildConfiguration, deleteBuildConfiguration, selectBuildConfiguration, runBuild, stopBuild } = useBuildControllerState({
     workspace,
@@ -234,6 +244,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     isEditorFocused,
     recordRecentQueryExplain,
     onStatusChange,
+    ensureSemanticDocument: (path, content) => semanticDocumentSyncRef.current.ensure(path, content),
   });
   completionActionsRef.current.clearCompletionSession = clearCompletionSession;
   completionActionsRef.current.clearTypingCompletionTimer = clearTypingCompletionTimer;
@@ -270,7 +281,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     focusEditorSoon,
     onStatusChange,
   });
-  const { openFile, restoreFile, submitGoToLine, handleEditorChange, handleEditorDocumentChange, handleEditorSelectionChange } = useEditorSurfaceController({
+  const { openFile, restoreFile, cancelPendingOpen, submitGoToLine, handleEditorChange, handleEditorDocumentChange, handleEditorSelectionChange } = useEditorSurfaceController({
     workspaceApi,
     activePath,
     quickOpenQuery,
@@ -293,8 +304,10 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     syncCompletionForEditorSelection,
     onStatusChange,
     documentLoadCoordinator: documentLoadCoordinatorRef.current,
+    semanticDocumentSync: semanticDocumentSyncRef.current,
   });
   editorActionsRef.current.openFile = openFile;
+  editorActionsRef.current.cancelPendingOpen = cancelPendingOpen;
   const { usageSearch, setUsageSearch, queryPanelVisible, openEditorQueryPanel, closeEditorQueryPanel, findUsagesFromEditor, openUsageResult } = useUsagesController({
     workspaceApi,
     workspace,
@@ -436,7 +449,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       <AppShellMainLayout
         topBar={{ activeBottomTool, bottomToolVisible: bottomContentVisible, activeOverlay, workspaceName: workspace?.rootName ?? null, settingsOpen: settingsVisible, onOpenProject: () => void projectOpening.openProjectPicker(), onOpenRecentProjects: () => setOverlay("recentProjects"), onNewFile: () => openRootProjectMutationDialog("newFile"), onNewDirectory: () => openRootProjectMutationDialog("newDirectory"), onOpenSearchEverywhere: () => openSearchOverlay("searchEverywhere"), onOpenFindInFiles: () => openSearchOverlay("find"), onOpenReplaceInFiles: () => openSearchOverlay("replace"), onOpenCommandPalette: () => setOverlay("commandPalette"), onRunLint: () => void runLint(), onRunBuild: () => void runBuild(), onLoadDiff: () => void loadDiff(), onOpenTerminal: () => showBottomTool("terminal"), onOpenSettings: () => void openSettings(), onToggleEditorOnly: enterEditorOnlyMode }}
         sidebar={{ activePath, selectedProjectPath, activeTool: activeLeftTool, filesVisible, width: leftSidebarWidth, workspace, useLazyProjectTree: derived.useLazyProjectTree, projectTreeChildren, projectTreeLoadingPaths, filesPaneRef, onOpenFile: (path) => void openFile(path), onSelectProjectPath: setSelectedProjectPath, onLoadProjectDirectory: loadProjectDirectoryForActiveWorkspace, onRequestProjectMutation: (request) => openProjectMutationDialog(request.action, request.parentPath), onResizeWidth: resizeLeftSidebar, onSelectTool: showLeftTool }}
-        editor={{ queryPanelVisible, usageSearch, onCloseEditorQueryPanel: closeEditorQueryPanel, onOpenUsage: (item) => void openUsageResult(item), activePath, documentsRef, openTabs, appearance: editorAppearance, focusToken: editorFocusToken, insertTextTarget, selectionTarget, workspaceName: workspace?.rootName ?? null, surfaceRef: editorSurfaceRef, onChange: handleEditorChange, onDocumentChange: handleEditorDocumentChange, onSelectionChange: handleEditorSelectionChange, onCaretRectChange: setCompletionAnchor, onDefinitionTrigger: (selection) => void goToDefinitionFromEditor(selection, "modifierClick"), onTypingCompletionTrigger: triggerTypingCompletion, blameAttributions: gitTraceState.blameAttributions, gitBlameVisible, selectedBlameLine: selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine, onGitTraceLineClick: selectGitBlameLine, onSelectTab: setActiveDocument, onCloseTab: closeEditorTab, onCloseOtherTabs: closeOtherEditorTabs, onCloseTabsToRight: closeEditorTabsToRight, onCopyTabPath: copyEditorTabPath, onEditorGoToDefinition: (selection) => void goToDefinitionFromEditor(selection, "keyboard"), onEditorFindUsages: () => void findUsagesFromEditor(), onEditorFormatDocument: () => void formatActiveDocument(), onEditorCopyPath: copyActiveEditorPath, onToggleGitBlame: toggleGitBlame }}
+        editor={{ queryPanelVisible, usageSearch, onCloseEditorQueryPanel: closeEditorQueryPanel, onOpenUsage: (item) => void openUsageResult(item), activePath, documentsRef, openTabs, appearance: editorAppearance, focusToken: editorFocusToken, insertTextTarget, selectionTarget, workspaceName: workspace?.rootName ?? null, surfaceRef: editorSurfaceRef, onChange: handleEditorChange, onDocumentChange: handleEditorDocumentChange, onSelectionChange: handleEditorSelectionChange, onCaretRectChange: setCompletionAnchor, onDefinitionTrigger: (selection) => void goToDefinitionFromEditor(selection, "modifierClick"), onTypingCompletionTrigger: triggerTypingCompletion, onCodeMirrorSignatureHelpRequest: workspace ? signatureHelpBroker : undefined, blameAttributions: gitTraceState.blameAttributions, gitBlameVisible, selectedBlameLine: selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine, onGitTraceLineClick: selectGitBlameLine, onSelectTab: setActiveDocument, onCloseTab: closeEditorTab, onCloseOtherTabs: closeOtherEditorTabs, onCloseTabsToRight: closeEditorTabsToRight, onCopyTabPath: copyEditorTabPath, onEditorGoToDefinition: (selection) => void goToDefinitionFromEditor(selection, "keyboard"), onEditorFindUsages: () => void findUsagesFromEditor(), onEditorFormatDocument: () => void formatActiveDocument(), onEditorCopyPath: copyActiveEditorPath, onToggleGitBlame: toggleGitBlame }}
       />
       <AppShellOverlays
         selectedBlameAttribution={selectedBlameAttribution}

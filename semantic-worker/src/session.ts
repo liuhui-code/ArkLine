@@ -6,6 +6,7 @@ import {
 } from "./features/code-actions.js"
 import { resolveCompletion } from "./features/completion.js"
 import { resolveDefinition } from "./features/definition.js"
+import { resolveSignatureHelp } from "./features/signature-help.js"
 import { SEMANTIC_PROTOCOL_VERSION, type SemanticRequest, type SemanticResponse } from "./protocol.js"
 import { discoverHarmonySdk } from "./sdk/discovery.js"
 import { SemanticDocumentStore, type SemanticWorkspaceView } from "./workspace/document-store.js"
@@ -41,7 +42,7 @@ export class SemanticWorkerSession {
           payload: {
             status: discoverHarmonySdk().ready ? "ready" : "ready",
             protocolVersion: SEMANTIC_PROTOCOL_VERSION,
-            capabilities: ["completion", "definition", "typeReadiness", "generations", "documentReplay"],
+            capabilities: ["completion", "definition", "signatureHelp", "typeReadiness", "generations", "documentReplay", "documentSync"],
           },
         }
       case "restoreDocuments":
@@ -52,10 +53,38 @@ export class SemanticWorkerSession {
             restoredDocumentCount: this.documents.restore(request.documents ?? []),
           },
         }
+      case "didOpen":
+      case "didChange": {
+        if (!request.document) {
+          return { id: request.id, ok: false, payload: null, error: `${request.method} requires a document` }
+        }
+        const document = this.documents.sync(request.document)
+        this.queryCache.clear()
+        return {
+          id: request.id,
+          ok: true,
+          payload: {
+            status: "ready",
+            path: document.path,
+            documentVersion: document.documentVersion ?? request.document.documentVersion,
+            contentGeneration: document.contentGeneration,
+          },
+        }
+      }
+      case "didClose": {
+        if (!request.documentPath) {
+          return { id: request.id, ok: false, payload: null, error: "didClose requires documentPath" }
+        }
+        this.documents.close(request.documentPath)
+        this.queryCache.clear()
+        return { id: request.id, ok: true, payload: { status: "closed", path: request.documentPath } }
+      }
       case "gotoDefinition":
         return this.handleSemanticQuery(request, "gotoDefinition")
       case "completion":
         return this.handleSemanticQuery(request, "completion")
+      case "signatureHelp":
+        return this.handleSemanticQuery(request, "signatureHelp")
       case "listCodeActions":
         return {
           id: request.id,
@@ -92,7 +121,7 @@ export class SemanticWorkerSession {
 
   private handleSemanticQuery(
     request: SemanticRequest,
-    method: "gotoDefinition" | "completion",
+    method: "gotoDefinition" | "completion" | "signatureHelp",
   ): SemanticResponse {
     if (!request.position) {
       return { id: request.id, ok: true, payload: method === "completion" ? [] : null }
@@ -131,14 +160,16 @@ export class SemanticWorkerSession {
   }
 
   private resolveSemanticPayload(
-    method: "gotoDefinition" | "completion",
+    method: "gotoDefinition" | "completion" | "signatureHelp",
     request: SemanticRequest,
     workspace: SemanticWorkspaceView,
     typeEngine: SemanticTypeQueryContext,
   ) {
-    return method === "completion"
-      ? resolveCompletion(request.position, workspace, typeEngine)
-      : resolveDefinition(request.position, workspace, typeEngine)
+    const position = request.position
+    if (!position) return method === "completion" ? [] : null
+    if (method === "completion") return resolveCompletion(position, workspace, typeEngine)
+    if (method === "signatureHelp") return resolveSignatureHelp(position, workspace, typeEngine)
+    return resolveDefinition(position, workspace, typeEngine)
   }
 }
 

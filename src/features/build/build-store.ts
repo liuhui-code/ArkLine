@@ -34,6 +34,7 @@ export function createBuildStore() {
     lastDurationMs: null,
     message: "No build run yet",
     preflight: null,
+    environment: null,
   };
 
   function appendEvent(event: Omit<BuildEvent, "sequence">) {
@@ -45,24 +46,45 @@ export function createBuildStore() {
     return nextEvent;
   }
 
+  function applyConfiguration(configuration: BuildConfiguration) {
+    state.activeConfigurationId = configuration.id;
+    state.lastTarget = configuration.target;
+    state.moduleName = configuration.moduleName;
+    state.product = configuration.product;
+    state.buildMode = configuration.buildMode;
+    state.fastMode = configuration.fastMode;
+  }
+
+  function mostRecentlyUsedConfiguration(configurations: BuildConfiguration[]) {
+    return configurations
+      .filter((configuration) => typeof configuration.lastUsedAt === "number")
+      .sort((left, right) => (right.lastUsedAt ?? 0) - (left.lastUsedAt ?? 0))[0]
+      ?? (configurations.length === 1 ? configurations[0] : null);
+  }
+
   return {
     state,
     configure(next: Partial<Pick<BuildState, "lastTarget" | "moduleName" | "products" | "product" | "buildMode" | "fastMode">>) {
       Object.assign(state, next);
     },
+    setEnvironment(environment: BuildState["environment"]) {
+      state.environment = environment;
+    },
     saveCurrentConfiguration() {
-      const configuration = createBuildConfiguration(state);
+      const configuration = { ...createBuildConfiguration(state), lastUsedAt: Date.now() };
       state.configurations = [
         ...state.configurations.filter((item) => item.id !== configuration.id),
         configuration,
       ];
-      state.activeConfigurationId = configuration.id;
+      applyConfiguration(configuration);
       state.message = `Saved build configuration: ${configuration.name}`;
     },
     loadConfigurations(configurations: BuildConfiguration[]) {
       state.configurations = configurations;
-      if (state.activeConfigurationId && !configurations.some((item) => item.id === state.activeConfigurationId)) {
-        state.activeConfigurationId = null;
+      state.activeConfigurationId = null;
+      const remembered = mostRecentlyUsedConfiguration(configurations);
+      if (remembered) {
+        applyConfiguration(remembered);
       }
     },
     copyActiveConfiguration() {
@@ -70,14 +92,9 @@ export function createBuildStore() {
       if (!configuration) {
         return;
       }
-      const copy = copyBuildConfiguration(configuration, state.configurations);
+      const copy = { ...copyBuildConfiguration(configuration, state.configurations), lastUsedAt: Date.now() };
       state.configurations = [...state.configurations, copy];
-      state.activeConfigurationId = copy.id;
-      state.lastTarget = copy.target;
-      state.moduleName = copy.moduleName;
-      state.product = copy.product;
-      state.buildMode = copy.buildMode;
-      state.fastMode = copy.fastMode;
+      applyConfiguration(copy);
       state.message = `Copied build configuration: ${copy.name}`;
     },
     deleteActiveConfiguration() {
@@ -92,16 +109,18 @@ export function createBuildStore() {
       }
     },
     selectConfiguration(configurationId: string) {
+      if (!configurationId) {
+        state.activeConfigurationId = null;
+        state.message = "Using current build settings";
+        return;
+      }
       const configuration = state.configurations.find((item) => item.id === configurationId);
       if (!configuration) {
         return;
       }
-      state.activeConfigurationId = configuration.id;
-      state.lastTarget = configuration.target;
-      state.moduleName = configuration.moduleName;
-      state.product = configuration.product;
-      state.buildMode = configuration.buildMode;
-      state.fastMode = configuration.fastMode;
+      const touchedConfiguration = { ...configuration, lastUsedAt: Date.now() };
+      state.configurations = state.configurations.map((item) => item.id === configuration.id ? touchedConfiguration : item);
+      applyConfiguration(touchedConfiguration);
       state.message = `Selected build configuration: ${configuration.name}`;
     },
     appendEvent,

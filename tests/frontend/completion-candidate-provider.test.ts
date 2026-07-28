@@ -93,7 +93,11 @@ describe("completion candidate provider", () => {
     ]));
     const api = workspaceApi({
       semanticCompleteSymbol: async () => ({
-        items: [{ label: "profile", detail: "UserService property", kind: "property", source: "type" as const }],
+        items: [
+          { label: "private", detail: "ArkTS access modifier", kind: "keyword", source: "arkts" as const },
+          { label: "build()", detail: "UserService method", kind: "method", source: "type" as const },
+          { label: "profile", detail: "UserService property", kind: "property", source: "type" as const },
+        ],
         readiness: {
           rootPath: "/workspace",
           requestedGeneration: 1,
@@ -116,7 +120,7 @@ describe("completion candidate provider", () => {
       replacePrefix: "pr",
     });
 
-    expect(items.map((item) => item.label)).toEqual(["profile"]);
+    expect(items.map((item) => item.label)).toEqual(["build()", "profile"]);
     expect(queryWorkspaceFileSymbolsWithReadiness).not.toHaveBeenCalled();
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
   });

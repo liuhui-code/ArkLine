@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useEditorSurfaceController } from "@/components/layout/use-editor-surface-controller";
+import type { RestoreFileResult } from "@/components/layout/use-editor-surface-controller";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { createDocumentLoadCoordinator } from "@/features/documents/document-load-coordinator";
 import { Text } from "@codemirror/state";
@@ -352,7 +353,7 @@ describe("useEditorSurfaceController", () => {
       setActiveDocument,
     });
 
-    let firstOpen!: Promise<void>;
+    let firstOpen!: Promise<RestoreFileResult>;
     await act(async () => {
       firstOpen = result.current.openFile("/workspace/A.ets");
       await Promise.resolve();

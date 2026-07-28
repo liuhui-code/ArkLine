@@ -36,6 +36,7 @@ describe("useEditorNavigation", () => {
 
   it("navigates within the active file without reopening it", async () => {
     const openFile = vi.fn(async () => undefined);
+    const cancelPendingOpen = vi.fn();
     const setSelectionTarget = vi.fn();
     const onStatusChange = vi.fn();
     const { result } = renderHook(() => useEditorNavigation({
@@ -43,6 +44,7 @@ describe("useEditorNavigation", () => {
       editorSelection: { line: 1, column: 1 },
       editorSurfaceRef: createRef<HTMLElement>(),
       openFile,
+      cancelPendingOpen,
       setSelectionTarget,
       bumpEditorFocusToken: vi.fn(),
       onStatusChange,
@@ -53,6 +55,7 @@ describe("useEditorNavigation", () => {
     });
 
     expect(openFile).not.toHaveBeenCalled();
+    expect(cancelPendingOpen).toHaveBeenCalledTimes(1);
     expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 7, column: 2 }));
     expect(onStatusChange).toHaveBeenCalledWith("Usage: A.ets:7:2");
   });
@@ -91,6 +94,27 @@ describe("useEditorNavigation", () => {
 
     expect(setSelectionTarget).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenLastCalledWith("Usage: B.ets:9:3");
+  });
+
+  it("does not move the caret when cross-file open fails", async () => {
+    const setSelectionTarget = vi.fn();
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useEditorNavigation({
+      activePath: "/workspace/Current.ets",
+      editorSelection: { line: 1, column: 1 },
+      editorSurfaceRef: createRef<HTMLElement>(),
+      openFile: vi.fn(async () => ({ ok: false, errorMessage: "read failed" })),
+      setSelectionTarget,
+      bumpEditorFocusToken: vi.fn(),
+      onStatusChange,
+    }));
+
+    await act(async () => {
+      await result.current.navigateToLocation({ path: "/workspace/Missing.ets", line: 9, column: 3 }, "Definition");
+    });
+
+    expect(setSelectionTarget).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenLastCalledWith("Definition failed: Missing.ets read failed");
   });
 
   it("reports when back history is empty", async () => {

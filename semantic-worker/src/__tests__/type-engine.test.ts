@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import { SemanticWorkerSession } from "../session.js"
 import { SemanticTypeEngineRegistry } from "../types/type-engine.js"
 import { SemanticDocumentStore } from "../workspace/document-store.js"
+import { readCallContext } from "../features/signature-help.js"
 
 const tempRoots: string[] = []
 
@@ -78,6 +79,35 @@ describe("incremental semantic type engine", () => {
 
     expect(response.ok).toBe(true)
     expect(response.payload).toEqual({ path: modelPath, line: 2, column: 3 })
+  })
+
+  it("returns TypeScript signature help with the active argument", () => {
+    const root = createRoot("signature-help")
+    const filePath = createFile(
+      root,
+      "Index.ts",
+      "function add(left: number, right: number): number { return left + right }\nadd(1, \n",
+    )
+
+    const response = new SemanticWorkerSession().handle({
+      id: "type-signature-help",
+      method: "signatureHelp",
+      position: { path: filePath, line: 2, column: 7 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual(expect.objectContaining({ activeParameter: 1 }))
+    expect(response.payload).toEqual(expect.objectContaining({
+      signatures: expect.arrayContaining([
+        expect.objectContaining({ label: expect.stringContaining("add(left: number, right: number): number") }),
+      ]),
+    }))
+  })
+
+  it("reads ArkUI call context without mistaking nested arguments for parameters", () => {
+    const content = "Column().width(Length.vp(12), "
+    expect(readCallContext(content, { path: "x.ets", line: 1, column: content.length + 1 }))
+      .toMatchObject({ name: "width", component: "Column", isChain: true, argumentIndex: 1 })
   })
 
   it("keeps ArkTS type evidence partial while providing adapted member completion", () => {

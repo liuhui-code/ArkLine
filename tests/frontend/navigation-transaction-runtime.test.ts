@@ -40,4 +40,14 @@ describe("navigation transaction runtime", () => {
 
     expect(runtime.getCurrent()).toEqual(second);
   });
+
+  it("cancels the current transaction and invalidates late completions", () => {
+    const runtime = createNavigationTransactionRuntime();
+    const transaction = runtime.start("/workspace/A.ets");
+
+    runtime.cancel();
+
+    expect(runtime.isCurrent(transaction.id)).toBe(false);
+    expect(runtime.getCurrent()).toBeNull();
+  });
 });

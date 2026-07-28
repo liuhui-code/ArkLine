@@ -6,6 +6,7 @@ pub enum LanguageClientSource {
     Definition,
     DefinitionCandidates,
     Completion,
+    SignatureHelp,
     DocumentSymbols,
     Usages,
 }
@@ -17,6 +18,7 @@ impl LanguageClientSource {
             LanguageClientSource::Definition => "definition",
             LanguageClientSource::DefinitionCandidates => "definitionCandidates",
             LanguageClientSource::Completion => "completion",
+            LanguageClientSource::SignatureHelp => "signatureHelp",
             LanguageClientSource::DocumentSymbols => "documentSymbols",
             LanguageClientSource::Usages => "usages",
         }

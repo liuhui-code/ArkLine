@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createHarmonyBuildPlanFromState, executeHarmonyBuildPlan } from "@/features/build/build-controller";
 import type { BuildState, BuildTarget, HarmonyBuildProject } from "@/features/build/build-model";
-import { parseBuildProfileProducts } from "@/features/build/build-profile-parser";
+import { parseBuildProfileModules, parseBuildProfileProducts } from "@/features/build/build-profile-parser";
 import { detectHarmonyBuildProject, inferBuildModuleForPath } from "@/features/build/build-project-detector";
 import { preflightHarmonyBuild } from "@/features/build/build-preflight";
 import { createBuildStore } from "@/features/build/build-store";
@@ -32,16 +32,27 @@ export function useBuildControllerState({
 }: UseBuildControllerStateOptions) {
   const buildStoreRef = useRef(createBuildStore());
   const buildRunCounterRef = useRef(0);
+  const buildConfigurationPersistenceRef = useRef(Promise.resolve());
   const [buildState, setBuildState] = useState(() => ({ ...buildStoreRef.current.state }));
   const visibleBuildProject = useMemo(
     () => workspace ? detectHarmonyBuildProject(workspace.rootPath, workspace.visibleFiles) : null,
     [workspace],
   );
   const [inspectedBuildProject, setInspectedBuildProject] = useState<HarmonyBuildProject | null>(null);
+  const [profileModules, setProfileModules] = useState<string[]>([]);
   const buildInspectionPath = selectedProjectPath ?? activePath ?? workspace?.rootPath ?? null;
-  const buildProject = inspectedBuildProject && isBuildProjectInWorkspace(inspectedBuildProject, workspace)
+  const baseBuildProject = inspectedBuildProject && isBuildProjectInWorkspace(inspectedBuildProject, workspace)
     ? inspectedBuildProject
     : visibleBuildProject;
+  const buildProject = useMemo(() => {
+    if (!baseBuildProject || profileModules.length === 0) {
+      return baseBuildProject;
+    }
+    const modules = Array.from(new Set([...baseBuildProject.modules, ...profileModules])).sort();
+    return modules.length === baseBuildProject.modules.length
+      ? baseBuildProject
+      : { ...baseBuildProject, modules, defaultModule: modules.includes("entry") ? "entry" : modules[0] ?? null };
+  }, [baseBuildProject, profileModules]);
   const buildProfilePath = useMemo(
     () => buildProject?.hasBuildProfile ? `${buildProject.rootPath}/build-profile.json5` : null,
     [buildProject],
@@ -74,9 +85,51 @@ export function useBuildControllerState({
     setBuildState({ ...buildStoreRef.current.state });
   }
 
+  async function resolveBuildEnvironment(rootPath: string, notify = false) {
+    if (!workspaceApi.resolveBuildEnvironment) {
+      buildStoreRef.current.setEnvironment(null);
+      syncBuildState();
+      return null;
+    }
+    try {
+      const environment = await workspaceApi.resolveBuildEnvironment({
+        rootPath,
+        harmonySdkPath: sdkSettings.harmonySdkPath,
+        nodePath: sdkSettings.nodePath,
+        autoDetect: sdkSettings.autoDetect,
+      });
+      buildStoreRef.current.setEnvironment(environment);
+      syncBuildState();
+      return environment;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      const failedEnvironment = {
+        canBuild: false,
+        nodePath: null,
+        sdkPath: null,
+        pathEntries: [],
+        environment: {},
+        checks: [{ name: "hvigor", available: false, detail: `Environment resolver failed: ${detail}` }],
+      };
+      buildStoreRef.current.setEnvironment(failedEnvironment);
+      syncBuildState();
+      if (notify) {
+        onStatusChange(`Build environment detection failed: ${detail}`);
+      }
+      return failedEnvironment;
+    }
+  }
+
+  useEffect(() => {
+    if (!buildProject?.rootPath || buildStoreRef.current.state.status === "running") {
+      return;
+    }
+    void resolveBuildEnvironment(buildProject.rootPath);
+  }, [buildProject?.rootPath, sdkSettings.autoDetect, sdkSettings.harmonySdkPath, sdkSettings.nodePath]);
+
   useEffect(() => {
     const nextModule = inferBuildModuleForPath(buildProject, selectedProjectPath ?? activePath);
-    if (!nextModule || buildStoreRef.current.state.status === "running") {
+    if (!nextModule || buildStoreRef.current.state.status === "running" || buildStoreRef.current.state.activeConfigurationId) {
       return;
     }
     if (buildStoreRef.current.state.moduleName !== nextModule) {
@@ -86,8 +139,14 @@ export function useBuildControllerState({
   }, [activePath, buildProject, selectedProjectPath]);
 
   useEffect(() => {
+    setProfileModules([]);
+  }, [baseBuildProject?.rootPath]);
+
+  useEffect(() => {
     if (!buildProfilePath) {
-      buildStoreRef.current.configure({ products: ["default"], product: "default" });
+      setProfileModules([]);
+      const currentProduct = buildStoreRef.current.state.product.trim() || "default";
+      buildStoreRef.current.configure({ products: [currentProduct], product: currentProduct });
       syncBuildState();
       return;
     }
@@ -99,6 +158,7 @@ export function useBuildControllerState({
       }
 
       const products = parseBuildProfileProducts(content);
+      setProfileModules(parseBuildProfileModules(content));
       const currentProduct = buildStoreRef.current.state.product;
       const product = products.includes(currentProduct)
         ? currentProduct
@@ -124,16 +184,22 @@ export function useBuildControllerState({
   }
 
   async function persistBuildConfigurations() {
-    if (!workspace?.rootPath) {
+    const rootPath = workspace?.rootPath;
+    if (!rootPath || !workspaceApi.saveBuildConfigurations) {
       return;
     }
 
-    try {
-      await workspaceApi.saveBuildConfigurations?.(workspace.rootPath, buildStoreRef.current.state.configurations);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      onStatusChange(`Save build configuration failed: ${message}`);
-    }
+    const configurations = [...buildStoreRef.current.state.configurations];
+    const write = async () => {
+      try {
+        await workspaceApi.saveBuildConfigurations?.(rootPath, configurations);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        onStatusChange(`Save build configuration failed: ${message}`);
+      }
+    };
+    buildConfigurationPersistenceRef.current = buildConfigurationPersistenceRef.current.then(write, write);
+    await buildConfigurationPersistenceRef.current;
   }
 
   async function saveBuildConfiguration() {
@@ -160,6 +226,7 @@ export function useBuildControllerState({
   function selectBuildConfiguration(configurationId: string) {
     buildStoreRef.current.selectConfiguration(configurationId);
     syncBuildState();
+    void persistBuildConfigurations();
   }
 
   async function runBuild(clean = false) {
@@ -184,11 +251,13 @@ export function useBuildControllerState({
       syncBuildState();
     }
     const state = buildStoreRef.current.state;
+    const toolchain = await resolveBuildEnvironment(project?.rootPath ?? workspace.rootPath, true);
     const preflight = preflightHarmonyBuild({
       project,
       settings: sdkSettings,
       target: state.lastTarget,
       moduleName: state.lastTarget === "app" ? null : state.moduleName,
+      environment: toolchain,
     });
     if (!preflight.canBuild) {
       buildStoreRef.current.failPreflight(preflight);
@@ -218,6 +287,7 @@ export function useBuildControllerState({
         plan,
         runTerminalCommand: workspaceApi.runTerminalCommand,
         settings: sdkSettings,
+        toolchain,
       });
       buildStoreRef.current.finish(buildResult);
       replaceBuildProblems(buildResult.diagnostics);

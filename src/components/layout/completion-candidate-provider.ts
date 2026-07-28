@@ -16,6 +16,8 @@ export type CompletionCandidateRequest = {
   line: number;
   column: number;
   content: string;
+  semanticContent?: string;
+  documentVersion?: number | null;
   query: string;
   replacePrefix: string;
   requestGeneration?: number;
@@ -48,10 +50,22 @@ export async function collectCompletionCandidateResult({
   query,
   replacePrefix,
   requestGeneration,
+  semanticContent,
+  documentVersion,
 }: CompletionCandidateRequest): Promise<CompletionCandidateResult> {
   const queryText = query || replacePrefix;
-  const languageRequest = { path, line, column, content };
-  const memberAccess = isMemberAccessCompletion(languageRequest);
+  const contextRequest = { path, line, column, content };
+  const queryContent = documentVersion === null || documentVersion === undefined
+    ? content
+    : semanticContent;
+  const languageRequest = {
+    path,
+    line,
+    column,
+    ...(queryContent !== undefined ? { content: queryContent } : {}),
+    ...(documentVersion !== null && documentVersion !== undefined ? { documentVersion } : {}),
+  };
+  const memberAccess = isMemberAccessCompletion(contextRequest);
   scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
   const semanticRequest = collectSemanticCompletionResult(
     workspaceApi,
@@ -76,7 +90,9 @@ export async function collectCompletionCandidateResult({
     : Promise.resolve(indexItemsEnvelope<SearchCandidate>([]));
 
   const semanticResult = await semanticRequest;
-  const semanticItems = semanticResult.items;
+  const semanticItems = memberAccess
+    ? semanticResult.items.filter((item) => item.kind !== "keyword")
+    : semanticResult.items;
   const hideStaleIndexedItems = hasExactSemanticCompletion(semanticItems, queryText);
   const [fileIndexResult, workspaceIndexResult] = await Promise.allSettled([fileIndexRequest, workspaceIndexRequest]);
   const explain = [
@@ -100,7 +116,7 @@ export async function collectCompletionCandidateResult({
       semanticItems,
       fileIndexedItems,
       workspaceIndexedItems,
-      collectImmediateCompletionCandidates(queryText, languageRequest),
+      collectImmediateCompletionCandidates(queryText, contextRequest),
     ),
     explain,
   };
@@ -125,7 +141,7 @@ function scheduleForegroundCompletionIndex(
 async function collectSemanticCompletionResult(
   workspaceApi: WorkspaceApi,
   rootPath: string | null | undefined,
-  request: { path: string; line: number; column: number; content: string },
+  request: { path: string; line: number; column: number; content?: string; documentVersion?: number },
   requestGeneration?: number,
 ): Promise<CompletionCandidateResult> {
   if (rootPath && workspaceApi.semanticCompleteSymbol) {
@@ -138,7 +154,7 @@ async function collectSemanticCompletionResult(
         };
       }
       return {
-        items: await completeLanguageSymbol(workspaceApi, request, requestGeneration),
+        items: await completeLanguageSymbol(workspaceApi, request, requestGeneration, request.documentVersion),
         explain: envelope.explain ?? [],
       };
     } catch {
@@ -147,7 +163,7 @@ async function collectSemanticCompletionResult(
   }
   return {
     items: workspaceApi.completeSymbol
-      ? await completeLanguageSymbol(workspaceApi, request, requestGeneration)
+      ? await completeLanguageSymbol(workspaceApi, request, requestGeneration, request.documentVersion)
       : [],
     explain: [],
   };
@@ -155,12 +171,11 @@ async function collectSemanticCompletionResult(
 
 function completeLanguageSymbol(
   workspaceApi: WorkspaceApi,
-  request: { path: string; line: number; column: number; content: string },
+  request: { path: string; line: number; column: number; content?: string; documentVersion?: number },
   requestGeneration?: number,
+  documentVersion?: number,
 ) {
-  return requestGeneration === undefined
-    ? workspaceApi.completeSymbol!(request)
-    : workspaceApi.completeSymbol!(request, requestGeneration);
+  return workspaceApi.completeSymbol!(request, requestGeneration, documentVersion);
 }
 
 function indexItemsEnvelope<T>(items: T[]): Pick<WorkspaceIndexQueryEnvelope<T>, "items" | "explain"> {

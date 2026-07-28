@@ -14,6 +14,10 @@ import { createNavigationTransactionRuntime } from "@/features/navigation/naviga
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 import type { Text } from "@codemirror/state";
+import {
+  createSemanticDocumentSyncQueue,
+  type SemanticDocumentSyncQueue,
+} from "@/features/semantic/semantic-document-sync";
 
 type DocumentStoreRef = MutableRefObject<{
   getDocument(path: string): { currentContent: string } | undefined;
@@ -53,6 +57,7 @@ export type UseEditorSurfaceControllerOptions = {
   documentLoadCoordinator?: DocumentLoadCoordinator;
   scheduleActivation?: (request: DocumentActivationRequest) => Promise<void>;
   prepareDocumentText?: (content: string) => Promise<Text>;
+  semanticDocumentSync?: SemanticDocumentSyncQueue;
 };
 
 export type RestoreFileResult = {
@@ -85,19 +90,30 @@ export function useEditorSurfaceController({
   documentLoadCoordinator,
   scheduleActivation = scheduleDocumentActivation,
   prepareDocumentText = buildDocumentText,
+  semanticDocumentSync,
 }: UseEditorSurfaceControllerOptions) {
   const fallbackDocumentLoadRef = useRef(createDocumentLoadCoordinator());
   const runtimeRef = useRef({
     navigation: createNavigationTransactionRuntime(),
   });
   const documentLoad = documentLoadCoordinator ?? fallbackDocumentLoadRef.current;
+  const semanticSyncRef = useRef(semanticDocumentSync ?? createSemanticDocumentSyncQueue(workspaceApi));
 
-  async function openFile(path: string) {
-    await openFileInternal(path, "preview");
+  function syncLoadedDocument(path: string, content: string, method: "didOpen" | "didChange" = "didOpen") {
+    if (method === "didOpen") semanticSyncRef.current.open(path, content);
+    else semanticSyncRef.current.change(path, content);
+  }
+
+  async function openFile(path: string): Promise<RestoreFileResult> {
+    return openFileInternal(path, "preview");
   }
 
   async function restoreFile(path: string): Promise<RestoreFileResult> {
     return openFileInternal(path, "pinned");
+  }
+
+  function cancelPendingOpen() {
+    runtimeRef.current.navigation.cancel();
   }
 
   async function openFileInternal(
@@ -105,12 +121,17 @@ export function useEditorSurfaceController({
     disposition: "pinned" | "preview",
   ): Promise<RestoreFileResult> {
     const title = getPathBasename(path);
+    const transaction = runtimeRef.current.navigation.start(path);
     if (documentsRef.current.getDocument(path)) {
-      activateLoadedDocument(path, disposition);
-      onStatusChange(`Opened ${title}`);
+      if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
+        if (activePath && activePath !== path) semanticSyncRef.current.close(activePath);
+        activateLoadedDocument(path, disposition);
+        syncLoadedDocument(path, documentsRef.current.getDocument(path)?.currentContent ?? "");
+        runtimeRef.current.navigation.finish(transaction.id);
+        onStatusChange(`Opened ${title}`);
+      }
       return { ok: true };
     }
-    const transaction = runtimeRef.current.navigation.start(path);
     onStatusChange(`Opening ${title}...`);
     const cached = documentLoad.peek(path) !== undefined;
     let content: string;
@@ -127,20 +148,31 @@ export function useEditorSurfaceController({
     if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
       return { ok: false, errorMessage: "superseded" };
     }
-    await scheduleActivation({ cached, contentLength: content.length });
-    if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
-      return { ok: false, errorMessage: "superseded" };
+    try {
+      await scheduleActivation({ cached, contentLength: content.length });
+      if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
+        return { ok: false, errorMessage: "superseded" };
+      }
+      const document = await prepareDocumentText(content);
+      if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
+        return { ok: false, errorMessage: "superseded" };
+      }
+      if (documentsRef.current.openDocumentText) {
+        documentsRef.current.openDocumentText(path, content, document);
+      } else {
+        documentsRef.current.openDocument(path, content);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
+        runtimeRef.current.navigation.finish(transaction.id);
+        onStatusChange(`Open failed ${title}: ${message}`);
+      }
+      return { ok: false, errorMessage: message };
     }
-    const document = await prepareDocumentText(content);
-    if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
-      return { ok: false, errorMessage: "superseded" };
-    }
-    if (documentsRef.current.openDocumentText) {
-      documentsRef.current.openDocumentText(path, content, document);
-    } else {
-      documentsRef.current.openDocument(path, content);
-    }
+    if (activePath && activePath !== path) semanticSyncRef.current.close(activePath);
     activateLoadedDocument(path, disposition);
+    syncLoadedDocument(path, content);
     runtimeRef.current.navigation.finish(transaction.id);
     onStatusChange(`Opened ${title}`);
     return { ok: true };
@@ -188,6 +220,7 @@ export function useEditorSurfaceController({
       return;
     }
     const result = documentsRef.current.updateDocument(activePath, content);
+    syncLoadedDocument(activePath, content, "didChange");
     if (result.dirtyChanged) {
       tabsRef.current.pinTab?.(activePath);
       syncTabs();
@@ -201,6 +234,7 @@ export function useEditorSurfaceController({
     }
     const result = documentsRef.current.applyEditorDocument?.(activePath, document)
       ?? documentsRef.current.updateDocument(activePath, document.toString());
+    syncLoadedDocument(activePath, document.toString(), "didChange");
     if (result.dirtyChanged) {
       tabsRef.current.pinTab?.(activePath);
       syncTabs();
@@ -216,6 +250,7 @@ export function useEditorSurfaceController({
   return {
     openFile,
     restoreFile,
+    cancelPendingOpen,
     submitGoToLine,
     handleEditorChange,
     handleEditorDocumentChange,

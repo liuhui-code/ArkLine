@@ -1,4 +1,5 @@
 mod commands {
+    pub mod build_environment;
     pub mod build_configurations;
     pub mod build_project;
     pub mod code_actions;
@@ -21,6 +22,7 @@ mod commands {
 }
 
 mod models {
+    pub mod build_environment;
     pub mod build_project;
     pub mod device_log;
     pub mod device_log_query;
@@ -80,6 +82,7 @@ pub fn run() {
         .manage(services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime::default())
         .manage(query_broker)
         .invoke_handler(tauri::generate_handler![
+            commands::build_environment::resolve_build_environment_command,
             commands::build_project::inspect_harmony_build_project_command,
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,
@@ -134,8 +137,11 @@ pub fn run() {
             commands::language::goto_definition,
             commands::language::goto_definition_candidates,
             commands::language::complete_symbol,
+            commands::language::signature_help,
             commands::language::document_symbols,
             commands::language::find_usages,
+            commands::language::sync_language_document,
+            commands::language::close_language_document,
             commands::code_actions::list_code_actions,
             commands::code_actions::resolve_code_action,
             commands::code_actions::preview_workspace_edit,

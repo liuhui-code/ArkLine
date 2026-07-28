@@ -1,4 +1,5 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { json } from "@codemirror/lang-json";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
@@ -31,6 +32,8 @@ import { arkLineSyntaxTheme, createArkLineEditorTheme } from "@/editor/theme";
 import { searchPanelEnhancement } from "@/editor/search-panel";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
+import { createCodeMirrorCompletionSources, type CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import { createCodeMirrorSignatureHelpExtension, type CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 
 export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
@@ -118,6 +121,8 @@ export function createEditorExtensions(
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void,
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,
   onContextMenu?: (request: EditorContextMenuRequest) => void,
+  onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker,
+  getActivePath: () => string = () => path,
   gitTrace?: {
     blameAttributions: GitBlameAttribution[];
     selectedLine: number | null;
@@ -125,6 +130,7 @@ export function createEditorExtensions(
   },
   reducedPerformanceMode = false,
   deferEnhancements = false,
+  onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker,
 ): Extension[] {
   const deferDocumentExtensions = reducedPerformanceMode || deferEnhancements;
   const keymaps = reducedPerformanceMode
@@ -150,7 +156,23 @@ export function createEditorExtensions(
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
     ...(onDefinitionTrigger ? [createDefinitionTriggerHandler(onDefinitionTrigger)] : []),
     ...(!reducedPerformanceMode ? [createDefinitionHoverHandler(onDefinitionHoverChange)] : []),
-    ...(!reducedPerformanceMode && onTypingCompletionTrigger ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)] : []),
+    ...(!reducedPerformanceMode && onCodeMirrorCompletionRequest
+      ? [
+          autocompletion({
+            defaultKeymap: false,
+            override: createCodeMirrorCompletionSources(getActivePath, onCodeMirrorCompletionRequest),
+          }),
+          keymap.of([
+            ...completionKeymap.filter((binding) => binding.key !== "Ctrl-Space" && !binding.mac),
+          ]),
+        ]
+      : []),
+    ...(!reducedPerformanceMode && onCodeMirrorSignatureHelpRequest
+      ? [createCodeMirrorSignatureHelpExtension(getActivePath, onCodeMirrorSignatureHelpRequest)]
+      : []),
+    ...(!reducedPerformanceMode && onTypingCompletionTrigger && !onCodeMirrorCompletionRequest
+      ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)]
+      : []),
     ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),

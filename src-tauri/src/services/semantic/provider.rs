@@ -1,7 +1,8 @@
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest, SignatureHelp,
+    UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;
@@ -12,10 +13,22 @@ pub trait SemanticProvider: Send + Sync {
     fn definition(&self, request: &LanguageQueryRequest) -> Option<DefinitionTarget>;
     fn definition_candidates(&self, request: &LanguageQueryRequest) -> Vec<DefinitionCandidate>;
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem>;
+    fn signature_help(&self, _request: &LanguageQueryRequest) -> Option<SignatureHelp> {
+        None
+    }
+    fn completion_with_document_version(
+        &self,
+        request: &LanguageQueryRequest,
+        _document_version: Option<u64>,
+    ) -> Vec<CompletionItem> {
+        self.completion(request)
+    }
     fn document_symbols(&self, request: &LanguageQueryRequest) -> Vec<DocumentSymbol>;
     fn usages(&self, request: &LanguageQueryRequest) -> Vec<UsageResult>;
     fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction>;
     fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution;
+    fn sync_document(&self, request: &SemanticDocumentSyncRequest) -> Result<(), String>;
+    fn close_document(&self, request: &SemanticDocumentCloseRequest) -> Result<(), String>;
 }
 
 pub struct FallbackProvider {
@@ -153,6 +166,10 @@ impl SemanticProvider for FallbackProvider {
         items
     }
 
+    fn signature_help(&self, _request: &LanguageQueryRequest) -> Option<SignatureHelp> {
+        None
+    }
+
     fn document_symbols(&self, request: &LanguageQueryRequest) -> Vec<DocumentSymbol> {
         let Some(content) = load_document_content(&request.path) else {
             return Vec::new();
@@ -195,6 +212,14 @@ impl SemanticProvider for FallbackProvider {
                 request.id
             ),
         })
+    }
+
+    fn sync_document(&self, _request: &SemanticDocumentSyncRequest) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn close_document(&self, _request: &SemanticDocumentCloseRequest) -> Result<(), String> {
+        Ok(())
     }
 }
 

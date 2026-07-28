@@ -13,6 +13,8 @@ pub struct BuildConfiguration {
     pub product: String,
     pub build_mode: String,
     pub fast_mode: bool,
+    #[serde(default)]
+    pub last_used_at: Option<u64>,
 }
 
 pub fn load_build_configurations(root_path: &str) -> Result<Vec<BuildConfiguration>, String> {
@@ -75,6 +77,7 @@ mod tests {
             product: "default".to_string(),
             build_mode: "release".to_string(),
             fast_mode: false,
+            last_used_at: None,
         };
 
         save_build_configurations(&root.to_string_lossy(), &[configuration.clone()]).unwrap();

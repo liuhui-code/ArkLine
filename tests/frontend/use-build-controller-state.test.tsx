@@ -22,6 +22,22 @@ describe("useBuildControllerState", () => {
     expect(openFile).toHaveBeenCalledWith("/project/build-profile.json5");
   });
 
+  it("uses modules declared in build-profile while the tree is incomplete", async () => {
+    const openFile = vi.fn(async () => "{ modules: [{ name: 'feature' }], products: [{ name: 'default' }] }");
+    const { result } = renderHarness({
+      workspace: {
+        ...workspace(),
+        visibleFiles: ["/project/hvigorw", "/project/hvigorfile.ts", "/project/build-profile.json5"],
+      },
+      workspaceApi: workspaceApi({ openFile }),
+    });
+
+    await waitFor(() => {
+      expect(result.current.buildProject?.modules).toEqual(["feature"]);
+    });
+    expect(result.current.buildProject?.defaultModule).toBe("feature");
+  });
+
   it("loads and saves build configurations through the workspace api", async () => {
     const loadBuildConfigurations = vi.fn(async () => [configuration("entry-debug")]);
     const saveBuildConfigurations = vi.fn(async () => undefined);
@@ -76,6 +92,50 @@ describe("useBuildControllerState", () => {
     expect(result.current.buildState.status).toBe("success");
     expect(onStatusChange).toHaveBeenLastCalledWith("Build succeeded");
     expect(replaceBuildProblems.mock.calls[0]?.[0]).toEqual(expect.not.arrayContaining([diagnostic]));
+  });
+
+  it("uses one resolved environment for build preflight and Hvigor", async () => {
+    const resolveBuildEnvironment = vi.fn(async () => ({
+      canBuild: true,
+      nodePath: "/tools/node",
+      sdkPath: "/tools/sdk",
+      pathEntries: ["/tools/node", "/tools/sdk/toolchains"],
+      environment: {
+        HOS_SDK_HOME: "/tools/sdk",
+        NODE_HOME: "/tools/node",
+      },
+      checks: [
+        { name: "node", available: true, detail: "Node ready" },
+        { name: "harmonySdk", available: true, detail: "SDK ready" },
+      ],
+    }));
+    const runTerminalCommand = vi.fn(async () => ({
+      runId: "build-1",
+      command: "./hvigorw assembleHap",
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({ resolveBuildEnvironment, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(resolveBuildEnvironment).toHaveBeenCalledWith({
+      rootPath: "/project",
+      harmonySdkPath: "",
+      nodePath: "",
+      autoDetect: true,
+    });
+    expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      pathEntries: ["/tools/node", "/tools/sdk/toolchains"],
+      environment: { HOS_SDK_HOME: "/tools/sdk", NODE_HOME: "/tools/node" },
+    }));
   });
 
   it("builds a lazily opened project from native project inspection", async () => {

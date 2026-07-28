@@ -209,7 +209,11 @@ pub fn run_command(
     runtime: &TerminalRuntime,
     request: &TerminalRunRequest,
 ) -> Result<TerminalRunResult, String> {
-    let mut command = shell_command(&request.command);
+    let mut command = request
+        .program
+        .as_deref()
+        .map(|program| structured_command(program, &request.args))
+        .unwrap_or_else(|| shell_command(&request.command));
     if let Some(cwd) = request
         .cwd
         .as_deref()
@@ -305,6 +309,18 @@ fn shell_command(command: &str) -> Command {
 
     let mut process = hidden_command("sh");
     process.arg("-lc").arg(command);
+    process
+}
+
+fn structured_command(program: &str, args: &[String]) -> Command {
+    if cfg!(windows) && program.to_ascii_lowercase().ends_with(".bat") {
+        let mut process = hidden_command("cmd");
+        process.arg("/D").arg("/C").arg(program).args(args);
+        return process;
+    }
+
+    let mut process = hidden_command(program);
+    process.args(args);
     process
 }
 

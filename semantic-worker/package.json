@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "compile": "node ../node_modules/typescript/bin/tsc -p tsconfig.json",
-    "bundle": "node ../node_modules/esbuild/bin/esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bundle/semantic-worker.cjs",
-    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json && node ../node_modules/esbuild/bin/esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bundle/semantic-worker.cjs && node ../scripts/smoke-semantic-bundle.mjs",
+    "bundle": "esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bundle/semantic-worker.cjs",
+    "build": "node ../node_modules/typescript/bin/tsc -p tsconfig.json && esbuild src/main.ts --bundle --platform=node --target=node20 --format=cjs --outfile=bundle/semantic-worker.cjs && node ../scripts/smoke-semantic-bundle.mjs",
     "test": "node ../node_modules/vitest/vitest.mjs run src/__tests__"
   }
 }

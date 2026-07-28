@@ -61,7 +61,7 @@ const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.P
 rl.on("line", (line) => {{
   const request = JSON.parse(line);
   if (request.method === "health") {{
-    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 3 }}, error: null }})}}\n`);
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 4 }}, error: null }})}}\n`);
   }} else if (request.method === "restoreDocuments") {{
     fs.writeFileSync(replayMarker, JSON.stringify(request.documents));
     process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ restoredDocumentCount: request.documents.length }}, error: null }})}}\n`);

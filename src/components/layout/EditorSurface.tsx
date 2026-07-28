@@ -9,6 +9,8 @@ import type { DocumentRuntimeStore } from "@/features/documents/document-runtime
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
 import type { EditorAppearance } from "@/types/editor";
 import type { Text } from "@codemirror/state";
+import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 
 export type EditorSelectionTarget = {
   line: number;
@@ -45,6 +47,8 @@ type EditorSurfaceProps = {
   onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
@@ -77,6 +81,8 @@ export function EditorSurface({
   onCaretRectChange,
   onDefinitionTrigger,
   onTypingCompletionTrigger,
+  onCodeMirrorCompletionRequest,
+  onCodeMirrorSignatureHelpRequest,
   blameAttributions = [],
   gitBlameVisible = false,
   selectedBlameLine = null,
@@ -187,6 +193,8 @@ export function EditorSurface({
             onDefinitionTrigger={onDefinitionTrigger}
             onSelectionChange={onSelectionChange}
             onTypingCompletionTrigger={onTypingCompletionTrigger}
+            onCodeMirrorCompletionRequest={onCodeMirrorCompletionRequest}
+            onCodeMirrorSignatureHelpRequest={onCodeMirrorSignatureHelpRequest}
             onContextMenu={openEditorContextMenu}
             blameAttributions={blameAttributions}
             gitBlameVisible={gitBlameVisible}

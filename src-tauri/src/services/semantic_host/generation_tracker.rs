@@ -83,6 +83,10 @@ impl SemanticDocumentGenerationTracker {
             .collect()
     }
 
+    pub fn close(&mut self, path: &str) {
+        self.documents.remove(path);
+    }
+
     fn trim(&mut self, protected_path: &str) {
         trim_replay_content(&mut self.documents, protected_path);
         while self.documents.len() > MAX_TRACKED_DOCUMENTS {

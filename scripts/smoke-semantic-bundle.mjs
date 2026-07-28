@@ -29,7 +29,7 @@ child.stdout.on("data", (chunk) => {
       response.id !== "bundle-health"
       || !response.ok
       || response.payload?.status !== "ready"
-      || response.payload?.protocolVersion !== 3
+      || response.payload?.protocolVersion !== 4
     ) {
       throw new Error(`Unexpected semantic bundle response: ${stdout.slice(0, newline)}`);
     }

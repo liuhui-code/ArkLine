@@ -43,6 +43,11 @@ pub fn receiver_type_map_with_generic_classes(
         if let Some((name, class_name)) = receiver_type_from_field(line) {
             receivers.insert(format!("this.{name}"), class_name.to_string());
         }
+        if let Some((name, source)) = receiver_type_from_alias_assignment(line) {
+            if let Some(class_name) = receivers.get(source).cloned() {
+                receivers.insert(name.to_string(), class_name);
+            }
+        }
         for (name, class_name) in receiver_types_from_parameters(line) {
             receivers.insert(name.to_string(), class_name.to_string());
         }
@@ -202,6 +207,11 @@ fn collect_receiver_facts(
     if let Some((name, class_name)) = receiver_type_from_field(line) {
         receivers.insert(format!("this.{name}"), class_name.to_string());
     }
+    if let Some((name, source)) = receiver_type_from_alias_assignment(line) {
+        if let Some(class_name) = receivers.get(source).cloned() {
+            receivers.insert(name.to_string(), class_name);
+        }
+    }
     for (name, class_name) in receiver_types_from_parameters(line) {
         receivers.insert(name.to_string(), class_name.to_string());
     }
@@ -329,6 +339,28 @@ fn receiver_type_from_typed_variable(line: &str) -> Option<(&str, &str)> {
     }
     let type_name = normalize_return_type(type_expression)?;
     Some((variable, type_name))
+}
+
+fn receiver_type_from_alias_assignment(line: &str) -> Option<(&str, &str)> {
+    let trimmed = line.trim_start();
+    let after_keyword = trimmed
+        .strip_prefix("const ")
+        .or_else(|| trimmed.strip_prefix("let "))
+        .or_else(|| trimmed.strip_prefix("var "))?;
+    let (name, expression) = after_keyword.split_once('=')?;
+    let variable = name.trim();
+    let source = expression.trim().trim_end_matches(';').trim_end();
+    if !is_identifier(variable) || !is_receiver_expression(source) {
+        return None;
+    }
+    Some((variable, source))
+}
+
+fn is_receiver_expression(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .split('.')
+            .all(|part| part == "this" || is_identifier(part.trim_end_matches('?')))
 }
 
 fn receiver_type_from_instanceof_guard(line: &str) -> Option<(&str, &str)> {

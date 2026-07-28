@@ -83,10 +83,30 @@ caching.
 Transition protocol:
 
 1. Current compatibility mode sends a cursor-aware bounded snapshot and request generation.
-2. Protocol v4 adds `didOpen`, coalesced `didChange`, `didClose`, and `documentVersion`.
-3. Completion then sends URI, position, request generation, and required document version only.
+2. Protocol v4 adds `didOpen`, coalesced `didChange`, `didClose`, and `documentVersion`; this is now implemented.
+3. The editor now publishes an acknowledged snapshot without blocking input; semantic completion waits for that acknowledgement and sends only path, position, and document version. The legacy inline-content path remains available for degraded/mock runtimes.
 4. The broker rejects stale versions instead of silently reading disk or accepting truncated text.
 5. Worker restart replays a bounded set of hot open documents before accepting semantic queries.
+
+The CodeMirror rollout now has two explicit sources: an immediate ArkTS keyword source and an
+asynchronous semantic/index broker source. Both return `validFor` word ranges so ordinary prefix
+typing can be filtered in the editor without another backend request. They are currently exposed
+through an optional editor injection while the main AppShell stays on the compatibility path until
+transaction, keyboard, and accessibility parity is proven.
+
+The adapter now preserves provider completion identity across result refreshes with a bounded
+cache, honors validated current-line replacement ranges, carries commit characters, and converts
+LSP-style snippet placeholders into CodeMirror native snippet tab stops. This keeps async refresh
+selection stable without allowing an unbounded completion cache to grow with project size.
+It also accepts an optional resolver for documentation, invoking it only when CodeMirror opens the
+selected completion detail and sharing the in-flight Promise across repeated opens.
+
+Signature help is an optional extension with a bounded context scan. It tracks the innermost
+unclosed call, ignores strings and comments, debounces requests by one short interval, cancels the
+previous broker request, and discards responses whose document identity or cursor position changed.
+The semantic worker now exposes a `signatureHelp` capability backed by the TypeScript Language
+Service for `.ts` files; ArkTS/SDK provider parity remains an explicit follow-up rather than a
+fallback guess.
 
 Changes should be coalesced for roughly one animation frame. Full-document synchronization is
 allowed at open/recovery boundaries; normal typing uses incremental changes.
@@ -101,8 +121,11 @@ Candidate identity is, in priority order:
 
 The backend owns semantic validity, provider provenance, expected-type scoring, and import metadata.
 The editor owns prefix/fuzzy filtering within a valid result set, keyboard selection, and stable
-selection retention. Accepting a completion becomes one editor transaction containing the primary
-edit, snippet tab stops, and validated additional import edits.
+selection retention. The editor transaction builder rejects a stale document identity, invalid or
+overlapping ranges, then applies the primary edit and validated same-file import edits together.
+Accepting a completion is therefore one transaction containing the primary edit, snippet tab stops,
+and the additional edits that have already been resolved; multi-file import coordination remains a
+separate workspace-edit operation.
 
 ## Observability
 

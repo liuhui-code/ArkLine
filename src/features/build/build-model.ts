@@ -31,6 +31,8 @@ export type HarmonyBuildRequest = {
 export type BuildPlanStep = {
   label: string;
   command: string;
+  program: string;
+  args: string[];
 };
 
 export type BuildPlan = {
@@ -97,6 +99,21 @@ export type BuildToolchainSnapshot = {
   autoDetect: boolean;
 };
 
+export type BuildEnvironmentCheck = {
+  name: string;
+  available: boolean;
+  detail: string;
+};
+
+export type BuildEnvironmentResolution = {
+  canBuild: boolean;
+  nodePath: string | null;
+  sdkPath: string | null;
+  pathEntries: string[];
+  environment: Record<string, string>;
+  checks: BuildEnvironmentCheck[];
+};
+
 export type BuildEnvironmentSnapshot = {
   projectRoot: string;
   cwd: string;
@@ -119,6 +136,7 @@ export type BuildConfiguration = {
   product: string;
   buildMode: "debug" | "release";
   fastMode: boolean;
+  lastUsedAt?: number;
 };
 
 export type BuildResult = {
@@ -157,6 +175,9 @@ export type BuildPreflightIssueCode =
   | "missing-module"
   | "missing-sdk-path"
   | "missing-node-path"
+  | "build-environment-node"
+  | "build-environment-sdk"
+  | "build-environment-hvigor"
   | "missing-oh-package";
 
 export type BuildPreflightIssue = {
@@ -202,4 +223,5 @@ export type BuildState = {
   lastDurationMs: number | null;
   message: string;
   preflight: BuildPreflightResult | null;
+  environment: BuildEnvironmentResolution | null;
 };

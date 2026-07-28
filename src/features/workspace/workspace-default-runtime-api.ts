@@ -1,4 +1,5 @@
-import type { BuildConfiguration, HarmonyBuildProject } from "@/features/build/build-model";
+import type { BuildConfiguration, BuildEnvironmentResolution, HarmonyBuildProject } from "@/features/build/build-model";
+import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
 import {
@@ -60,6 +61,22 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
         hasOhPackage: false,
         modules: [],
         defaultModule: null,
+      };
+    },
+    async resolveBuildEnvironment(request: BuildEnvironmentRequest) {
+      if (hasTauriRuntime()) {
+        return invoke<BuildEnvironmentResolution>("resolve_build_environment_command", { request });
+      }
+      return {
+        canBuild: false,
+        nodePath: null,
+        sdkPath: null,
+        pathEntries: [],
+        environment: {},
+        checks: [
+          { name: "node", available: false, detail: "Build environment detection is unavailable in the browser" },
+          { name: "harmonySdk", available: false, detail: "Build environment detection is unavailable in the browser" },
+        ],
       };
     },
     async createTerminalSession(request) {

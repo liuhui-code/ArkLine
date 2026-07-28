@@ -1,5 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
 if (!Range.prototype.getClientRects) {
   Range.prototype.getClientRects = function getClientRects() {
     return {

@@ -11,6 +11,7 @@ const common = strict ? ["--strict"] : [];
 const commands = [
   ["node", ["scripts/perf-search-input.mjs", fileArg, operationsArg, ...common]],
   ["node", ["scripts/perf-file-switch.mjs", fileArg, switchesArg, ...common]],
+  ["node", ["scripts/perf-core-interaction.mjs", ...common]],
 ];
 
 for (const [command, commandArgs] of commands) {

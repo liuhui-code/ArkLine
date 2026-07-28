@@ -201,6 +201,30 @@ describe("semantic worker completion", () => {
     ]))
   })
 
+  it("returns ArkUI SDK signature help for a chained attribute call", () => {
+    const session = new SemanticWorkerSession()
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-signature-"))
+    tempRoots.push(root)
+    process.env.ARKLINE_HARMONY_SDK_PATH = createArkuiSdkFixture(root)
+    const indexPath = path.join(root, "Index.ets")
+    const content = "Column().width(Length.vp(12), "
+    fs.writeFileSync(indexPath, `${content}\n`)
+
+    const response = session.handle({
+      id: "signature-arkui-width",
+      method: "signatureHelp",
+      position: { path: indexPath, line: 1, column: content.length + 1 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual(expect.objectContaining({
+      activeParameter: 0,
+      signatures: expect.arrayContaining([
+        expect.objectContaining({ label: "width(value: Length): T" }),
+      ]),
+    }))
+  })
+
   it("returns rich ArkUI width completion metadata", () => {
     const session = new SemanticWorkerSession()
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-worker-arkui-width-v2-"))

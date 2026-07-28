@@ -64,6 +64,22 @@ pub struct LanguageQueryRequest {
     pub content: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticDocumentSyncRequest {
+    pub method: String,
+    pub path: String,
+    pub content: String,
+    pub document_version: u64,
+    pub workspace_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticDocumentCloseRequest {
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HoverResponse {
@@ -120,6 +136,32 @@ pub struct CompletionItem {
     pub definition_target: Option<DefinitionTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpParameter {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub documentation: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelpSignature {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub documentation: Option<String>,
+    #[serde(default)]
+    pub parameters: Vec<SignatureHelpParameter>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureHelp {
+    pub signatures: Vec<SignatureHelpSignature>,
+    pub active_signature: usize,
+    pub active_parameter: usize,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

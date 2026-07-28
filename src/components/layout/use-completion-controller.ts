@@ -43,6 +43,7 @@ export type UseCompletionControllerOptions = {
   isEditorFocused: () => boolean;
   recordRecentQueryExplain: (entry: QueryExplainRecordInput) => void;
   onStatusChange: (message: string) => void;
+  ensureSemanticDocument?: (path: string, content: string) => Promise<number | null>;
 };
 
 export function useCompletionController({
@@ -65,6 +66,7 @@ export function useCompletionController({
   isEditorFocused,
   recordRecentQueryExplain,
   onStatusChange,
+  ensureSemanticDocument,
 }: UseCompletionControllerOptions) {
   const completionAnchorStore = useMemo(() => createCompletionAnchorStore(), []);
   const setCompletionAnchor = completionAnchorStore.setAnchor;
@@ -166,6 +168,9 @@ export function useCompletionController({
       setCompletionMessage(undefined);
       setActiveOverlay("completion");
     }
+    const documentVersion = ensureSemanticDocument
+      ? await ensureSemanticDocument(path, request.content)
+      : null;
     let completionResult: { items: LanguageCompletionItem[]; explain?: string[] };
     try {
       const outcome = await completionRequestScheduler.schedule(() => languageRequestTimeout(
@@ -176,6 +181,8 @@ export function useCompletionController({
           line: request.line,
           column: request.column,
           content: request.content,
+          documentVersion,
+          semanticContent: documentVersion === null ? request.content : undefined,
           query,
           replacePrefix,
           requestGeneration: languageSession.generation,

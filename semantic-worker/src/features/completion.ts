@@ -63,7 +63,9 @@ export function resolveCompletion(
   }
 
   for (const item of typeEngine?.complete(position) ?? []) {
-    push(item)
+    if (!memberAccess || item.kind !== "keyword") {
+      push(item)
+    }
   }
 
   if (!memberAccess) {

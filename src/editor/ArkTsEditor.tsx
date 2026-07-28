@@ -28,6 +28,8 @@ import { isEditorReducedPerformanceDocument } from "@/editor/editor-document-bud
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
+import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 import { createEditorDocumentSessionRegistry } from "@/editor/editor-document-session-registry";
 import { scheduleEditorEnhancement } from "@/editor/editor-enhancement-scheduler";
@@ -47,6 +49,8 @@ type ArkTsEditorProps = {
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
+  onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
@@ -70,6 +74,8 @@ export function ArkTsEditor({
   onDefinitionTrigger,
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
+  onCodeMirrorCompletionRequest,
+  onCodeMirrorSignatureHelpRequest,
   onContextMenu,
   blameAttributions = [],
   gitBlameVisible = false,
@@ -91,6 +97,8 @@ export function ArkTsEditor({
   const onDefinitionTriggerRef = useRef(onDefinitionTrigger);
   const onDefinitionHoverChangeRef = useRef(onDefinitionHoverChange);
   const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
+  const onCodeMirrorCompletionRequestRef = useRef(onCodeMirrorCompletionRequest);
+  const onCodeMirrorSignatureHelpRequestRef = useRef(onCodeMirrorSignatureHelpRequest);
   const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
   const sessionRestoreFrameRef = useRef<number | null>(null);
@@ -107,6 +115,8 @@ export function ArkTsEditor({
   onDefinitionTriggerRef.current = onDefinitionTrigger;
   onDefinitionHoverChangeRef.current = onDefinitionHoverChange;
   onTypingCompletionTriggerRef.current = onTypingCompletionTrigger;
+  onCodeMirrorCompletionRequestRef.current = onCodeMirrorCompletionRequest;
+  onCodeMirrorSignatureHelpRequestRef.current = onCodeMirrorSignatureHelpRequest;
   onContextMenuRef.current = onContextMenu;
 
   function createState(documentPath: string, content: string | Text, reducedMode: boolean) {
@@ -130,11 +140,18 @@ export function ArkTsEditor({
           onTypingCompletionTriggerRef.current?.(selection);
         },
         (request) => onContextMenuRef.current?.(request),
+        onCodeMirrorCompletionRequest
+          ? (request) => onCodeMirrorCompletionRequestRef.current?.(request) ?? Promise.resolve([])
+          : undefined,
+        () => activePathRef.current,
         gitBlameVisible
           ? { blameAttributions, selectedLine: selectedBlameLine, onSelectLine: onGitTraceLineClick }
           : undefined,
         reducedMode,
         true,
+        onCodeMirrorSignatureHelpRequest
+          ? (request, signal) => onCodeMirrorSignatureHelpRequestRef.current?.(request, signal) ?? Promise.resolve(null)
+          : undefined,
       ),
     });
   }

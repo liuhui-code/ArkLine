@@ -9,8 +9,8 @@ use crate::services::workspace_completion_item_service::{
     completion_item, dedupe_completion_items, snippet_completion_item, symbol_completion_from_row,
 };
 use crate::services::workspace_completion_parser_service::{
-    completion_prefix, is_member_access_context, local_function_name, local_variable_name,
-    member_owner_at_position,
+    completion_prefix, current_class_name_at_position, is_member_access_context,
+    local_function_name, local_variable_name, member_owner_at_position,
 };
 use crate::services::workspace_completion_sdk_service::{
     sdk_member_completion_items, sdk_symbol_completion_items,
@@ -181,11 +181,17 @@ fn member_items(
     let Some(owner) = member_owner_at_position(request) else {
         return Ok(Vec::new());
     };
-    let Some(receiver_type) = receiver_type_map(content)
+    let receiver_types = receiver_type_map(content);
+    let receiver_type = receiver_types
         .get(&owner)
         .cloned()
-        .or_else(|| inline_receiver_type(&owner))
-    else {
+        .or_else(|| {
+            (owner == "this")
+                .then(|| current_class_name_at_position(content, request.line))
+                .flatten()
+        })
+        .or_else(|| inline_receiver_type(&owner));
+    let Some(receiver_type) = receiver_type else {
         return Ok(Vec::new());
     };
     if !index_store_exists(root_path) {
@@ -197,7 +203,9 @@ fn member_items(
     let receiver_type =
         resolved_import_target_name(&connection, &root_key, &path_key, &receiver_type)?
             .unwrap_or(receiver_type);
-    let mut items = project_member_items(&connection, &root_key, &receiver_type, &prefix)?;
+    let owner_path = (owner == "this").then_some(path_key.as_str());
+    let mut items =
+        project_member_items(&connection, &root_key, &receiver_type, &prefix, owner_path)?;
     items.extend(sdk_member_completion_items(
         root_path,
         &connection,
@@ -213,6 +221,7 @@ fn project_member_items(
     root_key: &str,
     receiver_type: &str,
     prefix: &str,
+    owner_path: Option<&str>,
 ) -> Result<Vec<CompletionItem>, String> {
     let mut statement = connection
         .prepare(
@@ -223,15 +232,16 @@ fn project_member_items(
                and container is not null
                and (container = ?2 or container like ?3)
                and name like ?4
+               and (?5 is null or path = ?5)
              order by name, path, line
-             limit ?5",
+             limit ?6",
         )
         .map_err(|error| error.to_string())?;
     let pattern = format!("{}%", escape_like_pattern(prefix));
     let suffix = format!("%.{}", receiver_type);
     let rows = statement
         .query_map(
-            params![root_key, receiver_type, suffix, pattern, 50_i64],
+            params![root_key, receiver_type, suffix, pattern, owner_path, 50_i64],
             |row| symbol_completion_from_row(row, "workspace", true),
         )
         .map_err(|error| error.to_string())?;

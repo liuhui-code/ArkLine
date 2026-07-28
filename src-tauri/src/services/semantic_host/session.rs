@@ -14,10 +14,12 @@ use super::response_state::{
 };
 use super::transport::{DirectSemanticWorkerTransport, SemanticWorkerTransport};
 use crate::models::language::{
-    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
+    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem, SignatureHelp,
     DefinitionCandidate, DefinitionTarget, LanguageQueryRequest, SemanticRequestActorSnapshot,
     SemanticWorkerRuntime,
 };
+
+mod document_sync;
 
 #[cfg(not(test))]
 const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
@@ -97,6 +99,8 @@ impl SemanticWorkerSession {
                 position: None,
                 action: None,
                 documents: Some(documents),
+                document: None,
+                document_path: None,
             },
             None,
         )?;
@@ -181,13 +185,35 @@ impl SemanticWorkerSession {
         &self,
         request: &LanguageQueryRequest,
     ) -> Result<Vec<CompletionItem>, String> {
-        let response = self.send_request("completion", Some(request))?;
+        self.completion_with_document_version(request, None)
+    }
+
+    pub fn completion_with_document_version(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+    ) -> Result<Vec<CompletionItem>, String> {
+        let response = self.send_request_with_document_version(request, document_version)?;
         let payload = extract_payload(&response.payload, "completion");
         let items = payload
             .as_array()
             .ok_or_else(|| "Semantic worker completion response was not an array".to_string())?;
 
         Ok(items.iter().filter_map(parse_completion_item).collect())
+    }
+
+    pub fn signature_help(
+        &self,
+        request: &LanguageQueryRequest,
+    ) -> Result<Option<SignatureHelp>, String> {
+        let response = self.send_request("signatureHelp", Some(request))?;
+        let payload = extract_payload(&response.payload, "signatureHelp");
+        if payload.is_null() {
+            return Ok(None);
+        }
+        serde_json::from_value(payload.clone())
+            .map(Some)
+            .map_err(|error| format!("Failed to parse semantic worker signature help: {error}"))
     }
 
     pub fn list_code_actions(
@@ -232,7 +258,15 @@ impl SemanticWorkerSession {
         method: &str,
         request: Option<&LanguageQueryRequest>,
     ) -> Result<RawSemanticResponse, String> {
-        self.send_request_parts(method, request, None)
+        self.send_request_parts(method, request, None, None)
+    }
+
+    fn send_request_with_document_version(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+    ) -> Result<RawSemanticResponse, String> {
+        self.send_request_parts("completion", Some(request), None, document_version)
     }
 
     fn send_action_request(
@@ -240,7 +274,7 @@ impl SemanticWorkerSession {
         method: &str,
         action: &CodeActionResolveRequest,
     ) -> Result<RawSemanticResponse, String> {
-        self.send_request_parts(method, None, Some(action))
+        self.send_request_parts(method, None, Some(action), None)
     }
 
     fn send_request_parts(
@@ -248,6 +282,7 @@ impl SemanticWorkerSession {
         method: &str,
         request: Option<&LanguageQueryRequest>,
         action: Option<&CodeActionResolveRequest>,
+        document_version: Option<u64>,
     ) -> Result<RawSemanticResponse, String> {
         let request_id = self.next_request_id();
         let content_generation = if let Some(value) = request {
@@ -267,11 +302,14 @@ impl SemanticWorkerSession {
                 column: value.column,
                 content: value.content.clone(),
                 content_generation,
+                document_version,
             }),
             action: action.cloned(),
             documents: None,
+            document: None,
+            document_path: None,
         };
-        let expected_response_generation = matches!(method, "completion" | "gotoDefinition")
+        let expected_response_generation = matches!(method, "completion" | "gotoDefinition" | "signatureHelp")
             .then_some(content_generation)
             .flatten();
         self.send_payload(payload, expected_response_generation)

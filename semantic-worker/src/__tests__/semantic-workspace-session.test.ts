@@ -45,6 +45,70 @@ afterEach(() => {
 })
 
 describe("semantic workspace session", () => {
+  it("keeps the latest overlay and rejects out-of-order editor versions", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-semantic-sync-"))
+    tempRoots.push(root)
+    const documentPath = path.join(root, "Overlay.ets")
+    const session = new SemanticWorkerSession()
+    const opened = session.handle({
+      id: "did-open",
+      method: "didOpen",
+      document: { path: documentPath, content: "class Overlay { first = 1 }", documentVersion: 4 },
+    })
+    const stale = session.handle({
+      id: "did-change-stale",
+      method: "didChange",
+      document: { path: documentPath, content: "class Overlay { stale = 1 }", documentVersion: 3 },
+    })
+    const query = session.handle({
+      id: "overlay-query",
+      method: "completion",
+      position: { path: documentPath, line: 1, column: 27 },
+    })
+    const closed = session.handle({
+      id: "did-close",
+      method: "didClose",
+      documentPath,
+    })
+
+    expect(opened).toMatchObject({ ok: true, payload: { status: "ready", documentVersion: 4 } })
+    expect(stale.ok).toBe(false)
+    expect(stale.error).toContain("Stale semantic document version")
+    expect(query.state).toMatchObject({ documentVersion: 4, syntaxReady: true })
+    expect(closed).toMatchObject({ ok: true, payload: { status: "closed", path: documentPath } })
+  })
+
+  it("answers versioned queries from CRLF, Unicode, large, and unsaved import overlays", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-semantic-boundaries-"))
+    tempRoots.push(root)
+    const dependencyPath = path.join(root, "Shared.ets")
+    const currentPath = path.join(root, "Unsaved.ets")
+    fs.writeFileSync(dependencyPath, "export function 共享方法() { return 1 }\n")
+    const largePrefix = "// " + "x".repeat(80_000) + "\r\n"
+    const content = `${largePrefix}import { 共享方法 } from './Shared'\r\n共享方法()`
+    const session = new SemanticWorkerSession()
+    const opened = session.handle({
+      id: "boundary-open",
+      method: "didOpen",
+      document: { path: currentPath, content, documentVersion: 12 },
+    })
+    const definition = session.handle({
+      id: "boundary-definition",
+      method: "gotoDefinition",
+      position: { path: currentPath, line: 3, column: 5, documentVersion: 12 },
+    })
+    const future = session.handle({
+      id: "boundary-future",
+      method: "completion",
+      position: { path: currentPath, line: 3, column: 5, documentVersion: 13 },
+    })
+
+    expect(opened.ok).toBe(true)
+    expect(definition).toMatchObject({ ok: true, state: { documentVersion: 12, syntaxReady: true } })
+    expect(future.ok).toBe(false)
+    expect(future.error).toContain("not synchronized")
+  })
+
   it("restores hot document content at its durable generation", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-semantic-replay-"))
     tempRoots.push(root)

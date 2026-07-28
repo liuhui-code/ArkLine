@@ -26,6 +26,8 @@ Run the gate against synthetic fixtures and at least one real ArkTS workspace:
 pnpm perf:runtime
 node scripts/perf-search-input.mjs --files=5000 --strict
 node scripts/perf-file-switch.mjs --files=5000 --switches=50 --strict
+node scripts/perf-core-interaction.mjs --strict
+pnpm test:frontend:gate
 ```
 
 The scripts execute `tests/frontend/runtime-interaction-soak.test.tsx` through
@@ -34,6 +36,12 @@ search input, search generation runtime, search session store, document load
 coordinator, persistent document store, chunked text builder, and navigation
 transaction runtime. They do not use a second benchmark-only search or file
 switch implementation.
+
+The runtime gate also executes the product interaction correctness suite. It covers
+latest-navigation-wins behavior, cancellation of late document opens, failed opens
+that must not move the caret or activate a broken document, and editor/app crash
+boundaries that keep the shell visible. A correctness failure blocks the gate even
+when latency budgets are green.
 
 Reported evidence includes p50/p95/p99, React render commits, bounded candidate
 count, cancellation and stale-result counts, document cache and pending-load
@@ -44,6 +52,12 @@ fixture size, and command flags when comparing runs.
 
 - A release candidate must include fresh performance output in `docs/performance-baseline.md`.
 - A failing `--strict` run blocks release unless the regression is explicitly accepted.
+- `pnpm perf:runtime --strict` is the required local Core Interaction Gate v1 entry;
+  it must pass both latency budgets and correctness checks.
+- `pnpm test:frontend:gate` is the repository-wide frontend gate. It streams
+  verbose per-test progress, emits a heartbeat every 30 seconds, writes
+  `artifacts/frontend-gate.json`, and terminates the runner after the documented
+  hard timeout instead of leaving CI silent.
 - If a real workspace behaves worse than the synthetic fixture, prioritize the real
   workspace result.
 - Diagnostics must show IPC commands over 100 ms and UI long tasks over 100 ms.

@@ -4,7 +4,8 @@ use std::sync::Arc;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest, SignatureHelp,
+    UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::launcher::{
@@ -157,6 +158,25 @@ impl SemanticProvider for ArkTsLspProvider {
             .unwrap_or_default()
     }
 
+    fn completion_with_document_version(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+    ) -> Vec<CompletionItem> {
+        self.manager
+            .request_interactive(|session| {
+                session.completion_with_document_version(request, document_version)
+            })
+            .unwrap_or_default()
+    }
+
+    fn signature_help(&self, request: &LanguageQueryRequest) -> Option<SignatureHelp> {
+        self.manager
+            .request_interactive(|session| session.signature_help(request))
+            .ok()
+            .flatten()
+    }
+
     fn document_symbols(&self, _request: &LanguageQueryRequest) -> Vec<DocumentSymbol> {
         Vec::new()
     }
@@ -180,6 +200,23 @@ impl SemanticProvider for ArkTsLspProvider {
                     reason: error,
                 })
             })
+    }
+
+    fn sync_document(&self, request: &SemanticDocumentSyncRequest) -> Result<(), String> {
+        self.manager.request_interactive(|session| {
+            session.sync_document(
+                &request.method,
+                &request.path,
+                &request.content,
+                request.document_version,
+                request.workspace_root.as_deref(),
+            )
+        })
+    }
+
+    fn close_document(&self, request: &SemanticDocumentCloseRequest) -> Result<(), String> {
+        self.manager
+            .request_interactive(|session| session.close_document(&request.path))
     }
 }
 

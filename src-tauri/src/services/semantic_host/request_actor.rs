@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -10,11 +10,12 @@ use serde_json::json;
 use super::transport::SemanticWorkerTransport;
 use crate::models::language::SemanticRequestActorSnapshot;
 
-const REQUEST_QUEUE_CAPACITY_HINT: usize = 32;
+const REQUEST_QUEUE_CAPACITY: usize = 8;
+const REQUEST_QUEUE_CAPACITY_HINT: usize = REQUEST_QUEUE_CAPACITY;
 const RESPONSE_DELIVERY_GRACE: Duration = Duration::from_millis(50);
 
 pub struct SemanticRequestActor {
-    sender: Sender<ActorCommand>,
+    sender: SyncSender<ActorCommand>,
     state: Arc<ActorState>,
     process_id: u32,
     worker: Mutex<Option<JoinHandle<()>>>,
@@ -46,7 +47,7 @@ impl SemanticRequestActor {
     pub fn start(transport: Box<dyn SemanticWorkerTransport>) -> Self {
         let process_id = transport.process_id();
         let state = Arc::new(ActorState::default());
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(REQUEST_QUEUE_CAPACITY);
         let actor_state = state.clone();
         let worker = thread::spawn(move || run_actor(transport, receiver, actor_state));
         Self {
@@ -67,20 +68,24 @@ impl SemanticRequestActor {
     ) -> Result<String, String> {
         let (response, receiver) = mpsc::channel();
         self.state.queued.fetch_add(1, Ordering::Relaxed);
-        if self
-            .sender
-            .send(ActorCommand::Exchange(ExchangeRequest {
-                request_id,
-                method,
-                serialized,
-                expected_generation,
-                deadline: Instant::now() + timeout,
-                response,
-            }))
-            .is_err()
-        {
-            self.state.queued.fetch_sub(1, Ordering::Relaxed);
-            return Err("Semantic worker request actor is unavailable".to_string());
+        let command = ActorCommand::Exchange(ExchangeRequest {
+            request_id,
+            method,
+            serialized,
+            expected_generation,
+            deadline: Instant::now() + timeout,
+            response,
+        });
+        match self.sender.try_send(command) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                self.state.queued.fetch_sub(1, Ordering::Relaxed);
+                return Err("Semantic worker request queue is full".to_string());
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                self.state.queued.fetch_sub(1, Ordering::Relaxed);
+                return Err("Semantic worker request actor is unavailable".to_string());
+            }
         }
         receiver
             .recv_timeout(timeout.saturating_add(RESPONSE_DELIVERY_GRACE))
@@ -152,7 +157,7 @@ fn run_actor(
             supersede_queued_requests(&mut backlog, &state);
             break;
         }
-        compact_completion_requests(&mut backlog, &state);
+        compact_replaceable_requests(&mut backlog, &state);
 
         match backlog.pop_front() {
             Some(ActorCommand::Exchange(request)) => execute(&mut *transport, request, &state),
@@ -172,24 +177,34 @@ fn supersede_queued_requests(backlog: &mut VecDeque<ActorCommand>, state: &Actor
     }
 }
 
-fn compact_completion_requests(backlog: &mut VecDeque<ActorCommand>, state: &ActorState) {
-    let latest_completion = backlog
-        .iter()
-        .enumerate()
-        .filter_map(|(index, command)| match command {
-            ActorCommand::Exchange(request) if request.method == "completion" => Some(index),
-            _ => None,
+fn compact_replaceable_requests(backlog: &mut VecDeque<ActorCommand>, state: &ActorState) {
+    let latest_by_method = ["completion", "gotoDefinition"]
+        .into_iter()
+        .filter_map(|method| {
+            backlog
+                .iter()
+                .enumerate()
+                .filter_map(|(index, command)| match command {
+                    ActorCommand::Exchange(request) if request.method == method => Some(index),
+                    _ => None,
+                })
+                .last()
+                .map(|index| (method, index))
         })
-        .last();
-    let Some(latest_completion) = latest_completion else {
+        .collect::<std::collections::HashMap<_, _>>();
+    if latest_by_method.is_empty() {
         return;
-    };
+    }
 
     let mut retained = VecDeque::with_capacity(backlog.len());
     for (index, command) in backlog.drain(..).enumerate() {
-        if index != latest_completion
-            && matches!(&command, ActorCommand::Exchange(request) if request.method == "completion")
-        {
+        let replaceable = match &command {
+            ActorCommand::Exchange(request) => latest_by_method
+                .get(request.method.as_str())
+                .is_some_and(|latest| *latest != index),
+            ActorCommand::Shutdown => false,
+        };
+        if replaceable {
             if let ActorCommand::Exchange(request) = command {
                 state.queued.fetch_sub(1, Ordering::Relaxed);
                 state.superseded.fetch_add(1, Ordering::Relaxed);
@@ -249,10 +264,15 @@ fn exchange_transport(
 }
 
 fn superseded_response(request: &ExchangeRequest) -> String {
+    let payload = match request.method.as_str() {
+        "completion" => json!([]),
+        "gotoDefinition" => json!({ "definition": null }),
+        _ => json!([]),
+    };
     json!({
         "id": request.request_id,
         "ok": true,
-        "payload": [],
+        "payload": payload,
         "state": request.expected_generation.map(|generation| json!({
             "contentGeneration": generation,
             "syntaxReady": false

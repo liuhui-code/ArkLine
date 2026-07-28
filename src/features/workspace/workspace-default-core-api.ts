@@ -115,6 +115,16 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         await invoke("save_text_document", { path, content });
       }
     },
+    async syncSemanticDocument(request) {
+      if (hasTauriRuntime()) {
+        await invoke("sync_language_document", { request });
+      }
+    },
+    async closeSemanticDocument(request) {
+      if (hasTauriRuntime()) {
+        await invoke("close_language_document", { request });
+      }
+    },
     async runValidation(path, content) {
       if (hasTauriRuntime()) {
         return invoke<ValidationProblem[]>("validate_text_document", { path, content });
@@ -194,13 +204,19 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       }
       return [];
     },
-    async completeSymbol(request, requestGeneration) {
+    async completeSymbol(request, requestGeneration, documentVersion) {
       if (hasTauriRuntime()) {
-        return invoke<LanguageCompletionItem[]>("complete_symbol", { request, requestGeneration });
+        return invoke<LanguageCompletionItem[]>("complete_symbol", { request, requestGeneration, documentVersion });
       }
       if (!isDemoWorkspacePath(request.path)) return [];
 
       return collectFallbackCompletions(await loadMockDocumentContent(request.path));
+    },
+    async signatureHelp(request) {
+      if (hasTauriRuntime()) {
+        return invoke("signature_help", { request });
+      }
+      return null;
     },
     async documentSymbols(request) {
       if (hasTauriRuntime()) {

@@ -9,6 +9,8 @@ import type { UsageResult, UsageSearchState } from "@/features/workspace/usage-s
 import type { EditorAppearance } from "@/types/editor";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 import type { Text } from "@codemirror/state";
+import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 
 export type AppShellEditorWorkbenchProps = {
   queryPanelVisible: boolean;
@@ -30,6 +32,8 @@ export type AppShellEditorWorkbenchProps = {
   onCaretRectChange: (rect: EditorCaretRect) => void;
   onDefinitionTrigger: (selection?: EditorLineColumn) => void;
   onTypingCompletionTrigger: (selection: EditorLineColumn) => void;
+  onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   blameAttributions: GitBlameAttribution[];
   gitBlameVisible: boolean;
   selectedBlameLine: number | null;
@@ -56,6 +60,12 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
   const onCaretRectChange = useLatestCallback(props.onCaretRectChange);
   const onDefinitionTrigger = useLatestCallback(props.onDefinitionTrigger);
   const onTypingCompletionTrigger = useLatestCallback(props.onTypingCompletionTrigger);
+  const onCodeMirrorCompletionRequest = useLatestCallback((request: Parameters<CodeMirrorCompletionBroker>[0]) => (
+    props.onCodeMirrorCompletionRequest?.(request) ?? Promise.resolve([])
+  ));
+  const onCodeMirrorSignatureHelpRequest = useLatestCallback((request: Parameters<CodeMirrorSignatureHelpBroker>[0], signal: AbortSignal) => (
+    props.onCodeMirrorSignatureHelpRequest?.(request, signal) ?? Promise.resolve(null)
+  ));
   const onGitTraceLineClick = useLatestCallback(props.onGitTraceLineClick);
   const onSelectTab = useLatestCallback(props.onSelectTab);
   const onCloseTab = useLatestCallback(props.onCloseTab);
@@ -93,6 +103,8 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onCaretRectChange={onCaretRectChange}
         onDefinitionTrigger={onDefinitionTrigger}
         onTypingCompletionTrigger={onTypingCompletionTrigger}
+        onCodeMirrorCompletionRequest={props.onCodeMirrorCompletionRequest ? onCodeMirrorCompletionRequest : undefined}
+        onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
         blameAttributions={props.blameAttributions}
         gitBlameVisible={props.gitBlameVisible}
         selectedBlameLine={props.selectedBlameLine}

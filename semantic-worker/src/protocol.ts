@@ -4,6 +4,7 @@ export interface SemanticDocumentPosition {
   column: number
   content?: string
   contentGeneration?: number
+  documentVersion?: number
   workspaceRoot?: string
 }
 
@@ -11,11 +12,20 @@ export interface SemanticReplayDocument {
   path: string
   content: string
   contentGeneration: number
+  documentVersion?: number
+}
+
+export interface SemanticDocumentSync {
+  path: string
+  content: string
+  documentVersion: number
+  workspaceRoot?: string
 }
 
 export interface SemanticResponseState {
   path: string
   contentGeneration: number
+  documentVersion?: number
   dependencyGeneration: number
   documentCacheHit: boolean
   queryCacheHit: boolean
@@ -35,13 +45,17 @@ export interface SemanticRuntimeState {
   uptimeMs: number
 }
 
-export const SEMANTIC_PROTOCOL_VERSION = 3
+export const SEMANTIC_PROTOCOL_VERSION = 4
 
 export type SemanticRequestMethod =
   | "health"
   | "restoreDocuments"
+  | "didOpen"
+  | "didChange"
+  | "didClose"
   | "gotoDefinition"
   | "completion"
+  | "signatureHelp"
   | "listCodeActions"
   | "resolveCodeAction"
   | "prepareRename"
@@ -54,6 +68,8 @@ export interface SemanticRequest {
   action?: SemanticCodeActionRequest
   newName?: string
   documents?: SemanticReplayDocument[]
+  document?: SemanticDocumentSync
+  documentPath?: string
 }
 
 export interface SemanticCompletionItem {
@@ -69,6 +85,23 @@ export interface SemanticCompletionItem {
   commitCharacters?: string[]
   definitionTarget?: SemanticDefinitionTarget
   data?: Record<string, unknown>
+}
+
+export interface SemanticSignatureParameter {
+  label: string
+  documentation?: string
+}
+
+export interface SemanticSignature {
+  label: string
+  documentation?: string
+  parameters: SemanticSignatureParameter[]
+}
+
+export interface SemanticSignatureHelp {
+  signatures: SemanticSignature[]
+  activeSignature: number
+  activeParameter: number
 }
 
 export interface SemanticDefinitionTarget {
@@ -156,10 +189,13 @@ export interface SemanticUnsupportedResult {
 
 export type SemanticResponsePayload =
   | { status: "ready"; protocolVersion: number; capabilities: string[] }
+  | { status: "ready"; path: string; documentVersion: number; contentGeneration: number }
+  | { status: "closed"; path: string }
   | { restoredDocumentCount: number }
   | SemanticDefinitionTarget
   | { definition: SemanticDefinitionTarget | null; definitionCandidates?: SemanticDefinitionCandidate[] }
   | SemanticCompletionItem[]
+  | SemanticSignatureHelp
   | SemanticCodeActionList
   | SemanticWorkspaceEditPlan
   | SemanticPrepareRenameResult

@@ -123,6 +123,30 @@ impl SemanticProvider for CompositeSemanticProvider {
         }
     }
 
+    fn completion_with_document_version(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+        document_version: Option<u64>,
+    ) -> Vec<crate::models::language::CompletionItem> {
+        let items = self
+            .semantic
+            .completion_with_document_version(request, document_version);
+        if items.is_empty() {
+            self.fallback.completion(request)
+        } else {
+            items
+        }
+    }
+
+    fn signature_help(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+    ) -> Option<crate::models::language::SignatureHelp> {
+        self.semantic
+            .signature_help(request)
+            .or_else(|| self.fallback.signature_help(request))
+    }
+
     fn document_symbols(
         &self,
         request: &crate::models::language::LanguageQueryRequest,
@@ -154,5 +178,19 @@ impl SemanticProvider for CompositeSemanticProvider {
         request: &crate::models::language::CodeActionResolveRequest,
     ) -> crate::models::language::CodeActionResolution {
         self.semantic.resolve_code_action(request)
+    }
+
+    fn sync_document(
+        &self,
+        request: &crate::models::language::SemanticDocumentSyncRequest,
+    ) -> Result<(), String> {
+        self.semantic.sync_document(request)
+    }
+
+    fn close_document(
+        &self,
+        request: &crate::models::language::SemanticDocumentCloseRequest,
+    ) -> Result<(), String> {
+        self.semantic.close_document(request)
     }
 }

@@ -7,6 +7,7 @@ import type {
   SemanticCompletionItem,
   SemanticDefinitionCandidate,
   SemanticDocumentPosition,
+  SemanticSignatureHelp,
 } from "../protocol.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import type { SemanticTypeEngineState, SemanticTypeStatus } from "./type-engine.js"
@@ -107,6 +108,35 @@ export class TypeScriptLanguageServiceEngine {
       seen.add(key)
       return [{ path: targetPath, line: target.line, column: target.column }]
     })
+  }
+
+  signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return null
+    script.lastAccess = ++this.accessClock
+    const offset = lineColumnToOffset(script.content, position.line, position.column)
+    const info = this.service.getSignatureHelpItems(filePath, offset, {
+      triggerReason: { kind: "invoked" },
+    })
+    if (!info) return null
+
+    return {
+      signatures: info.items.map((item) => {
+        const separator = ts.displayPartsToString(item.separatorDisplayParts)
+        const parameters = item.parameters.map((parameter) => ({
+          label: ts.displayPartsToString(parameter.displayParts),
+          documentation: optionalDisplayParts(parameter.documentation),
+        }))
+        return {
+          label: `${ts.displayPartsToString(item.prefixDisplayParts)}${parameters.map((parameter) => parameter.label).join(separator)}${ts.displayPartsToString(item.suffixDisplayParts)}`,
+          documentation: optionalDisplayParts(item.documentation),
+          parameters,
+        }
+      }),
+      activeSignature: info.selectedItemIndex,
+      activeParameter: info.argumentIndex,
+    }
   }
 
   dispose(): void {
@@ -216,6 +246,11 @@ function completionKind(kind: ts.ScriptElementKind): string {
 function typeDetail(entry: ts.CompletionEntry): string {
   const modifiers = entry.kindModifiers ? ` ${entry.kindModifiers}` : ""
   return `TypeScript ${entry.kind}${modifiers}`
+}
+
+function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {
+  const value = ts.displayPartsToString(parts)
+  return value || undefined
 }
 
 function safeRead(filePath: string): string | null {

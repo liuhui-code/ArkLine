@@ -83,7 +83,7 @@ export function runSearchTextQuery({
     minimumQueryLength,
     options,
     dirty,
-    indexedAvailable: mode === "searchEverywhere" && Boolean(indexedText),
+    indexedAvailable: Boolean(indexedText),
   });
   if (plan.kind === "clear") {
     clearSearchResults(plan.query);

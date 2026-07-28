@@ -22,6 +22,10 @@ export function createNavigationTransactionRuntime(now: () => number = Date.now)
     finish(id: number) {
       if (current?.id === id) current = null;
     },
+    cancel() {
+      nextId += 1;
+      current = null;
+    },
     getCurrent() {
       return current;
     },

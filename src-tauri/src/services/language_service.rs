@@ -1,7 +1,8 @@
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest, SignatureHelp,
+    UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use crate::services::semantic::router::SemanticRouter;
@@ -81,6 +82,22 @@ impl LanguageRuntime {
         }
         state.router.clone()
     }
+
+    pub fn sync_document(
+        &self,
+        settings: &AppSettings,
+        request: &SemanticDocumentSyncRequest,
+    ) -> Result<(), String> {
+        self.with_router(settings, |router| router.active().sync_document(request))
+    }
+
+    pub fn close_document(
+        &self,
+        settings: &AppSettings,
+        request: &SemanticDocumentCloseRequest,
+    ) -> Result<(), String> {
+        self.with_router(settings, |router| router.active().close_document(request))
+    }
 }
 
 pub fn goto_definition_candidates(
@@ -96,6 +113,14 @@ pub fn goto_definition_candidates(
             .map(hydrate_definition_candidate_preview)
             .collect()
     })
+}
+
+pub fn signature_help(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+) -> Option<SignatureHelp> {
+    runtime.with_router(settings, |router| router.active().signature_help(request))
 }
 
 fn hydrate_definition_candidate_preview(mut candidate: DefinitionCandidate) -> DefinitionCandidate {
@@ -122,6 +147,19 @@ pub fn complete_symbol(
     request: &LanguageQueryRequest,
 ) -> Vec<CompletionItem> {
     runtime.with_router(settings, |router| router.active().completion(request))
+}
+
+pub fn complete_symbol_with_document_version(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+    document_version: Option<u64>,
+) -> Vec<CompletionItem> {
+    runtime.with_router(settings, |router| {
+        router
+            .active()
+            .completion_with_document_version(request, document_version)
+    })
 }
 
 pub fn list_document_symbols(

@@ -294,6 +294,27 @@ Notes:
 - `pnpm package:windows:portable` cross-compiles a Windows `.exe` and requires the Rust target `x86_64-pc-windows-msvc`.
 - The first packaged end-user experience should still be treated as Windows-first.
 
+### Quality gates
+
+Run the staged local gate before opening a pull request:
+
+```bash
+pnpm check:fast
+```
+
+It writes `artifacts/quality-gate-fast.json` and stops at the first failed
+stage. The full release-candidate gate is:
+
+```bash
+pnpm check
+```
+
+GitHub protects `main` with `Quality Gate / Fast` and `Windows / Package`.
+The Windows package job starts only after the fast gate passes. Release tags
+use the full gate before uploading a Windows asset. The manual packaged soak
+remains a separate, serialized performance evidence workflow; see
+[the gate architecture](docs/quality-gate-architecture.md).
+
 ## First-use flow
 
 1. Open a project from `File -> Open Project...`

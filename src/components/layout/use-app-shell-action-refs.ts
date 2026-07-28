@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import type { RestoreFileResult } from "@/components/layout/use-editor-surface-controller";
 import type { AppSettings } from "@/features/settings/settings-store";
 
 type AppShellActionRefs = {
@@ -18,7 +19,10 @@ type AppShellActionRefs = {
     current: { refreshGitBlame: () => void };
   };
   editorActionsRef: {
-    current: { openFile: (path: string) => Promise<void> };
+    current: {
+      openFile: (path: string) => Promise<RestoreFileResult | void>;
+      cancelPendingOpen: () => void;
+    };
   };
   workspaceOpeningActionsRef: {
     current: { openWorkspace: (rootPath: string) => Promise<void> };
@@ -51,7 +55,10 @@ export function useAppShellActionRefs() {
       current: { refreshGitBlame: () => undefined },
     },
     editorActionsRef: {
-      current: { openFile: async (_path: string) => undefined },
+      current: {
+        openFile: async (_path: string) => undefined,
+        cancelPendingOpen: () => undefined,
+      },
     },
     workspaceOpeningActionsRef: {
       current: { openWorkspace: async (_rootPath: string) => undefined },

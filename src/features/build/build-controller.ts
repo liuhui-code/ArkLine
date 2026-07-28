@@ -3,7 +3,7 @@ import { extractBuildArtifacts } from "@/features/build/build-artifacts";
 import { parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import { createBuildToolchainEnvironment } from "@/features/build/build-toolchain-environment";
-import type { BuildPlan, BuildResult, BuildState, HarmonyBuildProject } from "@/features/build/build-model";
+import type { BuildEnvironmentResolution, BuildPlan, BuildResult, BuildState, HarmonyBuildProject } from "@/features/build/build-model";
 import { createBuildResultFromTerminalRun } from "@/features/build/build-run-model";
 import type { AppSettings } from "@/features/settings/settings-store";
 import type { TerminalRunRequest, TerminalRunResult } from "@/features/workspace/workspace-api";
@@ -37,16 +37,27 @@ export async function executeHarmonyBuildPlan(input: {
   plan: BuildPlan;
   runTerminalCommand: TerminalBuildRunner;
   settings?: AppSettings["sdk"] | null;
+  toolchain?: BuildEnvironmentResolution | null;
   diagnosticMatchers?: BuildDiagnosticMatcher[];
 }): Promise<BuildResult> {
-  const toolchain = createBuildToolchainEnvironment(input.settings);
-  const terminalResult = await input.runTerminalCommand({
-    runId: input.runId,
-    command: input.plan.command,
-    cwd: input.plan.cwd,
-    source: "preset",
-    ...toolchain,
-  });
+  const toolchain = input.toolchain ?? createBuildToolchainEnvironment(input.settings);
+  const runs: TerminalRunResult[] = [];
+  for (const step of input.plan.steps) {
+    const terminalResult = await input.runTerminalCommand({
+      runId: input.runId,
+      command: step.command,
+      program: step.program,
+      args: step.args,
+      cwd: input.plan.cwd,
+      source: "preset",
+      ...toolchain,
+    });
+    runs.push(terminalResult);
+    if (terminalResult.exitCode !== 0 || terminalResult.stopped) {
+      break;
+    }
+  }
+  const terminalResult = combineTerminalRuns(input.runId, input.plan.command, runs);
   const output = [terminalResult.stdout, terminalResult.stderr].filter(Boolean).join("\n");
   const problems = parseBuildDiagnostics(output, input.diagnosticMatchers);
   const artifacts = extractBuildArtifacts(output);
@@ -61,4 +72,17 @@ export async function executeHarmonyBuildPlan(input: {
       settings: input.settings,
     }),
   });
+}
+
+function combineTerminalRuns(runId: string, command: string, runs: TerminalRunResult[]): TerminalRunResult {
+  const last = runs[runs.length - 1];
+  return {
+    runId,
+    command,
+    stdout: runs.map((run) => run.stdout).filter(Boolean).join("\n"),
+    stderr: runs.map((run) => run.stderr).filter(Boolean).join("\n"),
+    exitCode: last?.exitCode ?? null,
+    durationMs: runs.reduce((total, run) => total + run.durationMs, 0),
+    stopped: runs.some((run) => run.stopped),
+  };
 }

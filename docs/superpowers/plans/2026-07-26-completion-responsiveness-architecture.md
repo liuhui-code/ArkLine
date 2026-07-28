@@ -54,27 +54,37 @@ files are parsed once per SDK root; cache invalidation occurs when document cont
 ## Phase 5: Versioned Document Synchronization
 
 - [x] Replace invalid leading large-file slices with cursor-aware content windows.
-- [ ] Add protocol v4 `didOpen`, `didChange`, `didClose`, and `documentVersion`.
-- [ ] Coalesce editor changes for 16-30 ms before synchronization.
-- [ ] Make completion payload URI/version/position-only after the worker acknowledges the version.
-- [ ] Replay bounded hot documents after worker restart.
-- [ ] Test CRLF, Unicode positions, cursor after 80,000 characters, and unsaved imports.
+- [x] Add protocol v4 `didOpen`, `didChange`, `didClose`, and `documentVersion`.
+- [x] Coalesce editor changes for 16-30 ms before synchronization.
+- [x] Make completion payload URI/version/position-only after the worker acknowledges the version.
+- [x] Replay bounded hot documents after worker restart.
+- [x] Test CRLF, Unicode positions, cursor after 80,000 characters, and unsaved imports.
 
 Acceptance: the worker never answers a position against unrelated or stale content; ordinary typing
 does not serialize a full document through Tauri.
 
 ## Phase 6: CodeMirror Completion Engine
 
-- [ ] Add `@codemirror/autocomplete` as a direct dependency.
-- [ ] Implement one immediate source and one asynchronous broker source.
-- [ ] Use `validFor` to locally filter reusable result sets.
-- [ ] Preserve stable selection when asynchronous candidates refresh.
-- [ ] Implement snippet tab stops, commit characters, lazy resolve, and signature help.
-- [ ] Apply completion and auto-import edits in one version-checked transaction.
+- [x] Add `@codemirror/autocomplete` as a direct dependency.
+- [x] Implement one immediate source and one asynchronous broker source.
+- [x] Use `validFor` to locally filter reusable result sets.
+- [x] Preserve stable selection when asynchronous candidates refresh by reusing bounded candidate identities.
+- [x] Implement native snippet tab stops and preserve commit characters in the adapter.
+- [x] Add optional lazy resolve for completion documentation, deduplicated per candidate.
+- [x] Add optional signature-help context parsing, cancellable broker requests, and version-checked tooltip state.
+- [x] Connect TypeScript Language Service signature help to the semantic worker protocol.
+- [ ] Connect ArkTS/SDK signature providers and apply validated import edits in one transaction.
+- [x] Add a version-checked transaction builder for the primary completion and validated same-file import edits.
+- [ ] Connect the transaction builder to the resolved import edit and multi-file workspace edit coordinator.
 - [ ] Retire custom global key interception and popup state after parity tests.
 
 Acceptance: CodeMirror owns focus, keyboard navigation, scrolling, ARIA, and editor transactions;
 backend failures cannot trap focus or prevent Escape/delete.
+
+Implementation note: the first rollout slice delivers the CodeMirror source and broker as an
+optional editor injection. The main AppShell remains on the compatibility popup until parity tests
+cover snippets, commit characters, import edits, keyboard ownership, and accessibility behavior;
+this prevents two completion state machines from being active during the transition.
 
 ## Phase 7: Semantic Authority And Quality
 

@@ -77,7 +77,15 @@ describe("Shell hotkeys", () => {
     await user.keyboard("{Control>}{F7}{/Control}");
 
     expect(await screen.findByLabelText("Editor Query Panel")).toBeVisible();
+    expect(await screen.findByRole("dialog", { name: "Find Usages" })).toBeVisible();
     expect(screen.queryByRole("tab", { name: "Usages" })).not.toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Find Usages" })).not.toBeInTheDocument();
+
+    await user.keyboard("{Control>}{F7}{/Control}");
+    await user.click(screen.getByLabelText("Find Usages Overlay"));
+    expect(screen.queryByRole("dialog", { name: "Find Usages" })).not.toBeInTheDocument();
   });
 
   it("opens Find in Files with Ctrl+Shift+F", async () => {
