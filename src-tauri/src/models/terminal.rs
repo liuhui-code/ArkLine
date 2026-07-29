@@ -4,6 +4,28 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct CreateTerminalSessionRequest {
     pub cwd: Option<String>,
+    #[serde(default)]
+    pub terminal: Option<TerminalProfileRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalProfileRequest {
+    pub profile: String,
+    #[serde(default)]
+    pub custom_executable_path: String,
+    #[serde(default)]
+    pub custom_args: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalProfileResolution {
+    pub profile: String,
+    pub available: bool,
+    pub executable: Option<String>,
+    pub args: Vec<String>,
+    pub detail: String,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

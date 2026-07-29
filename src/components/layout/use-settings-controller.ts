@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, type MutableRefObject } from "react";
 import { useHydratedSettings } from "@/components/layout/use-hydrated-settings";
-import { createSettingsStore, type AppSettings } from "@/features/settings/settings-store";
+import { createSettingsStore, defaultSettings, type AppSettings } from "@/features/settings/settings-store";
 import type { EnvironmentReport, WorkspaceApi } from "@/features/workspace/workspace-api";
 
 type SettingsStore = ReturnType<typeof createSettingsStore>;
@@ -29,6 +29,7 @@ export function useSettingsController({
   const [settingsApplyState, setSettingsApplyState] = useState<"idle" | "applying" | "applied" | "failed">("idle");
   const [environmentReport, setEnvironmentReport] = useState<EnvironmentReport | null>(null);
   const [editorAppearance, setEditorAppearance] = useState(createSettingsStore().state.settings.editor);
+  const [terminalSettings, setTerminalSettings] = useState(defaultSettings().terminal);
   const settingsSaveResetTimerRef = useRef<number | null>(null);
 
   function clearSettingsSaveResetTimer() {
@@ -71,6 +72,10 @@ export function useSettingsController({
     clearSettingsSaveResetTimer();
     onBeforeApply();
     try {
+      const terminal = await workspaceApi.resolveTerminalProfile?.(nextSettings.terminal);
+      if (terminal && !terminal.available) {
+        throw new Error(terminal.detail);
+      }
       await workspaceApi.saveSettings(nextSettings);
     } catch (error) {
       setSettingsApplyState("failed");
@@ -81,6 +86,7 @@ export function useSettingsController({
 
     settingsRef.current.replace(nextSettings);
     setEditorAppearance({ ...nextSettings.editor });
+    setTerminalSettings({ ...nextSettings.terminal });
     onSettingsApplied(nextSettings);
 
     try {
@@ -105,6 +111,7 @@ export function useSettingsController({
 
   const handleHydratedSettings = useCallback((settings: AppSettings) => {
     setEditorAppearance({ ...settings.editor });
+    setTerminalSettings({ ...settings.terminal });
     onSettingsApplied(settings);
   }, [onSettingsApplied]);
 
@@ -117,6 +124,7 @@ export function useSettingsController({
     settingsApplying: settingsApplyState === "applying",
     environmentReport,
     editorAppearance,
+    terminalSettings,
     clearSettingsSaveResetTimer,
     refreshEnvironmentReport,
     openSettings,

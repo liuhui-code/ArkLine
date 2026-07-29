@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject
 import { TerminalToolWindow } from "@/components/layout/TerminalToolWindow";
 import { createTerminalOutputController, type TerminalViewportHandle } from "@/features/terminal/terminal-output-controller";
 import type { TerminalSessionSummary } from "@/features/terminal/terminal-types";
+import { defaultSettings, type TerminalSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi, TerminalSessionSummary as WorkspaceTerminalSessionSummary } from "@/features/workspace/workspace-api";
 
 type TerminalToolWindowHostProps = {
@@ -11,6 +12,7 @@ type TerminalToolWindowHostProps = {
   onStatusChange: (status: string) => void;
   workspaceApi: WorkspaceApi;
   workspaceRootPath: string | null;
+  terminalSettings?: TerminalSettings;
 };
 
 export const TerminalToolWindowHost = memo(function TerminalToolWindowHost({
@@ -19,6 +21,7 @@ export const TerminalToolWindowHost = memo(function TerminalToolWindowHost({
   onStatusChange,
   workspaceApi,
   workspaceRootPath,
+  terminalSettings = defaultSettings().terminal,
 }: TerminalToolWindowHostProps) {
   const [sessions, setSessions] = useState<TerminalSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -86,11 +89,11 @@ export const TerminalToolWindowHost = memo(function TerminalToolWindowHost({
   }, []);
 
   const createSession = useCallback(async () => {
-    const session: WorkspaceTerminalSessionSummary = await workspaceApi.createTerminalSession({ cwd: workspaceRootPath });
+    const session: WorkspaceTerminalSessionSummary = await workspaceApi.createTerminalSession({ cwd: workspaceRootPath, terminal: terminalSettings });
     setSessions((items) => [...items.filter((item) => item.id !== session.id), session]);
     setActiveSessionId(session.id);
     setFocusToken((token) => token + 1);
-  }, [workspaceApi, workspaceRootPath]);
+  }, [terminalSettings, workspaceApi, workspaceRootPath]);
 
   const ensureSession = useCallback(async () => {
     if (activeSessionId) {

@@ -15,6 +15,7 @@ import type { BuildState, BuildTarget } from "@/features/build/build-model";
 import type { DiffFile } from "@/features/diff/unified-diff";
 import type { GitTraceState } from "@/features/git/git-trace-model";
 import type { ProblemItem } from "@/features/problems/problems-store";
+import type { TerminalSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
@@ -33,6 +34,7 @@ type AppShellToolWindowsProps = {
   problems: ProblemItem[];
   workspaceApi: WorkspaceApi;
   workspaceRootPath: string | null;
+  terminalSettings: TerminalSettings;
   buildState: BuildState;
   buildModules: string[];
   onChangeBuildTarget: (lastTarget: BuildTarget) => void;
@@ -73,6 +75,7 @@ export function AppShellToolWindows({
   problems,
   workspaceApi,
   workspaceRootPath,
+  terminalSettings,
   buildState,
   buildModules,
   onChangeBuildTarget,
@@ -113,7 +116,7 @@ export function AppShellToolWindows({
         onRestore={() => showBottomTool(activeBottomTool)}
         onClose={hideBottomToolWindow}
         problemsPanel={<ProblemsPanel problems={problems} />}
-        terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={onStatusChange} workspaceApi={workspaceApi} workspaceRootPath={workspaceRootPath} />}
+        terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={onStatusChange} terminalSettings={terminalSettings} workspaceApi={workspaceApi} workspaceRootPath={workspaceRootPath} />}
         buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspaceRootPath} modules={buildModules} onChangeTarget={onChangeBuildTarget} onChangeModuleName={onChangeBuildModuleName} onChangeProduct={onChangeBuildProduct} onChangeBuildMode={onChangeBuildMode} onChangeFastMode={onChangeBuildFastMode} onSelectConfiguration={onSelectBuildConfiguration} onSaveConfiguration={onSaveBuildConfiguration} onCopyConfiguration={onCopyBuildConfiguration} onDeleteConfiguration={onDeleteBuildConfiguration} onRunBuild={onRunBuild} onRunCleanBuild={onRunCleanBuild} onStopBuild={onStopBuild} />}
         gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={onFocusEditorFromGitTrace} onOpenCommitDiff={onOpenGitTraceCommitDiff} />} onChangeView={onChangeGitToolView} onOpenFile={onOpenGitFile} />}
         deviceLogPanel={<DeviceLogToolWindow active={bottomContentVisible && activeBottomTool === "deviceLog"} workspaceApi={workspaceApi} onStatusChange={onStatusChange} />}

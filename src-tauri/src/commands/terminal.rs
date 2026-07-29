@@ -1,13 +1,15 @@
 use tauri::{AppHandle, State};
 
 use crate::models::terminal::{
-    CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalResizeRequest,
-    TerminalRunRequest, TerminalRunResult, TerminalSessionSummary,
+    CreateTerminalSessionRequest, TerminalInputWriteRequest, TerminalProfileRequest,
+    TerminalProfileResolution, TerminalResizeRequest, TerminalRunRequest, TerminalRunResult,
+    TerminalSessionSummary,
 };
 use crate::services::terminal_service::{
     close_session, create_session, list_sessions, resize_active_session, run_command,
     start_output_forwarder, stop_active_session, stop_command, write_input, TerminalRuntime,
 };
+use crate::services::terminal_session_service::resolve_terminal_profile;
 
 #[tauri::command]
 pub fn create_terminal_session(
@@ -18,6 +20,13 @@ pub fn create_terminal_session(
     let session = create_session(runtime.inner(), request)?;
     start_output_forwarder(app, runtime.inner(), &session.id)?;
     Ok(session)
+}
+
+#[tauri::command]
+pub fn resolve_terminal_profile_command(
+    settings: TerminalProfileRequest,
+) -> Result<TerminalProfileResolution, String> {
+    Ok(resolve_terminal_profile(Some(&settings)))
 }
 
 #[tauri::command]

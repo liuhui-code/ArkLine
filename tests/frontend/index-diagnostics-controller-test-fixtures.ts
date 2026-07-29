@@ -195,6 +195,11 @@ export function settings(harmonySdkPath: string): AppSettings {
       formatCommand: "arkfmt",
       timeoutMs: 5000,
     },
+    terminal: {
+      profile: "system",
+      customExecutablePath: "",
+      customArgs: "",
+    },
     editor: {
       fontSize: 13,
       fontFamily: "Menlo",

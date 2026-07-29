@@ -43,6 +43,7 @@ export function useHydratedSettings({
         current.validation.lintCommand === settings.validation.lintCommand &&
         current.validation.formatCommand === settings.validation.formatCommand &&
         current.validation.timeoutMs === settings.validation.timeoutMs &&
+        JSON.stringify(current.terminal) === JSON.stringify(settings.terminal) &&
         current.recentProjects.join("|") === settings.recentProjects.join("|") &&
         JSON.stringify(current.workspaceSessions) === JSON.stringify(settings.workspaceSessions);
 

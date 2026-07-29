@@ -149,6 +149,7 @@ pub fn run() {
             commands::git_trace::get_file_blame,
             commands::git_trace::get_commit_trace,
             commands::terminal::create_terminal_session,
+            commands::terminal::resolve_terminal_profile_command,
             commands::terminal::list_terminal_sessions,
             commands::terminal::write_terminal_input,
             commands::terminal::resize_terminal_session,

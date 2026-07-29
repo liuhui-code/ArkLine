@@ -6,6 +6,7 @@ import { SettingsKeymapPanel } from "@/components/settings/settings-sections/Set
 import { SettingsSdkPanel } from "@/components/settings/settings-sections/SettingsSdkPanel";
 import { SettingsSidebar, type SettingsSectionKey } from "@/components/settings/settings-sections/SettingsSidebar";
 import { SettingsValidationPanel } from "@/components/settings/settings-sections/SettingsValidationPanel";
+import { SettingsTerminalPanel } from "@/components/settings/settings-sections/SettingsTerminalPanel";
 
 type SettingsDialogProps = {
   environmentReport: EnvironmentReport | null;
@@ -23,6 +24,7 @@ function mergeDraftSettings(current: AppSettings, update: AppSettingsPatch): App
     editor: { ...current.editor, ...update.editor },
     sdk: { ...current.sdk, ...update.sdk },
     validation: { ...current.validation, ...update.validation },
+    terminal: { ...current.terminal, ...update.terminal },
     recentProjects: update.recentProjects ?? current.recentProjects,
     workspaceSessions: update.workspaceSessions ?? current.workspaceSessions,
   };
@@ -164,6 +166,9 @@ export function SettingsDialog({
                 settings={draftSettings}
                 onChange={updateDraft}
               />
+            ) : null}
+            {activeSection === "terminal" ? (
+              <SettingsTerminalPanel settings={draftSettings} onChange={updateDraft} />
             ) : null}
             {activeSection === "keymap" ? <SettingsKeymapPanel /> : null}
           </div>

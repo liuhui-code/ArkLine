@@ -8,7 +8,17 @@ import type {
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
 import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import type { WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
-import type { AppSettings } from "@/features/settings/settings-store";
+import type { AppSettings, TerminalSettings } from "@/features/settings/settings-store";
+import type {
+  CreateTerminalSessionRequest,
+  TerminalInputWriteRequest,
+  TerminalProfileResolution,
+  TerminalResizeRequest,
+  TerminalRunRequest,
+  TerminalRunResult,
+  TerminalSessionSummary,
+} from "@/features/workspace/workspace-terminal-api-types";
+export type * from "@/features/workspace/workspace-terminal-api-types";
 import type {
   DeviceLogDevice,
   DeviceLogQueryRequest,
@@ -161,50 +171,6 @@ export type EnvironmentTool = {
 
 export type EnvironmentReport = {
   tools: EnvironmentTool[];
-};
-
-export type TerminalRunRequest = {
-  runId: string;
-  command: string;
-  cwd: string | null;
-  source: "preset" | "manual";
-  program?: string; args?: string[];
-  pathEntries?: string[];
-  environment?: Record<string, string>;
-};
-
-export type TerminalRunResult = {
-  runId: string;
-  command: string;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-  durationMs: number;
-  stopped: boolean;
-};
-export type TerminalSessionStatus = "starting" | "idle" | "running" | "closed" | "error";
-
-export type TerminalSessionSummary = {
-  id: string;
-  title: string;
-  cwd: string;
-  shell: string;
-  status: TerminalSessionStatus;
-};
-
-export type CreateTerminalSessionRequest = {
-  cwd: string | null;
-};
-
-export type TerminalInputWriteRequest = {
-  sessionId: string;
-  data: string;
-};
-
-export type TerminalResizeRequest = {
-  sessionId: string;
-  cols: number;
-  rows: number;
 };
 
 export type LanguageQueryRequest = {
@@ -471,6 +437,7 @@ export type WorkspaceApi = {
   getCommitTrace?(path: string, commit: string, line: number): Promise<GitCommitTrace | GitTraceUnavailable>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
+  resolveTerminalProfile?(settings: TerminalSettings): Promise<TerminalProfileResolution>;
   loadBuildConfigurations?(rootPath: string): Promise<BuildConfiguration[]>;
   saveBuildConfigurations?(rootPath: string, configurations: BuildConfiguration[]): Promise<void>;
   inspectHarmonyBuildProject?(rootPath: string): Promise<HarmonyBuildProject>;

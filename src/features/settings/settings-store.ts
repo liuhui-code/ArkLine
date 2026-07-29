@@ -17,14 +17,24 @@ export type AppSettings = {
     formatCommand: string;
     timeoutMs: number;
   };
+  terminal: TerminalSettings;
   recentProjects: string[];
   workspaceSessions: Record<string, { activeFilePath?: string }>;
+};
+
+export type TerminalProfile = "system" | "gitBash" | "powerShell" | "commandPrompt" | "custom";
+
+export type TerminalSettings = {
+  profile: TerminalProfile;
+  customExecutablePath: string;
+  customArgs: string;
 };
 
 export type AppSettingsPatch = {
   editor?: Partial<AppSettings["editor"]>;
   sdk?: Partial<AppSettings["sdk"]>;
   validation?: Partial<AppSettings["validation"]>;
+  terminal?: Partial<AppSettings["terminal"]>;
   recentProjects?: string[];
   workspaceSessions?: AppSettings["workspaceSessions"];
 };
@@ -49,6 +59,11 @@ export function defaultSettings(): AppSettings {
       formatCommand: "arkfmt",
       timeoutMs: 5000,
     },
+    terminal: {
+      profile: "system",
+      customExecutablePath: "",
+      customArgs: "",
+    },
     recentProjects: [],
     workspaceSessions: {},
   };
@@ -67,6 +82,10 @@ function mergeSettings(current: AppSettings, update: AppSettingsPatch): AppSetti
     validation: {
       ...current.validation,
       ...update.validation,
+    },
+    terminal: {
+      ...current.terminal,
+      ...update.terminal,
     },
     recentProjects: update.recentProjects ?? current.recentProjects,
     workspaceSessions: update.workspaceSessions ?? current.workspaceSessions,

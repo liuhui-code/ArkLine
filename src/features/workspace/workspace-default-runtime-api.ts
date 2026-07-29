@@ -17,6 +17,7 @@ import type {
   DeviceLogStorageClearResult,
   DeviceLogStorageHealth,
   DeviceLogStreamSummary,
+  TerminalProfileResolution,
   TerminalRunResult,
   TerminalSessionSummary,
   WorkspaceApi,
@@ -33,6 +34,18 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
       if (hasTauriRuntime()) {
         await invoke("save_settings", { settings });
       }
+    },
+    async resolveTerminalProfile(settings) {
+      if (hasTauriRuntime()) {
+        return invoke<TerminalProfileResolution>("resolve_terminal_profile_command", { settings });
+      }
+      return {
+        profile: settings.profile,
+        available: settings.profile !== "custom" || settings.customExecutablePath.trim().length > 0,
+        executable: settings.profile === "custom" ? settings.customExecutablePath.trim() || null : settings.profile,
+        args: [],
+        detail: "Terminal profile validation is unavailable in the browser preview",
+      };
     },
     async loadBuildConfigurations(rootPath) {
       if (hasTauriRuntime()) {
@@ -81,14 +94,14 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
     },
     async createTerminalSession(request) {
       if (hasTauriRuntime()) {
-        return invoke<TerminalSessionSummary>("create_terminal_session", { request });
+      return invoke<TerminalSessionSummary>("create_terminal_session", { request });
       }
 
       return {
         id: "session-1",
-        title: "pwsh",
+        title: request.terminal?.profile ?? "system",
         cwd: normalizePath(request.cwd ?? demoWorkspace.rootPath),
-        shell: "pwsh",
+        shell: request.terminal?.profile ?? "system",
         status: "idle",
       };
     },

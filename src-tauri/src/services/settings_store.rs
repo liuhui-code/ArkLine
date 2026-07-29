@@ -37,6 +37,17 @@ pub struct ValidationSettings {
     pub timeout_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSettings {
+    #[serde(default = "default_terminal_profile")]
+    pub profile: String,
+    #[serde(default)]
+    pub custom_executable_path: String,
+    #[serde(default)]
+    pub custom_args: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSessionSettings {
@@ -51,6 +62,8 @@ pub struct AppSettings {
     #[serde(default = "default_sdk_settings")]
     pub sdk: SdkSettings,
     pub validation: ValidationSettings,
+    #[serde(default = "default_terminal_settings")]
+    pub terminal: TerminalSettings,
     #[serde(default)]
     pub recent_projects: Vec<String>,
     #[serde(default)]
@@ -59,6 +72,18 @@ pub struct AppSettings {
 
 fn default_auto_detect() -> bool {
     true
+}
+
+fn default_terminal_profile() -> String {
+    "system".to_string()
+}
+
+fn default_terminal_settings() -> TerminalSettings {
+    TerminalSettings {
+        profile: default_terminal_profile(),
+        custom_executable_path: String::new(),
+        custom_args: String::new(),
+    }
 }
 
 fn default_sdk_settings() -> SdkSettings {
@@ -85,6 +110,7 @@ pub fn default_settings() -> AppSettings {
             format_command: "arkfmt".to_string(),
             timeout_ms: 5_000,
         },
+        terminal: default_terminal_settings(),
         recent_projects: Vec::new(),
         workspace_sessions: HashMap::new(),
     }

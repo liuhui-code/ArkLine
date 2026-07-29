@@ -72,7 +72,8 @@ pub fn create_session(
 ) -> Result<TerminalSessionSummary, String> {
     let session_number = runtime.next_id.fetch_add(1, Ordering::SeqCst) + 1;
     let session_id = format!("session-{session_number}");
-    let (master, writer, child, shell, cwd) = spawn_terminal_session(request.cwd.as_deref())?;
+    let (master, writer, child, shell, cwd) =
+        spawn_terminal_session(request.cwd.as_deref(), request.terminal.as_ref())?;
     let title = shell.clone();
     let handle = Arc::new(TerminalSessionHandle::new(
         title.clone(),
@@ -359,7 +360,14 @@ mod tests {
     #[test]
     fn creates_lists_and_closes_terminal_sessions() {
         let runtime = TerminalRuntime::default();
-        let session = create_session(&runtime, CreateTerminalSessionRequest { cwd: None }).unwrap();
+        let session = create_session(
+            &runtime,
+            CreateTerminalSessionRequest {
+                cwd: None,
+                terminal: None,
+            },
+        )
+        .unwrap();
 
         assert_eq!(list_sessions(&runtime).len(), 1);
         assert_eq!(session.status, "idle");
