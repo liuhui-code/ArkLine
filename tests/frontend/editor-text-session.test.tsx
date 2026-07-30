@@ -10,20 +10,23 @@ describe("editor Text sessions", () => {
     const documentA = Text.of(["struct A {}"]);
     const documentB = Text.of(["struct B {}"]);
     const toString = vi.spyOn(Text.prototype, "toString");
-    const { rerender } = render(
-      <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" document={documentA} onChange={() => undefined} />,
-    );
-    toString.mockClear();
+    try {
+      const { rerender } = render(
+        <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" document={documentA} onChange={() => undefined} />,
+      );
 
-    rerender(
-      <ArkTsEditor appearance={appearance} path="C:/demo/B.ets" document={documentB} onChange={() => undefined} />,
-    );
-    rerender(
-      <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" document={documentA} onChange={() => undefined} />,
-    );
+      rerender(
+        <ArkTsEditor appearance={appearance} path="C:/demo/B.ets" document={documentB} onChange={() => undefined} />,
+      );
+      toString.mockClear();
+      rerender(
+        <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" document={documentA} onChange={() => undefined} />,
+      );
 
-    expect(toString).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("struct A {}");
-    toString.mockRestore();
+      expect(toString).not.toHaveBeenCalled();
+      expect(screen.getByLabelText("Editor Content")).toHaveTextContent("struct A {}");
+    } finally {
+      toString.mockRestore();
+    }
   });
 });

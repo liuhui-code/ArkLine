@@ -298,7 +298,19 @@ describe("App shell", () => {
   });
 
   it("shows fallback semantic mode in the status bar", async () => {
-    render(<AppShell />);
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      inspectLanguageService: async () => ({
+        provider: "mock-fallback",
+        mode: "fallback",
+        running: true,
+        hover: true,
+        definition: true,
+        completion: true,
+        documentSymbols: true,
+        findUsages: true,
+        detail: "ready",
+      }),
+    })} />);
 
     expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
   });
@@ -535,7 +547,7 @@ describe("App shell", () => {
 
     await user.click(within(header).getByRole("button", { name: "View" }));
     await user.click(await screen.findByRole("menuitem", { name: "Terminal" }));
-    expect(await screen.findByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(within(screen.getByLabelText("Bottom Tool Window Tabs")).getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("opens a second project in a new window when the current window is already occupied", async () => {

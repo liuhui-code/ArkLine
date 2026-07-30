@@ -59,7 +59,7 @@ fixture size, and command flags when comparing runs.
 - `pnpm test:frontend:gate` is the repository-wide frontend gate. It streams
   verbose per-test progress, emits a heartbeat every 30 seconds, writes
   `artifacts/frontend-gate.json`, and terminates the runner after the documented
-  hard timeout instead of leaving CI silent.
+  15-minute hard timeout instead of leaving CI silent.
 - If a real workspace behaves worse than the synthetic fixture, prioritize the real
   workspace result.
 - Diagnostics must show IPC commands over 100 ms and UI long tasks over 100 ms.

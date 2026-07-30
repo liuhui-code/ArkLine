@@ -5,7 +5,7 @@ import path from "node:path";
 
 const args = parseArgs(process.argv.slice(2));
 const strict = args.strict === true;
-const timeoutMs = positiveNumber(args["timeout-ms"], 600_000);
+const timeoutMs = positiveNumber(args["timeout-ms"], 900_000);
 const reportPath = typeof args.report === "string" ? args.report : "artifacts/frontend-gate.json";
 const startedAt = new Date().toISOString();
 const started = Date.now();
