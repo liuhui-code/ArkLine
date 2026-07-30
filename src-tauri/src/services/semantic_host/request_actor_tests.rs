@@ -15,6 +15,27 @@ struct SlowTransport {
     first_release: Receiver<()>,
 }
 
+struct SlowTerminateTransport;
+
+impl SemanticWorkerTransport for SlowTerminateTransport {
+    fn process_id(&self) -> u32 {
+        78
+    }
+
+    fn write_line(&mut self, _line: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn recv_line(&mut self, timeout: Duration) -> Result<String, String> {
+        thread::sleep(timeout);
+        Err("Timed out waiting for semantic worker response".to_string())
+    }
+
+    fn terminate(&mut self) {
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
 impl SemanticWorkerTransport for SlowTransport {
     fn process_id(&self) -> u32 {
         77
@@ -155,6 +176,23 @@ fn actor_rejects_non_replaceable_requests_after_queue_capacity() {
         .as_deref()
         .err()
         .is_some_and(|error| { error.contains("request queue is full") })));
+}
+
+#[test]
+fn actor_reports_transport_timeout_before_slow_process_cleanup() {
+    let actor = SemanticRequestActor::start(Box::new(SlowTerminateTransport));
+
+    let error = actor
+        .exchange(
+            "health-1".to_string(),
+            "health".to_string(),
+            serde_json::json!({ "id": "health-1", "method": "health" }).to_string(),
+            None,
+            Duration::from_millis(20),
+        )
+        .unwrap_err();
+
+    assert!(error.contains("Timed out waiting for semantic worker response"));
 }
 
 fn wait_for_queued(actor: &SemanticRequestActor, expected: usize) {

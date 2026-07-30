@@ -237,7 +237,11 @@ fn execute(
     } else {
         state.failed.fetch_add(1, Ordering::Relaxed);
     }
+    let failed = result.is_err();
     let _ = request.response.send(result);
+    if failed {
+        transport.terminate();
+    }
 }
 
 fn exchange_transport(
@@ -253,13 +257,10 @@ fn exchange_transport(
     let remaining = request.deadline.saturating_duration_since(Instant::now());
     match transport.recv_line(remaining) {
         Ok(line) => Ok(line),
-        Err(error) => {
-            transport.terminate();
-            Err(format!(
-                "Failed to read semantic worker response {}: {error}",
-                request.request_id
-            ))
-        }
+        Err(error) => Err(format!(
+            "Failed to read semantic worker response {}: {error}",
+            request.request_id
+        )),
     }
 }
 
