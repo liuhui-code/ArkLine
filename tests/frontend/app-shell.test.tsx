@@ -516,7 +516,7 @@ describe("App shell", () => {
 
     await user.click(within(header).getByRole("button", { name: "Terminal" }));
     expect(await screen.findByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("tab", { name: "pwsh" })).toBeVisible();
+    expect(await screen.findByRole("tab", { name: "system" })).toBeVisible();
     expect(await screen.findByLabelText("Terminal Viewport")).toBeVisible();
   });
 

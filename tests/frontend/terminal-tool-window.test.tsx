@@ -325,7 +325,14 @@ describe("terminal tool window", () => {
   });
 
   it("refits the hosted terminal without recreating xterm when layout changes", async () => {
-    const workspaceApi = createWorkspaceApi();
+    const createTerminalSession = vi.fn(async () => ({
+      id: "session-1",
+      title: "pwsh",
+      cwd: "C:\\samples\\ArkDemo",
+      shell: "pwsh",
+      status: "idle" as const,
+    }));
+    const workspaceApi = createWorkspaceApi({ createTerminalSession });
     const onStatusChange = vi.fn();
     const { rerender } = render(
       <TerminalToolWindowHost
@@ -353,6 +360,7 @@ describe("terminal tool window", () => {
     });
 
     expect(terminalInstances).toHaveLength(1);
+    expect(createTerminalSession).toHaveBeenCalledTimes(1);
     expect(fitAddonFit.mock.calls.length).toBeGreaterThan(initialFitCount);
   });
 

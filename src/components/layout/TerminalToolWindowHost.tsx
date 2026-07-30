@@ -15,17 +15,20 @@ type TerminalToolWindowHostProps = {
   terminalSettings?: TerminalSettings;
 };
 
+const fallbackTerminalSettings = defaultSettings().terminal;
+
 export const TerminalToolWindowHost = memo(function TerminalToolWindowHost({
   active,
   layoutToken,
   onStatusChange,
   workspaceApi,
   workspaceRootPath,
-  terminalSettings = defaultSettings().terminal,
+  terminalSettings = fallbackTerminalSettings,
 }: TerminalToolWindowHostProps) {
   const [sessions, setSessions] = useState<TerminalSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [focusToken, setFocusToken] = useState(0);
+  const creatingSessionRef = useRef(false);
   const controllerRef = useRef(createTerminalOutputController());
   const viewportRef = useMemo<RefObject<TerminalViewportHandle | null>>(() => {
     let current: TerminalViewportHandle | null = null;
@@ -89,29 +92,22 @@ export const TerminalToolWindowHost = memo(function TerminalToolWindowHost({
   }, []);
 
   const createSession = useCallback(async () => {
-    const session: WorkspaceTerminalSessionSummary = await workspaceApi.createTerminalSession({ cwd: workspaceRootPath, terminal: terminalSettings });
-    setSessions((items) => [...items.filter((item) => item.id !== session.id), session]);
-    setActiveSessionId(session.id);
-    setFocusToken((token) => token + 1);
+    if (creatingSessionRef.current) return;
+    creatingSessionRef.current = true;
+    try {
+      const session: WorkspaceTerminalSessionSummary = await workspaceApi.createTerminalSession({ cwd: workspaceRootPath, terminal: terminalSettings });
+      setSessions((items) => [...items.filter((item) => item.id !== session.id), session]);
+      setActiveSessionId(session.id);
+      setFocusToken((token) => token + 1);
+    } finally {
+      creatingSessionRef.current = false;
+    }
   }, [terminalSettings, workspaceApi, workspaceRootPath]);
 
-  const ensureSession = useCallback(async () => {
-    if (activeSessionId) {
-      setFocusToken((token) => token + 1);
-      controllerRef.current.activateSession(activeSessionId);
-      return;
-    }
-
-    await createSession();
-  }, [activeSessionId, createSession]);
-
   useEffect(() => {
-    if (!active) {
-      return;
-    }
-
-    void ensureSession();
-  }, [active, ensureSession]);
+    if (!active || activeSessionId) return;
+    void createSession();
+  }, [active, activeSessionId, createSession]);
 
   const setActiveSession = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
