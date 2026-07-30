@@ -27,7 +27,7 @@ impl SemanticWorkerTransport for SlowTerminateTransport {
     }
 
     fn recv_line(&mut self, timeout: Duration) -> Result<String, String> {
-        thread::sleep(timeout);
+        thread::sleep(timeout.saturating_add(Duration::from_millis(100)));
         Err("Timed out waiting for semantic worker response".to_string())
     }
 
@@ -179,7 +179,7 @@ fn actor_rejects_non_replaceable_requests_after_queue_capacity() {
 }
 
 #[test]
-fn actor_reports_transport_timeout_before_slow_process_cleanup() {
+fn actor_preserves_transport_timeout_during_delayed_delivery_and_cleanup() {
     let actor = SemanticRequestActor::start(Box::new(SlowTerminateTransport));
 
     let error = actor

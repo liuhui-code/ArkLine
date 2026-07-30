@@ -266,7 +266,10 @@ fn times_out_when_worker_starts_but_never_responds() {
 
     let error = session.health().unwrap_err();
 
-    assert!(error.contains("Timed out waiting for semantic worker response"));
+    assert!(
+        error.contains("Timed out waiting for semantic worker response"),
+        "unexpected semantic worker error: {error}"
+    );
     fs::remove_file(entry_path).unwrap();
 }
 

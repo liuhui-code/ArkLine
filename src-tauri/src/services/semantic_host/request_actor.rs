@@ -12,7 +12,7 @@ use crate::models::language::SemanticRequestActorSnapshot;
 
 const REQUEST_QUEUE_CAPACITY: usize = 8;
 const REQUEST_QUEUE_CAPACITY_HINT: usize = REQUEST_QUEUE_CAPACITY;
-const RESPONSE_DELIVERY_GRACE: Duration = Duration::from_millis(50);
+const RESPONSE_DELIVERY_GRACE: Duration = Duration::from_secs(1);
 
 pub struct SemanticRequestActor {
     sender: SyncSender<ActorCommand>,
