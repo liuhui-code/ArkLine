@@ -51,6 +51,7 @@ pub struct WorkspaceIndexManagerRuntime {
     cancellations: Arc<Mutex<WorkspaceIndexCancellationRegistry>>,
     recent_statuses: Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
     worker_running: Arc<AtomicBool>,
+    worker_batch_running: Arc<AtomicBool>,
     worker_signal: Arc<(Mutex<u64>, Condvar)>,
     worker_execution: Arc<Mutex<()>>,
     indexer: Arc<IndexerHostRuntime>,
@@ -395,8 +396,8 @@ impl WorkspaceIndexManagerRuntime {
     }
 
     #[cfg(test)]
-    pub(crate) fn is_background_worker_running(&self) -> bool {
-        self.worker_running.load(Ordering::SeqCst)
+    pub(crate) fn is_background_worker_batch_running(&self) -> bool {
+        self.worker_batch_running.load(Ordering::SeqCst)
     }
 
     pub fn start_background_worker_with_events_and_ui_activity<F, G>(
@@ -418,6 +419,7 @@ impl WorkspaceIndexManagerRuntime {
             .name("arkline-index-manager".to_string())
             .spawn(move || {
                 loop {
+                    manager.worker_batch_running.store(true, Ordering::SeqCst);
                     let results = manager.run_index_worker_once_with_events_and_ui_activity(
                         &index_runtime,
                         |status, events| on_status(status, events),
@@ -428,6 +430,7 @@ impl WorkspaceIndexManagerRuntime {
                             is_ui_latency_sensitive() || manager.has_pending_tasks()
                         });
                     }
+                    manager.worker_batch_running.store(false, Ordering::SeqCst);
                     if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
                         let _ = manager.maintenance.run_pending(|| {
                             is_ui_latency_sensitive() || manager.has_pending_tasks()

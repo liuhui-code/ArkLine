@@ -64,7 +64,7 @@ fn wait_for_workspace_index_idle(index_manager: &WorkspaceIndexManagerRuntime, r
             .any(|status| matches!(status.status.as_str(), "queued" | "running"));
         if pressure.pending_task_count == 0
             && !has_active_status
-            && !index_manager.is_background_worker_running()
+            && !index_manager.is_background_worker_batch_running()
         {
             return;
         }
