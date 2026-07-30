@@ -1,4 +1,5 @@
 import {
+  getActiveProjectIndexTaskStatus,
   getIndexHealthStatusText,
   getIndexStatusText,
   getLayerReadinessStatusText,
@@ -63,11 +64,17 @@ export function workspaceIndexStatusSummary(input: {
   workspaceIndexState: WorkspaceIndexState;
   taskStatuses: WorkspaceIndexTaskStatus[];
 }) {
+  const hasActiveProjectTask = input.taskStatuses.some((status) => status.kind !== "sdk" && status.stalled)
+    || getActiveProjectIndexTaskStatus(input.taskStatuses) !== undefined;
+  const activeProjectTaskText = hasActiveProjectTask
+    ? getIndexStatusText(input.workspaceIndexState, input.taskStatuses)
+    : null;
   return {
     workspaceIndexText: getIndexHealthStatusText(input.diagnostics)
       ?? getIndexHealthStatusText(input.healthSummary
         ? { ...input.healthSummary, lastError: null, repairActions: [] }
         : null)
+      ?? activeProjectTaskText
       ?? getLayerReadinessStatusText(input.layerReadiness)
       ?? getIndexStatusText(input.workspaceIndexState, input.taskStatuses),
     sdkIndexText: getSdkIndexStatusText(input.taskStatuses),

@@ -24,7 +24,7 @@ describe("workspace device log storage API", () => {
 
     const result = await defaultWorkspaceApi.clearDeviceLogStorage?.();
 
-    expect(invoke).toHaveBeenCalledWith("clear_device_log_storage");
+    expect(invoke).toHaveBeenCalledWith("clear_device_log_storage", undefined);
     expect(result?.removedFileCount).toBe(2);
   });
 

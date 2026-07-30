@@ -70,7 +70,7 @@ describe("search text runner", () => {
       query: "width",
       rootPath: "/workspace",
       minimumQueryLength: 2,
-      options: { caseSensitive: false, wholeWord: false },
+      options: { caseSensitive: true, wholeWord: false },
       dirty: false,
       workspaceApi: { queryWorkspaceCandidatesWithReadiness },
       runFallback,

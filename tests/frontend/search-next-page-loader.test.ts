@@ -37,6 +37,8 @@ describe("search next page loader", () => {
       24,
       24,
       { activePath: "/workspace/Current.ets", recentPaths: ["/workspace/Recent.ets"] },
+      7,
+      250,
     );
     expect(patchSearchSession).toHaveBeenNthCalledWith(1, { textPageLoading: true });
     expect(patchSearchSession).toHaveBeenLastCalledWith(expect.objectContaining({

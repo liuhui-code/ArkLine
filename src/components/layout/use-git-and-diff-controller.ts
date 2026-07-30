@@ -45,7 +45,7 @@ export function useGitAndDiffController({
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
   const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
   const traceVisible = gitToolVisible && gitToolView === "trace";
-  const gitTraceEnabled = gitBlameVisible || traceVisible;
+  const gitTraceEnabled = Boolean(activePath);
   const activeLine = useSyncExternalStore(
     gitTraceEnabled ? editorSelectionRuntime.subscribe : subscribeDisabled,
     () => editorSelectionRuntime.getSnapshot().line,

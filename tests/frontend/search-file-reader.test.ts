@@ -21,7 +21,7 @@ describe("search file reader", () => {
     expect(openFile).toHaveBeenCalledTimes(1);
   });
 
-  it("schedules previews without falling back to backend reads", async () => {
+  it("loads backend content when the selected result is not already open", async () => {
     vi.useFakeTimers();
     const openFile = vi.fn(async () => "backend");
     const sessionStore = createSearchSessionStore();
@@ -62,8 +62,8 @@ describe("search file reader", () => {
     });
     await vi.runAllTimersAsync();
 
-    expect(openFile).not.toHaveBeenCalled();
-    expect(sessionStore.getSnapshot().previewContent).toBeNull();
+    expect(openFile).toHaveBeenCalledWith("/workspace/Other.ets");
+    expect(sessionStore.getSnapshot().previewContent).toBe("backend");
     vi.useRealTimers();
   });
 });

@@ -29,7 +29,7 @@ describe("workspace device log query worker API", () => {
 
     const result = await defaultWorkspaceApi.getDeviceLogQueryWorkerStats?.();
 
-    expect(invoke).toHaveBeenCalledWith("get_device_log_query_worker_stats");
+    expect(invoke).toHaveBeenCalledWith("get_device_log_query_worker_stats", undefined);
     expect(result?.running).toBe(true);
     expect(result?.queued).toBe(1);
     expect(result?.cancelledQueries).toBe(3);
@@ -47,7 +47,7 @@ describe("workspace device log query worker API", () => {
 
     const result = await defaultWorkspaceApi.getDeviceLogQueryWorkerEvents?.();
 
-    expect(invoke).toHaveBeenCalledWith("get_device_log_query_worker_events");
+    expect(invoke).toHaveBeenCalledWith("get_device_log_query_worker_events", undefined);
     expect(result?.[0]?.query).toBe("width");
     expect(result?.[0]?.status).toBe("completed");
     expect(result?.[0]?.durationMs).toBe(18);

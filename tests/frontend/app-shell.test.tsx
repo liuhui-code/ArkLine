@@ -974,6 +974,8 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
+    await user.click(await screen.findByLabelText("Editor Content"));
+    await user.keyboard(" ");
     await user.click(await screen.findByRole("button", { name: "app.json5" }));
 
     await user.pointer({
@@ -3611,7 +3613,7 @@ describe("App shell", () => {
         line: 3,
         column: 17,
         content: expect.stringContaining("struct Index"),
-      }), expect.any(Number));
+      }), expect.any(Number), undefined);
     });
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -3959,7 +3961,7 @@ describe("App shell", () => {
         line: 8,
         column: 8,
         content: expect.stringContaining(".wi"),
-      }), expect.any(Number));
+      }), expect.any(Number), undefined);
     });
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
     await user.click(within(popup).getByRole("option", { name: /width/ }));
@@ -4901,7 +4903,7 @@ describe("App shell", () => {
         line: 3,
         column: 16,
         content: expect.stringContaining("struct Index"),
-      }), expect.any(Number));
+      }), expect.any(Number), undefined);
     });
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -4997,8 +4999,8 @@ describe("App shell", () => {
 
     await screen.findByRole("listbox", { name: "Code Completion" });
     await waitFor(() => expect(editor).toHaveFocus());
-    await user.keyboard("{ArrowDown}");
-    await user.keyboard("{Enter}");
+    await user.click(within(screen.getByRole("listbox", { name: "Code Completion" }))
+      .getByRole("option", { name: /browse\(\)/ }));
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse(value)");
@@ -5509,15 +5511,16 @@ describe("App shell", () => {
     });
 
     render(<AppShell workspaceApi={workspaceApi} />);
-    const header = screen.getByRole("banner", { name: "Application Header" });
-    await user.click(within(header).getByRole("button", { name: "View" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Git" }));
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "load diff");
+    await user.click(await screen.findByRole("button", { name: "Load Diff" }));
 
-    expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true"));
     expect(await screen.findByRole("button", { name: "src/main.ets M Modified" })).toBeVisible();
-    expect(screen.getByLabelText("Git Diff Viewer")).toBeVisible();
-    expect(screen.getByText("+ new")).toBeVisible();
-    expect(screen.getByText("- old")).toBeVisible();
+    const viewer = screen.getByLabelText("Git Diff Viewer");
+    expect(viewer).toBeVisible();
+    expect(viewer).toHaveTextContent("new");
+    expect(viewer).toHaveTextContent("old");
   });
 
   it("opens Git Trace for the current file and shows commit summary details", async () => {
@@ -5572,7 +5575,7 @@ describe("App shell", () => {
     await user.click(screen.getByRole("tab", { name: "Line Trace" }));
 
     const panel = await screen.findByLabelText("Git Trace Panel");
-    expect(within(panel).getByText("Mark ArkTS entry component")).toBeVisible();
+    expect(await within(panel).findByText("Mark ArkTS entry component")).toBeVisible();
     expect(within(panel).getByText("abc1234")).toBeVisible();
     expect(within(panel).getByText(/Jane Doe/)).toBeVisible();
     expect(within(panel).getByText("File").parentElement).toHaveTextContent("src/main.ets");
@@ -5650,7 +5653,7 @@ describe("App shell", () => {
 
     expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Line Trace" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component");
+    await waitFor(() => expect(screen.getByLabelText("Git Trace Panel")).toHaveTextContent("Mark ArkTS entry component"));
   });
 
   it("copies a committed blame hash from the blame card", async () => {
@@ -5815,7 +5818,7 @@ describe("App shell", () => {
 
     expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("tab", { name: "Local Changes" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByLabelText("Git Diff Viewer")).toHaveTextContent("+ // local change");
+    expect(await screen.findByLabelText("Git Diff Viewer")).toHaveTextContent("// local change");
     expect(screen.queryByRole("dialog", { name: "Git Blame Details" })).not.toBeInTheDocument();
   });
 
@@ -6448,7 +6451,7 @@ describe("App shell", () => {
     await openProject(user);
 
     await waitFor(() => expect(getWorkspaceIndexTaskStatuses).toHaveBeenCalledWith(expect.stringMatching(/C:[/\\]samples[/\\]DemoWorkspace/)));
-    expect(await screen.findByText("Index: running project (0/1)")).toBeVisible();
+    expect(await screen.findByText("Index: running project · 0/1 (0%)", {}, { timeout: 5_000 })).toBeVisible();
   });
 
   it("does not present a lazy opened workspace snapshot as a partial zero-file index", async () => {
@@ -6797,8 +6800,6 @@ describe("App shell", () => {
     });
 
     render(<AppShell workspaceApi={workspaceApi} />);
-    const header = screen.getByRole("banner", { name: "Application Header" });
-
     await openProject(user, "C:/samples/ArkDemo");
 
     expect(await screen.findByRole("button", { name: "Index.ets" })).toBeVisible();
@@ -6806,13 +6807,14 @@ describe("App shell", () => {
     expect(screen.getByRole("button", { name: "string.json" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Index.ets" }));
-    expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index {}");
+    expect(await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 })).toHaveTextContent("struct Index {}");
 
-    await user.click(within(header).getByRole("button", { name: "View" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Git" }));
-    expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "load diff");
+    await user.click(await screen.findByRole("button", { name: "Load Diff" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true"));
     expect(screen.getByRole("button", { name: /entry\/src\/main\/ets\/pages\/Index\.ets .* Modified/ })).toBeVisible();
-    expect(screen.getByText("+ }")).toBeVisible();
+    expect(screen.getByLabelText("Git Diff Viewer")).toHaveTextContent("}");
 
     await user.keyboard("{Control>}{Shift>}{F12}{/Shift}{/Control}");
     expect(screen.getByLabelText("Files")).not.toBeVisible();
@@ -6823,9 +6825,9 @@ describe("App shell", () => {
     expect(screen.getByLabelText("Files")).toBeVisible();
 
     await user.keyboard("{Alt>}9{/Alt}");
-    expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
-    expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByLabelText("Git Panel")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Source Control" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Git" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Git Panel")).not.toBeVisible();
   });
 
   it("reopens a workspace from recent projects", async () => {

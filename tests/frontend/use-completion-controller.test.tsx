@@ -181,7 +181,7 @@ describe("useCompletionController", () => {
       line: 1,
       column: 13,
       content: "Button().wid",
-    }, expect.any(Number));
+    }, expect.any(Number), undefined);
   });
 
   it("skips oversized completion requests before calling language providers", async () => {

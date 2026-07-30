@@ -42,6 +42,8 @@ describe("search next page action", () => {
       25,
       1,
       { activePath: "/workspace/Entry.ets", recentPaths: [] },
+      1,
+      250,
     );
     expect(sessionStore.getSnapshot().candidates.map((item) => item.title)).toEqual(["Entry", "Next"]);
     expect(sessionStore.getSnapshot().selectedIndex).toBe(1);

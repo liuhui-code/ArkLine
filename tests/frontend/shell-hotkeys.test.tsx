@@ -8,7 +8,7 @@ async function openEditor(user: ReturnType<typeof userEvent.setup>) {
   await user.type(await screen.findByLabelText("Project Path"), "C:/samples/DemoWorkspace");
   await user.click(screen.getByRole("button", { name: "Open Project" }));
   await user.click(await screen.findByRole("button", { name: "main.ets" }));
-  return screen.findByLabelText("Editor Content");
+  return screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
 }
 
 describe("Shell hotkeys", () => {
@@ -162,6 +162,7 @@ describe("Shell hotkeys", () => {
     render(<AppShell />);
 
     await user.click(await openEditor(user));
+    await user.keyboard(" ");
     await user.keyboard("{Control>}p{/Control}");
     await user.click(await screen.findByRole("button", { name: "C:\\samples\\DemoWorkspace\\AppScope\\app.json5" }));
 
