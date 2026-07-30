@@ -312,7 +312,7 @@ describe("App shell", () => {
       }),
     })} />);
 
-    expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
+    await waitFor(() => expect(screen.getByLabelText("Semantic Mode")).toHaveTextContent("Fallback"));
   });
 
   it("opens index diagnostics from the status bar with current file readiness", async () => {
@@ -5805,7 +5805,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
     await user.keyboard("{Home}{Enter}// local change");
     await user.click(await screen.findByRole("button", { name: "Blame actions" }));

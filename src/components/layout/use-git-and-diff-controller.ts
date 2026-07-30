@@ -45,7 +45,7 @@ export function useGitAndDiffController({
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
   const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
   const traceVisible = gitToolVisible && gitToolView === "trace";
-  const gitTraceEnabled = gitBlameVisible || traceVisible;
+  const gitTraceEnabled = gitBlameVisible || traceVisible || gitBlameMenuOpen || selectedBlameAttribution !== null;
   const activeLine = useSyncExternalStore(
     gitTraceEnabled ? editorSelectionRuntime.subscribe : subscribeDisabled,
     () => editorSelectionRuntime.getSnapshot().line,
@@ -101,7 +101,7 @@ export function useGitAndDiffController({
   }
 
   function showCurrentLineBlame() {
-    const attribution = gitTraceState.blameAttributions.find((item) => item.bufferLine === activeLine) ?? null;
+    const attribution = currentLineAttribution;
     if (!attribution) {
       onStatusChange("Git Blame unavailable for current line");
       setGitBlameMenuOpen(false);
