@@ -2,7 +2,12 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useGitAndDiffController } from "@/components/layout/use-git-and-diff-controller";
 import { createEditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
-import { createDefaultGitTraceState, type GitBlameAttribution, type GitTraceState } from "@/features/git/git-trace-model";
+import {
+  createDefaultGitTraceState,
+  type GitBlameAttribution,
+  type GitBlameLine,
+  type GitTraceState,
+} from "@/features/git/git-trace-model";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
 const gitTraceState = vi.hoisted(() => ({
@@ -128,6 +133,7 @@ describe("useGitAndDiffController", () => {
   it("subscribes to current-line changes only while blame is active", () => {
     const editorSelectionRuntime = createEditorSelectionRuntime();
     gitTraceState.current = traceState({
+      blameLines: [rawBlame({ line: 1, author: "Ada" }), rawBlame({ line: 2, author: "Grace" })],
       blameAttributions: [
         blame({ bufferLine: 1, author: "Ada" }),
         blame({ bufferLine: 2, author: "Grace" }),
@@ -218,6 +224,19 @@ function blame(overrides: Partial<GitBlameAttribution> = {}): GitBlameAttributio
     shortCommit: "abcdef1",
     author: "Ada",
     relativeTime: "2 days ago",
+    ...overrides,
+  };
+}
+
+function rawBlame(overrides: Partial<GitBlameLine> = {}): GitBlameLine {
+  return {
+    line: 1,
+    sourceLine: 1,
+    commit: "abcdef123456",
+    author: "Ada",
+    authoredAt: "2026-07-28T00:00:00Z",
+    relativeTime: "2 days ago",
+    summary: "Update line",
     ...overrides,
   };
 }

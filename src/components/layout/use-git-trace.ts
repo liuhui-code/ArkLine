@@ -13,12 +13,13 @@ type UseGitTraceArgs = {
   activeText: string;
   baseText: string;
   enabled: boolean;
+  mappingEnabled: boolean;
   traceVisible: boolean;
   refreshToken: number;
   workspaceApi: WorkspaceApi;
 };
 
-export function useGitTrace({ activeLine, activePath, activeText, baseText, enabled, traceVisible, refreshToken, workspaceApi }: UseGitTraceArgs) {
+export function useGitTrace({ activeLine, activePath, activeText, baseText, enabled, mappingEnabled, traceVisible, refreshToken, workspaceApi }: UseGitTraceArgs) {
   const [state, setState] = useState<GitTraceState>(createDefaultGitTraceState);
 
   useEffect(() => {
@@ -87,10 +88,10 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, enab
     return () => {
       cancelled = true;
     };
-  }, [activePath, baseText, enabled, refreshToken, workspaceApi]);
+  }, [activePath, enabled, refreshToken, workspaceApi]);
 
   useEffect(() => {
-    if (!enabled || state.blameStatus !== "ready" || state.blameLines.length === 0) {
+    if (!mappingEnabled || state.blameStatus !== "ready" || state.blameLines.length === 0) {
       return;
     }
 
@@ -104,7 +105,7 @@ export function useGitTrace({ activeLine, activePath, activeText, baseText, enab
       selectedLine: activeLine,
       selectedCommit: selectedAttribution?.commit ?? null,
     }));
-  }, [activeLine, activeText, baseText, enabled, state.blameLines, state.blameStatus]);
+  }, [activeLine, activeText, baseText, mappingEnabled, state.blameLines, state.blameStatus]);
 
   useEffect(() => {
     if (

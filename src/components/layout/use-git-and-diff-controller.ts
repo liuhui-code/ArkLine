@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import type { GitToolView } from "@/components/layout/GitToolWindow";
 import { useGitTrace } from "@/components/layout/use-git-trace";
 import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
-import type { GitBlameAttribution } from "@/features/git/git-trace-model";
+import type { GitBlameAttribution, GitBlameLine } from "@/features/git/git-trace-model";
 import type { GitDiffActionContext, GitFileComparison } from "@/features/git/git-source-control-model";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { EditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
@@ -45,7 +45,7 @@ export function useGitAndDiffController({
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
   const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
   const traceVisible = gitToolVisible && gitToolView === "trace";
-  const gitTraceEnabled = Boolean(activePath);
+  const gitTraceEnabled = gitBlameVisible || traceVisible;
   const activeLine = useSyncExternalStore(
     gitTraceEnabled ? editorSelectionRuntime.subscribe : subscribeDisabled,
     () => editorSelectionRuntime.getSnapshot().line,
@@ -56,14 +56,17 @@ export function useGitAndDiffController({
     activePath,
     activeText: gitTraceEnabled ? getActiveText() : "",
     baseText: gitTraceEnabled ? getBaseText() : "",
-    enabled: gitTraceEnabled,
+    enabled: Boolean(activePath),
+    mappingEnabled: gitTraceEnabled,
     traceVisible,
     refreshToken: gitBlameRefreshToken,
     workspaceApi,
   });
-  const currentLineBlame = formatCurrentLineBlame(
-    gitTraceState.blameAttributions.find((line) => line.bufferLine === activeLine) ?? null,
-  );
+  const mappedCurrentLine = gitTraceState.blameAttributions.find((line) => line.bufferLine === activeLine) ?? null;
+  const currentLineAttribution = gitTraceEnabled
+    ? mappedCurrentLine
+    : attributionFromBlameLine(gitTraceState.blameLines.find((line) => line.line === activeLine)) ?? mappedCurrentLine;
+  const currentLineBlame = formatCurrentLineBlame(currentLineAttribution);
 
   function openGitTraceView() {
     setGitToolView("trace");
@@ -229,4 +232,19 @@ function formatCurrentLineBlame(attribution: GitBlameAttribution | null) {
   }
 
   return null;
+}
+
+function attributionFromBlameLine(line: GitBlameLine | undefined): GitBlameAttribution | null {
+  if (!line) return null;
+  return {
+    bufferLine: line.line,
+    sourceLine: line.sourceLine,
+    status: "committed",
+    commit: line.commit,
+    shortCommit: line.commit.slice(0, 7),
+    author: line.author,
+    authoredAt: line.authoredAt,
+    relativeTime: line.relativeTime,
+    summary: line.summary,
+  };
 }
