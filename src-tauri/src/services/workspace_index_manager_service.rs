@@ -394,6 +394,11 @@ impl WorkspaceIndexManagerRuntime {
         self.start_background_worker_with_events_and_ui_activity(index_runtime, on_status, || false)
     }
 
+    #[cfg(test)]
+    pub(crate) fn is_background_worker_running(&self) -> bool {
+        self.worker_running.load(Ordering::SeqCst)
+    }
+
     pub fn start_background_worker_with_events_and_ui_activity<F, G>(
         &self,
         index_runtime: WorkspaceIndexRuntime,

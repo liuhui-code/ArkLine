@@ -62,11 +62,15 @@ fn wait_for_workspace_index_idle(index_manager: &WorkspaceIndexManagerRuntime, r
         let has_active_status = statuses
             .iter()
             .any(|status| matches!(status.status.as_str(), "queued" | "running"));
-        if pressure.pending_task_count == 0 && !has_active_status {
+        if pressure.pending_task_count == 0
+            && !has_active_status
+            && !index_manager.is_background_worker_running()
+        {
             return;
         }
         thread::sleep(Duration::from_millis(25));
     }
+    panic!("workspace index worker did not become idle");
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -165,7 +169,7 @@ fn submit_sdk_index_command_returns_queued_status_and_finishes_in_background() {
 
     let queued = submit_workspace_sdk_index_through_manager(
         index_runtime,
-        index_manager,
+        index_manager.clone(),
         &root_path,
         &sdk_path,
         "test-sdk",
@@ -192,6 +196,7 @@ fn submit_sdk_index_command_returns_queued_status_and_finishes_in_background() {
         .iter()
         .any(|status| status == "ready"));
 
+    wait_for_workspace_index_idle(&index_manager, &root_path);
     fs::remove_dir_all(root).unwrap();
 }
 
