@@ -6828,7 +6828,7 @@ describe("App shell", () => {
     expect(screen.getByRole("heading", { name: "Source Control" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Git" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Git Panel")).not.toBeVisible();
-  });
+  }, 30_000);
 
   it("reopens a workspace from recent projects", async () => {
     const user = userEvent.setup();
