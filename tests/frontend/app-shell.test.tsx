@@ -4427,10 +4427,9 @@ describe("App shell", () => {
     await waitFor(() => expect(completeSymbol).toHaveBeenCalledTimes(2));
     secondCompletion.resolve([{ label: "button()", detail: "New two-character result", kind: "function" }]);
 
-    const results = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
-    expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
-
+    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Code Completion" }))
+      .getByRole("option", { name: /button\(\)/ })).toBeVisible());
+    const results = screen.getByRole("listbox", { name: "Code Completion" });
     expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
     expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
   });
