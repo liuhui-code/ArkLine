@@ -33,20 +33,35 @@ describe("document store safety", () => {
     expect(store.getDocument("C:/work/main.ets")?.currentContent).toBe("disk edit");
   });
 
+  it("marks an externally deleted dirty buffer without dropping local content", () => {
+    const store = createDocumentStore();
+    store.openDocument("C:/work/main.ets", "original");
+    store.updateDocument("C:/work/main.ets", "local edit");
+
+    expect(store.applyExternalDeletion("C:/work/main.ets")).toBe("conflict");
+    expect(store.getDocument("C:/work/main.ets")).toEqual(expect.objectContaining({
+      currentContent: "local edit",
+      isDirty: true,
+      externalDeleted: true,
+    }));
+  });
+
   it("coalesces repeated notifications for the same path", async () => {
     const store = createDocumentStore();
     const listener = vi.fn();
-    store.subscribe(listener);
-
     store.openDocument("C:/work/main.ets", "original");
+    await Promise.resolve();
+    store.subscribe(listener);
     store.updateDocument("C:/work/main.ets", "edit 1");
     store.updateDocument("C:/work/main.ets", "edit 2");
 
-    expect(listener).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenLastCalledWith(expect.any(String), expect.any(Object), "metadata");
     await Promise.resolve();
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(listener.mock.calls[0]?.[0]).toBe(listener.mock.calls[0]?.[1].path);
-    expect(listener.mock.calls[0]?.[1]).toEqual(expect.objectContaining({ currentContent: "edit 2" }));
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(listener.mock.calls[1]?.[0]).toBe(listener.mock.calls[1]?.[1].path);
+    expect(listener.mock.calls[1]?.[1]).toEqual(expect.objectContaining({ currentContent: "edit 2" }));
+    expect(listener.mock.calls[1]?.[2]).toBe("content");
   });
 
   it("keeps separate notifications for different paths", async () => {

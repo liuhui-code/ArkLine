@@ -1,8 +1,8 @@
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest, SignatureHelp,
-    UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest,
+    SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;

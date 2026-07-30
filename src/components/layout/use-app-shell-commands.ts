@@ -39,6 +39,7 @@ type AppShellCommandActions = {
   runLint: () => void;
   formatActiveDocument: () => void;
   loadDiff: () => void;
+  switchGitBranch: () => void;
   openSettings: () => void;
   toggleGitBlame: () => void;
   refreshGitBlame: () => void;
@@ -131,6 +132,7 @@ export function useAppShellCommands({
     runLint: actions.runLint,
     formatActiveDocument: actions.formatActiveDocument,
     loadDiff: actions.loadDiff,
+    switchGitBranch: actions.switchGitBranch,
     openSettings: actions.openSettings,
     toggleGitBlame: actions.toggleGitBlame,
     refreshGitBlame: actions.refreshGitBlame,

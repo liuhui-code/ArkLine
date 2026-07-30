@@ -3,8 +3,8 @@ use tauri::AppHandle;
 
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
-    LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest, SignatureHelp,
-    SemanticDocumentSyncRequest, UsageResult,
+    LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
+    SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
 };
 use crate::services::language_service::{
     complete_symbol, complete_symbol_with_document_version, find_usages, goto_definition,

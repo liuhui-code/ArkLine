@@ -61,7 +61,7 @@ describe("semantic worker lifecycle", () => {
     expect(response.payload).toEqual({
       status: "ready",
       protocolVersion: 4,
-      capabilities: ["completion", "definition", "typeReadiness", "generations", "documentReplay", "documentSync"],
+      capabilities: ["completion", "definition", "signatureHelp", "typeReadiness", "generations", "documentReplay", "documentSync"],
     })
     expect(response.runtime?.rssBytes).toBeGreaterThan(0)
     expect(response.runtime?.uptimeMs).toBeGreaterThanOrEqual(0)

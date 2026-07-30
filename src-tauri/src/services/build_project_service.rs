@@ -105,11 +105,15 @@ fn discover_profile_modules(root: &Path) -> Vec<String> {
     let Some(array) = named_array_body(&content, "modules") else {
         return Vec::new();
     };
-    let name_pattern = Regex::new(r#"\bname\s*:\s*["']([^"']+)["']"#)
-        .expect("module name pattern should compile");
+    let name_pattern =
+        Regex::new(r#"\bname\s*:\s*["']([^"']+)["']"#).expect("module name pattern should compile");
     name_pattern
         .captures_iter(array)
-        .filter_map(|capture| capture.get(1).map(|value| value.as_str().trim().to_string()))
+        .filter_map(|capture| {
+            capture
+                .get(1)
+                .map(|value| value.as_str().trim().to_string())
+        })
         .filter(|name| !name.is_empty() && root.join(name).is_dir())
         .collect()
 }

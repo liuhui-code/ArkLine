@@ -19,6 +19,8 @@ Run the gate against synthetic fixtures and at least one real ArkTS workspace:
 | Scroll one large source file | no visible blanking |
 | Index while editing | editor input remains responsive |
 | Stream logs while searching | search input remains responsive |
+| Open Source Control with 400+ changes | first 100 changes <= 5 s; response is paged |
+| Supersede Git status/history/diff queries | obsolete native Git process is cancelled |
 
 ## Local Smoke Commands
 
@@ -61,6 +63,9 @@ fixture size, and command flags when comparing runs.
 - If a real workspace behaves worse than the synthetic fixture, prioritize the real
   workspace result.
 - Diagnostics must show IPC commands over 100 ms and UI long tasks over 100 ms.
+- `pnpm test:rust` blocks release when Git query cancellation, bounded output,
+  working-tree pagination, snapshot consistency, or the five-second first-page
+  budget regresses.
 
 ## Packaged Windows Gate
 

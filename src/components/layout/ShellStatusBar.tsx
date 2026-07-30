@@ -15,6 +15,10 @@ type ShellStatusBarProps = {
   semanticCapability: SemanticCapabilityState;
   statusMessageStore: StatusMessageStore;
   workspaceName: string | null;
+  gitBranchName?: string;
+  gitChangeCount?: number;
+  gitAhead?: number;
+  gitBehind?: number;
   workspaceScanText: string | null;
   workspaceIndexText: string;
   sdkIndexText: string | null;
@@ -29,6 +33,7 @@ type ShellStatusBarProps = {
   onShowCurrentLineBlame: () => void;
   onCloseGitBlame: () => void;
   onOpenIndexDiagnostics: (sectionTarget?: string) => void;
+  onOpenGitBranchPicker?: () => void;
 };
 
 export function ShellStatusBar({
@@ -38,6 +43,10 @@ export function ShellStatusBar({
   semanticCapability,
   statusMessageStore,
   workspaceName,
+  gitBranchName = "No Git branch",
+  gitChangeCount = 0,
+  gitAhead = 0,
+  gitBehind = 0,
   workspaceScanText,
   workspaceIndexText,
   sdkIndexText,
@@ -52,11 +61,20 @@ export function ShellStatusBar({
   onShowCurrentLineBlame,
   onCloseGitBlame,
   onOpenIndexDiagnostics,
+  onOpenGitBranchPicker = () => undefined,
 }: ShellStatusBarProps) {
   return (
     <footer aria-label="Status Bar" className="status-bar">
       <div aria-label="Status Bar Left" className="status-bar__group status-bar__group--left">
         <span className="status-pill status-pill--em">{`Workspace: ${workspaceName ?? "none"}`}</span>
+        <button
+          type="button"
+          className="status-pill status-pill--button status-pill--branch"
+          aria-label={`Switch Git Branch: ${gitBranchName}, ${gitChangeCount} changes, ${gitAhead} ahead, ${gitBehind} behind`}
+          onClick={onOpenGitBranchPicker}
+        >
+          {`Git: ${gitBranchName}${gitChangeCount ? ` · ${gitChangeCount}` : ""}${gitAhead || gitBehind ? ` · ↑${gitAhead} ↓${gitBehind}` : ""}`}
+        </button>
         {workspaceScanText ? <span className="status-pill">{workspaceScanText}</span> : null}
         <button
           type="button"

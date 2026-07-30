@@ -20,6 +20,7 @@ beforeAll(() => {
     ".git-tool-window",
     ".git-tool-window__sidebar",
     ".git-tool-window__viewer",
+    ".diff-review--split",
   ]).join("\n");
   document.head.append(appStyleElement);
 });
@@ -99,14 +100,16 @@ describe("Bottom tool window", () => {
 
     await user.click(screen.getByRole("tab", { name: "Terminal" }));
     const terminalSessions = await screen.findByLabelText("Terminal Sessions");
-    expect(within(terminalSessions).getByRole("tab", { name: "pwsh" })).toBeVisible();
+    const terminalSession = within(terminalSessions).getByRole("tab", { selected: true });
+    const terminalSessionName = terminalSession.textContent ?? "";
+    expect(terminalSession).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Hide Bottom Tool Window" }));
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Terminal Panel")).not.toBeVisible();
 
     await user.click(screen.getByRole("tab", { name: "Terminal" }));
-    expect(within(await screen.findByLabelText("Terminal Sessions")).getByRole("tab", { name: "pwsh" })).toBeVisible();
+    expect(within(await screen.findByLabelText("Terminal Sessions")).getByRole("tab", { name: terminalSessionName })).toBeVisible();
   });
 
   it("resizes the bottom panel by dragging the resize separator", async () => {
@@ -141,8 +144,10 @@ describe("Bottom tool window", () => {
     render(<AppShell workspaceApi={workspaceApi} />);
 
     const header = screen.getByRole("banner", { name: "Application Header" });
-    await user.click(within(header).getByRole("button", { name: "View" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Git" }));
+    await user.click(within(header).getByRole("button", { name: "Edit" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Command Palette" }));
+    fireEvent.change(await screen.findByLabelText("Find Action Query"), { target: { value: "Load Diff" } });
+    await user.click(await screen.findByRole("button", { name: "Load Diff" }));
     const bottomPanel = screen.getByLabelText("Bottom Tool Window");
     const gitPanel = await screen.findByLabelText("Git Panel");
     await screen.findByLabelText("Git Diff Viewer");
@@ -160,22 +165,27 @@ describe("Bottom tool window", () => {
     const gitToolWindow = gitPanel.querySelector(".git-tool-window");
     const gitSidebar = gitPanel.querySelector(".git-tool-window__sidebar");
     const gitViewer = gitPanel.querySelector(".git-tool-window__viewer");
+    const diffReview = gitPanel.querySelector(".diff-review--split");
 
     expect(gitToolWindow).toBeInstanceOf(HTMLElement);
     expect(gitSidebar).toBeInstanceOf(HTMLElement);
     expect(gitViewer).toBeInstanceOf(HTMLElement);
+    expect(diffReview).toBeInstanceOf(HTMLElement);
 
     const gitToolStyle = window.getComputedStyle(gitToolWindow as HTMLElement);
     const gitSidebarStyle = window.getComputedStyle(gitSidebar as HTMLElement);
     const gitViewerStyle = window.getComputedStyle(gitViewer as HTMLElement);
+    const diffReviewStyle = window.getComputedStyle(diffReview as HTMLElement);
 
     expect(gitToolStyle.display).toBe("grid");
     expect(gitToolStyle.height).toBe("100%");
     expect(["0", "0px"]).toContain(gitToolStyle.minHeight);
     expect(gitSidebarStyle.overflow).toBe("auto");
     expect(["0", "0px"]).toContain(gitSidebarStyle.minHeight);
-    expect(gitViewerStyle.overflow).toBe("auto");
+    expect(gitViewerStyle.overflow).toBe("hidden");
     expect(["0", "0px"]).toContain(gitViewerStyle.minHeight);
+    expect(diffReviewStyle.overflow).toBe("auto");
+    expect(diffReviewStyle.height).toBe("100%");
   });
 
   it("clamps bottom panel resize height to min and max bounds", async () => {

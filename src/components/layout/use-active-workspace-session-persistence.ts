@@ -9,6 +9,7 @@ type SettingsStoreLike = {
 
 export type UseActiveWorkspaceSessionPersistenceOptions = {
   activePath: string | null;
+  branchName?: string | null;
   rootPath: string | null | undefined;
   settingsHydrated: boolean;
   settingsRef: RefObject<SettingsStoreLike>;
@@ -19,6 +20,7 @@ export const ACTIVE_SESSION_SAVE_DELAY_MS = 750;
 
 export function useActiveWorkspaceSessionPersistence({
   activePath,
+  branchName,
   rootPath,
   settingsHydrated,
   settingsRef,
@@ -37,10 +39,15 @@ export function useActiveWorkspaceSessionPersistence({
     if (!settingsHydrated || !rootPath || !activePath) return;
     const current = settingsRef.current.state.settings;
     const currentSession = current.workspaceSessions[rootPath] ?? {};
-    if (currentSession.activeFilePath === activePath) return;
+    const branchPath = branchName ? currentSession.branchActiveFilePaths?.[branchName] : undefined;
+    if (currentSession.activeFilePath === activePath && (!branchName || branchPath === activePath)) return;
+    const branchActiveFilePaths = branchName ? {
+      ...currentSession.branchActiveFilePaths,
+      [branchName]: activePath,
+    } : currentSession.branchActiveFilePaths;
     const nextWorkspaceSessions = {
       ...current.workspaceSessions,
-      [rootPath]: { ...currentSession, activeFilePath: activePath },
+      [rootPath]: { ...currentSession, activeFilePath: activePath, branchActiveFilePaths },
     };
     settingsRef.current.update({ workspaceSessions: nextWorkspaceSessions });
     pendingSaveRef.current = true;
@@ -58,5 +65,5 @@ export function useActiveWorkspaceSessionPersistence({
         saveTimerRef.current = null;
       }
     };
-  }, [activePath, rootPath, settingsHydrated, settingsRef, workspaceApi]);
+  }, [activePath, branchName, rootPath, settingsHydrated, settingsRef, workspaceApi]);
 }

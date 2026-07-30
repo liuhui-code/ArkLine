@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, State};
 
 use crate::models::language::{
-    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, SignatureHelp,
+    CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
-    SemanticDocumentSyncRequest, UsageResult,
+    SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
 };
 use crate::services::language_client_runtime_service::{
     run_language_request, LanguageClientRequest, LanguageClientSource,
@@ -14,8 +14,7 @@ use crate::services::language_command_service::{
     close_document_blocking, complete_symbol_with_document_version_blocking,
     document_symbols_blocking, find_usages_blocking, goto_definition_blocking,
     goto_definition_candidates_blocking, hover_symbol_blocking, inspect_language_service_blocking,
-    signature_help_blocking,
-    sync_document_blocking,
+    signature_help_blocking, sync_document_blocking,
 };
 use crate::services::language_service::LanguageRuntime;
 

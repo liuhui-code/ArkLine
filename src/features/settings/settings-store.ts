@@ -19,7 +19,7 @@ export type AppSettings = {
   };
   terminal: TerminalSettings;
   recentProjects: string[];
-  workspaceSessions: Record<string, { activeFilePath?: string }>;
+  workspaceSessions: Record<string, { activeFilePath?: string; branchActiveFilePaths?: Record<string, string> }>;
 };
 
 export type TerminalProfile = "system" | "gitBash" | "powerShell" | "commandPrompt" | "custom";

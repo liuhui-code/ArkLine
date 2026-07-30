@@ -113,6 +113,26 @@ describe("useActiveWorkspaceSessionPersistence", () => {
 
     expect(saveSettings).not.toHaveBeenCalled();
   });
+
+  it("keeps a separate active file for each branch", () => {
+    vi.useFakeTimers();
+    const saveSettings = vi.fn();
+    const settingsRef = { current: createSettingsStore() };
+
+    renderHook(() => useActiveWorkspaceSessionPersistence({
+      activePath: "/workspace/Feature.ets",
+      branchName: "feature/git",
+      rootPath: "/workspace",
+      settingsHydrated: true,
+      settingsRef,
+      workspaceApi: workspaceApi({ saveSettings }),
+    }));
+
+    expect(settingsRef.current.state.settings.workspaceSessions["/workspace"]).toEqual({
+      activeFilePath: "/workspace/Feature.ets",
+      branchActiveFilePaths: { "feature/git": "/workspace/Feature.ets" },
+    });
+  });
 });
 
 function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {

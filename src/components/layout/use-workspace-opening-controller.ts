@@ -55,9 +55,10 @@ export function useWorkspaceOpeningController({
     loadProjectDirectoryForWorkspace(workspace, path);
   }
 
-  async function openWorkspace(rootPath: string) {
+  async function openWorkspace(rootPath: string, branchName?: string | null) {
     try {
-      const activeFilePath = getWorkspaceSessions()[rootPath]?.activeFilePath;
+      const session = getWorkspaceSessions()[rootPath];
+      const activeFilePath = getWorkspaceSessionActiveFilePath(session, branchName);
       const snapshot = await workspaceApi.openWorkspace(rootPath);
       applyWorkspaceSnapshot(toWorkspaceViewModel(snapshot));
       resetWorkspaceUi(snapshot.rootName);
@@ -115,4 +116,13 @@ export function useWorkspaceOpeningController({
     openDemoWorkspace,
     loadProjectDirectoryForActiveWorkspace,
   };
+}
+
+export function getWorkspaceSessionActiveFilePath(
+  session: AppSettings["workspaceSessions"][string] | undefined,
+  branchName?: string | null,
+) {
+  return branchName
+    ? session?.branchActiveFilePaths?.[branchName] ?? session?.activeFilePath
+    : session?.activeFilePath;
 }

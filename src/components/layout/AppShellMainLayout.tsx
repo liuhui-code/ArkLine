@@ -15,6 +15,8 @@ import type { ProjectMutationRequest } from "@/components/layout/ProjectToolWind
 import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import type { WorkspaceDirectoryEntry } from "@/features/workspace/workspace-api";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
+import type { ComponentProps } from "react";
+import { SourceControlToolWindow } from "@/components/layout/SourceControlToolWindow";
 
 type AppShellMainLayoutProps = {
   topBar: {
@@ -55,6 +57,7 @@ type AppShellMainLayoutProps = {
     onRequestProjectMutation: (request: ProjectMutationRequest) => void;
     onResizeWidth: (width: number) => void;
     onSelectTool: (tool: LeftToolKey) => void;
+    sourceControlProps: ComponentProps<typeof SourceControlToolWindow>;
   };
   editor: AppShellEditorWorkbenchProps;
 };
@@ -87,6 +90,7 @@ export function AppShellMainLayout({ topBar, sidebar, editor }: AppShellMainLayo
           onRequestProjectMutation={sidebar.onRequestProjectMutation}
           onResizeWidth={sidebar.onResizeWidth}
           onSelectTool={sidebar.onSelectTool}
+          sourceControlProps={sidebar.sourceControlProps}
         />
         <AppShellEditorWorkbench {...editor} />
       </div>

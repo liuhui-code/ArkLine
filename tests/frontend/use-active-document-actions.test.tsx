@@ -77,4 +77,37 @@ describe("useActiveDocumentActions", () => {
     expect(refreshBlame).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenCalledWith("Saved A.ets");
   });
+
+  it("blocks save when the active file changed outside the editor", async () => {
+    const saveFile = vi.fn();
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => {
+      const documents = useEditorDocuments();
+      const actions = useActiveDocumentActions({
+        activePath: documents.activePath,
+        documentsRef: documents.documentsRef,
+        syncTabs: documents.syncTabs,
+        saveFile,
+        getFormatOnSave: () => false,
+        refreshProblems: vi.fn(),
+        showProblems: vi.fn(),
+        refreshBlame: vi.fn(),
+        onStatusChange,
+      });
+      return { documents, actions };
+    });
+    act(() => {
+      const store = result.current.documents.documentsRef.current;
+      store.openDocument("/workspace/A.ets", "before");
+      store.updateDocument("/workspace/A.ets", "local edit");
+      store.applyExternalChange("/workspace/A.ets", "Git edit");
+      result.current.documents.tabsRef.current.openTab("/workspace/A.ets");
+      result.current.documents.setActiveDocument("/workspace/A.ets");
+    });
+
+    await act(async () => result.current.actions.saveActiveDocument());
+
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenLastCalledWith("Save blocked: A.ets changed on disk");
+  });
 });

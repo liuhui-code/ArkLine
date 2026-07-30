@@ -4,6 +4,7 @@ import { AppShellCodeActionSurfaces } from "@/components/layout/AppShellCodeActi
 import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
+import { GitBranchPicker } from "@/components/layout/GitBranchPicker";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
 import { ProjectMutationDialog } from "@/components/layout/ProjectMutationDialog";
@@ -47,6 +48,7 @@ type AppShellOverlaysProps = {
   openProjectDialogProps: ComponentProps<typeof OpenProjectDialog>;
   openProjectDecisionDialogProps: ComponentProps<typeof OpenProjectDecisionDialog>;
   settingsDialogProps: ComponentProps<typeof SettingsDialog>;
+  gitBranchPickerProps: ComponentProps<typeof GitBranchPicker>;
 };
 
 export function AppShellOverlays({
@@ -77,6 +79,7 @@ export function AppShellOverlays({
   openProjectDialogProps,
   openProjectDecisionDialogProps,
   settingsDialogProps,
+  gitBranchPickerProps,
 }: AppShellOverlaysProps) {
   recordRenderPressure("AppShell/Overlays");
   return (
@@ -92,6 +95,7 @@ export function AppShellOverlays({
         />
       ) : null}
       {completionPopupVisible ? <CompletionPopup {...completionPopupProps} /> : null}
+      <GitBranchPicker {...gitBranchPickerProps} />
       <AppShellSearchOverlaySurface visible={overlayVisible} activeOverlay={activeOverlay} label={overlayLabel} onClose={onCloseOverlay} commandPaletteItems={commandPaletteItems} searchOverlayProps={searchOverlayProps} />
       {projectMutationDialog ? (
         <ProjectMutationDialog

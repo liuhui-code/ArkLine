@@ -14,9 +14,9 @@ use super::response_state::{
 };
 use super::transport::{DirectSemanticWorkerTransport, SemanticWorkerTransport};
 use crate::models::language::{
-    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem, SignatureHelp,
+    CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, LanguageQueryRequest, SemanticRequestActorSnapshot,
-    SemanticWorkerRuntime,
+    SemanticWorkerRuntime, SignatureHelp,
 };
 
 mod document_sync;
@@ -309,9 +309,10 @@ impl SemanticWorkerSession {
             document: None,
             document_path: None,
         };
-        let expected_response_generation = matches!(method, "completion" | "gotoDefinition" | "signatureHelp")
-            .then_some(content_generation)
-            .flatten();
+        let expected_response_generation =
+            matches!(method, "completion" | "gotoDefinition" | "signatureHelp")
+                .then_some(content_generation)
+                .flatten();
         self.send_payload(payload, expected_response_generation)
     }
 

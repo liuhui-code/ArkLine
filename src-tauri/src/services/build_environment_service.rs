@@ -17,9 +17,7 @@ const SDK_ENV_NAMES: [&str; 5] = [
     "DEVECO_SDK_HOME",
 ];
 
-pub fn resolve_build_environment(
-    request: &BuildEnvironmentRequest,
-) -> BuildEnvironmentResolution {
+pub fn resolve_build_environment(request: &BuildEnvironmentRequest) -> BuildEnvironmentResolution {
     let node = resolve_node_path(request);
     let sdk = resolve_sdk_path(request);
     let mut checks = Vec::new();
@@ -36,7 +34,9 @@ pub fn resolve_build_environment(
             push_unique_path(&mut path_entries, sdk_path.join(suffix));
         }
     }
-    let project_bin = PathBuf::from(&request.root_path).join("node_modules").join(".bin");
+    let project_bin = PathBuf::from(&request.root_path)
+        .join("node_modules")
+        .join(".bin");
     if project_bin.is_dir() {
         push_unique_path(&mut path_entries, project_bin);
     }
@@ -103,10 +103,12 @@ fn check_hvigor_wrapper(request: &BuildEnvironmentRequest) -> BuildEnvironmentCh
         available,
         detail: wrapper.map_or_else(
             || format!("No hvigorw or hvigorw.bat found in {}", root.display()),
-            |path| if available {
-                format!("Hvigor wrapper ready at {}", path.display())
-            } else {
-                format!("Hvigor wrapper is not executable: {}", path.display())
+            |path| {
+                if available {
+                    format!("Hvigor wrapper ready at {}", path.display())
+                } else {
+                    format!("Hvigor wrapper is not executable: {}", path.display())
+                }
             },
         ),
     }
@@ -266,10 +268,16 @@ mod tests {
         });
 
         assert!(resolution.can_build);
-        assert_eq!(resolution.node_path, Some(root.to_string_lossy().to_string()));
+        assert_eq!(
+            resolution.node_path,
+            Some(root.to_string_lossy().to_string())
+        );
         assert_eq!(resolution.sdk_path, Some(sdk.to_string_lossy().to_string()));
         assert_eq!(resolution.path_entries[0], root.to_string_lossy());
-        assert_eq!(resolution.environment["HOS_SDK_HOME"], sdk.to_string_lossy());
+        assert_eq!(
+            resolution.environment["HOS_SDK_HOME"],
+            sdk.to_string_lossy()
+        );
         assert_eq!(resolution.environment["NODE_HOME"], root.to_string_lossy());
         fs::remove_dir_all(root).unwrap();
     }

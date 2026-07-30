@@ -75,6 +75,7 @@ type CommandPaletteAction = {
   runLint: () => void;
   formatActiveDocument: () => void;
   loadDiff: () => void;
+  switchGitBranch: () => void;
   openSettings: () => void;
   toggleGitBlame: () => void;
   refreshGitBlame: () => void;
@@ -103,6 +104,7 @@ export function buildAppShellCommandPaletteItems(query: string, actions: Command
     { id: "run-validation", label: "Run Lint", action: actions.runLint },
     { id: "format-active-document", label: "Format Active Document", action: actions.formatActiveDocument },
     { id: "load-diff", label: "Load Diff", action: actions.loadDiff },
+    { id: "switch-git-branch", label: "Switch Git Branch", action: actions.switchGitBranch },
     { id: "open-settings", label: "Open Settings", action: actions.openSettings },
     { id: "toggle-git-blame", label: "Toggle Git Blame", action: actions.toggleGitBlame },
     { id: "refresh-git-blame", label: "Refresh Git Blame", action: actions.refreshGitBlame },

@@ -41,7 +41,16 @@ export function useActiveDocumentActions({
 
   async function saveActiveDocument() {
     if (!activePath) return;
-    const currentContent = documentsRef.current.getDocument(activePath)?.currentContent ?? "";
+    const document = documentsRef.current.getDocument(activePath);
+    if (document?.externalDeleted) {
+      onStatusChange(`Save blocked: ${getPathBasename(activePath)} was deleted outside the editor`);
+      return;
+    }
+    if (document?.externalContent !== null && document?.externalContent !== undefined) {
+      onStatusChange(`Save blocked: ${getPathBasename(activePath)} changed on disk`);
+      return;
+    }
+    const currentContent = document?.currentContent ?? "";
     const content = getFormatOnSave()
       ? formatArkTsDocument(currentContent)
       : currentContent;

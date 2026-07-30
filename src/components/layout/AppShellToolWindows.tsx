@@ -14,6 +14,7 @@ import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHo
 import type { BuildState, BuildTarget } from "@/features/build/build-model";
 import type { DiffFile } from "@/features/diff/unified-diff";
 import type { GitTraceState } from "@/features/git/git-trace-model";
+import type { GitDiffActionContext, GitFileComparison, GitPatchAction } from "@/features/git/git-source-control-model";
 import type { ProblemItem } from "@/features/problems/problems-store";
 import type { TerminalSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
@@ -50,12 +51,15 @@ type AppShellToolWindowsProps = {
   onRunCleanBuild: () => void;
   onStopBuild: () => void;
   diffFiles: DiffFile[];
+  diffActionContext: GitDiffActionContext | null;
+  diffComparison: GitFileComparison | null;
   gitToolView: "changes" | "trace";
   gitTraceState: GitTraceState;
   onChangeGitToolView: (view: "changes" | "trace") => void;
   onOpenGitFile: (path: string) => void;
   onFocusEditorFromGitTrace: () => void;
   onOpenGitTraceCommitDiff: (patch: string) => void;
+  onApplyGitPartial: (action: GitPatchAction, patch: string, context: GitDiffActionContext) => Promise<void>;
   onStatusChange: (message: string) => void;
   indexAndStatus: AppShellIndexAndStatusSurfacesProps;
 };
@@ -91,12 +95,15 @@ export function AppShellToolWindows({
   onRunCleanBuild,
   onStopBuild,
   diffFiles,
+  diffActionContext,
+  diffComparison,
   gitToolView,
   gitTraceState,
   onChangeGitToolView,
   onOpenGitFile,
   onFocusEditorFromGitTrace,
   onOpenGitTraceCommitDiff,
+  onApplyGitPartial,
   onStatusChange,
   indexAndStatus,
 }: AppShellToolWindowsProps) {
@@ -118,7 +125,7 @@ export function AppShellToolWindows({
         problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={onStatusChange} terminalSettings={terminalSettings} workspaceApi={workspaceApi} workspaceRootPath={workspaceRootPath} />}
         buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspaceRootPath} modules={buildModules} onChangeTarget={onChangeBuildTarget} onChangeModuleName={onChangeBuildModuleName} onChangeProduct={onChangeBuildProduct} onChangeBuildMode={onChangeBuildMode} onChangeFastMode={onChangeBuildFastMode} onSelectConfiguration={onSelectBuildConfiguration} onSaveConfiguration={onSaveBuildConfiguration} onCopyConfiguration={onCopyBuildConfiguration} onDeleteConfiguration={onDeleteBuildConfiguration} onRunBuild={onRunBuild} onRunCleanBuild={onRunCleanBuild} onStopBuild={onStopBuild} />}
-        gitPanel={<GitToolWindow files={diffFiles} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={onFocusEditorFromGitTrace} onOpenCommitDiff={onOpenGitTraceCommitDiff} />} onChangeView={onChangeGitToolView} onOpenFile={onOpenGitFile} />}
+        gitPanel={<GitToolWindow files={diffFiles} comparison={diffComparison} actionContext={diffActionContext} onApplyPartial={onApplyGitPartial} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={onFocusEditorFromGitTrace} onOpenCommitDiff={onOpenGitTraceCommitDiff} />} onChangeView={onChangeGitToolView} onOpenFile={onOpenGitFile} />}
         deviceLogPanel={<DeviceLogToolWindow active={bottomContentVisible && activeBottomTool === "deviceLog"} workspaceApi={workspaceApi} onStatusChange={onStatusChange} />}
       />
       <AppShellIndexAndStatusSurfaces {...indexAndStatus} />

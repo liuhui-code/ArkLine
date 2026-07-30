@@ -4,8 +4,8 @@ use std::sync::Arc;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest, SignatureHelp,
-    UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest,
+    SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::launcher::{

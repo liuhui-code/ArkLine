@@ -11,10 +11,12 @@ import { flushSync } from "react-dom";
 import { LeftToolRail } from "@/components/layout/LeftToolRail";
 import { ProjectToolWindow } from "@/components/layout/ProjectToolWindow";
 import type { ProjectMutationRequest } from "@/components/layout/ProjectToolWindow";
+import { SourceControlToolWindow } from "@/components/layout/SourceControlToolWindow";
 import type { LeftToolKey } from "@/components/layout/shell-state";
 import { ToolWindow } from "@/components/layout/ToolWindow";
 import { useLatestCallback } from "@/components/layout/use-latest-callback";
 import type { WorkspaceDirectoryEntry, WorkspaceViewModel } from "@/features/workspace/workspace-api";
+import type { ComponentProps } from "react";
 
 type ShellSidebarProps = {
   activePath: string | null;
@@ -35,6 +37,7 @@ type ShellSidebarProps = {
   onRequestProjectMutation: (request: ProjectMutationRequest) => void;
   onResizeWidth: (width: number) => void;
   onSelectTool: (tool: LeftToolKey) => void;
+  sourceControlProps?: ComponentProps<typeof SourceControlToolWindow>;
 };
 
 export function ShellSidebar({
@@ -56,6 +59,7 @@ export function ShellSidebar({
   onRequestProjectMutation,
   onResizeWidth,
   onSelectTool,
+  sourceControlProps,
 }: ShellSidebarProps) {
   const resizeStartRef = useRef<{ x: number; width: number } | null>(null);
   const activeResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -145,8 +149,8 @@ export function ShellSidebar({
       <LeftToolRail activeTool={activeTool} onSelectTool={onSelectTool} />
       <div className="sidebar__panes">
         <div ref={filesPaneRef} className="sidebar__pane">
-          <ToolWindow ariaLabel="Files" title="Project" caption="Files" visible={filesVisible} className="tool-window">
-            {workspace ? (
+          <ToolWindow ariaLabel={activeTool === "git" ? "Source Control" : "Files"} title={activeTool === "git" ? "Source Control" : "Project"} caption={activeTool === "git" ? "Git" : "Files"} visible={filesVisible} className="tool-window">
+            {activeTool === "git" ? sourceControlProps ? <SourceControlToolWindow {...sourceControlProps} /> : <p>Source Control unavailable.</p> : workspace ? (
               useLazyProjectTree ? (
                 <ProjectToolWindow
                   lazyRoot={lazyRoot}

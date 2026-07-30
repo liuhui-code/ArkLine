@@ -1,12 +1,7 @@
 import type { BuildConfiguration, BuildEnvironmentResolution, HarmonyBuildProject } from "@/features/build/build-model";
 import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
-import type {
-  CodeAction,
-  EditConflict,
-  WorkspaceEditPlan,
-} from "@/features/code-actions/code-action-model";
+import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
-import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import type { WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { AppSettings, TerminalSettings } from "@/features/settings/settings-store";
 import type {
@@ -58,6 +53,7 @@ import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 import type { UsageResult } from "@/features/workspace/usage-search";
 import type { LanguageSignatureHelp } from "@/features/workspace/workspace-signature-help-api";
+import type { WorkspaceGitApi } from "@/features/workspace/workspace-git-api";
 
 export type { LanguageSignature, LanguageSignatureHelp, LanguageSignatureHelpParameter } from "@/features/workspace/workspace-signature-help-api";
 export type {
@@ -370,7 +366,7 @@ export type ApplyWorkspaceEditResult = {
   changedFiles: string[];
 };
 
-export type WorkspaceApi = {
+type WorkspaceCoreApi = {
   pickWorkspaceRoot(): Promise<string | null>;
   pickPath?(options: PathPickOptions): Promise<string | null>;
   pickSaveFile?(options: PathSaveOptions): Promise<string | null>;
@@ -433,8 +429,6 @@ export type WorkspaceApi = {
   resolveCodeAction?(request: CodeActionResolveRequest): Promise<CodeActionResolution>;
   previewWorkspaceEdit?(request: WorkspaceEditPreviewRequest): Promise<WorkspaceEditPreview>;
   applyWorkspaceEdit?(request: ApplyWorkspaceEditRequest): Promise<ApplyWorkspaceEditResult>;
-  getFileBlame?(path: string): Promise<GitBlameLine[] | GitTraceUnavailable>;
-  getCommitTrace?(path: string, commit: string, line: number): Promise<GitCommitTrace | GitTraceUnavailable>;
   loadSettings(): Promise<AppSettings>;
   saveSettings(settings: AppSettings): Promise<void>;
   resolveTerminalProfile?(settings: TerminalSettings): Promise<TerminalProfileResolution>;
@@ -465,3 +459,5 @@ export type WorkspaceApi = {
   planDeviceLogRetention?(targetBytes: number): Promise<DeviceLogRetentionPlan>;
   applyDeviceLogRetention?(targetBytes: number): Promise<DeviceLogRetentionApplyResult>;
 };
+
+export type WorkspaceApi = WorkspaceCoreApi & WorkspaceGitApi;

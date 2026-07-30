@@ -53,6 +53,8 @@ pub struct TerminalSettings {
 pub struct WorkspaceSessionSettings {
     #[serde(default)]
     pub active_file_path: Option<String>,
+    #[serde(default)]
+    pub branch_active_file_paths: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -238,6 +240,28 @@ mod tests {
 
         let loaded = read_settings(&path).unwrap();
         assert_eq!(loaded, settings);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reads_legacy_workspace_sessions_without_branch_state() {
+        let root = unique_temp_dir("settings-legacy-session");
+        let path = root.join("settings.json");
+        fs::create_dir_all(&root).unwrap();
+        let mut settings = serde_json::to_value(default_settings()).unwrap();
+        settings["workspaceSessions"] = serde_json::json!({
+            "/workspace": { "activeFilePath": "/workspace/Main.ets" }
+        });
+        fs::write(&path, serde_json::to_string(&settings).unwrap()).unwrap();
+
+        let loaded = read_settings(&path).unwrap();
+        let session = loaded.workspace_sessions.get("/workspace").unwrap();
+        assert_eq!(
+            session.active_file_path.as_deref(),
+            Some("/workspace/Main.ets")
+        );
+        assert!(session.branch_active_file_paths.is_empty());
 
         fs::remove_dir_all(root).unwrap();
     }

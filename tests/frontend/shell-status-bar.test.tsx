@@ -110,6 +110,43 @@ describe("ShellStatusBar", () => {
     expect(onOpenIndexDiagnostics).toHaveBeenCalledWith("index-diagnostics-health");
   });
 
+  it("shows repository changes and branch divergence in the branch control", () => {
+    const onOpenGitBranchPicker = vi.fn();
+    render(
+      <ShellStatusBar
+        activeBottomTool="git"
+        activePath={null}
+        semanticState={{ provider: "fallback", mode: "fallback", detail: "Using fallback" }}
+        semanticCapability={{ status: "semantic", semanticNavigation: true, semanticCompletion: true, localFallback: true, message: "SDK ready" }}
+        statusMessageStore={createStatusMessageStore("Ready")}
+        workspaceName="Demo"
+        gitBranchName="feature/git"
+        gitChangeCount={4}
+        gitAhead={2}
+        gitBehind={1}
+        workspaceScanText={null}
+        workspaceIndexText="Index: ready"
+        sdkIndexText={null}
+        terminalRunning={false}
+        buildMessage="Build idle"
+        gitBlameVisible={false}
+        gitBlameMenuOpen={false}
+        onToggleGitBlameMenu={() => undefined}
+        onToggleGitBlame={() => undefined}
+        onRefreshGitBlame={() => undefined}
+        onShowCurrentLineBlame={() => undefined}
+        onCloseGitBlame={() => undefined}
+        onOpenIndexDiagnostics={() => undefined}
+        onOpenGitBranchPicker={onOpenGitBranchPicker}
+      />,
+    );
+
+    const branch = screen.getByRole("button", { name: "Switch Git Branch: feature/git, 4 changes, 2 ahead, 1 behind" });
+    expect(branch).toHaveTextContent("Git: feature/git · 4 · ↑2 ↓1");
+    fireEvent.click(branch);
+    expect(onOpenGitBranchPicker).toHaveBeenCalledOnce();
+  });
+
   it("updates only the subscribed status message surface", () => {
     const statusMessageStore = createStatusMessageStore("Ready");
     const ownerRender = vi.fn();

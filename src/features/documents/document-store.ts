@@ -9,6 +9,7 @@ export type DocumentRecord = {
   readonly currentContent: string;
   isDirty: boolean;
   externalContent: string | null;
+  externalDeleted: boolean;
 };
 
 type InternalDocumentRecord = DocumentRecord & {
@@ -108,6 +109,7 @@ export function createDocumentStore() {
       const existing = requireDocument(documents, normalized);
       if (existing.isDirty) {
         existing.externalContent = content;
+        existing.externalDeleted = false;
         notify(normalized, existing, "metadata");
         return "conflict";
       }
@@ -116,9 +118,18 @@ export function createDocumentStore() {
       existing.originalText = text;
       replaceText(existing, text, content);
       existing.externalContent = null;
+      existing.externalDeleted = false;
       setDirtyState(existing, false);
       notify(normalized, existing, "content");
       return "updated";
+    },
+    applyExternalDeletion(path: string): "deleted" | "conflict" {
+      const normalized = normalizePath(path);
+      const existing = requireDocument(documents, normalized);
+      existing.externalContent = null;
+      existing.externalDeleted = true;
+      notify(normalized, existing, "metadata");
+      return existing.isDirty ? "conflict" : "deleted";
     },
     saveDocument(path: string) {
       const normalized = normalizePath(path);
@@ -126,6 +137,7 @@ export function createDocumentStore() {
       existing.originalContent = existing.currentContent;
       existing.originalText = existing.currentText;
       existing.externalContent = null;
+      existing.externalDeleted = false;
       setDirtyState(existing, false);
       notify(normalized, existing, "metadata");
     },
@@ -180,6 +192,7 @@ function createDocumentRecord(path: string, content: string, text: Text): Intern
     },
     isDirty: false,
     externalContent: null,
+    externalDeleted: false,
   };
 }
 

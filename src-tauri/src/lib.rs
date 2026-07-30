@@ -1,11 +1,14 @@
 mod commands {
-    pub mod build_environment;
     pub mod build_configurations;
+    pub mod build_environment;
     pub mod build_project;
     pub mod code_actions;
     pub mod device_log;
     pub mod documents;
     pub mod environment;
+    pub mod git_branch;
+    pub mod git_repository;
+    pub mod git_stash;
     pub mod git_trace;
     pub mod language;
     pub mod settings;
@@ -27,6 +30,7 @@ mod models {
     pub mod device_log;
     pub mod device_log_query;
     pub mod diagnostics;
+    pub mod git;
     pub mod language;
     pub mod terminal;
     pub mod workspace;
@@ -75,6 +79,7 @@ pub fn run() {
         .manage(commands::windowing::LaunchWorkspaceState::for_process())
         .manage(services::terminal_service::TerminalRuntime::default())
         .manage(services::device_log_service::DeviceLogRuntime::default())
+        .manage(services::git_repository_service::GitRepositoryRuntime::default())
         .manage(services::workspace_index_service::WorkspaceIndexRuntime::default())
         .manage(services::workspace_index_manager_service::WorkspaceIndexManagerRuntime::default())
         .manage(services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime::default())
@@ -148,6 +153,32 @@ pub fn run() {
             commands::code_actions::apply_workspace_edit,
             commands::git_trace::get_file_blame,
             commands::git_trace::get_commit_trace,
+            commands::git_branch::list_git_branches,
+            commands::git_branch::checkout_git_branch,
+            commands::git_repository::get_git_repository_snapshot,
+            commands::git_repository::cancel_git_query,
+            commands::git_repository::get_git_file_diff,
+            commands::git_repository::get_git_file_comparison,
+            commands::git_repository::stage_git_paths,
+            commands::git_repository::unstage_git_paths,
+            commands::git_repository::discard_git_paths,
+            commands::git_repository::restore_git_discard,
+            commands::git_repository::apply_git_partial_patch,
+            commands::git_repository::restore_git_partial_patch,
+            commands::git_repository::commit_git_changes,
+            commands::git_repository::run_git_remote_operation,
+            commands::git_repository::get_git_history,
+            commands::git_repository::get_git_commit_details,
+            commands::git_repository::get_git_commit_diff,
+            commands::git_repository::get_git_commit_file_diff,
+            commands::git_repository::run_git_history_action,
+            commands::git_repository::get_git_conflict_content,
+            commands::git_repository::resolve_git_conflict,
+            commands::git_repository::run_git_repository_action,
+            commands::git_stash::get_git_stashes,
+            commands::git_stash::create_git_stash,
+            commands::git_stash::run_git_stash_action,
+            commands::git_stash::get_git_stash_diff,
             commands::terminal::create_terminal_session,
             commands::terminal::resolve_terminal_profile_command,
             commands::terminal::list_terminal_sessions,

@@ -1,14 +1,19 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { GitDiffViewer } from "@/components/layout/GitDiffViewer";
 import type { DiffFile } from "@/features/diff/unified-diff";
+import type { GitDiffActionContext, GitFileComparison, GitPatchAction } from "@/features/git/git-source-control-model";
 
 export type GitToolView = "changes" | "trace";
 
 type GitToolWindowProps = {
   files: DiffFile[];
+  comparison?: GitFileComparison | null;
   activeView: GitToolView;
   tracePanel: ReactNode;
   onChangeView: (view: GitToolView) => void;
   onOpenFile: (path: string) => void;
+  actionContext?: GitDiffActionContext | null;
+  onApplyPartial?: (action: GitPatchAction, patch: string, context: GitDiffActionContext) => Promise<void>;
 };
 
 function getFileStatus(file: DiffFile) {
@@ -29,17 +34,7 @@ function getFileStatus(file: DiffFile) {
   return { short: "M", label: "Modified" };
 }
 
-function renderDiffPrefix(kind: "context" | "added" | "removed") {
-  if (kind === "added") {
-    return "+";
-  }
-  if (kind === "removed") {
-    return "-";
-  }
-  return " ";
-}
-
-export function GitToolWindow({ files, activeView, tracePanel, onChangeView, onOpenFile }: GitToolWindowProps) {
+export function GitToolWindow({ files, comparison = null, activeView, tracePanel, onChangeView, onOpenFile, actionContext = null, onApplyPartial }: GitToolWindowProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(files[0]?.path ?? null);
 
   useEffect(() => {
@@ -113,23 +108,7 @@ export function GitToolWindow({ files, activeView, tracePanel, onChangeView, onO
                     Open in Editor
                   </button>
                 </div>
-                {selectedFile.binary ? (
-                  <p>Binary change</p>
-                ) : (
-                  <div className="diff-list" aria-label="Diff Files">
-                    {selectedFile.hunks.map((hunk) => (
-                      <div key={`${selectedFile.path}:${hunk.header}`} className="diff-hunk">
-                        <code>{hunk.header}</code>
-                        {hunk.lines.map((line, index) => (
-                          <div key={`${selectedFile.path}:${hunk.header}:${index}`} className={`diff-line diff-line--${line.kind}`}>
-                            <span className="diff-line__number">{index + 1}</span>
-                            <code className="diff-line__code">{`${renderDiffPrefix(line.kind)} ${line.text}`}</code>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <GitDiffViewer file={selectedFile} comparison={comparison?.relativePath === selectedFile.path ? comparison : null} actionContext={actionContext} onApplyPartial={onApplyPartial} />
               </>
             ) : (
               <p>Git and imported patch review will appear here.</p>

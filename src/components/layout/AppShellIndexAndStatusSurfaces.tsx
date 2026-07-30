@@ -52,6 +52,10 @@ export type AppShellIndexAndStatusSurfacesProps = {
   semanticCapability: SemanticCapabilityState;
   statusMessageStore: StatusMessageStore;
   workspaceName: string | null;
+  gitBranchName: string;
+  gitChangeCount: number;
+  gitAhead: number;
+  gitBehind: number;
   workspaceScanText: string | null;
   workspaceIndexText: string;
   sdkIndexText: string | null;
@@ -65,6 +69,7 @@ export type AppShellIndexAndStatusSurfacesProps = {
   onShowCurrentLineBlame: () => void;
   onCloseGitBlame: () => void;
   onOpenIndexDiagnostics: (sectionTarget?: string) => void;
+  onOpenGitBranchPicker: () => void;
 };
 
 export function AppShellIndexAndStatusSurfaces({
@@ -102,6 +107,10 @@ export function AppShellIndexAndStatusSurfaces({
   semanticCapability,
   statusMessageStore,
   workspaceName,
+  gitBranchName,
+  gitChangeCount,
+  gitAhead,
+  gitBehind,
   workspaceScanText,
   workspaceIndexText,
   sdkIndexText,
@@ -115,6 +124,7 @@ export function AppShellIndexAndStatusSurfaces({
   onShowCurrentLineBlame,
   onCloseGitBlame,
   onOpenIndexDiagnostics,
+  onOpenGitBranchPicker,
 }: AppShellIndexAndStatusSurfacesProps) {
   return (
     <>
@@ -173,6 +183,10 @@ export function AppShellIndexAndStatusSurfaces({
         semanticCapability={semanticCapability}
         statusMessageStore={statusMessageStore}
         workspaceName={workspaceName}
+        gitBranchName={gitBranchName}
+        gitChangeCount={gitChangeCount}
+        gitAhead={gitAhead}
+        gitBehind={gitBehind}
         workspaceScanText={workspaceScanText}
         workspaceIndexText={workspaceIndexText}
         sdkIndexText={sdkIndexText}
@@ -187,6 +201,7 @@ export function AppShellIndexAndStatusSurfaces({
         onShowCurrentLineBlame={onShowCurrentLineBlame}
         onCloseGitBlame={onCloseGitBlame}
         onOpenIndexDiagnostics={onOpenIndexDiagnostics}
+        onOpenGitBranchPicker={onOpenGitBranchPicker}
       />
     </>
   );

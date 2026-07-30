@@ -19,12 +19,10 @@ pub mod device_log_query_pruning_service;
 pub mod device_log_query_response_service;
 #[rustfmt::skip] #[cfg(test)] mod device_log_query_response_service_tests;
 pub mod device_log_query_service;
-#[cfg(test)]
-mod device_log_query_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod device_log_query_service_tests;
 pub mod device_log_query_time_service;
 pub mod device_log_query_worker_service;
-#[cfg(test)]
-mod device_log_query_worker_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod device_log_query_worker_service_tests;
 pub mod device_log_retention_service;
 pub mod device_log_runtime_service;
 pub mod device_log_segment_service;
@@ -38,15 +36,22 @@ pub mod diff_service;
 pub mod document_command_service;
 pub mod document_service;
 pub mod environment_doctor;
+pub mod git_branch_service;
 pub mod git_command_service;
+pub mod git_conflict_service;
+pub mod git_discard_service;
+pub mod git_file_comparison_service; pub mod git_history_service;
+pub mod git_patch_service;
+pub mod git_query_service;
+pub mod git_remote_service;
+pub mod git_repository_service;
+pub mod git_stash_service; pub mod git_status_service;
 pub mod git_trace_service;
 pub mod language_client_runtime_service;
 pub mod language_command_service;
-#[cfg(test)]
-mod language_runtime_concurrency_tests;
+#[rustfmt::skip] #[cfg(test)] mod language_runtime_concurrency_tests;
 pub mod language_service;
-#[cfg(test)]
-mod language_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod language_service_tests;
 pub mod process_command_service;
 pub mod semantic;
 pub mod semantic_host;
@@ -57,24 +62,19 @@ pub mod terminal_session_service;
 pub mod validation_service;
 pub mod workspace_arkts_import_export_parser_service;
 pub mod workspace_arkts_stub_parser_service;
-#[cfg(test)]
-mod workspace_arkts_stub_parser_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_arkts_stub_parser_service_tests;
 pub mod workspace_completion_expected_type_service;
 pub mod workspace_completion_item_service;
 pub mod workspace_completion_parser_service;
 pub(crate) mod workspace_completion_sdk_service;
 pub mod workspace_completion_semantic_service;
-#[cfg(test)]
-mod workspace_completion_semantic_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_completion_semantic_service_tests;
 pub(crate) mod workspace_content_chunk_plan_service;
-#[cfg(test)]
-mod workspace_content_index_profile_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_content_index_profile_tests;
 pub mod workspace_content_index_service;
-#[cfg(test)]
-mod workspace_content_index_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_content_index_service_tests;
 pub(crate) mod workspace_content_match_service;
-#[cfg(test)]
-mod workspace_content_match_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_content_match_service_tests;
 pub mod workspace_content_query_service;
 pub(crate) mod workspace_content_readiness_store_service;
 pub(crate) mod workspace_content_refresh_chunk_service;

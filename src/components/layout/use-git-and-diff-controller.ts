@@ -3,6 +3,7 @@ import type { GitToolView } from "@/components/layout/GitToolWindow";
 import { useGitTrace } from "@/components/layout/use-git-trace";
 import { parseUnifiedDiff, type DiffFile } from "@/features/diff/unified-diff";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
+import type { GitDiffActionContext, GitFileComparison } from "@/features/git/git-source-control-model";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { EditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
 
@@ -36,6 +37,8 @@ export function useGitAndDiffController({
   onStatusChange,
 }: UseGitAndDiffControllerOptions) {
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
+  const [diffActionContext, setDiffActionContext] = useState<GitDiffActionContext | null>(null);
+  const [diffComparison, setDiffComparison] = useState<GitFileComparison | null>(null);
   const [gitToolView, setGitToolView] = useState<GitToolView>("changes");
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
@@ -130,6 +133,8 @@ export function useGitAndDiffController({
   async function loadDiff() {
     const diffText = await workspaceApi.loadDiff(workspaceRootPath);
     setDiffFiles(parseUnifiedDiff(diffText));
+    setDiffActionContext(null);
+    setDiffComparison(null);
     setGitToolView("changes");
     showGit();
     onStatusChange(diffText ? "Diff loaded" : "No diff");
@@ -148,8 +153,10 @@ export function useGitAndDiffController({
     onStatusChange(`Copied commit ${selectedBlameAttribution.shortCommit ?? selectedBlameAttribution.commit.slice(0, 7)}`);
   }
 
-  function openGitTraceCommitDiff(patch: string) {
+  function openGitTraceCommitDiff(patch: string, context?: GitDiffActionContext, comparison: GitFileComparison | null = null) {
     setDiffFiles(parseUnifiedDiff(patch));
+    setDiffActionContext(context ?? null);
+    setDiffComparison(comparison);
     setGitToolView("changes");
     showGit();
     onStatusChange(patch ? "Commit diff loaded" : "No commit diff");
@@ -171,10 +178,14 @@ export function useGitAndDiffController({
 
   function resetDiff() {
     setDiffFiles([]);
+    setDiffActionContext(null);
+    setDiffComparison(null);
   }
 
   return {
     diffFiles,
+    diffActionContext,
+    diffComparison,
     gitToolView,
     setGitToolView,
     gitTraceState,
