@@ -75,10 +75,12 @@ pub async fn query_workspace_candidates_brokered_blocking(
     context: WorkspaceSearchRankingContext,
     generation: Option<u64>,
     deadline_ms: Option<u64>,
+    query_lane: Option<String>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
+    let query_lane = entity_query_lane(query_lane.as_deref())?;
     let ticket = query_broker.begin(
         &root_path,
-        "searchEverywhere",
+        query_lane,
         generation,
         deadline_ms.unwrap_or(ENTITY_QUERY_DEADLINE_MS),
     )?;
@@ -111,6 +113,14 @@ pub async fn query_workspace_candidates_brokered_blocking(
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+fn entity_query_lane(value: Option<&str>) -> Result<&'static str, String> {
+    match value {
+        None | Some("searchEverywhere") => Ok("searchEverywhere"),
+        Some("quickOpen") => Ok("quickOpen"),
+        Some(value) => Err(format!("Unsupported workspace query lane: {value}")),
+    }
 }
 
 pub async fn query_workspace_quick_open_blocking(

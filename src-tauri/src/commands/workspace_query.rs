@@ -47,6 +47,7 @@ pub async fn query_workspace_candidates(
     context: Option<WorkspaceSearchRankingContext>,
     generation: Option<u64>,
     deadline_ms: Option<u64>,
+    query_lane: Option<String>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
@@ -61,6 +62,7 @@ pub async fn query_workspace_candidates(
         context.unwrap_or_default(),
         generation,
         deadline_ms,
+        query_lane,
     )
     .await?
     .items)
@@ -76,6 +78,7 @@ pub async fn query_workspace_candidates_with_readiness(
     context: Option<WorkspaceSearchRankingContext>,
     generation: Option<u64>,
     deadline_ms: Option<u64>,
+    query_lane: Option<String>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
@@ -90,6 +93,7 @@ pub async fn query_workspace_candidates_with_readiness(
         context.unwrap_or_default(),
         generation,
         deadline_ms,
+        query_lane,
     )
     .await
 }

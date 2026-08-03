@@ -97,6 +97,45 @@ describe("workspace index query api", () => {
     expect(invokedCommands).not.toContain("query_workspace_search_everywhere");
   });
 
+  it("passes an isolated query lane through the readiness command", async () => {
+    const envelope = {
+      items: [],
+      readiness: {
+        rootPath: "/workspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    };
+    const invokeSpy = vi.fn();
+    const invoke = <T,>(command: string, args?: Record<string, unknown>) => {
+      invokeSpy(command, args);
+      return Promise.resolve(envelope as T);
+    };
+    const api = createWorkspaceIndexQueryApi({
+      invoke,
+      hasTauriRuntime: () => true,
+    });
+
+    await api.queryWorkspaceCandidatesWithReadiness(
+      "/workspace",
+      "Entry",
+      "files",
+      20,
+      null,
+      undefined,
+      1,
+      250,
+      "quickOpen",
+    );
+
+    expect(invokeSpy).toHaveBeenCalledWith(
+      "query_workspace_candidates_with_readiness",
+      expect.objectContaining({ queryLane: "quickOpen" }),
+    );
+  });
+
   it("routes rename impact queries through the symbol-identity command", async () => {
     const impact = {
       symbolId: "project:Foo",

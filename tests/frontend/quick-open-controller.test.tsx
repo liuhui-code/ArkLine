@@ -44,7 +44,35 @@ describe("Quick Open", () => {
       undefined,
       1,
       250,
+      "quickOpen",
     );
+  });
+
+  it("cancels only the active Quick Open query lane", async () => {
+    const queryWorkspaceWithReadiness = vi.fn(
+      () => new Promise<ReturnType<typeof missingQuickOpenEnvelope>>(() => undefined),
+    );
+    const cancelWorkspaceSearch = vi.fn(async () => undefined);
+    const { rerender } = renderHook(
+      ({ active }) => useQuickOpenController({
+        active,
+        rootPath: "/workspace",
+        query: "Entry",
+        localResults: [],
+        queryWorkspaceWithReadiness,
+        cancelWorkspaceSearch,
+      }),
+      { initialProps: { active: true } },
+    );
+
+    await waitFor(() => expect(queryWorkspaceWithReadiness).toHaveBeenCalled());
+    rerender({ active: false });
+
+    await waitFor(() => expect(cancelWorkspaceSearch).toHaveBeenCalledWith(
+      "/workspace",
+      "quickOpen",
+      1,
+    ));
   });
 
   it("queries the persistent workspace index when the local projection is empty", async () => {

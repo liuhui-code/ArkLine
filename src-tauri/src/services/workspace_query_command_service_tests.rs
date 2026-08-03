@@ -115,10 +115,45 @@ fn brokered_candidate_command_rejects_a_superseded_generation() {
         WorkspaceSearchRankingContext::default(),
         Some(1),
         Some(1_000),
+        None,
     ))
     .unwrap_err();
 
     assert_eq!(error, "Workspace query superseded");
+}
+
+#[test]
+fn quick_open_generation_is_isolated_from_search_everywhere() {
+    let root = create_empty_workspace("query-command-quick-open-lane");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(source_dir.join("Entry.ets"), "class Entry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let broker = WorkspaceQueryBrokerRuntime::new(WorkspaceSearchSessionRuntime::default());
+    broker
+        .begin(&root_path, "searchEverywhere", Some(24), 1_000)
+        .unwrap();
+
+    let result = tauri::async_runtime::block_on(query_workspace_candidates_brokered_blocking(
+        runtime,
+        broker,
+        root_path,
+        "Entry".to_string(),
+        WorkspaceIndexQueryScope::Files,
+        8,
+        None,
+        WorkspaceSearchRankingContext::default(),
+        Some(1),
+        Some(1_000),
+        Some("quickOpen".to_string()),
+    ))
+    .unwrap();
+
+    assert!(result
+        .items
+        .iter()
+        .any(|candidate| candidate.title == "Entry.ets"));
 }
 
 #[test]

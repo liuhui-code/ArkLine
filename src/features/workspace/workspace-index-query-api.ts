@@ -2,6 +2,7 @@ import type { SearchCandidate } from "@/features/workspace/workspace-index-store
 import type { UsageResult } from "@/features/workspace/usage-search";
 import type {
   WorkspaceIndexExplainRequest,
+  WorkspaceIndexQueryLane,
   WorkspaceIndexExplainResult,
   LanguageQueryBrokerEnvelope,
   WorkspaceIndexQueryEnvelope,
@@ -26,7 +27,7 @@ type WorkspaceIndexQueryApiDependencies = {
 
 export type WorkspaceIndexQueryApi = {
   queryWorkspaceQuickOpen(rootPath: string, query: string, limit: number): Promise<SearchCandidate[]>;
-  queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext, generation?: number, deadlineMs?: number): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  queryWorkspaceCandidatesWithReadiness(rootPath: string, query: string, scope: WorkspaceIndexQueryScope, limit: number, cursor?: number | null, context?: WorkspaceSearchRankingContext, generation?: number, deadlineMs?: number, queryLane?: WorkspaceIndexQueryLane): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryWorkspaceFileSymbolsWithReadiness(rootPath: string, filePath: string, query: string, limit: number, cursor?: number | null): Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   queryDefinitionCandidatesWithReadiness(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<DefinitionCandidate>>;
   queryUsagesWithReadiness(rootPath: string, request: LanguageQueryRequest): Promise<WorkspaceIndexQueryEnvelope<UsageResult>>;
@@ -54,11 +55,21 @@ export function createWorkspaceIndexQueryApi({
       void limit;
       return [];
     },
-    async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit, cursor = null, context, generation, deadlineMs) {
+    async queryWorkspaceCandidatesWithReadiness(rootPath, query, scope, limit, cursor = null, context, generation, deadlineMs, queryLane) {
       if (hasTauriRuntime()) {
         return invoke<WorkspaceIndexQueryEnvelope<SearchCandidate>>(
           "query_workspace_candidates_with_readiness",
-          { rootPath, query, scope, limit, cursor, context, generation, deadlineMs },
+          {
+            rootPath,
+            query,
+            scope,
+            limit,
+            cursor,
+            context,
+            generation,
+            deadlineMs,
+            ...(queryLane ? { queryLane } : {}),
+          },
         );
       }
 

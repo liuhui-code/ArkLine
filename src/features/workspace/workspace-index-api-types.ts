@@ -283,6 +283,7 @@ export type WorkspaceIndexTaskStatus = {
 };
 
 export type WorkspaceIndexQueryScope = "all" | "files" | "classes" | "symbols" | "api" | "text";
+export type WorkspaceIndexQueryLane = "searchEverywhere" | "quickOpen";
 
 export type WorkspaceSearchRankingContext = {
   activePath?: string | null;

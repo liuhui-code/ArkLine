@@ -25,6 +25,7 @@ export type UseQuickOpenControllerOptions = {
     context: undefined,
     generation: number,
     deadlineMs: number,
+    queryLane: "quickOpen",
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   cancelWorkspaceSearch?: (rootPath: string, kind: string, generation: number) => Promise<void>;
   onError?: (message: string) => void;
@@ -87,6 +88,7 @@ export function useQuickOpenController({
           undefined,
           generation,
           QUICK_OPEN_DEADLINE_MS,
+          "quickOpen",
         ).then((envelope) => ({
           candidates: envelope.items,
           fallbackToLocal: envelope.items.length === 0 && envelope.readiness.state !== "ready",
@@ -132,7 +134,7 @@ export function useQuickOpenController({
       window.clearTimeout(timeout);
       if (!requestStarted) debouncePhase.finish("cancelled");
       if (requestStarted && !requestSettled && cancelWorkspaceSearch) {
-        void cancelWorkspaceSearch(rootPath, "searchEverywhere", generation).catch(() => undefined);
+        void cancelWorkspaceSearch(rootPath, "quickOpen", generation).catch(() => undefined);
       }
       if (!requestSettled) trace.finish("cancelled");
     };
