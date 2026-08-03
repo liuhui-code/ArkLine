@@ -194,7 +194,7 @@ describe("build environment snapshot", () => {
     expect(snapshot).toEqual({
       projectRoot: "/workspace/Demo",
       cwd: "/workspace/Demo",
-      command: "./hvigorw clean --no-daemon && ./hvigorw assembleHap --mode module -p module=entry@china -p product=china -p buildMode=release --no-daemon",
+      command: "./hvigorw clean --no-daemon && ./hvigorw --mode module -p module=entry@china -p product=china -p buildMode=release assembleHap --no-daemon",
       target: "hap",
       scope: "module",
       moduleName: "entry",
@@ -225,7 +225,7 @@ describe("build command preflight", () => {
       wrapperCommand: "hvigorw.bat",
     });
 
-    expect(plan.command).toBe("hvigorw.bat clean --no-daemon && hvigorw.bat assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
+    expect(plan.command).toBe("hvigorw.bat clean --no-daemon && hvigorw.bat --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon");
   });
 
   it("blocks builds when the Harmony project has no Hvigor wrapper", () => {
@@ -240,6 +240,8 @@ describe("build command preflight", () => {
         hasOhPackage: true,
         modules: ["entry"],
         defaultModule: "entry",
+        products: ["default"],
+        defaultProduct: "default",
       },
       settings: {
         harmonySdkPath: "/opt/harmony-sdk",
@@ -416,17 +418,16 @@ describe("Harmony build command planner", () => {
     });
 
     expect(plan.cwd).toBe("/workspace/Demo");
-    expect(plan.command).toBe("./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
+    expect(plan.command).toBe("./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon");
     expect(plan.label).toBe("Build HAP entry debug");
     expect(plan.intent.scope).toBe("module");
     expect(plan.intent.moduleName).toBe("entry");
     expect(plan.steps).toEqual([
       {
         label: "Build",
-        command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+        command: "./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon",
         program: "./hvigorw",
         args: [
-          "assembleHap",
           "--mode",
           "module",
           "-p",
@@ -435,6 +436,7 @@ describe("Harmony build command planner", () => {
           "product=default",
           "-p",
           "buildMode=debug",
+          "assembleHap",
           "--no-daemon",
         ],
       },
@@ -452,7 +454,7 @@ describe("Harmony build command planner", () => {
       fastMode: true,
     });
 
-    expect(plan.command).toBe("./hvigorw assembleApp --mode project -p product=default -p buildMode=release");
+    expect(plan.command).toBe("./hvigorw --mode project -p product=default -p buildMode=release assembleApp");
   });
 
   it("prefixes clean only when explicitly requested", () => {
@@ -466,7 +468,7 @@ describe("Harmony build command planner", () => {
       fastMode: false,
     });
 
-    expect(plan.command).toBe("./hvigorw clean --no-daemon && ./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon");
+    expect(plan.command).toBe("./hvigorw clean --no-daemon && ./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon");
     expect(plan.steps.map((step) => step.label)).toEqual(["Clean", "Build"]);
   });
 });
@@ -488,7 +490,7 @@ describe("build controller", () => {
       clean: false,
     });
 
-    expect(plan.command).toBe("./hvigorw assembleHap --mode module -p module=entry@china -p product=china -p buildMode=release");
+    expect(plan.command).toBe("./hvigorw --mode module -p module=entry@china -p product=china -p buildMode=release assembleHap");
     expect(plan.intent.product).toBe("china");
   });
 

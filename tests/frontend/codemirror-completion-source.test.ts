@@ -5,8 +5,24 @@ import { EditorView } from "@codemirror/view";
 import { createCodeMirrorCompletionSources } from "@/editor/codemirror-completion-source";
 import { createVersionCheckedCompletionTransaction } from "@/editor/completion-transaction";
 import { createCodeMirrorSignatureHelpExtension, readSignatureContext } from "@/editor/codemirror-signature-help";
+import { createCodeMirrorCompletionResultReporter } from "@/components/layout/codemirror-completion-broker";
+import type { LanguageCompletionItem } from "@/features/workspace/workspace-api";
 
 describe("CodeMirror completion sources", () => {
+  it("keeps both immediate and broker completion disabled behind one availability gate", async () => {
+    const broker = vi.fn(async () => [{ label: "build", detail: "method", kind: "method" }]);
+    const sources = createCodeMirrorCompletionSources(
+      () => "/workspace/Main.ets",
+      broker,
+      undefined,
+      () => false,
+    );
+    const context = new CompletionContext(EditorState.create({ doc: "pub" }), 3, true);
+
+    await expect(Promise.all(sources.map((source) => source(context)))).resolves.toEqual([null, null]);
+    expect(broker).not.toHaveBeenCalled();
+  });
+
   it("returns immediate ArkTS keywords with a reusable validFor range", async () => {
     const state = EditorState.create({ doc: "const pub" });
     const context = new CompletionContext(state, state.doc.length, false);
@@ -16,8 +32,21 @@ describe("CodeMirror completion sources", () => {
 
     expect(result).not.toBeNull();
     expect(result?.from).toBe(6);
-    expect(result?.validFor).toEqual(/^[A-Za-z0-9_$]*$/);
+    expect(result?.validFor).toEqual(/^\.?[A-Za-z0-9_$]*$/);
     expect(result?.options.map((item) => item.label)).toContain("public");
+  });
+
+  it("derives completion context without materializing the full document", async () => {
+    const state = EditorState.create({ doc: `${"const padding = 1;\n".repeat(8_000)}const pub` });
+    const context = new CompletionContext(state, state.doc.length, false);
+    const toString = vi.spyOn(state.doc, "toString");
+    const [source] = createCodeMirrorCompletionSources(() => "/workspace/Main.ets", async () => []);
+
+    const result = await source(context);
+
+    expect(result?.options.map((item) => item.label)).toContain("public");
+    expect(toString).not.toHaveBeenCalled();
+    toString.mockRestore();
   });
 
   it("queries the broker after member access and maps commit metadata", async () => {
@@ -49,8 +78,27 @@ describe("CodeMirror completion sources", () => {
     }));
     expect(result?.from).toBe(4);
     const option = result?.options[0];
-    expect(option).toMatchObject({ label: "width", type: "property", apply: "width", info: "Current width" });
+    expect(option).toMatchObject({ label: "width", type: "property", apply: "width" });
+    expect(option?.info).toEqual(expect.any(Function));
     expect(option?.commitCharacters).toEqual(["."]);
+  });
+
+  it("uses provider filter text while preserving the visible label and insertion", async () => {
+    const state = EditorState.create({ doc: "wi" });
+    const [, source] = createCodeMirrorCompletionSources(() => "/workspace/Main.ets", async () => [{
+      label: "setWidth(value)",
+      filterText: "width",
+      detail: "ArkUI attribute",
+      kind: "method",
+    }]);
+
+    const result = await source(new CompletionContext(state, state.doc.length, true));
+
+    expect(result?.options[0]).toMatchObject({
+      label: "width",
+      displayLabel: "setWidth(value)",
+      apply: "setWidth(value)",
+    });
   });
 
   it("keeps snippet placeholders as native tab stops", async () => {
@@ -165,8 +213,86 @@ describe("CodeMirror completion sources", () => {
     const secondInfo = await option.info(option);
 
     expect(resolver).toHaveBeenCalledTimes(1);
-    expect(firstInfo && "textContent" in firstInfo ? firstInfo.textContent : "").toBe("Resolved documentation");
-    expect(secondInfo && "textContent" in secondInfo ? secondInfo.textContent : "").toBe("Resolved documentation");
+    expect(firstInfo && "textContent" in firstInfo ? firstInfo.textContent : "").toContain("Resolved documentation");
+    expect(secondInfo && "textContent" in secondInfo ? secondInfo.textContent : "").toContain("Resolved documentation");
+  });
+
+  it("applies a resolved same-file import edit with the completion in one transaction", async () => {
+    const state = EditorState.create({ doc: "const Wid\n" });
+    let transaction: Transaction | undefined;
+    const resolver = vi.fn(async (item: { label: string }) => ({
+      ...item,
+      detail: "class Widget",
+      kind: "class",
+      additionalTextEdits: [{
+        path: "C:\\workspace\\Main.ets",
+        range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
+        newText: "import { Widget } from './Widget';\n",
+        expectedVersion: 7,
+      }],
+    }));
+    const [, source] = createCodeMirrorCompletionSources(
+      () => "C:/workspace/Main.ets",
+      async () => [{
+        label: "Widget",
+        detail: "class",
+        kind: "class",
+        data: { provider: "typescript", documentVersion: 7 },
+      }],
+      resolver,
+    );
+    const result = await source(new CompletionContext(state, 9, true));
+    const option = result?.options[0];
+    if (!option || typeof option.apply !== "function") {
+      throw new Error("expected resolved completion apply function");
+    }
+
+    option.apply({
+      state,
+      dispatch: ((next: Transaction | readonly Transaction[]) => {
+        const value = Array.isArray(next) ? next[0] : next;
+        transaction = "newDoc" in value ? value : state.update(value);
+      }) as EditorView["dispatch"],
+    } as unknown as EditorView, option, 6, 9);
+    await vi.waitFor(() => expect(transaction).toBeDefined());
+
+    expect(transaction?.newDoc.toString()).toBe("import { Widget } from './Widget';\nconst Widget\n");
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a resolved completion after the editor document changes", async () => {
+    const state = EditorState.create({ doc: "const Wid" });
+    let currentState = state;
+    let dispatched = false;
+    let finishResolve: ((item: LanguageCompletionItem) => void) | undefined;
+    const resolver = vi.fn((item: LanguageCompletionItem) => new Promise<LanguageCompletionItem>((resolve) => {
+      finishResolve = resolve;
+    }));
+    const [, source] = createCodeMirrorCompletionSources(
+      () => "/workspace/Main.ets",
+      async () => [{
+        label: "Widget",
+        detail: "class",
+        kind: "class",
+        data: { provider: "typescript", documentVersion: 3 },
+      }],
+      resolver,
+    );
+    const result = await source(new CompletionContext(state, state.doc.length, true));
+    const option = result?.options[0];
+    if (!option || typeof option.apply !== "function") throw new Error("expected resolved apply");
+    const view = {
+      get state() { return currentState; },
+      dispatch() { dispatched = true; },
+    } as unknown as EditorView;
+
+    option.apply(view, option, 6, 9);
+    currentState = state.update({ changes: { from: 0, insert: "// changed\n" } }).state;
+    finishResolve?.({ label: "Widget", detail: "class", kind: "class" });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(dispatched).toBe(false);
   });
 
   it("finds the active call and argument while ignoring nested literals and comments", () => {
@@ -222,5 +348,34 @@ describe("CodeMirror completion sources", () => {
 
     expect(host.querySelector(".cm-arkline-signature-help")).toBeNull();
     view.destroy();
+  });
+});
+
+describe("CodeMirror completion reporting", () => {
+  it("reports explainable empty results without introducing a second UI state machine", () => {
+    const onStatusChange = vi.fn();
+    const recordExplain = vi.fn();
+    const reporter = createCodeMirrorCompletionResultReporter(onStatusChange, recordExplain);
+
+    reporter({
+      path: "/workspace/Main.ets",
+      document: EditorState.create({ doc: "bu" }).doc,
+      lineText: "bu",
+      line: 1,
+      column: 3,
+      explicit: true,
+      query: "bu",
+      replacePrefix: "bu",
+    }, {
+      items: [],
+      explain: ["reason:Current file index is stale"],
+    });
+
+    expect(onStatusChange).toHaveBeenCalledWith("Current file index is stale");
+    expect(recordExplain).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "completion",
+      query: "bu",
+      message: "Current file index is stale",
+    }));
   });
 });

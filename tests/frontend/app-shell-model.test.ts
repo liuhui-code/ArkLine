@@ -200,6 +200,35 @@ describe("app shell model", () => {
     expect(derived.workspaceIndexText).toBe("Index: ready (2 files)");
   });
 
+  it("does not rank the frontend file projection when persistent Quick Open is available", () => {
+    const workspaceModel = workspace({
+      truncated: false,
+      visibleFiles: ["/workspace/src/Main.ets", "/workspace/src/Settings.ets"],
+    });
+    const index = createWorkspaceIndexStore();
+    index.openWorkspace(workspaceModel);
+    const queryQuickOpen = vi.spyOn(index, "queryQuickOpen");
+
+    const derived = getAppShellDerivedState({
+      workspace: workspaceModel,
+      workspaceIndex: index,
+      workspaceIndexState: index.state,
+      workspaceIndexStatusSummary: { workspaceIndexText: "Index: ready", sdkIndexText: null },
+      quickOpenQuery: "settings",
+      persistentQuickOpenAvailable: true,
+      recentFiles: [],
+      recentProjects: [],
+      activeOverlay: "quickOpen",
+      searchEverywhereMode: "searchEverywhere",
+      searchEverywhereTruncationNotice: null,
+      semanticState: semanticState(),
+      settingsApplyState: "idle",
+    });
+
+    expect(queryQuickOpen).not.toHaveBeenCalled();
+    expect(derived.quickOpenResults).toEqual([]);
+  });
+
   it("derives recent files with IDE-style titles and relative paths", () => {
     const derived = getAppShellDerivedState({
       workspace: workspace({ truncated: false }),

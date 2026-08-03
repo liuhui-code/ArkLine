@@ -1,10 +1,10 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
+import { acceptCompletion, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { json } from "@codemirror/lang-json";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
 import { javascript } from "@codemirror/lang-javascript";
 import { openSearchPanel, searchKeymap } from "@codemirror/search";
-import { Compartment, Extension, type Text } from "@codemirror/state";
+import { Compartment, EditorState, Extension, Prec, type Text } from "@codemirror/state";
 import {
   dropCursor,
   EditorView,
@@ -32,7 +32,7 @@ import { arkLineSyntaxTheme, createArkLineEditorTheme } from "@/editor/theme";
 import { searchPanelEnhancement } from "@/editor/search-panel";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
-import { createCodeMirrorCompletionSources, type CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import { createCodeMirrorCompletionSources, type CodeMirrorCompletionBroker, type CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import { createCodeMirrorSignatureHelpExtension, type CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 
 export const languageCompartment = new Compartment();
@@ -122,6 +122,7 @@ export function createEditorExtensions(
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void,
   onContextMenu?: (request: EditorContextMenuRequest) => void,
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker,
+  onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver,
   getActivePath: () => string = () => path,
   gitTrace?: {
     blameAttributions: GitBlameAttribution[];
@@ -131,6 +132,7 @@ export function createEditorExtensions(
   reducedPerformanceMode = false,
   deferEnhancements = false,
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker,
+  isCodeMirrorCompletionEnabled?: () => boolean,
 ): Extension[] {
   const deferDocumentExtensions = reducedPerformanceMode || deferEnhancements;
   const keymaps = reducedPerformanceMode
@@ -151,6 +153,7 @@ export function createEditorExtensions(
     jumpRevealDecorationField,
     ...(reducedPerformanceMode ? [] : [definitionHoverDecorationField]),
     keymap.of(keymaps),
+    EditorState.phrases.of({ Completions: "Code Completion" }),
     searchPanelEnhancement,
     createDocumentChangeListener(onChange, onDocumentChange, reducedPerformanceMode),
     ...(onSelectionChange ? [createSelectionChangeListener(onSelectionChange)] : []),
@@ -160,11 +163,17 @@ export function createEditorExtensions(
       ? [
           autocompletion({
             defaultKeymap: false,
-            override: createCodeMirrorCompletionSources(getActivePath, onCodeMirrorCompletionRequest),
+            override: createCodeMirrorCompletionSources(
+              getActivePath,
+              onCodeMirrorCompletionRequest,
+              onCodeMirrorCompletionResolve,
+              isCodeMirrorCompletionEnabled,
+            ),
           }),
-          keymap.of([
-            ...completionKeymap.filter((binding) => binding.key !== "Ctrl-Space" && !binding.mac),
-          ]),
+          Prec.highest(keymap.of([
+            { key: "Tab", run: acceptCompletion },
+            ...completionKeymap,
+          ])),
         ]
       : []),
     ...(!reducedPerformanceMode && onCodeMirrorSignatureHelpRequest

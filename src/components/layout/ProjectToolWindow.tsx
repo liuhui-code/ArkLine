@@ -6,6 +6,7 @@ import {
   buildProjectTree,
   collectAncestorDirectories,
   collectDirectoryPaths,
+  collectPathAncestorDirectories,
   type ProjectTreeNode,
 } from "@/components/layout/project-tree-model";
 import { useLatestCallback } from "@/components/layout/use-latest-callback";
@@ -167,15 +168,15 @@ function ProjectToolWindowComponent({
     }
 
     const normalizedActivePath = normalizePath(activePath);
-    const ancestors = collectAncestorDirectories(root, normalizedActivePath);
     if (lazyRoot) {
-      const lazyAncestors = ancestors.map(normalizePath).filter((path) => path !== normalizePath(root.path));
+      const lazyAncestors = collectPathAncestorDirectories(lazyRoot.path, normalizedActivePath);
       setLazyExpandedDirectories((current) => new Set([...current, ...lazyAncestors]));
       lazyAncestors.forEach((path) => onLoadDirectory?.(path));
       setPendingFocusPath(normalizedActivePath);
       return;
     }
 
+    const ancestors = collectAncestorDirectories(root, normalizedActivePath);
     setCollapsedDirectories((current) => {
       const next = new Set(current);
       ancestors.forEach((path) => next.delete(path));

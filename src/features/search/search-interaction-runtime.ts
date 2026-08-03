@@ -1,8 +1,16 @@
+import {
+  beginInteractionTrace,
+  type InteractionTraceHandle,
+  type InteractionTracePhaseHandle,
+} from "@/features/performance/interaction-trace-store";
+
 export type SearchInteractionKind = "searchEverywhere" | "text";
 
 export type SearchInteractionRuntimeOptions = {
   cancel?: (kind: SearchInteractionKind, generation: number) => void;
   onError?: (error: unknown, generation: number) => void;
+  beginTrace?: typeof beginInteractionTrace;
+  scheduleVisibleCommit?: (callback: () => void) => () => void;
 };
 
 export type SearchInteractionRuntime = ReturnType<typeof createSearchInteractionRuntime>;
@@ -22,18 +30,26 @@ export type SearchQueryTrackOptions<T> = {
 export function createSearchInteractionRuntime(options: SearchInteractionRuntimeOptions = {}) {
   let queryGeneration = 0;
   let previewGeneration = 0;
-  let activeQuery: { kind: SearchInteractionKind; generation: number } | null = null;
+  let activeQuery: {
+    kind: SearchInteractionKind;
+    generation: number;
+    label: string;
+    trace?: InteractionTraceHandle;
+    queryPhase?: InteractionTracePhaseHandle;
+  } | null = null;
 
-  function cancelActive() {
+  function cancelActive(status: "cancelled" | "superseded" = "cancelled", detail = "foreground-invalidated") {
     if (!activeQuery) return;
     options.cancel?.(activeQuery.kind, activeQuery.generation);
+    activeQuery.queryPhase?.finish(status, detail);
+    activeQuery.trace?.finish(status);
     activeQuery = null;
   }
 
-  function startQuery(kind: SearchInteractionKind) {
-    cancelActive();
+  function startQuery(kind: SearchInteractionKind, label: string = kind) {
+    cancelActive("superseded", "newer-query");
     queryGeneration += 1;
-    activeQuery = { kind, generation: queryGeneration };
+    activeQuery = { kind, generation: queryGeneration, label };
     return queryGeneration;
   }
 
@@ -45,6 +61,8 @@ export function createSearchInteractionRuntime(options: SearchInteractionRuntime
     if (shouldCancel && currentActive) {
       options.cancel?.(currentActive.kind, currentActive.generation);
     }
+    currentActive?.queryPhase?.finish("cancelled", "foreground-invalidated");
+    currentActive?.trace?.finish("cancelled");
     return queryGeneration;
   }
 
@@ -73,16 +91,45 @@ export function createSearchInteractionRuntime(options: SearchInteractionRuntime
   }
 
   function trackQuery<T>({ generation, request, apply }: SearchQueryTrackOptions<T>) {
+    const tracked = activeQuery?.generation === generation ? activeQuery : null;
+    const trace = tracked?.trace ?? options.beginTrace?.(
+      tracked?.kind ?? "searchEverywhere",
+      tracked?.label ?? `generation-${generation}`,
+      generation,
+    ) ?? beginInteractionTrace(
+      tracked?.kind ?? "searchEverywhere",
+      tracked?.label ?? `generation-${generation}`,
+      generation,
+    );
+    const queryPhase = trace.startPhase("queryBroker");
+    if (tracked) {
+      tracked.trace = trace;
+      tracked.queryPhase = queryPhase;
+    }
     return request
       .then((result) => {
-        if (isCurrentQuery(generation)) {
-          apply(result, generation);
+        if (!isCurrentQuery(generation)) {
+          queryPhase.finish("superseded", "stale-result");
+          trace.finish("superseded");
+          return;
         }
+        queryPhase.finish();
+        const applyPhase = trace.startPhase("applyResults");
+        apply(result, generation);
+        applyPhase.finish();
+        const visiblePhase = trace.startPhase("visibleCommit");
+        scheduleVisibleCommit(options.scheduleVisibleCommit, () => {
+          visiblePhase.finish();
+          trace.finish("ok");
+        });
       })
       .catch((error) => {
+        const expected = isExpectedSearchInterruption(error);
+        queryPhase.finish(expected ? "cancelled" : "error", errorMessage(error));
+        trace.finish(expected ? "cancelled" : "error");
         if (
           isCurrentQuery(generation)
-          && !isExpectedSearchInterruption(error)
+          && !expected
         ) {
           options.onError?.(error, generation);
         }
@@ -110,6 +157,25 @@ export function createSearchInteractionRuntime(options: SearchInteractionRuntime
     },
     cancelActive,
   };
+}
+
+function scheduleVisibleCommit(
+  schedule: SearchInteractionRuntimeOptions["scheduleVisibleCommit"],
+  callback: () => void,
+) {
+  if (schedule) {
+    schedule(callback);
+    return;
+  }
+  if (typeof window !== "undefined" && window.requestAnimationFrame) {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(callback));
+    return;
+  }
+  queueMicrotask(callback);
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function isExpectedSearchInterruption(error: unknown) {

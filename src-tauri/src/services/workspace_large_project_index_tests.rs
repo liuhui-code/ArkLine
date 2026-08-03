@@ -244,7 +244,7 @@ fn large_project_incremental_refresh_keeps_core_index_queries_fresh() {
 }
 
 #[test]
-fn large_project_foreground_navigation_makes_active_file_ready_before_full_refresh() {
+fn large_project_foreground_navigation_makes_active_file_catalog_ready_before_full_refresh() {
     let fixture =
         create_large_workspace_fixture("large-project-active-file-readiness", 128).unwrap();
     let runtime = WorkspaceIndexRuntime::default();
@@ -267,12 +267,17 @@ fn large_project_foreground_navigation_makes_active_file_ready_before_full_refre
     let statuses = manager.get_index_task_statuses(&fixture.root_path).unwrap();
 
     assert_eq!(readiness.file_index, "ready");
-    assert_eq!(readiness.symbol_index, "ready");
-    assert!(readiness.definition_available);
+    assert_eq!(readiness.symbol_index, "missing");
+    assert!(!readiness.definition_available);
+    assert!(runtime
+        .query_quick_open(&fixture.root_path, "LargeApp", 8)
+        .unwrap()
+        .iter()
+        .any(|candidate| candidate.title == "LargeApp.ets"));
     assert!(statuses.iter().any(|status| {
         status.kind == "changed-paths"
             && status.reason == "foreground-navigation"
-            && status.status == "ready"
+            && status.status == "partial"
     }));
     assert!(!statuses.iter().any(|status| {
         status.reason == "background-refresh-after-open" && status.status == "running"
@@ -313,13 +318,13 @@ fn sdk_api_indexing_does_not_block_foreground_file_readiness() {
     assert!(results.iter().any(|result| {
         result.kind == "changed-paths"
             && result.reason == "foreground-navigation"
-            && result.status == "ready"
+            && result.status == "partial"
     }));
     assert!(!results
         .iter()
         .any(|result| result.kind == "sdk" && result.status == "ready"));
     assert_eq!(readiness.file_index, "ready");
-    assert_eq!(readiness.symbol_index, "ready");
+    assert_eq!(readiness.symbol_index, "missing");
 
     fs::remove_dir_all(fixture.root_path).unwrap();
 }

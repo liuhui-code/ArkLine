@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useBuildControllerState } from "@/components/layout/use-build-controller-state";
+import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { ProblemItem } from "@/features/problems/problems-store";
 import { defaultSettings, type AppSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
@@ -95,7 +96,7 @@ describe("useBuildControllerState", () => {
   });
 
   it("uses one resolved environment for build preflight and Hvigor", async () => {
-    const resolveBuildEnvironment = vi.fn(async () => ({
+    const resolveBuildEnvironment = vi.fn(async (_request: BuildEnvironmentRequest) => ({
       canBuild: true,
       nodePath: "/tools/node",
       sdkPath: "/tools/sdk",
@@ -141,7 +142,7 @@ describe("useBuildControllerState", () => {
   it("builds a lazily opened project from native project inspection", async () => {
     const runTerminalCommand = vi.fn(async () => ({
       runId: "build-1",
-      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon",
       stdout: "BUILD SUCCESSFUL",
       stderr: "",
       exitCode: 0,
@@ -158,6 +159,8 @@ describe("useBuildControllerState", () => {
       hasOhPackage: true,
       modules: ["entry"],
       defaultModule: "entry",
+      products: ["china"],
+      defaultProduct: "china",
     }));
     const { result } = renderHarness({
       workspace: { ...workspace(), visibleFiles: [], fileTree: [] },
@@ -170,16 +173,29 @@ describe("useBuildControllerState", () => {
 
     expect(inspectHarmonyBuildProject).toHaveBeenCalledWith("/project/entry/src/main/ets/Index.ets");
     expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
-      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@china -p product=china -p buildMode=debug assembleHap --no-daemon",
       cwd: "/project",
     }));
     expect(result.current.buildState.status).toBe("success");
   });
 
   it("builds from the detected Harmony project root when a parent workspace is open", async () => {
+    const loadBuildConfigurations = vi.fn(async () => []);
+    const resolveBuildEnvironment = vi.fn(async (_request: BuildEnvironmentRequest) => ({
+      canBuild: true,
+      nodePath: "/tools/node",
+      sdkPath: "/tools/sdk",
+      pathEntries: ["/tools/node", "/tools/sdk/toolchains"],
+      environment: { HOS_SDK_HOME: "/tools/sdk", NODE_HOME: "/tools/node" },
+      checks: [
+        { name: "hvigor", available: true, detail: "Wrapper ready" },
+        { name: "node", available: true, detail: "Node ready" },
+        { name: "harmonySdk", available: true, detail: "SDK ready" },
+      ],
+    }));
     const runTerminalCommand = vi.fn(async () => ({
       runId: "build-1",
-      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon",
       stdout: "BUILD SUCCESSFUL",
       stderr: "",
       exitCode: 0,
@@ -196,6 +212,8 @@ describe("useBuildControllerState", () => {
       hasOhPackage: true,
       modules: ["entry"],
       defaultModule: "entry",
+      products: ["default"],
+      defaultProduct: "default",
     }));
     const { result } = renderHarness({
       workspace: {
@@ -205,17 +223,23 @@ describe("useBuildControllerState", () => {
         visibleFiles: [],
       },
       activePath: "/repo/apps/Demo/entry/src/main/ets/Index.ets",
-      workspaceApi: workspaceApi({ inspectHarmonyBuildProject, runTerminalCommand }),
+      workspaceApi: workspaceApi({ inspectHarmonyBuildProject, loadBuildConfigurations, resolveBuildEnvironment, runTerminalCommand }),
     });
 
+    await waitFor(() => {
+      expect(result.current.buildProject?.rootPath).toBe("/repo/apps/Demo");
+    });
     await act(async () => {
       await result.current.runBuild();
     });
 
     expect(inspectHarmonyBuildProject).toHaveBeenCalledWith("/repo/apps/Demo/entry/src/main/ets/Index.ets");
+    expect(loadBuildConfigurations).toHaveBeenCalledWith("/repo/apps/Demo");
+    expect(resolveBuildEnvironment).toHaveBeenCalled();
+    expect(resolveBuildEnvironment.mock.calls.every(([request]) => request.rootPath === "/repo/apps/Demo")).toBe(true);
     expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
       cwd: "/repo/apps/Demo",
-      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon",
     }));
     expect(result.current.buildState.status).toBe("success");
   });

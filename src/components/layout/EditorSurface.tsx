@@ -9,7 +9,7 @@ import type { DocumentRuntimeStore } from "@/features/documents/document-runtime
 import { MainWorkspaceView } from "@/features/workspace/MainWorkspaceView";
 import type { EditorAppearance } from "@/types/editor";
 import type { Text } from "@codemirror/state";
-import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 
 export type EditorSelectionTarget = {
@@ -21,6 +21,11 @@ export type EditorSelectionTarget = {
 export type EditorInsertTextTarget = {
   text: string;
   replaceBefore?: number;
+  nonce: number;
+};
+
+export type EditorCompletionTarget = {
+  action: "open" | "close";
   nonce: number;
 };
 
@@ -37,6 +42,8 @@ type EditorSurfaceProps = {
   openTabs: EditorTab[];
   appearance: EditorAppearance;
   focusToken: number;
+  completionTarget: EditorCompletionTarget | null;
+  completionEnabled: boolean;
   selectionTarget: EditorSelectionTarget | null;
   insertTextTarget: EditorInsertTextTarget | null;
   workspaceName: string | null;
@@ -48,6 +55,7 @@ type EditorSurfaceProps = {
   onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
@@ -71,6 +79,8 @@ export function EditorSurface({
   openTabs,
   appearance,
   focusToken,
+  completionTarget,
+  completionEnabled,
   selectionTarget,
   insertTextTarget,
   workspaceName,
@@ -82,6 +92,7 @@ export function EditorSurface({
   onDefinitionTrigger,
   onTypingCompletionTrigger,
   onCodeMirrorCompletionRequest,
+  onCodeMirrorCompletionResolve,
   onCodeMirrorSignatureHelpRequest,
   blameAttributions = [],
   gitBlameVisible = false,
@@ -183,6 +194,8 @@ export function EditorSurface({
           <LazyArkTsEditor
             appearance={appearance}
             focusToken={focusToken}
+            completionTarget={completionTarget}
+            completionEnabled={completionEnabled}
             insertTextTarget={insertTextTarget}
             path={activePath}
             selectionTarget={selectionTarget}
@@ -194,6 +207,7 @@ export function EditorSurface({
             onSelectionChange={onSelectionChange}
             onTypingCompletionTrigger={onTypingCompletionTrigger}
             onCodeMirrorCompletionRequest={onCodeMirrorCompletionRequest}
+            onCodeMirrorCompletionResolve={onCodeMirrorCompletionResolve}
             onCodeMirrorSignatureHelpRequest={onCodeMirrorSignatureHelpRequest}
             onContextMenu={openEditorContextMenu}
             blameAttributions={blameAttributions}

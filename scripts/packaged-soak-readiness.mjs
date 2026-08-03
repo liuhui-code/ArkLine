@@ -73,6 +73,18 @@ export async function waitForActiveTab(driver, pageName, timeoutMs) {
   }, timeoutMs, `Quick Open did not activate ${pageName}`);
 }
 
+export async function waitForEditorTarget(driver, expectedNeedle, timeoutMs) {
+  const snapshot = await driver.executeAsync(
+    EDITOR_TARGET_READINESS_SCRIPT,
+    [expectedNeedle, timeoutMs],
+    timeoutMs + 1_000,
+  );
+  if (snapshot?.matched) return snapshot;
+  throw new Error(
+    `Editor did not render target ${expectedNeedle}: ${JSON.stringify(snapshot)}`,
+  );
+}
+
 export async function rendererInteractionStart(driver, key) {
   const startedAt = await driver.execute(INTERACTION_START_SCRIPT, [key]);
   if (!Number.isFinite(startedAt)) {
@@ -160,4 +172,48 @@ export const SEARCH_RESULT_READINESS_SCRIPT = `
     });
     timer = setTimeout(() => finish(null), timeoutMs);
   }
+`;
+
+export const EDITOR_TARGET_READINESS_SCRIPT = `
+  const expectedNeedle = arguments[0];
+  const timeoutMs = arguments[1];
+  const done = arguments[arguments.length - 1];
+  let observer;
+  let timer;
+  let finished = false;
+  const finish = (value) => {
+    if (finished) return;
+    finished = true;
+    observer?.disconnect();
+    clearTimeout(timer);
+    done(value);
+  };
+  const inspect = () => {
+    const bodyText = document.body?.innerText || "";
+    const crashed = bodyText.includes("ArkLine hit a UI error")
+      || bodyText.includes("Editor crash")
+      || bodyText.includes("Restart the app window");
+    if (crashed) {
+      finish({ matched: false, crashed: true, at: performance.now() });
+      return;
+    }
+    const editor = document.querySelector('[aria-label="Editor Content"]');
+    const text = editor?.textContent || "";
+    if (editor && text.includes(expectedNeedle)) {
+      finish({ matched: true, crashed: false, at: performance.now() });
+    }
+  };
+  observer = new MutationObserver(inspect);
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  timer = setTimeout(() => {
+    const editor = document.querySelector('[aria-label="Editor Content"]');
+    finish({
+      matched: false,
+      crashed: false,
+      editorPresent: Boolean(editor),
+      preview: (editor?.textContent || "").slice(0, 160),
+      at: performance.now()
+    });
+  }, timeoutMs);
+  inspect();
 `;

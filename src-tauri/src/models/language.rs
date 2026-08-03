@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::models::workspace::WorkspaceIndexReadiness;
 use crate::models::workspace_edit::WorkspaceEditPlan;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -19,7 +22,7 @@ pub struct LanguageServiceReport {
     pub supervisor: Option<SemanticSupervisorSnapshot>,
 }
 
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticWorkerRuntime {
     pub rss_bytes: u64,
@@ -27,6 +30,17 @@ pub struct SemanticWorkerRuntime {
     pub heap_total_bytes: u64,
     pub external_bytes: u64,
     pub uptime_ms: u64,
+    #[serde(default)]
+    pub provider_latencies: BTreeMap<String, SemanticProviderLatency>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticProviderLatency {
+    pub count: u64,
+    pub p50_us: u64,
+    pub p95_us: u64,
+    pub max_us: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -64,6 +78,22 @@ pub struct LanguageQueryRequest {
     pub content: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageQueryBrokerEnvelope<T> {
+    pub items: Vec<T>,
+    pub readiness: WorkspaceIndexReadiness,
+    pub request_generation: u64,
+    pub document_generation: Option<u64>,
+    pub target_generation: Option<u64>,
+    pub provider: String,
+    pub confidence: String,
+    pub fallback_used: bool,
+    pub miss_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub explain: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SemanticDocumentSyncRequest {
@@ -78,6 +108,13 @@ pub struct SemanticDocumentSyncRequest {
 #[serde(rename_all = "camelCase")]
 pub struct SemanticDocumentCloseRequest {
     pub path: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticDocumentPrepareRequest {
+    pub path: String,
+    pub document_version: u64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -134,8 +171,20 @@ pub struct CompletionItem {
     pub commit_characters: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub definition_target: Option<DefinitionTarget>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_text_edits: Vec<CompletionTextEdit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionTextEdit {
+    pub path: String,
+    pub range: TextRange,
+    pub new_text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_version: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

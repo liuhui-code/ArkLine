@@ -11,14 +11,22 @@ declare global {
   }
 }
 
-export async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+export type InvokeTelemetryContext = {
+  interactionId?: string;
+};
+
+export async function invoke<T>(
+  command: string,
+  args?: Record<string, unknown>,
+  telemetry?: InvokeTelemetryContext,
+): Promise<T> {
   const startedAt = Date.now();
   try {
     const result = await tauriInvoke<T>(command, args);
-    recordIpcLatency(command, startedAt, "ok");
+    recordIpcLatency(command, startedAt, "ok", args, telemetry);
     return result;
   } catch (error) {
-    recordIpcLatency(command, startedAt, "error");
+    recordIpcLatency(command, startedAt, "error", args, telemetry);
     throw error;
   }
 }
@@ -37,12 +45,20 @@ function recordIpcLatency(
   command: string,
   startedAt: number,
   status: "ok" | "error",
+  args?: Record<string, unknown>,
+  telemetry?: InvokeTelemetryContext,
 ) {
+  const request = typeof args?.request === "object" && args.request ? args.request as Record<string, unknown> : undefined;
+  const generation = typeof args?.generation === "number"
+    ? args.generation
+    : typeof request?.generation === "number" ? request.generation : undefined;
   ipcLatencyStore.record({
     command,
     durationMs: Date.now() - startedAt,
     startedAt,
     status,
+    ...(generation == null ? {} : { generation }),
+    ...(telemetry?.interactionId ? { interactionId: telemetry.interactionId } : {}),
   });
   if (typeof window !== "undefined") {
     window.__arklineIpcLatencySamples = ipcLatencyStore.snapshot();

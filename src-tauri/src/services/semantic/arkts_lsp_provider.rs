@@ -4,8 +4,8 @@ use std::sync::Arc;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest,
-    SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentPrepareRequest,
+    SemanticDocumentSyncRequest, SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::launcher::{
@@ -105,6 +105,7 @@ impl SemanticProvider for ArkTsLspProvider {
         let supervisor = self.manager.supervisor_snapshot();
         let memory = supervisor
             .runtime
+            .as_ref()
             .map(|value| format!("{} MiB", value.rss_bytes / 1024 / 1024))
             .unwrap_or_else(|| "not sampled".to_string());
         LanguageServiceReport {
@@ -170,6 +171,19 @@ impl SemanticProvider for ArkTsLspProvider {
             .unwrap_or_default()
     }
 
+    fn resolve_completion(
+        &self,
+        request: &LanguageQueryRequest,
+        item: &CompletionItem,
+        document_version: Option<u64>,
+    ) -> CompletionItem {
+        self.manager
+            .request_interactive(|session| {
+                session.resolve_completion(request, item, document_version)
+            })
+            .unwrap_or_else(|_| item.clone())
+    }
+
     fn signature_help(&self, request: &LanguageQueryRequest) -> Option<SignatureHelp> {
         self.manager
             .request_interactive(|session| session.signature_help(request))
@@ -212,6 +226,11 @@ impl SemanticProvider for ArkTsLspProvider {
                 request.workspace_root.as_deref(),
             )
         })
+    }
+
+    fn prepare_document(&self, request: &SemanticDocumentPrepareRequest) -> Result<(), String> {
+        self.manager
+            .request(|session| session.prepare_document(&request.path, request.document_version))
     }
 
     fn close_document(&self, request: &SemanticDocumentCloseRequest) -> Result<(), String> {

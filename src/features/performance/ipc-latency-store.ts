@@ -3,6 +3,8 @@ export type IpcLatencySample = {
   durationMs: number;
   startedAt: number;
   status: "ok" | "error";
+  generation?: number;
+  interactionId?: string;
 };
 
 export function createIpcLatencyStore(limit = 80) {

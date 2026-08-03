@@ -8,6 +8,7 @@ mod runtime_content_tests;
 mod runtime_discovery;
 #[cfg(all(test, unix))]
 mod runtime_lane_tests;
+mod runtime_policy;
 mod runtime_state;
 mod runtime_stub;
 mod session;

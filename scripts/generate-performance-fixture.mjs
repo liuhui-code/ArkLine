@@ -9,7 +9,7 @@ export const PROFILE_FILE_COUNTS = Object.freeze({
   huge: 100_000,
 });
 
-const FIXTURE_VERSION = 1;
+export const FIXTURE_VERSION = 2;
 const MARKER_NAME = ".arkline-performance-fixture.json";
 const WRITE_BATCH_SIZE = 256;
 
@@ -36,6 +36,12 @@ export function buildFixtureRelativePath(index) {
 
 export function renderFixtureSource(index) {
   const pageIndex = String(index).padStart(6, "0");
+  const scrollFixture = index < 1_000
+    ? Array.from(
+      { length: 80 },
+      (_, line) => `  private scrollLine${line}(value: number): number { return value + ${line}; }`,
+    )
+    : [];
   return [
     `export class Page${pageIndex} {`,
     `  public arklineSearchNeedle${index}(): string {`,
@@ -45,6 +51,7 @@ export function renderFixtureSource(index) {
     `  private compute${pageIndex}(value: number): number {`,
     `    return value + ${index};`,
     "  }",
+    ...scrollFixture,
     "}",
     "",
   ].join("\n");
@@ -112,6 +119,7 @@ function markerFor(profile, fileCount) {
     profile,
     fileCount,
     searchNeedle: "arklineSearchNeedle",
+    editorScrollableFileCount: Math.min(fileCount, 1_000),
   };
 }
 

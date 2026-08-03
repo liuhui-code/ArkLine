@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::workspace::WorkspaceIndexState;
+use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
 use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_fingerprints,
 };
@@ -63,6 +63,16 @@ impl WorkspaceIndexRuntime {
             removed_paths,
         );
         workspace.state.symbols = symbol_update.symbols;
+        if workspace.state.file_paths.is_empty() {
+            workspace.state.status = WorkspaceIndexStatus::Empty;
+            workspace.state.partial_reason = None;
+        } else {
+            workspace.state.status = WorkspaceIndexStatus::Partial;
+            workspace.state.partial_reason = Some(
+                "File catalog is ready; background content and semantic indexing is pending"
+                    .to_string(),
+            );
+        }
         workspace.state.indexed_at = Some(now_epoch_ms()?);
 
         self.workspaces

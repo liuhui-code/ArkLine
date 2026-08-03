@@ -2,11 +2,13 @@ use std::env;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::indexer_host::{discover_indexer_executable, IndexerHostSession};
 use crate::models::workspace_index_diagnostics::WorkspaceIndexerHostSnapshot;
 use crate::services::workspace_index_writer_actor_service::WorkspaceIndexWriterActor;
 
+use super::runtime_policy::indexer_enabled;
 use super::runtime_state::{validate_capabilities, IndexerHostState, IndexerRequestKind};
 
 pub const ARKLINE_INDEXER_ENABLED_ENV: &str = "ARKLINE_INDEXER_ENABLED";
@@ -20,8 +22,8 @@ pub struct IndexerHostRuntime {
 
 impl Default for IndexerHostRuntime {
     fn default() -> Self {
-        let enabled = env::var(ARKLINE_INDEXER_ENABLED_ENV)
-            .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"));
+        let explicit = env::var(ARKLINE_INDEXER_ENABLED_ENV).ok();
+        let enabled = indexer_enabled(explicit.as_deref(), !cfg!(debug_assertions));
         let discovery = discover_indexer_executable();
         Self::new(enabled, discovery.executable_path)
     }
@@ -39,6 +41,11 @@ impl fmt::Debug for IndexerHostRuntime {
 impl IndexerHostRuntime {
     pub fn with_executable(executable_path: PathBuf) -> Self {
         Self::new(true, Some(executable_path))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn local_compatibility() -> Self {
+        Self::new(false, None)
     }
 
     fn new(enabled: bool, executable_path: Option<PathBuf>) -> Self {
@@ -72,6 +79,7 @@ impl IndexerHostRuntime {
             completed_stub_refresh_chunks: state.completed_stub_refresh_chunks,
             cancelled_stub_refresh_chunks: state.cancelled_stub_refresh_chunks,
             fallback_count: state.fallback_count,
+            degraded_count: state.degraded_count,
             restart_count: state.restart_count(),
             consecutive_failure_count: state.consecutive_failure_count(),
             backoff_remaining_ms: state
@@ -162,13 +170,41 @@ impl IndexerHostRuntime {
             return;
         };
         state.lane_mut(kind).mark_failure();
-        state.fallback_count = state.fallback_count.saturating_add(1);
+        state.degraded_count = state.degraded_count.saturating_add(1);
         state.last_error = Some(error);
         state.status = if state.any_in_flight() {
             "running"
         } else {
-            "fallback"
+            "degraded"
         };
+    }
+
+    pub(crate) fn record_local_fallback(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.fallback_count = state.fallback_count.saturating_add(1);
+        }
+    }
+
+    pub(crate) fn requires_process_isolation(&self) -> bool {
+        self.enabled
+    }
+
+    pub(crate) fn degraded_message(&self, operation: &str) -> String {
+        let snapshot = self.snapshot();
+        let detail = snapshot
+            .last_error
+            .as_deref()
+            .unwrap_or("indexer sidecar is busy or unavailable");
+        format!(
+            "Indexer sidecar could not complete {operation}; deep indexing remains degraded: {detail}"
+        )
+    }
+
+    pub(crate) fn backoff_remaining(&self) -> Option<Duration> {
+        self.state
+            .lock()
+            .ok()
+            .and_then(|state| state.backoff_remaining())
     }
 
     pub(super) fn finish_cancelled(&self, kind: IndexerRequestKind) {

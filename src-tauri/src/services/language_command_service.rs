@@ -4,7 +4,7 @@ use tauri::AppHandle;
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
-    SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
 };
 use crate::services::language_service::{
     complete_symbol, complete_symbol_with_document_version, find_usages, goto_definition,
@@ -111,6 +111,27 @@ pub async fn complete_symbol_with_document_version_blocking(
     .map_err(|error| error.to_string())?
 }
 
+pub async fn resolve_completion_blocking(
+    app: AppHandle,
+    runtime: LanguageRuntime,
+    request: LanguageQueryRequest,
+    item: CompletionItem,
+    document_version: Option<u64>,
+) -> Result<CompletionItem, String> {
+    spawn_blocking(move || {
+        let settings = load_settings_for_app(&app)?;
+        Ok(crate::services::language_service::resolve_completion(
+            &runtime,
+            &settings,
+            &request,
+            &item,
+            document_version,
+        ))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 pub async fn document_symbols_blocking(
     app: AppHandle,
     runtime: LanguageRuntime,
@@ -158,6 +179,19 @@ pub async fn close_document_blocking(
     spawn_blocking(move || {
         let settings = load_settings_for_app(&app)?;
         runtime.close_document(&settings, &request)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub async fn prepare_document_blocking(
+    app: AppHandle,
+    runtime: LanguageRuntime,
+    request: SemanticDocumentPrepareRequest,
+) -> Result<(), String> {
+    spawn_blocking(move || {
+        let settings = load_settings_for_app(&app)?;
+        runtime.prepare_document(&settings, &request)
     })
     .await
     .map_err(|error| error.to_string())?

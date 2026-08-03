@@ -19,11 +19,8 @@ import {
   TELEMETRY_SNAPSHOT_SCRIPT,
 } from "./packaged-soak-telemetry.mjs";
 import {
-  rendererInteractionStart,
-  waitForActiveTab,
   waitForDiscoveryReady,
   waitForFullIndexReady,
-  waitForSearchResult,
   waitForWorkspace,
 } from "./packaged-soak-readiness.mjs";
 import {
@@ -38,9 +35,22 @@ import {
   inspectFixture,
 } from "./packaged-soak-report.mjs";
 import {
-  SEARCH_UI_EVIDENCE_SCRIPT,
-  shouldRecordSearchEvidence,
-} from "./packaged-soak-search-evidence.mjs";
+  detectCrashSurface,
+  exerciseEditorInteraction,
+} from "./packaged-soak-editor-workload.mjs";
+import {
+  completionTargetForCycle,
+  definitionTargetForCycle,
+  loadPackagedSoakScenario,
+} from "./packaged-soak-scenario.mjs";
+import {
+  exerciseFindInFiles,
+  exerciseQuickOpen,
+} from "./packaged-soak-search-workload.mjs";
+import {
+  exerciseDefinitionNavigation,
+  exerciseMemberCompletion,
+} from "./packaged-soak-semantic-workload.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -52,11 +62,15 @@ async function main() {
   let preflight = null;
   let automation = null;
   let driver = null;
+  let scenario = null;
   let report;
   try {
     if (process.platform !== "win32") {
       throw new Error("The packaged soak must run on native Windows");
     }
+    phase = "scenario";
+    scenario = await loadPackagedSoakScenario(options);
+    scenario.sdkPath = options.sdkPath;
     phase = "preflight";
     preflight = await inspectPackagedSoakPreflight(options);
     assertPreflightPassed(preflight);
@@ -73,7 +87,8 @@ async function main() {
     phase = "session-create";
     await driver.createAttachedSession(automation.debuggerAddress());
     phase = "mixed-workload";
-    report = await runSoak(driver, options);
+    report = await runSoak(driver, options, scenario);
+    report.scenario = scenario;
     report.driverCapabilities = driver.capabilities;
     report.preflight = preflight;
   } catch (error) {
@@ -92,7 +107,8 @@ async function main() {
   }
   report.applicationArtifact = await safeEvidence(() =>
     inspectApplicationArtifact(options.applicationPath));
-  report.fixture = await safeEvidence(() => inspectFixture(options.fixturePath));
+  report.fixture = await safeEvidence(() => inspectFixture(options.fixturePath, scenario));
+  report.scenario ??= scenario;
   report.automation = automation?.evidence() ?? null;
   if (report.automation?.driver) {
     report.automation.driver.capabilities = driver?.capabilities ?? {};
@@ -104,7 +120,7 @@ async function main() {
   if (options.strict && !report.verdict.passed) process.exitCode = 1;
 }
 
-async function runSoak(driver, options) {
+async function runSoak(driver, options, scenario) {
   await driver.waitForSelectorPresent('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
   if (options.mode === "smoke") {
@@ -118,10 +134,15 @@ async function runSoak(driver, options) {
   const automationDispatchSamples = [];
   const searchReadySamples = [];
   const jumpSamples = [];
+  const editorInputSamples = [];
+  const editorScrollSamples = [];
+  const definitionSamples = [];
+  const completionSamples = [];
   const diagnostics = [];
   const processSamples = [];
   const heapSamples = [];
   const searchEvidence = [];
+  const semanticEvidence = [];
   const counters = {
     attempts: 0,
     cycles: 0,
@@ -131,6 +152,10 @@ async function runSoak(driver, options) {
     searchMissCount: 0,
     findInFilesMissCount: 0,
     quickOpenMissCount: 0,
+    editorInteractionFailureCount: 0,
+    editorScrollSkipCount: 0,
+    definitionMissCount: 0,
+    completionMissCount: 0,
   };
   let nextEvidenceAt = 0;
   while (
@@ -154,14 +179,51 @@ async function runSoak(driver, options) {
         searchReadySamples,
         counters,
         searchEvidence,
+        scenario,
       );
-      await exerciseQuickOpen(
+      const fileOpened = await exerciseQuickOpen(
         driver,
         counters.cycles,
         jumpSamples,
         counters,
         searchEvidence,
+        scenario,
       );
+      if (fileOpened) {
+        try {
+          const editor = await exerciseEditorInteraction(driver);
+          editorInputSamples.push(
+            editor.inputVisibleMs,
+            editor.deleteVisibleMs,
+          );
+          if (editor.scrollMoved) editorScrollSamples.push(editor.scrollFrameMs);
+          else counters.editorScrollSkipCount += 1;
+        } catch (error) {
+          counters.editorInteractionFailureCount += 1;
+          counters.lastEditorError = String(error);
+          throw error;
+        }
+      }
+      const definitionTarget = definitionTargetForCycle(scenario, counters.cycles);
+      if (definitionTarget) {
+        await exerciseDefinitionNavigation(
+          driver,
+          definitionTarget,
+          definitionSamples,
+          counters,
+          semanticEvidence,
+        );
+      }
+      const completionTarget = completionTargetForCycle(scenario, counters.cycles);
+      if (completionTarget) {
+        await exerciseMemberCompletion(
+          driver,
+          completionTarget,
+          completionSamples,
+          counters,
+          semanticEvidence,
+        );
+      }
       await detectCrashSurface(driver, counters);
       counters.cycles += 1;
     } catch (error) {
@@ -193,147 +255,18 @@ async function runSoak(driver, options) {
     automationDispatchSamples,
     searchReadySamples,
     jumpSamples,
+    editorInputSamples,
+    editorScrollSamples,
+    definitionSamples,
+    completionSamples,
     diagnostics,
     processSamples,
     heapSamples,
     searchEvidence,
+    semanticEvidence,
+    scenario,
     telemetry,
   });
-}
-
-async function exerciseFindInFiles(
-  driver,
-  cycle,
-  automationDispatchSamples,
-  readySamples,
-  counters,
-  searchEvidence,
-) {
-  await driver.keyChord([
-    WEBDRIVER_KEYS.control,
-    WEBDRIVER_KEYS.shift,
-    "f",
-  ]);
-  await driver.waitForSelectorPresent('[aria-label="Find in Files Query"]');
-  const query = `arklineSearchNeedle${cycle % 1000}`;
-  automationDispatchSamples.push(await timed(() => driver.typeText(query)));
-  const searchStarted = await rendererInteractionStart(
-    driver,
-    "input:Find in Files Query",
-  );
-  if (cycle === 0) {
-    await captureSearchEvidence(
-      driver,
-      "find-typed",
-      "Find in Files Query",
-      "Find in Files Results",
-      searchEvidence,
-    );
-  }
-  const ready = await waitForSearchResult(
-    driver,
-    "Find in Files Results",
-    query,
-    5_000,
-  ).catch(() => null);
-  if (ready) {
-    readySamples.push(Math.max(0, ready.at - searchStarted));
-    await captureSearchEvidence(
-      driver,
-      "find-ready",
-      "Find in Files Query",
-      "Find in Files Results",
-      searchEvidence,
-    );
-    await driver.typeText(WEBDRIVER_KEYS.arrowDown);
-  } else {
-    counters.searchMissCount += 1;
-    counters.findInFilesMissCount += 1;
-    await captureSearchEvidence(
-      driver,
-      "find-miss",
-      "Find in Files Query",
-      "Find in Files Results",
-      searchEvidence,
-    );
-  }
-  automationDispatchSamples.push(await timed(
-    () => driver.typeText(WEBDRIVER_KEYS.backspace.repeat(6)),
-  ));
-  await driver.keyChord([WEBDRIVER_KEYS.escape]);
-}
-
-async function exerciseQuickOpen(driver, cycle, jumpSamples, counters, searchEvidence) {
-  const pageIndex = (cycle * 97) % 1000;
-  const pageName = `Page${String(pageIndex).padStart(6, "0")}`;
-  await driver.keyChord([WEBDRIVER_KEYS.control, "p"]);
-  await driver.waitForSelectorPresent('[aria-label="Quick Open Query"]');
-  await driver.typeText(pageName);
-  await captureSearchEvidence(
-    driver,
-    "quick-open-typed",
-    "Quick Open Query",
-    "Quick Open Results",
-    searchEvidence,
-  );
-  const quickOpenReady = await waitForSearchResult(
-    driver,
-    "Quick Open Results",
-    pageName,
-    8_000,
-  ).catch(() => null);
-  if (!quickOpenReady) {
-    counters.searchMissCount += 1;
-    counters.quickOpenMissCount += 1;
-    await captureSearchEvidence(
-      driver,
-      "quick-open-miss",
-      "Quick Open Query",
-      "Quick Open Results",
-      searchEvidence,
-    );
-    await driver.keyChord([WEBDRIVER_KEYS.escape]);
-    return;
-  }
-  await captureSearchEvidence(
-    driver,
-    "quick-open-ready",
-    "Quick Open Query",
-    "Quick Open Results",
-    searchEvidence,
-  );
-  await driver.keyChord([WEBDRIVER_KEYS.enter]);
-  const started = await rendererInteractionStart(
-    driver,
-    "enter:Quick Open Query",
-  );
-  let activeTab;
-  try {
-    activeTab = await waitForActiveTab(driver, pageName, 10_000);
-  } catch (error) {
-    await captureSearchEvidence(
-      driver,
-      "quick-open-enter-failed",
-      "Quick Open Query",
-      "Quick Open Results",
-      searchEvidence,
-    );
-    throw error;
-  }
-  jumpSamples.push(Math.max(0, activeTab.at - started));
-  if (!activeTab.title.includes(pageName)) counters.staleApplyCount += 1;
-}
-
-async function detectCrashSurface(driver, counters) {
-  const text = await driver.pageText();
-  if (
-    text.includes("ArkLine hit a UI error")
-    || text.includes("Editor crash")
-    || text.includes("Restart the app window")
-  ) {
-    counters.crashCount += 1;
-    throw new Error("Crash boundary became visible");
-  }
 }
 
 async function inspectDiagnostics(driver, rootPath) {
@@ -393,28 +326,6 @@ function indexedLayerCount(value, layerName) {
   )?.indexedCount ?? 0;
 }
 
-async function captureSearchEvidence(
-  driver,
-  phase,
-  queryLabel,
-  resultsLabel,
-  evidenceItems,
-) {
-  const evidence = await driver.execute(
-    SEARCH_UI_EVIDENCE_SCRIPT,
-    [phase, queryLabel, resultsLabel],
-  ).catch((error) => ({
-    capturedAt: Date.now(),
-    phase,
-    error: String(error),
-    resultCount: 0,
-  }));
-  if (shouldRecordSearchEvidence(evidence, evidenceItems.length)) {
-    evidenceItems.push(evidence);
-  }
-  return evidence;
-}
-
 async function inspectArkLineProcesses(applicationPath) {
   try {
     const { stdout } = await execFileAsync(
@@ -446,16 +357,6 @@ async function inspectHeap(driver) {
     capturedAt: Date.now(),
     error: String(error),
   }));
-}
-
-async function timed(operation) {
-  const started = performance.now();
-  await operation();
-  return performance.now() - started;
-}
-
-function sleep(durationMs) {
-  return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 function assertPreflightPassed(preflight) {

@@ -41,6 +41,11 @@ export function IndexDiagnosticsSemanticHostSection({
           value={requestActor ? `${requestActor.completed} / ${requestActor.superseded}` : "not sampled"}
         />
         <IndexDiagnosticsMetric label="Request failures" value={String(requestActor?.failed ?? 0)} />
+        <IndexDiagnosticsMetric label="Workspace prepare p95" value={formatLatency(runtime, "workspacePrepare")} />
+        <IndexDiagnosticsMetric label="Type prepare p95" value={formatLatency(runtime, "typePrepare")} />
+        <IndexDiagnosticsMetric label="Completion p95" value={formatLatency(runtime, "completion")} />
+        <IndexDiagnosticsMetric label="Definition p95" value={formatLatency(runtime, "gotoDefinition")} />
+        <IndexDiagnosticsMetric label="Signature p95" value={formatLatency(runtime, "signatureHelp")} />
         <IndexDiagnosticsMetric
           label="Heartbeat"
           value={formatHeartbeat(supervisor?.lastHeartbeatEpochMs)}
@@ -65,4 +70,16 @@ function formatDuration(value: number) {
 function formatHeartbeat(value?: number | null) {
   if (!value) return "not sampled";
   return new Date(value).toLocaleTimeString();
+}
+
+function formatLatency(
+  runtime: { providerLatencies?: Record<string, { count: number; p95Us: number }> } | null | undefined,
+  provider: string,
+) {
+  const sample = runtime?.providerLatencies?.[provider];
+  if (!sample) return "not sampled";
+  const duration = sample.p95Us < 1000
+    ? `${sample.p95Us} us`
+    : `${(sample.p95Us / 1000).toFixed(1)} ms`;
+  return `${duration} / ${sample.count}`;
 }

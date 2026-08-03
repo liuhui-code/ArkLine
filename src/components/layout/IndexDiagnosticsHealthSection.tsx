@@ -229,6 +229,10 @@ export function IndexDiagnosticsHealthSection({
           value={String(diagnostics?.indexerHost?.fallbackCount ?? 0)}
         />
         <IndexDiagnosticsMetric
+          label="Sidecar degraded"
+          value={String(diagnostics?.indexerHost?.degradedCount ?? 0)}
+        />
+        <IndexDiagnosticsMetric
           label="Indexer restarts"
           value={String(diagnostics?.indexerHost?.restartCount ?? 0)}
         />

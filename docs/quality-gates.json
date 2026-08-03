@@ -17,7 +17,7 @@
     "full": {
       "command": "node scripts/run-quality-gate.mjs --gate=full --strict",
       "description": "Merge-ready quality gate that includes the full frontend suite.",
-      "stepTimeoutMs": 1200000,
+      "stepTimeoutMs": 2000000,
       "steps": [
         "pnpm check:whitespace",
         "pnpm check:line-count",

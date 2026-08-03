@@ -34,7 +34,7 @@ describe("search query effect dispatcher", () => {
       runTextSearch: vi.fn(),
     });
 
-    expect(startQuery).toHaveBeenCalledWith("searchEverywhere");
+    expect(startQuery).toHaveBeenCalledWith("searchEverywhere", "Entry");
     expect(clearSearchResults).toHaveBeenCalledWith("Entry");
   });
 

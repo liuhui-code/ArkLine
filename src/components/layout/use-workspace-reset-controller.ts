@@ -11,7 +11,7 @@ export type WorkspaceResetControllerActions = {
   resetDiff: () => void;
   resetCodeActions: () => void;
   resetWorkspaceEdit: () => void;
-  resetCompletion: () => void;
+  closeCompletion: () => void;
   resetUsageSearch: () => void;
   resetEditorState: () => void;
   resetDocumentCache: () => void;
@@ -31,7 +31,7 @@ export function useWorkspaceResetController(actions: WorkspaceResetControllerAct
     actions.resetDiff();
     actions.resetCodeActions();
     actions.resetWorkspaceEdit();
-    actions.resetCompletion();
+    actions.closeCompletion();
     actions.resetUsageSearch();
     actions.resetEditorState();
     actions.resetDocumentCache();

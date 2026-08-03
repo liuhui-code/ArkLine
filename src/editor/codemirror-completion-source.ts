@@ -6,13 +6,17 @@ import type {
   CompletionSource,
 } from "@codemirror/autocomplete";
 import { snippetCompletion } from "@codemirror/autocomplete";
+import type { Text } from "@codemirror/state";
 import { collectImmediateCompletionCandidates } from "@/components/layout/completion-candidate-provider";
 import { completionItemIdentity } from "@/components/layout/completion-item-identity";
 import type { LanguageCompletionItem } from "@/features/workspace/workspace-api";
+import { normalizePath } from "@/features/workspace/workspace-store";
+import { createVersionCheckedCompletionTransaction, type CompletionTextChange } from "@/editor/completion-transaction";
 
 export type CodeMirrorCompletionRequest = {
   path: string;
-  content: string;
+  document: Text;
+  lineText: string;
   line: number;
   column: number;
   explicit: boolean;
@@ -26,6 +30,7 @@ export type CodeMirrorCompletionBroker = (
 
 export type CodeMirrorCompletionResolver = (
   item: LanguageCompletionItem,
+  request: CodeMirrorCompletionRequest,
 ) => Promise<LanguageCompletionItem | null>;
 
 type CompletionPosition = CodeMirrorCompletionRequest & {
@@ -33,17 +38,18 @@ type CompletionPosition = CodeMirrorCompletionRequest & {
 };
 
 const wordPattern = /[A-Za-z0-9_$]*$/;
-const validWord = /^[A-Za-z0-9_$]*$/;
+const validCompletionRange = /^\.?[A-Za-z0-9_$]*$/;
 
 export function createCodeMirrorCompletionSources(
   path: () => string | null,
   broker: CodeMirrorCompletionBroker,
   resolver?: CodeMirrorCompletionResolver,
+  isEnabled: () => boolean = () => true,
 ): CompletionSource[] {
   const completionCache = new Map<string, Completion>();
   return [
-    createImmediateCompletionSource(path, completionCache, resolver),
-    createBrokerCompletionSource(path, broker, completionCache, resolver),
+    createImmediateCompletionSource(path, completionCache, resolver, isEnabled),
+    createBrokerCompletionSource(path, broker, completionCache, resolver, isEnabled),
   ];
 }
 
@@ -51,17 +57,19 @@ function createImmediateCompletionSource(
   path: () => string | null,
   completionCache: Map<string, Completion>,
   resolver?: CodeMirrorCompletionResolver,
+  isEnabled: () => boolean = () => true,
 ): CompletionSource {
   return (context) => {
+    if (!isEnabled()) return null;
     const position = readCompletionPosition(context, path);
     if (!position || (!context.explicit && !hasCompletionTrigger(context, position))) return null;
 
     const items = collectImmediateCompletionCandidates(position.query, {
-      content: position.content,
+      lineText: position.lineText,
       line: position.line,
       column: position.column,
     });
-    return buildResult(position, items, completionCache, resolver);
+    return buildResult(position, items, completionCache, resolver, true);
   };
 }
 
@@ -70,14 +78,16 @@ function createBrokerCompletionSource(
   broker: CodeMirrorCompletionBroker,
   completionCache: Map<string, Completion>,
   resolver?: CodeMirrorCompletionResolver,
+  isEnabled: () => boolean = () => true,
 ): CompletionSource {
   return async (context) => {
+    if (!isEnabled()) return null;
     const position = readCompletionPosition(context, path);
     if (!position || (!context.explicit && !hasCompletionTrigger(context, position))) return null;
 
     const items = await broker(position);
     if (context.aborted) return null;
-    return buildResult(position, items, completionCache, resolver);
+    return buildResult(position, items, completionCache, resolver, false);
   };
 }
 
@@ -89,7 +99,8 @@ function readCompletionPosition(context: CompletionContext, path: () => string |
   const word = context.matchBefore(wordPattern);
   return {
     path: activePath,
-    content: context.state.doc.toString(),
+    document: context.state.doc,
+    lineText: line.text,
     line: line.number,
     column: context.pos - line.from + 1,
     explicit: context.explicit,
@@ -100,7 +111,7 @@ function readCompletionPosition(context: CompletionContext, path: () => string |
 }
 
 function hasCompletionTrigger(context: CompletionContext, position: CompletionPosition) {
-  const prefix = position.content.slice(position.from, context.pos);
+  const prefix = context.state.doc.sliceString(position.from, context.pos);
   if (prefix.length > 0) return true;
   const previous = context.pos > 0 ? context.state.doc.sliceString(context.pos - 1, context.pos) : "";
   return /[.([{,:#]/.test(previous);
@@ -111,38 +122,48 @@ function buildResult(
   items: LanguageCompletionItem[],
   completionCache: Map<string, Completion>,
   resolver?: CodeMirrorCompletionResolver,
+  reuseWhileTyping = false,
 ): CompletionResult | null {
   if (items.length === 0) return null;
   return {
     from: resolveReplacementFrom(position, items),
-    options: items.map((item) => toCompletion(item, completionCache, resolver)),
-    validFor: validWord,
+    options: items.map((item) => toCompletion(position, item, completionCache, resolver)),
+    filter: reuseWhileTyping ? undefined : false,
+    validFor: reuseWhileTyping ? validCompletionRange : undefined,
   };
 }
 
 function toCompletion(
+  position: CompletionPosition,
   item: LanguageCompletionItem,
   completionCache: Map<string, Completion>,
   resolver?: CodeMirrorCompletionResolver,
 ): Completion {
   const identity = completionItemIdentity(item);
   const cached = completionCache.get(identity);
-  if (cached) return cached;
+  const resolvesOnApply = resolver && item.data?.provider === "typescript";
+  if (cached && !resolver) return cached;
 
   const insertText = item.insertText ?? item.label;
+  const resolution = resolver ? createLazyResolution(item, position, resolver) : undefined;
   const completion: Completion = {
-    label: item.label,
+    label: item.filterText ?? item.label,
+    displayLabel: item.filterText ? item.label : undefined,
     detail: item.detail,
     type: completionType(item.kind),
     sortText: item.sortText,
-    apply: isSnippetTemplate(insertText) ? undefined : insertText,
+    apply: isSnippetTemplate(insertText)
+      ? undefined
+      : resolvesOnApply && resolution
+        ? createResolvedApply(position, insertText, resolution)
+        : insertText,
     commitCharacters: item.commitCharacters,
-    info: item.documentation ?? (resolver ? createLazyInfo(item, resolver) : undefined),
+    info: resolution?.info ?? createCompletionInfo(item),
   };
   const result = isSnippetTemplate(insertText)
     ? snippetCompletion(insertText, completion)
     : completion;
-  completionCache.set(identity, result);
+  if (!resolver) completionCache.set(identity, result);
   if (completionCache.size > 512) {
     const oldest = completionCache.keys().next().value;
     if (oldest) completionCache.delete(oldest);
@@ -150,19 +171,120 @@ function toCompletion(
   return result;
 }
 
-function createLazyInfo(
+function createLazyResolution(
   item: LanguageCompletionItem,
+  position: CompletionPosition,
   resolver: CodeMirrorCompletionResolver,
-): (completion: Completion) => Promise<CompletionInfo> {
+): {
+  resolve: () => Promise<LanguageCompletionItem | null>;
+  info: (completion: Completion) => Promise<CompletionInfo>;
+} {
   let resolved: Promise<LanguageCompletionItem | null> | undefined;
-  return async () => {
-    resolved ??= resolver(item);
-    const result = await resolved;
-    if (!result?.documentation || typeof document === "undefined") {
-      return null;
-    }
-    return document.createTextNode(result.documentation);
+  const resolve = () => {
+    resolved ??= resolver(item, position).catch(() => item);
+    return resolved;
   };
+  return { resolve, info: async () => {
+    const result = await resolve();
+    return result ? renderCompletionInfo(result) : null;
+  } };
+}
+
+function createCompletionInfo(item: LanguageCompletionItem): Completion["info"] {
+  if (!item.documentation && !item.definitionTarget) return undefined;
+  return () => renderCompletionInfo(item);
+}
+
+function renderCompletionInfo(item: LanguageCompletionItem): CompletionInfo {
+  if (typeof document === "undefined") return null;
+  const details = document.createElement("div");
+  details.className = "arkline-completion-info";
+  details.setAttribute("aria-label", "Completion Details");
+  details.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  if (item.detail) {
+    const signature = document.createElement("div");
+    signature.className = "arkline-completion-info__signature";
+    signature.textContent = item.detail;
+    details.append(signature);
+  }
+  if (item.documentation) {
+    const documentation = document.createElement("div");
+    documentation.className = "arkline-completion-info__documentation";
+    documentation.textContent = item.documentation;
+    details.append(documentation);
+  }
+  if (item.definitionTarget) {
+    const source = document.createElement("div");
+    source.className = "arkline-completion-info__source";
+    const path = item.definitionTarget.path.replace(/\\/g, "/");
+    source.textContent = `${path.split("/").pop() ?? path}:${item.definitionTarget.line}:${item.definitionTarget.column}`;
+    source.title = path;
+    details.append(source);
+  }
+  return details;
+}
+
+function createResolvedApply(
+  position: CompletionPosition,
+  insertText: string,
+  resolution: { resolve: () => Promise<LanguageCompletionItem | null> },
+): NonNullable<Completion["apply"]> {
+  return (view, completion, from, to) => {
+    void resolution.resolve().then((resolved) => {
+      const additionalChanges = resolved
+        ? resolveAdditionalChanges(position, resolved)
+        : [];
+      if (additionalChanges === null) return;
+      const transaction = createVersionCheckedCompletionTransaction({
+        state: view.state,
+        expectedDocument: position.document,
+        from,
+        to,
+        insertText,
+        additionalChanges,
+        completion,
+      });
+      if (transaction) view.dispatch(transaction);
+    });
+  };
+}
+
+function resolveAdditionalChanges(
+  position: CompletionPosition,
+  item: LanguageCompletionItem,
+): CompletionTextChange[] | null {
+  const documentVersion = typeof item.data?.documentVersion === "number"
+    ? item.data.documentVersion
+    : undefined;
+  const edits = item.additionalTextEdits ?? [];
+  const changes: CompletionTextChange[] = [];
+  for (const edit of edits) {
+    if (normalizePath(edit.path) !== normalizePath(position.path)) return null;
+    if (edit.expectedVersion !== undefined && edit.expectedVersion !== documentVersion) return null;
+    const change = textRangeToChange(position.document, edit.range, edit.newText);
+    if (!change) return null;
+    changes.push(change);
+  }
+  return changes;
+}
+
+function textRangeToChange(
+  document: Text,
+  range: NonNullable<LanguageCompletionItem["replacementRange"]>,
+  insert: string,
+): CompletionTextChange | null {
+  if (range.startLine < 1 || range.endLine < range.startLine || range.endLine > document.lines) return null;
+  const startLine = document.line(range.startLine);
+  const endLine = document.line(range.endLine);
+  const from = startLine.from + range.startColumn - 1;
+  const to = endLine.from + range.endColumn - 1;
+  if (range.startColumn < 1 || range.endColumn < 1 || from > startLine.to || to > endLine.to || to < from) return null;
+  return { from, to, insert };
 }
 
 function isSnippetTemplate(value: string) {
@@ -181,6 +303,7 @@ function completionType(kind: string) {
 }
 
 function resolveReplacementFrom(position: CompletionPosition, items: LanguageCompletionItem[]) {
+  const line = position.document.line(position.line);
   const starts = items
     .map((item) => item.replacementRange)
     .filter((range) => range
@@ -188,6 +311,6 @@ function resolveReplacementFrom(position: CompletionPosition, items: LanguageCom
       && range.endLine === position.line
       && range.startColumn >= 1
       && range.endColumn === position.column)
-    .map((range) => position.from - (position.column - range!.startColumn));
+    .map((range) => line.from + range!.startColumn - 1);
   return starts.length > 0 ? Math.min(...starts) : position.from;
 }

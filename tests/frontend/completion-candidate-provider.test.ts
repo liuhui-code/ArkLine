@@ -76,12 +76,7 @@ describe("completion candidate provider", () => {
       replacePrefix: "pri",
     });
 
-    expect(items.map((item) => item.label)).toEqual([
-      "semanticBuild()",
-      "localBuild()",
-      "PrivateProfile",
-      "private",
-    ]);
+    expect(items.map((item) => item.label)).toEqual(["PrivateProfile", "private"]);
   });
 
   it("uses only receiver-aware semantic candidates after a member-access dot", async () => {
@@ -120,7 +115,7 @@ describe("completion candidate provider", () => {
       replacePrefix: "pr",
     });
 
-    expect(items.map((item) => item.label)).toEqual(["build()", "profile"]);
+    expect(items.map((item) => item.label)).toEqual(["profile"]);
     expect(queryWorkspaceFileSymbolsWithReadiness).not.toHaveBeenCalled();
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
   });
@@ -144,12 +139,7 @@ describe("completion candidate provider", () => {
 
     expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalled();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalled();
-    expect(items.map((item) => item.label)).toEqual([
-      "semanticBuild()",
-      "localBuild()",
-      "PrivateProfile",
-      "private",
-    ]);
+    expect(items.map((item) => item.label)).toEqual(["PrivateProfile", "private"]);
   });
 
   it("returns envelope explain evidence for completion diagnostics", async () => {
@@ -324,7 +314,7 @@ describe("completion candidate provider", () => {
       replacePrefix: "leg",
     });
 
-    expect(items.map((item) => item.label)).toEqual(["semanticBuild()"]);
+    expect(items).toEqual([]);
   });
 
   it("uses indexed readiness and keyword completions when language service completion is unavailable", async () => {
@@ -343,7 +333,7 @@ describe("completion candidate provider", () => {
       replacePrefix: "pri",
     });
 
-    expect(items.map((item) => item.label)).toEqual(["localBuild()", "PrivateProfile", "private"]);
+    expect(items.map((item) => item.label)).toEqual(["PrivateProfile", "private"]);
   });
 
   it("starts indexed completion lookups without waiting for semantic completion to finish", async () => {
@@ -379,9 +369,8 @@ describe("completion candidate provider", () => {
 
     resolveSemantic([{ label: "semanticBuild()", detail: "Semantic method", kind: "method", source: "arkts" }]);
     await expect(resultPromise).resolves.toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: "semanticBuild()" }),
-      expect.objectContaining({ label: "localBuild()" }),
       expect.objectContaining({ label: "PrivateProfile" }),
+      expect.objectContaining({ label: "private" }),
     ]));
   });
 

@@ -163,6 +163,8 @@ export type HarmonyBuildProject = {
   hasOhPackage: boolean;
   modules: string[];
   defaultModule: string | null;
+  products: string[];
+  defaultProduct: string | null;
 };
 
 export type BuildPreflightIssueSeverity = "error" | "warning";

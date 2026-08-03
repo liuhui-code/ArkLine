@@ -19,12 +19,13 @@ use crate::models::language::{
     SemanticWorkerRuntime, SignatureHelp,
 };
 
+mod completion_resolution;
 mod document_sync;
 
 #[cfg(not(test))]
 const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 #[cfg(test)]
-const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
+const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Deserialize)]
 struct RawSemanticResponse {
@@ -75,7 +76,10 @@ impl SemanticWorkerSession {
     }
 
     pub fn runtime_snapshot(&self) -> Option<SemanticWorkerRuntime> {
-        self.latest_runtime.lock().ok().and_then(|value| *value)
+        self.latest_runtime
+            .lock()
+            .ok()
+            .and_then(|value| value.clone())
     }
 
     pub(crate) fn request_actor_snapshot(&self) -> SemanticRequestActorSnapshot {
@@ -98,6 +102,7 @@ impl SemanticWorkerSession {
                 method: "restoreDocuments".to_string(),
                 position: None,
                 action: None,
+                completion: None,
                 documents: Some(documents),
                 document: None,
                 document_path: None,
@@ -305,14 +310,17 @@ impl SemanticWorkerSession {
                 document_version,
             }),
             action: action.cloned(),
+            completion: None,
             documents: None,
             document: None,
             document_path: None,
         };
-        let expected_response_generation =
-            matches!(method, "completion" | "gotoDefinition" | "signatureHelp")
-                .then_some(content_generation)
-                .flatten();
+        let expected_response_generation = matches!(
+            method,
+            "completion" | "gotoDefinition" | "signatureHelp" | "prepareDocument"
+        )
+        .then_some(content_generation)
+        .flatten();
         self.send_payload(payload, expected_response_generation)
     }
 
@@ -350,7 +358,7 @@ impl SemanticWorkerSession {
         let response: RawSemanticResponse = serde_json::from_str(line.trim()).map_err(|error| {
             format!("Failed to parse semantic worker response {request_id}: {error}")
         })?;
-        if let Some(runtime) = response.runtime {
+        if let Some(runtime) = response.runtime.clone() {
             if let Ok(mut latest) = self.latest_runtime.lock() {
                 *latest = Some(runtime);
             }
@@ -471,6 +479,7 @@ pub(super) fn parse_completion_item(item: &Value) -> Option<CompletionItem> {
         definition_target: item
             .get("definitionTarget")
             .and_then(|value| parse_definition_target(value).ok()),
+        additional_text_edits: completion_resolution::parse_completion_text_edits(item),
         data: item.get("data").cloned(),
     })
 }

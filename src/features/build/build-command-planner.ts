@@ -34,7 +34,6 @@ function argsForIntent(intent: BuildIntent) {
     : [];
 
   return [
-    task,
     "--mode",
     intent.scope,
     ...moduleArgs,
@@ -42,6 +41,7 @@ function argsForIntent(intent: BuildIntent) {
     `product=${intent.product}`,
     "-p",
     `buildMode=${intent.buildMode}`,
+    task,
     ...(intent.fastMode ? [] : ["--no-daemon"]),
   ];
 }

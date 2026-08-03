@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 2,
+  "kind": "real-workspace",
+  "revision": "replace-with-the-pinned-source-revision",
+  "sdkIdentity": "replace-with-the-sdk-version-and-api-level",
+  "repository": {
+    "url": "https://github.com/owner/repository.git",
+    "license": "SPDX-license-id"
+  },
+  "findQueries": [
+    "@Entry",
+    "build()"
+  ],
+  "quickOpenTargets": [
+    {
+      "query": "EntryAbility",
+      "title": "EntryAbility.ets",
+      "editorNeedle": "EntryAbility"
+    },
+    {
+      "query": "Index",
+      "title": "Index.ets",
+      "editorNeedle": "struct Index"
+    }
+  ],
+  "definitionTargets": [
+    {
+      "source": {
+        "query": "Index",
+        "title": "Index.ets",
+        "editorNeedle": "struct Index"
+      },
+      "token": "PageModel",
+      "occurrence": 1,
+      "target": {
+        "title": "PageModel.ets",
+        "editorNeedle": "class PageModel"
+      }
+    }
+  ],
+  "completionTargets": [
+    {
+      "source": {
+        "query": "Index",
+        "title": "Index.ets",
+        "editorNeedle": "struct Index"
+      },
+      "lineNeedle": "this.model.refresh()",
+      "cursorAfter": "this.model.",
+      "expectedLabels": ["refresh"],
+      "forbiddenLabels": ["public", "private", "build", "build()"]
+    }
+  ]
+}

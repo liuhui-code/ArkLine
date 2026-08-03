@@ -89,7 +89,7 @@ describe("build tool window", () => {
 
     expect(await screen.findByRole("tab", { name: "Build" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
-      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon",
       cwd: "/workspace/Demo",
       source: "preset",
     })));
@@ -229,7 +229,7 @@ describe("build tool window", () => {
     await user.click(screen.getByRole("button", { name: "Run Build" }));
 
     await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
-      command: "./hvigorw assembleHap --mode module -p module=feature@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=feature@default -p product=default -p buildMode=debug assembleHap --no-daemon",
     })));
   });
 
@@ -256,7 +256,7 @@ describe("build tool window", () => {
     await user.click(screen.getByRole("button", { name: "Run Build" }));
 
     await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
-      command: "./hvigorw assembleHap --mode module -p module=feature@default -p product=default -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=feature@default -p product=default -p buildMode=debug assembleHap --no-daemon",
     })));
   });
 
@@ -316,7 +316,7 @@ describe("build tool window", () => {
     await user.click(screen.getByRole("button", { name: "Run Build" }));
 
     await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
-      command: "./hvigorw assembleHap --mode module -p module=entry@china -p product=china -p buildMode=debug --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@china -p product=china -p buildMode=debug assembleHap --no-daemon",
     })));
   });
 
@@ -340,7 +340,7 @@ describe("build tool window", () => {
     await user.click(screen.getByRole("button", { name: "Run Build" }));
 
     await waitFor(() => expect(screen.getAllByText("Build preflight failed").length).toBeGreaterThan(0));
-    expect(screen.getByText("Hvigor wrapper is missing. Add hvigorw or hvigorw.bat to the project root.")).toBeInTheDocument();
+    expect(screen.getByText("Hvigor wrapper is missing from /workspace/Demo.")).toBeInTheDocument();
     expect(runTerminalCommand).not.toHaveBeenCalled();
   });
 
@@ -358,7 +358,7 @@ describe("build tool window", () => {
     await user.click(screen.getByRole("button", { name: "Run Build Configuration" }));
 
     await waitFor(() => expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
-      command: "./hvigorw assembleHap --mode module -p module=entry@default -p product=default -p buildMode=release --no-daemon",
+      command: "./hvigorw --mode module -p module=entry@default -p product=default -p buildMode=release assembleHap --no-daemon",
     })));
   });
 

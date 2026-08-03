@@ -60,6 +60,12 @@ describe("packaged Windows WebView2 attachment", () => {
       "--workspace",
       "C:\\fixture",
     ]);
+    expect(buildWebView2Environment(
+      {},
+      "C:\\fixture",
+      9222,
+      "C:\\sdk",
+    )).toMatchObject({ ARKLINE_HARMONY_SDK_PATH: "C:\\sdk" });
   });
 
   it("sends special keys through W3C keyboard actions", async () => {
@@ -126,6 +132,36 @@ describe("packaged Windows WebView2 attachment", () => {
       }],
     });
     expect(fetchImpl.mock.calls.every(([url]) => !String(url).includes("/element"))).toBe(true);
+  });
+
+  it("performs a real control-click at the editor token coordinates", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ value: null }),
+    });
+    const driver = new PackagedWebDriver("http://127.0.0.1:4445", fetchImpl);
+    driver.sessionId = "session-1";
+
+    await driver.modifierClickAt(120, 240);
+
+    const payload = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body as string);
+    expect(payload.actions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "key",
+        actions: expect.arrayContaining([
+          { type: "keyDown", value: "\uE009" },
+          { type: "keyUp", value: "\uE009" },
+        ]),
+      }),
+      expect.objectContaining({
+        type: "pointer",
+        actions: expect.arrayContaining([
+          { type: "pointerMove", duration: 0, origin: "viewport", x: 120, y: 240 },
+          { type: "pointerDown", button: 0 },
+          { type: "pointerUp", button: 0 },
+        ]),
+      }),
+    ]));
   });
 
   it("reads hot-loop DOM state without creating WebDriver element ids", async () => {

@@ -2,6 +2,7 @@ import type { Text } from "@codemirror/state";
 
 export type ActiveDocumentRuntime = {
   getActiveContent: () => string;
+  getActiveText: () => Text | undefined;
   getActiveContentLength: () => number;
   getActiveContentSlice: (start: number, end: number) => string;
   getActiveContentWindow: (selection: { line: number; column: number }, budget: number) => string;
@@ -31,6 +32,10 @@ export function createActiveDocumentRuntime(
 
   return {
     getActiveContent: getCurrentContent,
+    getActiveText: () => {
+      const path = getCurrentPath();
+      return path ? documentsRef.current.getDocumentText?.(path) : undefined;
+    },
     getActiveContentLength: () => {
       const path = getCurrentPath();
       return path ? documentsRef.current.getDocumentLength?.(path) ?? getCurrentContent().length : 0;

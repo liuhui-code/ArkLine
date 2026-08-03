@@ -3,24 +3,30 @@ import path from "node:path"
 
 import ts from "typescript"
 
+import { discoverHarmonySdk } from "../sdk/discovery.js"
 import type {
   SemanticCompletionItem,
+  SemanticCompletionTextEdit,
   SemanticDefinitionCandidate,
   SemanticDocumentPosition,
   SemanticSignatureHelp,
 } from "../protocol.js"
+import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
+import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import type { SemanticTypeEngineState, SemanticTypeStatus } from "./type-engine.js"
-import { lineColumnToOffset, offsetToLineColumn, spanToRange } from "./text-position.js"
+import { lineColumnToOffset, offsetToLineColumn } from "./text-position.js"
 
 const MAX_SCRIPTS = 512
 const MAX_SCRIPT_BYTES = 16 * 1024 * 1024
 const MAX_COMPLETIONS = 128
-const ENGINE_VERSION = `typescript-${ts.version}-arkts-v1`
+const ENGINE_VERSION = `typescript-${ts.version}-arkts-v2`
 
 interface ScriptRecord {
   path: string
   content: string
+  sourceContent: string
+  virtualDocument: ArktsVirtualDocument
   version: number
   bytes: number
   lastAccess: number
@@ -50,10 +56,11 @@ export class TypeScriptLanguageServiceEngine {
 
   prepare(workspace: SemanticWorkspaceView): SemanticTypeEngineState {
     const protectedPaths = new Set<string>()
+    for (const removedPath of workspace.removedPaths ?? []) this.removeScript(path.resolve(removedPath))
     for (const document of workspace.documents) {
       const filePath = path.resolve(document.path)
       protectedPaths.add(filePath)
-      this.updateScript(filePath, transformArkts(filePath, document.content))
+      this.updateScript(filePath, document.content)
     }
     this.evict(protectedPaths)
     return {
@@ -67,15 +74,24 @@ export class TypeScriptLanguageServiceEngine {
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[] {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
-    if (!script || !hasCompletionPrefix(script.content, position)) return []
+    if (!script || !hasCompletionPrefix(script.sourceContent, position)) return []
     script.lastAccess = ++this.accessClock
-    const offset = lineColumnToOffset(script.content, position.line, position.column)
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const prefix = completionPrefix(script.sourceContent, sourceOffset)
+    const memberAccess = script.sourceContent.slice(0, sourceOffset - prefix.length).endsWith(".")
     const info = this.service.getCompletionsAtPosition(filePath, offset, {
       includeCompletionsForImportStatements: true,
+      includeCompletionsForModuleExports: !memberAccess && prefix.length >= 3,
       includeCompletionsWithInsertText: true,
     })
     if (!info) return []
-    return info.entries.slice(0, MAX_COMPLETIONS).map((entry) => ({
+    const normalizedPrefix = prefix.toLowerCase()
+    return info.entries
+      .filter((entry) => !normalizedPrefix
+        || (entry.filterText ?? entry.name).toLowerCase().startsWith(normalizedPrefix))
+      .slice(0, MAX_COMPLETIONS)
+      .map((entry) => ({
       label: entry.name,
       detail: typeDetail(entry),
       kind: completionKind(entry.kind),
@@ -84,10 +100,53 @@ export class TypeScriptLanguageServiceEngine {
       sortText: entry.sortText,
       source: "type",
       replacementRange: entry.replacementSpan
-        ? spanToRange(script.content, entry.replacementSpan.start, entry.replacementSpan.length)
+        ? script.virtualDocument.generatedSpanToSourceRange(
+            entry.replacementSpan.start,
+            entry.replacementSpan.length,
+          )
         : undefined,
-      data: { provider: "typescript", engineVersion: ENGINE_VERSION },
-    }))
+      data: {
+        provider: "typescript",
+        engineVersion: ENGINE_VERSION,
+        documentVersion: position.documentVersion,
+        entryName: entry.name,
+        entrySource: entry.source,
+        entryData: entry.data,
+      },
+      }))
+  }
+
+  resolveCompletion(
+    position: SemanticDocumentPosition,
+    item: SemanticCompletionItem,
+  ): SemanticCompletionItem {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    const data = item.data
+    if (!script || data?.provider !== "typescript" || data.engineVersion !== ENGINE_VERSION) return item
+    const entryName = typeof data.entryName === "string" ? data.entryName : item.label
+    const entrySource = typeof data.entrySource === "string" ? data.entrySource : undefined
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const details = this.service.getCompletionEntryDetails(
+      filePath,
+      offset,
+      entryName,
+      {},
+      entrySource,
+      { includeCompletionsForModuleExports: true },
+      data.entryData as ts.CompletionEntryData | undefined,
+    )
+    if (!details) return item
+    const detail = ts.displayPartsToString(details.displayParts) || item.detail
+    const documentation = optionalDisplayParts(details.documentation ?? []) ?? item.documentation
+    return {
+      ...item,
+      detail,
+      documentation,
+      additionalTextEdits: this.mapCompletionEdits(filePath, position.documentVersion, details),
+      data: { ...data, resolved: true },
+    }
   }
 
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[] {
@@ -95,14 +154,19 @@ export class TypeScriptLanguageServiceEngine {
     const script = this.scripts.get(filePath)
     if (!script) return []
     script.lastAccess = ++this.accessClock
-    const offset = lineColumnToOffset(script.content, position.line, position.column)
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const definitions = this.service.getDefinitionAtPosition(filePath, offset) ?? []
     const seen = new Set<string>()
     return definitions.flatMap((definition) => {
       const targetPath = path.resolve(definition.fileName)
-      const content = this.scripts.get(targetPath)?.content ?? safeRead(targetPath)
+      const targetScript = this.scripts.get(targetPath)
+      const content = targetScript?.sourceContent ?? safeRead(targetPath)
       if (content === null) return []
-      const target = offsetToLineColumn(content, definition.textSpan.start)
+      const targetOffset = targetScript
+        ? targetScript.virtualDocument.toSourceOffset(definition.textSpan.start)
+        : definition.textSpan.start
+      const target = offsetToLineColumn(content, targetOffset)
       const key = `${targetPath}:${target.line}:${target.column}`
       if (seen.has(key)) return []
       seen.add(key)
@@ -115,7 +179,8 @@ export class TypeScriptLanguageServiceEngine {
     const script = this.scripts.get(filePath)
     if (!script) return null
     script.lastAccess = ++this.accessClock
-    const offset = lineColumnToOffset(script.content, position.line, position.column)
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
     const info = this.service.getSignatureHelpItems(filePath, offset, {
       triggerReason: { kind: "invoked" },
     })
@@ -170,6 +235,15 @@ export class TypeScriptLanguageServiceEngine {
 
   private resolveModule(name: string, containingFile: string): ts.ResolvedModule | undefined {
     if (!name.startsWith(".")) {
+      const sdkRoot = discoverHarmonySdk().path
+      const sdkModule = sdkRoot ? resolveHarmonySdkModule(sdkRoot, name) : null
+      if (sdkModule) {
+        return ({
+          resolvedFileName: sdkModule,
+          extension: sdkModule.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
+          isExternalLibraryImport: true,
+        } as ts.ResolvedModule)
+      }
       return ts.resolveModuleName(name, containingFile, this.options, ts.sys).resolvedModule
     }
     const base = path.resolve(path.dirname(containingFile), name)
@@ -185,21 +259,56 @@ export class TypeScriptLanguageServiceEngine {
 
   private updateScript(filePath: string, content: string): void {
     const previous = this.scripts.get(filePath)
-    if (previous?.content === content) {
+    if (previous?.sourceContent === content) {
       previous.lastAccess = ++this.accessClock
       return
     }
     if (previous) this.scriptBytes -= previous.bytes
-    const bytes = Buffer.byteLength(content)
+    const virtualDocument = createArktsVirtualDocument(filePath, content)
+    const bytes = Buffer.byteLength(content) + Buffer.byteLength(virtualDocument.generatedContent)
     this.scripts.set(filePath, {
       path: filePath,
-      content,
+      content: virtualDocument.generatedContent,
+      sourceContent: content,
+      virtualDocument,
       version: (previous?.version ?? 0) + 1,
       bytes,
       lastAccess: ++this.accessClock,
     })
     this.scriptBytes += bytes
     this.generation += 1
+  }
+
+  private removeScript(filePath: string): void {
+    const previous = this.scripts.get(filePath)
+    if (!previous) return
+    this.scripts.delete(filePath)
+    this.scriptBytes -= previous.bytes
+    this.generation += 1
+  }
+
+  private mapCompletionEdits(
+    currentPath: string,
+    documentVersion: number | undefined,
+    details: ts.CompletionEntryDetails,
+  ): SemanticCompletionTextEdit[] | undefined {
+    const action = details.codeActions?.find((candidate) =>
+      !candidate.commands?.length
+      && candidate.changes.length > 0
+      && candidate.changes.every((change) =>
+        !change.isNewFile && path.resolve(change.fileName) === currentPath))
+    if (!action) return undefined
+    const script = this.scripts.get(currentPath)
+    if (!script) return undefined
+    return action.changes.flatMap((change) => change.textChanges.map((textChange) => ({
+      path: currentPath,
+      range: script.virtualDocument.generatedSpanToSourceRange(
+        textChange.span.start,
+        textChange.span.length,
+      ),
+      newText: textChange.newText,
+      expectedVersion: documentVersion,
+    })))
   }
 
   private evict(protectedPaths: Set<string>): void {
@@ -215,12 +324,6 @@ export class TypeScriptLanguageServiceEngine {
   }
 }
 
-function transformArkts(filePath: string, content: string): string {
-  return filePath.endsWith(".ets")
-    ? content.replace(/\bstruct(?=\s+[A-Za-z_$])/g, "class ")
-    : content
-}
-
 function typeStatus(filePath: string): SemanticTypeStatus {
   if (filePath.endsWith(".ets")) return "partial"
   if (filePath.endsWith(".ts")) return "ready"
@@ -230,7 +333,13 @@ function typeStatus(filePath: string): SemanticTypeStatus {
 function hasCompletionPrefix(content: string, position: SemanticDocumentPosition): boolean {
   const offset = lineColumnToOffset(content, position.line, position.column)
   const before = content.slice(0, offset)
-  return /\.[A-Za-z_$][A-Za-z0-9_$]*$/.test(before) || before.endsWith(".")
+  return /\.[A-Za-z_$][A-Za-z0-9_$]*$/.test(before)
+    || before.endsWith(".")
+    || /\b[A-Za-z_$][A-Za-z0-9_$]{2,}$/.test(before)
+}
+
+function completionPrefix(content: string, offset: number): string {
+  return content.slice(0, offset).match(/[A-Za-z_$][A-Za-z0-9_$]*$/)?.[0] ?? ""
 }
 
 function completionKind(kind: ts.ScriptElementKind): string {

@@ -201,6 +201,36 @@ describe("Project tool window", () => {
     expect(loadDirectory).toHaveBeenCalledWith("C:\\samples\\ArkDemo\\entry\\src");
   });
 
+  it("requests unloaded ancestor directories when focusing a lazy-tree file", async () => {
+    const user = userEvent.setup();
+    const loadDirectory = vi.fn();
+
+    render(
+      <ProjectToolWindow
+        lazyRoot={{ name: "ArkDemo", path: "C:/samples/ArkDemo" }}
+        lazyChildren={{
+          "C:\\samples\\ArkDemo": [{
+            name: "entry",
+            path: "C:/samples/ArkDemo/entry",
+            kind: "directory",
+            excluded: false,
+            hasChildren: true,
+          }],
+        }}
+        lazyLoadingPaths={new Set()}
+        activePath="C:/samples/ArkDemo/entry/src/main/ets/pages/Index.ets"
+        onLoadDirectory={loadDirectory}
+        onOpen={vi.fn()}
+        onRequestMutation={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Focus Active File" }));
+
+    expect(loadDirectory).toHaveBeenCalledWith("C:\\samples\\ArkDemo\\entry");
+    expect(loadDirectory).toHaveBeenCalledWith("C:\\samples\\ArkDemo\\entry\\src\\main\\ets\\pages");
+  });
+
   it("opens an IDE-style context menu for project tree rows", async () => {
     const user = userEvent.setup();
     const requestMutation = vi.fn();

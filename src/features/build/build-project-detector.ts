@@ -48,6 +48,8 @@ export function detectHarmonyBuildProject(rootPath: string, files: string[]): Ha
     hasOhPackage,
     modules,
     defaultModule,
+    products: [],
+    defaultProduct: null,
   };
 }
 

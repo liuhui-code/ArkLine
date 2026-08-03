@@ -1,14 +1,11 @@
 import { useRef } from "react";
-import type { RestoreFileResult } from "@/components/layout/use-editor-surface-controller";
+import type {
+  OpenFileInteractionContext,
+  RestoreFileResult,
+} from "@/components/layout/use-editor-surface-controller";
 import type { AppSettings } from "@/features/settings/settings-store";
 
 type AppShellActionRefs = {
-  completionActionsRef: {
-    current: {
-      clearCompletionSession: () => void;
-      clearTypingCompletionTimer: () => void;
-    };
-  };
   searchActionsRef: {
     current: { resetSearchOverlayState: () => void };
   };
@@ -20,7 +17,10 @@ type AppShellActionRefs = {
   };
   editorActionsRef: {
     current: {
-      openFile: (path: string) => Promise<RestoreFileResult | void>;
+      openFile: (
+        path: string,
+        interaction?: OpenFileInteractionContext,
+      ) => Promise<RestoreFileResult | void>;
       cancelPendingOpen: () => void;
     };
   };
@@ -37,12 +37,6 @@ type AppShellActionRefs = {
 
 export function useAppShellActionRefs() {
   const refs = useRef<AppShellActionRefs>({
-    completionActionsRef: {
-      current: {
-        clearCompletionSession: () => undefined,
-        clearTypingCompletionTimer: () => undefined,
-      },
-    },
     searchActionsRef: {
       current: { resetSearchOverlayState: () => undefined },
     },

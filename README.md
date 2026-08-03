@@ -81,10 +81,14 @@ To create a downloadable artifact:
 
 The generated file is `ArkLine-windows-x64.zip`. It contains `ArkLine.exe`,
 `arkline-semantic.exe`, and `arkline-indexer.exe`; all three must remain in the
-same directory. The semantic sidecar serves completion and navigation. The
-indexer sidecar is packaged for the staged process-isolation rollout and is
-currently opt-in through `ARKLINE_INDEXER_ENABLED=1`. The target machine still
-needs Microsoft WebView2 Runtime.
+same directory. The semantic sidecar serves completion and navigation. Release
+builds enable the indexer sidecar by default so project discovery and deep
+content/symbol indexing stay isolated from the desktop Host. Set
+`ARKLINE_INDEXER_ENABLED=0` only as a temporary compatibility rollback. When an
+enabled sidecar is unavailable, ArkLine keeps the editor and bounded file
+discovery usable but leaves deep indexes partial instead of running heavy
+content or Stub parsing in the Host. The target machine still needs Microsoft
+WebView2 Runtime.
 
 #### Publish a Windows exe to GitHub Releases
 

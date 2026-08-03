@@ -1,0 +1,87 @@
+use std::time::{Duration, Instant};
+
+use tauri::async_runtime::JoinHandle;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SemanticDeadlineOutcome<T> {
+    Ready(T),
+    Failed(String),
+    TimedOut,
+}
+
+pub async fn await_semantic_until<T>(
+    mut task: JoinHandle<Result<T, String>>,
+    started_at: Instant,
+    budget: Duration,
+) -> SemanticDeadlineOutcome<T> {
+    let remaining = budget.saturating_sub(started_at.elapsed());
+    if remaining.is_zero() {
+        if task.inner().is_finished() {
+            return match task.await {
+                Ok(Ok(value)) => SemanticDeadlineOutcome::Ready(value),
+                Ok(Err(error)) => SemanticDeadlineOutcome::Failed(error),
+                Err(error) => SemanticDeadlineOutcome::Failed(error.to_string()),
+            };
+        }
+        task.abort();
+        return SemanticDeadlineOutcome::TimedOut;
+    }
+    match tokio::time::timeout(remaining, &mut task).await {
+        Ok(Ok(Ok(value))) => SemanticDeadlineOutcome::Ready(value),
+        Ok(Ok(Err(error))) => SemanticDeadlineOutcome::Failed(error),
+        Ok(Err(error)) => SemanticDeadlineOutcome::Failed(error.to_string()),
+        Err(_) => {
+            task.abort();
+            SemanticDeadlineOutcome::TimedOut
+        }
+    }
+}
+
+pub fn elapsed_millis(started_at: Instant) -> u128 {
+    started_at.elapsed().as_millis()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{await_semantic_until, SemanticDeadlineOutcome};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn returns_without_waiting_for_a_slow_semantic_task() {
+        tauri::async_runtime::block_on(async {
+            let task = tauri::async_runtime::spawn(async {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                Ok::<_, String>(vec!["late"])
+            });
+            let started = Instant::now();
+            let outcome = await_semantic_until(task, started, Duration::from_millis(10)).await;
+
+            assert_eq!(outcome, SemanticDeadlineOutcome::TimedOut);
+            assert!(started.elapsed() < Duration::from_millis(80));
+        });
+    }
+
+    #[test]
+    fn keeps_a_semantic_result_that_arrives_inside_the_budget() {
+        tauri::async_runtime::block_on(async {
+            let task = tauri::async_runtime::spawn(async { Ok::<_, String>(vec!["ready"]) });
+            let outcome =
+                await_semantic_until(task, Instant::now(), Duration::from_millis(50)).await;
+
+            assert_eq!(outcome, SemanticDeadlineOutcome::Ready(vec!["ready"]));
+        });
+    }
+
+    #[test]
+    fn keeps_an_already_finished_result_when_index_work_consumed_the_budget() {
+        tauri::async_runtime::block_on(async {
+            let task = tauri::async_runtime::spawn(async { Ok::<_, String>(vec!["ready"]) });
+            tokio::time::sleep(Duration::from_millis(5)).await;
+            let started = Instant::now() - Duration::from_millis(20);
+
+            let outcome = await_semantic_until(task, started, Duration::from_millis(10)).await;
+
+            assert_eq!(outcome, SemanticDeadlineOutcome::Ready(vec!["ready"]));
+        });
+    }
+}

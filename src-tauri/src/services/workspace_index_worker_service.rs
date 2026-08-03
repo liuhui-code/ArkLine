@@ -3,17 +3,14 @@ use std::path::Path;
 use crate::indexer_host::{IndexerDiscoveryAttempt, IndexerHostRuntime};
 use crate::indexer_sidecar::IndexerTaskKey;
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
-use crate::services::workspace_dependency_graph_service::{
-    has_graph_affecting_config_change, mark_dependency_graph_stale,
-};
 use crate::services::workspace_discovery_runner_service::run_workspace_discovery_chunk;
 use crate::services::workspace_discovery_task_service::{
     is_workspace_discovery_task_reason, workspace_discovery_task_cursor,
 };
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_changed_path_worker_service::{
-    changed_paths_for_task, existing_file_paths, is_user_visible_readiness_task,
-    refresh_changed_path_chunks,
+    changed_paths_for_task, refresh_changed_path_chunks, refresh_graph_config_change,
+    refresh_user_visible_file_layer,
 };
 use crate::services::workspace_index_chunk_service::plan_refresh_continuation;
 use crate::services::workspace_index_continuation_task_service::{
@@ -229,6 +226,9 @@ fn run_index_task_inner(
                         }
                         IndexerDiscoveryAttempt::Unavailable => {}
                     }
+                    if runtime.requires_process_isolation() {
+                        runtime.record_local_fallback();
+                    }
                 }
                 let chunk = run_workspace_discovery_chunk(
                     Path::new(&task.root_path),
@@ -267,23 +267,22 @@ fn run_index_task_inner(
                     started_at,
                 )));
             }
-            if is_user_visible_readiness_task(task.priority) {
-                let file_symbol_paths = existing_file_paths(&changed_paths);
-                if !file_symbol_paths.is_empty() {
-                    index_runtime.update_workspace_file_symbol_layer(
-                        &task.root_path,
-                        &file_symbol_paths,
-                        &[],
-                    )?;
-                }
+            if let Some(refresh_result) =
+                refresh_user_visible_file_layer(index_runtime, task, &changed_paths)?
+            {
+                return Ok(Some(refresh_task_result(
+                    task,
+                    "changed-paths",
+                    refresh_result,
+                    started_at,
+                )));
             }
-            if has_graph_affecting_config_change(&changed_paths) {
-                mark_dependency_graph_stale(&task.root_path, "config-change")?;
+            if let Some(refresh_result) =
+                refresh_graph_config_change(index_runtime, indexer, task, &changed_paths)?
+            {
                 if token.is_cancelled() {
                     return Ok(Some(superseded_task_result_from_task(task)));
                 }
-                let refresh_result =
-                    index_runtime.refresh_workspace_index_with_changes(&task.root_path)?;
                 let mut config_task = task.clone();
                 config_task.reason = "config-change".to_string();
                 return Ok(Some(refresh_task_result(
@@ -311,6 +310,13 @@ fn run_index_task_inner(
         WorkspaceIndexTaskKind::OpenWorkspace => {
             if token.is_cancelled() {
                 return Ok(Some(superseded_task_result_from_task(task)));
+            }
+            if indexer.is_some_and(IndexerHostRuntime::requires_process_isolation) {
+                return Ok(Some(skipped_task_result(
+                    task,
+                    "Workspace discovery delegated to the indexer sidecar",
+                    started_at,
+                )));
             }
             let snapshot = scan_workspace(Path::new(&task.root_path))?;
             let state = index_runtime.index_workspace_snapshot_for_open(&snapshot)?;
@@ -406,9 +412,15 @@ fn refresh_full_refresh_continuation_chunk(
             chunk.paths
         }
     };
-    let state = match phase {
-        WorkspaceIndexContinuationPhase::FileLayer => index_runtime
-            .update_workspace_file_symbol_layer(&task.root_path, &selected_paths, &[])?,
+    let (state, deep_deferred) = match phase {
+        WorkspaceIndexContinuationPhase::FileLayer => (
+            index_runtime.update_workspace_file_symbol_layer(
+                &task.root_path,
+                &selected_paths,
+                &[],
+            )?,
+            false,
+        ),
         WorkspaceIndexContinuationPhase::DeepLayer => {
             match update_background_deep_layer(
                 index_runtime,
@@ -419,23 +431,37 @@ fn refresh_full_refresh_continuation_chunk(
                 &[],
                 ui_latency_sensitive,
             )? {
-                WorkspaceDeepLayerUpdate::Applied(state) => state,
+                WorkspaceDeepLayerUpdate::Applied(state) => (state, false),
+                WorkspaceDeepLayerUpdate::Deferred(state) => (state, true),
                 WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
             }
         }
-        WorkspaceIndexContinuationPhase::Legacy => index_runtime
-            .update_workspace_deep_layer_with_priority(
+        WorkspaceIndexContinuationPhase::Legacy => (
+            index_runtime.update_workspace_deep_layer_with_priority(
                 &task.root_path,
                 &selected_paths,
                 &[],
                 task.priority,
             )?,
+            false,
+        ),
     };
-    let processed_count = selected_paths.len();
+    let processed_count = if deep_deferred {
+        0
+    } else {
+        selected_paths.len()
+    };
+    if deep_deferred {
+        deferred_paths.extend(selected_paths.iter().cloned());
+    }
     let refresh_result = WorkspaceIndexRefreshResult {
         state,
-        changed: !selected_paths.is_empty(),
-        added_paths: selected_paths,
+        changed: !selected_paths.is_empty() && !deep_deferred,
+        added_paths: if deep_deferred {
+            Vec::new()
+        } else {
+            selected_paths
+        },
         removed_paths: Vec::new(),
     };
     let mut result = refresh_task_result(task, "changed-paths", refresh_result, started_at);

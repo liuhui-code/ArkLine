@@ -1,5 +1,6 @@
-import type { EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
+import type { EditorCompletionTarget, EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
 import { useEffect, useMemo, useRef } from "react";
+import { closeCompletion, startCompletion } from "@codemirror/autocomplete";
 import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
@@ -28,14 +29,19 @@ import { isEditorReducedPerformanceDocument } from "@/editor/editor-document-bud
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
-import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 import { createEditorDocumentSessionRegistry } from "@/editor/editor-document-session-registry";
 import { scheduleEditorEnhancement } from "@/editor/editor-enhancement-scheduler";
+import { beginInteractionTrace, type InteractionTraceHandle } from "@/features/performance/interaction-trace-store";
+import { createEditorInputTraceRuntime } from "@/features/performance/editor-input-trace-runtime";
+import { getPathBasename } from "@/features/workspace/workspace-store";
 
 type ArkTsEditorProps = {
   focusToken?: number;
+  completionTarget?: EditorCompletionTarget | null;
+  completionEnabled?: boolean;
   path: string;
   value?: string;
   document?: Text;
@@ -50,6 +56,7 @@ type ArkTsEditorProps = {
   onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
   onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
@@ -61,6 +68,8 @@ type ArkTsEditorProps = {
 
 export function ArkTsEditor({
   focusToken = 0,
+  completionTarget = null,
+  completionEnabled = true,
   path,
   value = "",
   document,
@@ -75,6 +84,7 @@ export function ArkTsEditor({
   onDefinitionHoverChange,
   onTypingCompletionTrigger,
   onCodeMirrorCompletionRequest,
+  onCodeMirrorCompletionResolve,
   onCodeMirrorSignatureHelpRequest,
   onContextMenu,
   blameAttributions = [],
@@ -98,10 +108,14 @@ export function ArkTsEditor({
   const onDefinitionHoverChangeRef = useRef(onDefinitionHoverChange);
   const onTypingCompletionTriggerRef = useRef(onTypingCompletionTrigger);
   const onCodeMirrorCompletionRequestRef = useRef(onCodeMirrorCompletionRequest);
+  const onCodeMirrorCompletionResolveRef = useRef(onCodeMirrorCompletionResolve);
+  const completionEnabledRef = useRef(completionEnabled);
   const onCodeMirrorSignatureHelpRequestRef = useRef(onCodeMirrorSignatureHelpRequest);
   const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
   const sessionRestoreFrameRef = useRef<number | null>(null);
+  const editorSwitchTraceRef = useRef<InteractionTraceHandle | null>(null);
+  const inputTraceRuntimeRef = useRef(createEditorInputTraceRuntime());
   const documentSource = document ?? value;
   const reducedPerformanceMode = useMemo(
     () => isEditorReducedPerformanceDocument(documentSource),
@@ -116,6 +130,8 @@ export function ArkTsEditor({
   onDefinitionHoverChangeRef.current = onDefinitionHoverChange;
   onTypingCompletionTriggerRef.current = onTypingCompletionTrigger;
   onCodeMirrorCompletionRequestRef.current = onCodeMirrorCompletionRequest;
+  onCodeMirrorCompletionResolveRef.current = onCodeMirrorCompletionResolve;
+  completionEnabledRef.current = completionEnabled;
   onCodeMirrorSignatureHelpRequestRef.current = onCodeMirrorSignatureHelpRequest;
   onContextMenuRef.current = onContextMenu;
 
@@ -125,8 +141,14 @@ export function ArkTsEditor({
       extensions: createEditorExtensions(
         documentPath,
         appearance,
-        (nextValue) => onChangeRef.current(nextValue),
-        onDocumentChange ? (document) => onDocumentChangeRef.current?.(document) : undefined,
+        (nextValue) => {
+          inputTraceRuntimeRef.current.documentChanged();
+          onChangeRef.current(nextValue);
+        },
+        onDocumentChange ? (document) => {
+          inputTraceRuntimeRef.current.documentChanged();
+          onDocumentChangeRef.current?.(document);
+        } : undefined,
         (selection, shouldMeasureCaret) => {
           onSelectionChangeRef.current?.(selection);
           const view = viewRef.current;
@@ -143,6 +165,9 @@ export function ArkTsEditor({
         onCodeMirrorCompletionRequest
           ? (request) => onCodeMirrorCompletionRequestRef.current?.(request) ?? Promise.resolve([])
           : undefined,
+        onCodeMirrorCompletionResolve
+          ? (item, request) => onCodeMirrorCompletionResolveRef.current?.(item, request) ?? Promise.resolve(item)
+          : undefined,
         () => activePathRef.current,
         gitBlameVisible
           ? { blameAttributions, selectedLine: selectedBlameLine, onSelectLine: onGitTraceLineClick }
@@ -152,6 +177,7 @@ export function ArkTsEditor({
         onCodeMirrorSignatureHelpRequest
           ? (request, signal) => onCodeMirrorSignatureHelpRequestRef.current?.(request, signal) ?? Promise.resolve(null)
           : undefined,
+        () => completionEnabledRef.current,
       ),
     });
   }
@@ -167,6 +193,14 @@ export function ArkTsEditor({
       state,
       parent: hostRef.current,
     });
+    const contentDom = viewRef.current.contentDOM;
+    const handleBeforeInput = (event: InputEvent) => {
+      inputTraceRuntimeRef.current.begin(
+        getPathBasename(activePathRef.current),
+        event.inputType || "unknown",
+      );
+    };
+    contentDom.addEventListener("beforeinput", handleBeforeInput);
     onCaretRectChangeRef.current?.(readCaretRect(viewRef.current));
 
     return () => {
@@ -176,6 +210,9 @@ export function ArkTsEditor({
       if (sessionRestoreFrameRef.current != null) {
         window.cancelAnimationFrame(sessionRestoreFrameRef.current);
       }
+      editorSwitchTraceRef.current?.finish("cancelled");
+      inputTraceRuntimeRef.current.cancel();
+      contentDom.removeEventListener("beforeinput", handleBeforeInput);
       viewRef.current?.destroy();
       viewRef.current = null;
     };
@@ -191,6 +228,10 @@ export function ArkTsEditor({
       return;
     }
 
+    editorSwitchTraceRef.current?.finish("superseded");
+    const switchTrace = beginInteractionTrace("editorSwitch", getPathBasename(path));
+    editorSwitchTraceRef.current = switchTrace;
+    const statePhase = switchTrace.startPhase("applyEditorState");
     if (activeTransientPreviewRef.current) {
       sessionsRef.current.delete(activePathRef.current);
     } else {
@@ -212,13 +253,22 @@ export function ArkTsEditor({
     } else {
       replaceDocumentInView(view, path, documentSource, reducedPerformanceMode);
     }
+    statePhase.finish();
     if (sessionRestoreFrameRef.current != null) {
       window.cancelAnimationFrame(sessionRestoreFrameRef.current);
     }
+    const framePhase = switchTrace.startPhase("nextFrame");
     sessionRestoreFrameRef.current = window.requestAnimationFrame(() => {
-      if (viewRef.current !== view || activePathRef.current !== path) return;
+      if (viewRef.current !== view || activePathRef.current !== path) {
+        framePhase.finish("superseded");
+        switchTrace.finish("superseded");
+        return;
+      }
       view.scrollDOM.scrollTop = cachedMatchesDocument ? cached.scrollTop : 0;
       view.scrollDOM.scrollLeft = cachedMatchesDocument ? cached.scrollLeft : 0;
+      framePhase.finish();
+      switchTrace.finish();
+      if (editorSwitchTraceRef.current === switchTrace) editorSwitchTraceRef.current = null;
       sessionRestoreFrameRef.current = null;
     });
   }, [appearance, documentSource, onDocumentChange, path, reducedPerformanceMode, transientPreview]);
@@ -383,6 +433,19 @@ export function ArkTsEditor({
   useEffect(() => {
     viewRef.current?.focus();
   }, [focusToken]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    if (!completionEnabled || completionTarget?.action === "close") {
+      closeCompletion(view);
+      return;
+    }
+    if (completionTarget?.action === "open") {
+      view.focus();
+      startCompletion(view);
+    }
+  }, [completionEnabled, completionTarget]);
 
   return <div className="editor-codemirror" ref={hostRef} />;
 }

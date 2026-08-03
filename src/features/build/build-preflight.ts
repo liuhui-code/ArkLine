@@ -45,8 +45,8 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
     issues.push(issue({
       severity: "error",
       code: "missing-hvigor-wrapper",
-      message: "Hvigor wrapper is missing. Add hvigorw or hvigorw.bat to the project root.",
-      hint: "DevEco projects normally include the wrapper in the root so builds use the project-pinned Hvigor version.",
+      message: `Hvigor wrapper is missing from ${input.project.rootPath}.`,
+      hint: "Restore the platform wrapper in the canonical project root so the build uses the project-pinned Hvigor version.",
     }));
   }
 

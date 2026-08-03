@@ -63,7 +63,7 @@ export function resolveCompletion(
   }
 
   for (const item of typeEngine?.complete(position) ?? []) {
-    if (!memberAccess || item.kind !== "keyword") {
+    if (!memberAccess || isReceiverMember(item, currentPath)) {
       push(item)
     }
   }
@@ -100,6 +100,12 @@ export function resolveCompletion(
   }
 
   return labels
+}
+
+function isReceiverMember(item: SemanticCompletionItem, currentPath: string): boolean {
+  if (item.kind === "keyword" || item.kind === "snippet") return false
+  const label = item.label.endsWith("()") ? item.label.slice(0, -2) : item.label
+  return !(currentPath.toLowerCase().endsWith(".ets") && label === "build")
 }
 
 function completionIdentity(item: SemanticCompletionItem): string {

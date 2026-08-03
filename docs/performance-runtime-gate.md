@@ -50,6 +50,11 @@ count, cancellation and stale-result counts, document cache and pending-load
 counts, notifications, and heap delta. Use the same machine, Node version,
 fixture size, and command flags when comparing runs.
 
+These local timings run against deterministic in-process adapters. They are a
+correctness and regression screen, not evidence of WebView paint, Tauri IPC,
+filesystem, SQLite, or semantic-worker latency. Only the packaged gate may be
+used to make an end-user responsiveness claim.
+
 ## Release Policy
 
 - A release candidate must include fresh performance output in `docs/performance-baseline.md`.
@@ -89,7 +94,7 @@ pnpm perf:packaged:windows -- `
   --fixture=artifacts/smoke-fixture `
   --report=artifacts/packaged-smoke-report.json
 
-$env:ARKLINE_INDEXER_ENABLED = "1"
+Remove-Item Env:ARKLINE_INDEXER_ENABLED -ErrorAction SilentlyContinue
 pnpm perf:packaged:windows -- `
   --mode=soak `
   --application=dist/ArkLine-windows-x64/ArkLine.exe `
@@ -107,14 +112,22 @@ session, WebView timing capabilities, process-tree evidence, one real search,
 and one real navigation. It does not evaluate long-run latency, queue drain, or
 memory/WAL growth.
 
+Release builds enable the packaged indexer sidecar by default. The smoke stage
+sets `ARKLINE_INDEXER_ENABLED=0` to retain an explicit local-compatibility
+rollback gate; the strict soak deliberately leaves the variable unset so it
+tests the same default path used by an ordinary launch.
+
 Once arguments and the report directory are valid, both smoke and soak write a
-schema-v3 JSON report even when the harness fails. A startup failure report
+schema-v5 JSON report even when the harness fails. A startup failure report
 identifies the failing platform/preflight/driver/session phase and preserves the
 checks, driver exit state, bounded driver log, fixture, and executable evidence.
 Its JSON artifact records:
 
-- WebDriver dispatch, Find in Files result-visible, and Quick Open
-  stable-paint p50, p95, and p99;
+- WebDriver dispatch, Find in Files result-visible, Quick Open stable-paint,
+  editor input-visible, and editor scroll-frame p50, p95, and p99;
+- causal interaction traces for editor input, search, and navigation, including
+  parent/child IDs and phase timings for query, IPC/file open, selection apply,
+  result apply, and visible commit;
 - W3C Event Timing, Long Animation Frames (LoAF), LoAF blocking time,
   long tasks, frame gaps, and visible app/editor crash surfaces;
 - aggregate RSS, private bytes, handles, and threads for the ArkLine process
@@ -127,21 +140,66 @@ Its JSON artifact records:
   size and SHA-256.
 
 Strict acceptance rejects crashes, repeated WebDriver response failures, a run
-with no real search result or no completed cross-file navigation, stale
+with no real search result, no completed cross-file navigation, no editor input,
+or no editor scroll evidence, stale
 navigation, remaining queue work, stalled index tasks, sidecar restarts,
-renderer search or navigation p95 above 300 ms, W3C interaction timing p95
-above 100 ms, RSS or private-memory growth above 512 MiB, supported JavaScript
+renderer search or navigation p95 above 300 ms or p99 above 750 ms, editor input
+or scroll p95 above 50 ms or p99 above 100 ms, W3C interaction timing p95 above
+100 ms, any observed long task above 500 ms, RSS or private-memory growth above
+512 MiB, supported JavaScript
 heap growth above 256 MiB, or workspace/shared-SDK WAL growth above 128 MiB.
-p99 remains diagnostic evidence and is not a hard verdict threshold. The strict
-runner also requires Event Timing, LoAF, and process-tree capabilities. Zero
+The strict runner also requires complete causal trace coverage with no errored
+or unfinished trace, plus Event Timing, LoAF, and process-tree capabilities. Zero
 Event Timing or LoAF samples is valid: these APIs report slow work, so a
 responsive run can have no entries. A missing capability is not valid because
 it leaves the release claim unmeasured.
+
+Real-workspace scenarios additionally require at least one successful rendered
+Ctrl+Click Definition and one receiver-member completion. Definition p95 must
+remain at or below 200 ms and Completion p95 at or below 150 ms. Required
+completion labels must be present and forbidden declaration-only labels must be
+absent. These semantic checks are intentionally not synthesized for the scale
+fixtures.
+
+For a pinned real workspace, provide a versioned scenario manifest instead of
+the generated-fixture naming convention:
+
+```powershell
+pnpm perf:packaged:windows -- `
+  --mode=soak `
+  --application=dist/ArkLine-windows-x64/ArkLine.exe `
+  --fixture=C:\fixtures\PinnedHarmonyProject `
+  --scenario=docs\performance-fixtures\core-loop-scenario.json `
+  --sdk=C:\HarmonyOS\Sdk\openharmony `
+  --duration-minutes=30 `
+  --report=artifacts/real-project-core-loop.json `
+  --strict
+```
+
+The schema-v2 manifest must declare the repository URL and license, source
+revision, SDK identity, Find in Files queries, Quick Open targets, Ctrl+Click
+source/target anchors, and member-completion anchors. Preflight rejects a Git
+checkout whose `HEAD` or `remote.origin.url` differs from the manifest and
+requires the explicit SDK directory. Content anchors must be visible near the
+opened file's initial viewport; they prevent a changed tab title with stale
+editor content from passing. The schema-v5 report records the manifest SHA-256,
+actual SDK path, semantic candidates, and timings.
+
+The checked-in CI scenario uses
+`CoolMallArkTS@17b6899086a57a4d48448842a14f9e325e3e35a3` (MIT, roughly 490
+ArkTS files) plus ArkLine's deterministic minimal SDK contract. This proves the
+packaged real-project interaction path. A release-machine run must replace the
+minimal SDK path with the matching installed HarmonyOS SDK before claiming full
+SDK acceptance.
 
 User-visible completion is measured on the renderer clock. Search completes
 only after a result for the current query is visible; navigation completes only
 after the target tab is visible. WebDriver command duration is kept separately
 to distinguish automation transport delay from WebView work.
+Each editor cycle enters a multi-character burst, observes the final visible
+text, deletes the entire burst, and proves restoration. Each Find in Files cycle
+deletes the exact query length, proves the input is empty, closes the palette,
+and proves the query element is absent before continuing.
 The harness uses bounded observers. A short-lived `MutationObserver` waits only
 for the active search result surface and disconnects as soon as the requested
 query is visible; it is readiness synchronization, not React commit evidence.

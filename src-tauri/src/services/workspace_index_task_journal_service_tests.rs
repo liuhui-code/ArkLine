@@ -189,7 +189,7 @@ fn failed_status(root_path: &str, generation: u64) -> WorkspaceIndexTaskStatus {
 }
 
 #[test]
-fn manager_loads_persisted_terminal_task_statuses() {
+fn manager_loads_persisted_partial_task_statuses() {
     let root = create_empty_workspace("task-journal-manager-ready");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     fs::create_dir_all(&source_dir).unwrap();
@@ -210,7 +210,7 @@ fn manager_loads_persisted_terminal_task_statuses() {
 
     assert_eq!(restored.len(), 1);
     assert_eq!(restored[0].task_id, "1:refresh-workspace");
-    assert_eq!(restored[0].status, "ready");
+    assert_eq!(restored[0].status, "partial");
     assert_eq!(restored[0].progress_current, 1);
     assert_eq!(restored[0].progress_total, 1);
 

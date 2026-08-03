@@ -71,6 +71,8 @@ function createProps(onSelectTab: (path: string) => void): AppShellEditorWorkben
     openTabs: [],
     appearance: defaultSettings().editor,
     focusToken: 0,
+    completionTarget: null,
+    completionEnabled: true,
     insertTextTarget: null,
     selectionTarget: null,
     workspaceName: null,

@@ -5,7 +5,7 @@ use tauri::{AppHandle, State};
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
-    SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
 };
 use crate::services::language_client_runtime_service::{
     run_language_request, LanguageClientRequest, LanguageClientSource,
@@ -14,7 +14,8 @@ use crate::services::language_command_service::{
     close_document_blocking, complete_symbol_with_document_version_blocking,
     document_symbols_blocking, find_usages_blocking, goto_definition_blocking,
     goto_definition_candidates_blocking, hover_symbol_blocking, inspect_language_service_blocking,
-    signature_help_blocking, sync_document_blocking,
+    prepare_document_blocking, resolve_completion_blocking, signature_help_blocking,
+    sync_document_blocking,
 };
 use crate::services::language_service::LanguageRuntime;
 
@@ -89,6 +90,27 @@ pub async fn complete_symbol(
 }
 
 #[tauri::command]
+pub async fn resolve_completion(
+    app: AppHandle,
+    runtime: State<'_, LanguageRuntime>,
+    request: LanguageQueryRequest,
+    item: CompletionItem,
+    document_version: Option<u64>,
+) -> Result<CompletionItem, String> {
+    run_language_request(
+        language_request(LanguageClientSource::CompletionResolve, None),
+        resolve_completion_blocking(
+            app,
+            runtime.inner().clone(),
+            request,
+            item,
+            document_version,
+        ),
+    )
+    .await
+}
+
+#[tauri::command]
 pub async fn signature_help(
     app: AppHandle,
     runtime: State<'_, LanguageRuntime>,
@@ -143,6 +165,15 @@ pub async fn close_language_document(
     request: SemanticDocumentCloseRequest,
 ) -> Result<(), String> {
     close_document_blocking(app, runtime.inner().clone(), request).await
+}
+
+#[tauri::command]
+pub async fn prepare_language_document(
+    app: AppHandle,
+    runtime: State<'_, LanguageRuntime>,
+    request: SemanticDocumentPrepareRequest,
+) -> Result<(), String> {
+    prepare_document_blocking(app, runtime.inner().clone(), request).await
 }
 
 fn language_request(

@@ -1,7 +1,6 @@
 import type { ComponentProps } from "react";
 import { CodeActionsPalette } from "@/components/layout/CodeActionsPalette";
 import { AppShellCodeActionSurfaces } from "@/components/layout/AppShellCodeActionSurfaces";
-import { CompletionPopup } from "@/components/layout/CompletionPopup";
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitBranchPicker } from "@/components/layout/GitBranchPicker";
@@ -24,8 +23,6 @@ type AppShellOverlaysProps = {
   onShowSelectedBlameDiff: () => void;
   onShowSelectedLocalDiff: () => void;
   onCopySelectedBlameHash: () => void;
-  completionPopupVisible: boolean;
-  completionPopupProps: ComponentProps<typeof CompletionPopup>;
   overlayVisible: boolean;
   activeOverlay: OverlayKey;
   overlayLabel: string;
@@ -58,8 +55,6 @@ export function AppShellOverlays({
   onShowSelectedBlameDiff,
   onShowSelectedLocalDiff,
   onCopySelectedBlameHash,
-  completionPopupVisible,
-  completionPopupProps,
   overlayVisible,
   activeOverlay,
   overlayLabel,
@@ -94,7 +89,6 @@ export function AppShellOverlays({
           onCopyHash={onCopySelectedBlameHash}
         />
       ) : null}
-      {completionPopupVisible ? <CompletionPopup {...completionPopupProps} /> : null}
       <GitBranchPicker {...gitBranchPickerProps} />
       <AppShellSearchOverlaySurface visible={overlayVisible} activeOverlay={activeOverlay} label={overlayLabel} onClose={onCloseOverlay} commandPaletteItems={commandPaletteItems} searchOverlayProps={searchOverlayProps} />
       {projectMutationDialog ? (

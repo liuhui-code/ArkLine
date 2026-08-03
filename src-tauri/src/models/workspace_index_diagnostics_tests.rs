@@ -96,6 +96,7 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
             completed_stub_refresh_chunks: 2,
             cancelled_stub_refresh_chunks: 1,
             fallback_count: 0,
+            degraded_count: 0,
             restart_count: 1,
             consecutive_failure_count: 2,
             backoff_remaining_ms: Some(250),

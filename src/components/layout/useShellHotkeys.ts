@@ -9,6 +9,22 @@ type UseShellHotkeysOptions = {
 
 const DOUBLE_SHIFT_WINDOW_MS = 400;
 
+function isCodeMirrorTarget(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest(".cm-editor"));
+}
+
+function shouldDeferToEditor(event: KeyboardEvent, command: ShellCommand, context: KeybindingContext) {
+  if (!isCodeMirrorTarget(event.target)) {
+    return false;
+  }
+
+  if (command === "openCompletion" && event.ctrlKey && !context.settingsApplying) {
+    return true;
+  }
+
+  return command === "closeTransientUi" && Boolean(document.querySelector(".cm-tooltip-autocomplete"));
+}
+
 export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOptions) {
   const lastShiftAtRef = useRef(0);
 
@@ -35,6 +51,10 @@ export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOpti
       lastShiftAtRef.current = 0;
       const command = resolveShellCommand(event, context);
       if (!command) {
+        return;
+      }
+
+      if (shouldDeferToEditor(event, command, context)) {
         return;
       }
 

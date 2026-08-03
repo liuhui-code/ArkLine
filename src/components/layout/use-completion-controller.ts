@@ -17,6 +17,7 @@ import { createCompletionAnchorStore } from "@/features/editor/completion-anchor
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
 import { createLatestRequestScheduler } from "@/features/language/latest-request-scheduler";
 import type { QueryExplainRecordInput } from "@/features/workspace/workspace-query-explain-store";
+import type { SemanticDocumentSnapshot } from "@/features/semantic/semantic-document-sync";
 import { formatQueryEnvelopeExplain } from "@/features/workspace/workspace-query-explain-model";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
@@ -32,6 +33,7 @@ export type UseCompletionControllerOptions = {
   activeOverlay: OverlayKey;
   settingsApplying: boolean;
   getActiveContent: () => string;
+  getActiveText?: () => SemanticDocumentSnapshot | undefined;
   getActiveContentLength?: () => number;
   getActiveContentSlice?: (start: number, end: number) => string;
   getActiveContentWindow?: (selection: { line: number; column: number }, budget: number) => string;
@@ -43,7 +45,7 @@ export type UseCompletionControllerOptions = {
   isEditorFocused: () => boolean;
   recordRecentQueryExplain: (entry: QueryExplainRecordInput) => void;
   onStatusChange: (message: string) => void;
-  ensureSemanticDocument?: (path: string, content: string) => Promise<number | null>;
+  ensureSemanticDocument?: (path: string, snapshot: SemanticDocumentSnapshot) => Promise<number | null>;
 };
 
 export function useCompletionController({
@@ -55,6 +57,7 @@ export function useCompletionController({
   activeOverlay,
   settingsApplying,
   getActiveContent,
+  getActiveText,
   getActiveContentLength,
   getActiveContentSlice,
   getActiveContentWindow,
@@ -169,7 +172,7 @@ export function useCompletionController({
       setActiveOverlay("completion");
     }
     const documentVersion = ensureSemanticDocument
-      ? await ensureSemanticDocument(path, request.content)
+      ? await ensureSemanticDocument(path, getActiveText?.() ?? request.content)
       : null;
     let completionResult: { items: LanguageCompletionItem[]; explain?: string[] };
     try {

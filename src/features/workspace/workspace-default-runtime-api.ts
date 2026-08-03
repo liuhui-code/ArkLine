@@ -74,6 +74,8 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
         hasOhPackage: false,
         modules: [],
         defaultModule: null,
+        products: [],
+        defaultProduct: null,
       };
     },
     async resolveBuildEnvironment(request: BuildEnvironmentRequest) {

@@ -2,9 +2,12 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::indexer_host::IndexerHostRuntime;
-use crate::models::workspace::WorkspaceIndexRefreshResult;
+use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexStatus};
 use crate::services::workspace_dependency_graph_service::{
     expand_changed_paths, DependencyExpansion,
+};
+use crate::services::workspace_dependency_graph_service::{
+    has_graph_affecting_config_change, mark_dependency_graph_stale,
 };
 use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, WorkspaceFileFingerprintStatus,
@@ -59,6 +62,56 @@ pub(crate) fn refresh_changed_path_chunks(
     combined
         .map(Some)
         .ok_or_else(|| "No changed path chunks to refresh".to_string())
+}
+
+pub(crate) fn refresh_user_visible_file_layer(
+    index_runtime: &WorkspaceIndexRuntime,
+    task: &WorkspaceIndexTask,
+    changed_paths: &[String],
+) -> Result<Option<WorkspaceIndexRefreshResult>, String> {
+    if !is_user_visible_readiness_task(task.priority) {
+        return Ok(None);
+    }
+    let paths = existing_file_paths(changed_paths);
+    if paths.is_empty() {
+        return Ok(None);
+    }
+    let state = index_runtime.update_workspace_file_symbol_layer(&task.root_path, &paths, &[])?;
+    Ok(Some(WorkspaceIndexRefreshResult {
+        state,
+        changed: true,
+        added_paths: paths,
+        removed_paths: Vec::new(),
+    }))
+}
+
+pub(crate) fn refresh_graph_config_change(
+    index_runtime: &WorkspaceIndexRuntime,
+    indexer: Option<&IndexerHostRuntime>,
+    task: &WorkspaceIndexTask,
+    changed_paths: &[String],
+) -> Result<Option<WorkspaceIndexRefreshResult>, String> {
+    if !has_graph_affecting_config_change(changed_paths) {
+        return Ok(None);
+    }
+    mark_dependency_graph_stale(&task.root_path, "config-change")?;
+    if indexer.is_none_or(|runtime| !runtime.requires_process_isolation()) {
+        return index_runtime
+            .refresh_workspace_index_with_changes(&task.root_path)
+            .map(Some);
+    }
+    let mut state = index_runtime.get_index_state(&task.root_path)?;
+    state.status = WorkspaceIndexStatus::Partial;
+    state.partial_reason = Some(
+        "Project configuration changed; sidecar rediscovery is required before deep indexing"
+            .to_string(),
+    );
+    Ok(Some(WorkspaceIndexRefreshResult {
+        state,
+        changed: false,
+        added_paths: Vec::new(),
+        removed_paths: Vec::new(),
+    }))
 }
 
 fn refresh_incremental_watcher_chunk(
@@ -116,6 +169,7 @@ fn refresh_incremental_watcher_chunk(
         false,
     )? {
         WorkspaceDeepLayerUpdate::Applied(state) => state,
+        WorkspaceDeepLayerUpdate::Deferred(state) => state,
         WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
     };
     let mut added_paths = content_paths

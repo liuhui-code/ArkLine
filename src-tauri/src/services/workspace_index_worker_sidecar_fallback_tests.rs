@@ -42,11 +42,12 @@ fn unavailable_sidecar_falls_back_to_local_discovery_without_losing_the_task() {
 
     assert_eq!(results[0].status, "ready");
     assert_eq!(files.len(), 1);
-    assert!(matches!(snapshot.status.as_str(), "backoff" | "fallback"));
+    assert!(matches!(snapshot.status.as_str(), "backoff" | "degraded"));
     if snapshot.status == "backoff" {
         assert!(snapshot.backoff_remaining_ms.is_some());
     }
     assert_eq!(snapshot.fallback_count, 1);
+    assert_eq!(snapshot.degraded_count, 1);
     assert!(snapshot
         .last_error
         .unwrap()
@@ -56,7 +57,65 @@ fn unavailable_sidecar_falls_back_to_local_discovery_without_losing_the_task() {
 }
 
 #[test]
-fn unavailable_sidecar_falls_back_to_local_background_content_and_stub_refresh() {
+fn explicit_local_compatibility_mode_still_indexes_content_and_stubs() {
+    let root = unique_temp_dir("indexer-local-compatibility");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("Entry.ets");
+    fs::write(&source, "export class LocalController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime
+        .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
+        .unwrap();
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Background,
+        changed_paths: vec![source_path.clone()],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 8,
+        reason: "full-refresh-deep:compatibility".to_string(),
+    };
+    let token = WorkspaceIndexCancellationToken::new(task.generation);
+    let indexer = IndexerHostRuntime::local_compatibility();
+
+    let outcome = update_background_deep_layer(
+        &runtime,
+        Some(&indexer),
+        &task,
+        &token,
+        std::slice::from_ref(&source_path),
+        &[],
+        false,
+    )
+    .unwrap();
+
+    assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Applied(_)));
+    let connection =
+        rusqlite::Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
+    let content_count: i64 = connection
+        .query_row("select count(*) from workspace_content_files", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let declaration_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_stub_declarations where name = 'LocalController'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(content_count, 1);
+    assert_eq!(declaration_count, 1);
+    assert_eq!(indexer.snapshot().degraded_count, 0);
+    drop(connection);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn unavailable_sidecar_degrades_without_local_background_content_or_stub_refresh() {
     let root = unique_temp_dir("indexer-stub-sidecar-fallback");
     fs::create_dir_all(&root).unwrap();
     let source = root.join("Entry.ets");
@@ -107,9 +166,11 @@ fn unavailable_sidecar_falls_back_to_local_background_content_and_stub_refresh()
     let snapshot = indexer.snapshot();
 
     assert_eq!(results.len(), 1);
-    assert_eq!(content_count, 1);
-    assert_eq!(declaration_count, 1);
-    assert_eq!(snapshot.fallback_count, 1);
+    assert_eq!(results[0].status, "partial");
+    assert_eq!(content_count, 0);
+    assert_eq!(declaration_count, 0);
+    assert_eq!(snapshot.fallback_count, 0);
+    assert_eq!(snapshot.degraded_count, 1);
     assert_eq!(snapshot.completed_content_refresh_chunks, 0);
     assert!(snapshot
         .last_error
@@ -121,7 +182,7 @@ fn unavailable_sidecar_falls_back_to_local_background_content_and_stub_refresh()
 }
 
 #[test]
-fn fallback_rebases_on_newer_persisted_layer_generation() {
+fn degraded_sidecar_preserves_newer_persisted_layer_generation() {
     let root = unique_temp_dir("indexer-sidecar-generation-rebase");
     fs::create_dir_all(&root).unwrap();
     let source = root.join("Entry.ets");
@@ -164,7 +225,7 @@ fn fallback_rebases_on_newer_persisted_layer_generation() {
     )
     .unwrap();
 
-    assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Applied(_)));
+    assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Deferred(_)));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -271,7 +332,7 @@ fn cancelled_deep_refresh_does_not_publish_or_fall_back_locally() {
 }
 
 #[test]
-fn watcher_delta_falls_back_once_without_rescanning_unreported_files() {
+fn watcher_delta_degrades_without_host_deep_refresh_or_root_rescan() {
     let root = unique_temp_dir("indexer-watcher-delta-fallback");
     fs::create_dir_all(&root).unwrap();
     let changed = root.join("Changed.ets");
@@ -309,8 +370,9 @@ fn watcher_delta_falls_back_once_without_rescanning_unreported_files() {
     )
     .unwrap();
 
-    assert_eq!(results[0].status, "ready");
-    assert_eq!(indexer.snapshot().fallback_count, 1);
+    assert_eq!(results[0].status, "partial");
+    assert_eq!(indexer.snapshot().fallback_count, 0);
+    assert_eq!(indexer.snapshot().degraded_count, 1);
     let connection =
         rusqlite::Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
     let changed_text: String = connection
@@ -320,7 +382,7 @@ fn watcher_delta_falls_back_once_without_rescanning_unreported_files() {
             |row| row.get(0),
         )
         .unwrap();
-    assert!(changed_text.contains("AfterChange"));
+    assert!(changed_text.contains("BeforeChange"));
     let removed_rows: i64 = connection
         .query_row(
             "select count(*) from workspace_content_files where path = ?1",
@@ -328,7 +390,10 @@ fn watcher_delta_falls_back_once_without_rescanning_unreported_files() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(removed_rows, 0);
+    assert_eq!(
+        removed_rows, 1,
+        "degraded deep layers retain the last durable snapshot until sidecar recovery"
+    );
     let unreported_rows: i64 = connection
         .query_row(
             "select count(*) from workspace_files where path = ?1",
@@ -341,7 +406,7 @@ fn watcher_delta_falls_back_once_without_rescanning_unreported_files() {
     fs::remove_dir_all(root).unwrap();
 }
 
-fn unique_temp_dir(name: &str) -> PathBuf {
+pub(crate) fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

@@ -25,10 +25,15 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
 
     let has_unix_wrapper = root.join("hvigorw").is_file();
     let has_windows_wrapper = root.join("hvigorw.bat").is_file();
-    let modules = discover_modules(&root)?;
     let has_hvigor_file = root.join("hvigorfile.ts").is_file();
     let has_build_profile = root.join("build-profile.json5").is_file();
     let has_oh_package = root.join("oh-package.json5").is_file();
+    let profile_content = fs::read_to_string(root.join("build-profile.json5")).unwrap_or_default();
+    let modules = discover_modules(&root, &profile_content)?;
+    let mut products = named_profile_values(&profile_content, "products");
+    if products.is_empty() {
+        products.push("default".to_string());
+    }
     let is_harmony_project =
         has_hvigor_file || has_build_profile || has_oh_package || !modules.is_empty();
     let default_module = modules
@@ -36,6 +41,11 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
         .find(|module_name| module_name.as_str() == "entry")
         .cloned()
         .or_else(|| modules.first().cloned());
+    let default_product = products
+        .iter()
+        .find(|product| product.as_str() == "default")
+        .cloned()
+        .or_else(|| products.first().cloned());
 
     Ok(HarmonyBuildProject {
         root_path: root.to_string_lossy().to_string(),
@@ -57,31 +67,47 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
         has_oh_package,
         modules,
         default_module,
+        products,
+        default_product,
     })
 }
 
 fn find_harmony_project_root(selected_dir: &Path) -> PathBuf {
     let mut current = selected_dir.to_path_buf();
+    let mut best_candidate = None;
+    let mut best_priority = 0;
     loop {
-        if has_harmony_project_marker(&current) {
+        let priority = harmony_project_root_priority(&current);
+        if priority == 4 {
             return current;
+        }
+        if priority > best_priority {
+            best_priority = priority;
+            best_candidate = Some(current.clone());
         }
         match current.parent() {
             Some(parent) => current = parent.to_path_buf(),
-            None => return selected_dir.to_path_buf(),
+            None => return best_candidate.unwrap_or_else(|| selected_dir.to_path_buf()),
         }
     }
 }
 
-fn has_harmony_project_marker(path: &Path) -> bool {
-    path.join("hvigorw").is_file()
-        || path.join("hvigorw.bat").is_file()
-        || path.join("hvigorfile.ts").is_file()
-        || path.join("build-profile.json5").is_file()
-        || path.join("oh-package.json5").is_file()
+fn harmony_project_root_priority(path: &Path) -> u8 {
+    if path.join("hvigorw").is_file() || path.join("hvigorw.bat").is_file() {
+        return 4;
+    }
+    let has_hvigor_file = path.join("hvigorfile.ts").is_file();
+    let has_build_profile = path.join("build-profile.json5").is_file();
+    if has_hvigor_file && has_build_profile {
+        return 3;
+    }
+    if has_hvigor_file || has_build_profile {
+        return 2;
+    }
+    u8::from(path.join("oh-package.json5").is_file())
 }
 
-fn discover_modules(root: &Path) -> Result<Vec<String>, String> {
+fn discover_modules(root: &Path, profile_content: &str) -> Result<Vec<String>, String> {
     let entries = fs::read_dir(root).map_err(|error| error.to_string())?;
     let mut modules = entries
         .flatten()
@@ -94,15 +120,18 @@ fn discover_modules(root: &Path) -> Result<Vec<String>, String> {
                 .then(|| entry.file_name().to_string_lossy().to_string())
         })
         .collect::<Vec<_>>();
-    modules.extend(discover_profile_modules(root));
+    modules.extend(
+        named_profile_values(profile_content, "modules")
+            .into_iter()
+            .filter(|name| root.join(name).is_dir()),
+    );
     modules.sort();
     modules.dedup();
     Ok(modules)
 }
 
-fn discover_profile_modules(root: &Path) -> Vec<String> {
-    let content = fs::read_to_string(root.join("build-profile.json5")).unwrap_or_default();
-    let Some(array) = named_array_body(&content, "modules") else {
+fn named_profile_values(content: &str, name: &str) -> Vec<String> {
+    let Some(array) = named_array_body(content, name) else {
         return Vec::new();
     };
     let name_pattern =
@@ -114,8 +143,13 @@ fn discover_profile_modules(root: &Path) -> Vec<String> {
                 .get(1)
                 .map(|value| value.as_str().trim().to_string())
         })
-        .filter(|name| !name.is_empty() && root.join(name).is_dir())
-        .collect()
+        .filter(|name| !name.is_empty())
+        .fold(Vec::new(), |mut values, name| {
+            if !values.contains(&name) {
+                values.push(name);
+            }
+            values
+        })
 }
 
 fn named_array_body<'a>(content: &'a str, name: &str) -> Option<&'a str> {
@@ -172,6 +206,7 @@ fn named_array_body<'a>(content: &'a str, name: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
 
     use super::inspect_harmony_build_project;
 
@@ -217,6 +252,46 @@ mod tests {
     }
 
     #[test]
+    fn prefers_the_wrapper_root_over_a_module_package_marker() {
+        let repo = std::env::temp_dir().join(format!(
+            "arkline-build-project-module-package-{}",
+            std::process::id()
+        ));
+        let root = repo.join("apps/Demo");
+        let file = root.join("entry/src/main/ets/Index.ets");
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, "@Entry struct Index {}").unwrap();
+        fs::write(root.join("hvigorw"), "#!/bin/sh").unwrap();
+        fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
+        fs::write(root.join("build-profile.json5"), "{}").unwrap();
+        fs::write(root.join("entry/oh-package.json5"), "{}").unwrap();
+
+        let project = inspect_harmony_build_project(file.to_str().unwrap()).unwrap();
+
+        assert_eq!(project.root_path, root.to_string_lossy());
+        assert!(project.has_hvigor_wrapper);
+        assert_eq!(project.modules, vec!["entry"]);
+        fs::remove_dir_all(repo).unwrap();
+    }
+
+    #[test]
+    fn inspects_a_realistic_deveco_project_from_a_module_source_file() {
+        let root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/services/fixtures/harmony-project");
+        let file = root.join("entry/src/main/ets/Index.ets");
+
+        let project = inspect_harmony_build_project(file.to_str().unwrap()).unwrap();
+
+        assert_eq!(project.root_path, root.to_string_lossy());
+        assert_eq!(project.modules, vec!["entry"]);
+        assert_eq!(project.default_module.as_deref(), Some("entry"));
+        assert_eq!(project.products, vec!["china", "default"]);
+        assert_eq!(project.default_product.as_deref(), Some("default"));
+        assert!(project.has_hvigor_wrapper);
+    }
+
+    #[test]
     fn resolves_project_root_from_an_active_file() {
         let repo =
             std::env::temp_dir().join(format!("arkline-build-project-file-{}", std::process::id()));
@@ -251,13 +326,15 @@ mod tests {
         fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
         fs::write(
             root.join("build-profile.json5"),
-            "{ modules: [{ name: 'feature' }] }",
+            "{ products: [{ name: 'china' }, { name: 'default' }], modules: [{ name: 'feature' }] }",
         )
         .unwrap();
 
         let project = inspect_harmony_build_project(root.to_str().unwrap()).unwrap();
 
         assert_eq!(project.modules, vec!["feature"]);
+        assert_eq!(project.products, vec!["china", "default"]);
+        assert_eq!(project.default_product.as_deref(), Some("default"));
         fs::remove_dir_all(root).unwrap();
     }
 }

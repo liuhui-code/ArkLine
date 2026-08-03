@@ -47,11 +47,11 @@ describe("useShellLayoutState", () => {
   });
 
   it("opens overlays and resets search state", () => {
-    const onBeforeNonCompletionOverlay = vi.fn();
+    const onBeforeOverlay = vi.fn();
     const onResetOverlaySearch = vi.fn();
     const onStatusChange = vi.fn();
     const { result } = renderHook(() => useShellLayoutState(options({
-      onBeforeNonCompletionOverlay,
+      onBeforeOverlay,
       onResetOverlaySearch,
       onStatusChange,
     })));
@@ -61,7 +61,7 @@ describe("useShellLayoutState", () => {
 
     expect(result.current.activeOverlay).toBe("quickOpen");
     expect(result.current.quickOpenQuery).toBe("");
-    expect(onBeforeNonCompletionOverlay).toHaveBeenCalledTimes(1);
+    expect(onBeforeOverlay).toHaveBeenCalledTimes(1);
     expect(onResetOverlaySearch).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenLastCalledWith("Quick Open");
   });

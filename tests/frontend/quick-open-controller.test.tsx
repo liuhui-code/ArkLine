@@ -4,6 +4,49 @@ import { QuickOpenPanel } from "@/components/layout/QuickOpenPanel";
 import { useQuickOpenController } from "@/components/layout/use-quick-open-controller";
 
 describe("Quick Open", () => {
+  it("queries files through the readiness broker with a generation and deadline", async () => {
+    const queryWorkspaceWithReadiness = vi.fn(async () => ({
+      items: [{
+        id: "file:/workspace/Entry.ets",
+        source: "file" as const,
+        kind: "file" as const,
+        title: "Entry.ets",
+        subtitle: "/workspace/Entry.ets",
+        path: "/workspace/Entry.ets",
+        score: 100,
+        freshness: "ready" as const,
+      }],
+      readiness: {
+        rootPath: "/workspace",
+        requestedGeneration: 1,
+        servedGeneration: 1,
+        state: "ready" as const,
+        retryable: false,
+      },
+    }));
+    const { result } = renderHook(() => useQuickOpenController({
+      active: true,
+      rootPath: "/workspace",
+      query: "Entry",
+      localResults: [{ path: "/workspace/LocalEntry.ets" }],
+      queryWorkspaceWithReadiness,
+    }));
+
+    await waitFor(() => expect(result.current.results).toEqual([
+      { path: "/workspace/Entry.ets" },
+    ]));
+    expect(queryWorkspaceWithReadiness).toHaveBeenCalledWith(
+      "/workspace",
+      "Entry",
+      "files",
+      20,
+      null,
+      undefined,
+      1,
+      250,
+    );
+  });
+
   it("queries the persistent workspace index when the local projection is empty", async () => {
     const queryWorkspace = vi.fn(async () => [{
       id: "file:/workspace/Page000000.ets",
@@ -33,6 +76,31 @@ describe("Quick Open", () => {
       "Page000000",
       20,
     );
+  });
+
+  it("loads a bounded persistent file catalog for an empty query", async () => {
+    const queryWorkspace = vi.fn(async () => [{
+      id: "file:/workspace/Entry.ets",
+      source: "file" as const,
+      kind: "file",
+      title: "Entry.ets",
+      subtitle: "/workspace/Entry.ets",
+      path: "/workspace/Entry.ets",
+      score: 100,
+      freshness: "ready" as const,
+    }]);
+    const { result } = renderHook(() => useQuickOpenController({
+      active: true,
+      rootPath: "/workspace",
+      query: "",
+      localResults: [],
+      queryWorkspace,
+    }));
+
+    await waitFor(() => expect(result.current.results).toEqual([
+      { path: "/workspace/Entry.ets" },
+    ]));
+    expect(queryWorkspace).toHaveBeenCalledWith("/workspace", "", 20);
   });
 
   it("ignores a stale persistent query response", async () => {
@@ -98,6 +166,67 @@ describe("Quick Open", () => {
     await waitFor(() => expect(queryWorkspace).toHaveBeenCalled());
     await act(async () => resolveQuery?.([]));
     expect(result.current.results).toEqual([]);
+  });
+
+  it("uses the hot file catalog after a non-ready persistent index returns empty", async () => {
+    const queryLocal = vi.fn(() => [{ path: "/workspace/Visible.ets" }]);
+    const queryWorkspaceWithReadiness = vi.fn(async () => ({
+      items: [],
+      readiness: {
+        rootPath: "/workspace",
+        requestedGeneration: 1,
+        servedGeneration: null,
+        state: "missing" as const,
+        retryable: true,
+      },
+    }));
+    const { result } = renderHook(() => useQuickOpenController({
+      active: true,
+      rootPath: "/workspace",
+      query: "Visible",
+      localResults: [],
+      queryLocal,
+      queryWorkspaceWithReadiness,
+    }));
+
+    expect(queryLocal).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.results).toEqual([
+      { path: "/workspace/Visible.ets" },
+    ]));
+    expect(queryLocal).toHaveBeenCalledWith("Visible");
+  });
+
+  it("keeps the confirmed hot-catalog fallback responsive while the next query is pending", async () => {
+    let resolveNext: ((value: ReturnType<typeof missingQuickOpenEnvelope>) => void) | null = null;
+    const queryLocal = vi.fn((query: string) => [{ path: `/workspace/${query}.ets` }]);
+    const queryWorkspaceWithReadiness = vi.fn((_rootPath: string, query: string) => {
+      if (query === "VisibleNext") {
+        return new Promise<ReturnType<typeof missingQuickOpenEnvelope>>((resolve) => {
+          resolveNext = resolve;
+        });
+      }
+      return Promise.resolve(missingQuickOpenEnvelope());
+    });
+    const { result, rerender } = renderHook(
+      ({ query }) => useQuickOpenController({
+        active: true,
+        rootPath: "/workspace",
+        query,
+        localResults: [],
+        queryLocal,
+        queryWorkspaceWithReadiness,
+      }),
+      { initialProps: { query: "Visible" } },
+    );
+
+    await waitFor(() => expect(result.current.results).toEqual([
+      { path: "/workspace/Visible.ets" },
+    ]));
+    rerender({ query: "VisibleNext" });
+
+    expect(result.current.results).toEqual([{ path: "/workspace/VisibleNext.ets" }]);
+    await waitFor(() => expect(queryWorkspaceWithReadiness).toHaveBeenCalledTimes(2));
+    await act(async () => resolveNext?.(missingQuickOpenEnvelope()));
   });
 
   it("opens the keyboard-selected result and tracks pointer selection", () => {
@@ -208,3 +337,16 @@ describe("Quick Open", () => {
       .toHaveAttribute("data-query", "Page000097");
   });
 });
+
+function missingQuickOpenEnvelope() {
+  return {
+    items: [],
+    readiness: {
+      rootPath: "/workspace",
+      requestedGeneration: 1,
+      servedGeneration: null,
+      state: "missing" as const,
+      retryable: true,
+    },
+  };
+}

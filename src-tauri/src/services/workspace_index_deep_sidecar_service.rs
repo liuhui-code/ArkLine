@@ -4,7 +4,7 @@ use crate::indexer_host::{
 use crate::indexer_sidecar::{
     IndexerTaskKey, INDEXER_CONTENT_REFRESH_PATH_LIMIT, INDEXER_STUB_REFRESH_PATH_LIMIT,
 };
-use crate::models::workspace::WorkspaceIndexState;
+use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
 use crate::services::workspace_content_chunk_plan_service::take_refresh_chunk;
 use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
 use crate::services::workspace_content_refresh_service::WORKSPACE_CONTENT_MAX_CHUNK_BYTES;
@@ -23,6 +23,7 @@ use crate::services::workspace_stub_refresh_chunk_service::workspace_file_catalo
 
 pub(crate) enum WorkspaceDeepLayerUpdate {
     Applied(WorkspaceIndexState),
+    Deferred(WorkspaceIndexState),
     Cancelled,
 }
 
@@ -74,6 +75,16 @@ pub(crate) fn update_background_deep_layer(
     let stub_applied_by_sidecar = matches!(stub_outcome, LayerChunkOutcome::Applied);
     if content_applied_by_sidecar && stub_applied_by_sidecar {
         return Ok(WorkspaceDeepLayerUpdate::Applied(state));
+    }
+    if indexer.is_some_and(IndexerHostRuntime::requires_process_isolation) {
+        let mut state = state;
+        state.status = WorkspaceIndexStatus::Partial;
+        state.partial_reason = Some(
+            indexer
+                .expect("checked indexer runtime")
+                .degraded_message("content and symbol refresh"),
+        );
+        return Ok(WorkspaceDeepLayerUpdate::Deferred(state));
     }
     if token.is_cancelled() {
         return Ok(WorkspaceDeepLayerUpdate::Cancelled);

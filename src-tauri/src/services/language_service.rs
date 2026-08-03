@@ -1,8 +1,8 @@
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest,
-    SignatureHelp, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentPrepareRequest,
+    SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use crate::services::semantic::router::SemanticRouter;
@@ -98,6 +98,24 @@ impl LanguageRuntime {
     ) -> Result<(), String> {
         self.with_router(settings, |router| router.active().close_document(request))
     }
+
+    pub fn prepare_document(
+        &self,
+        settings: &AppSettings,
+        request: &SemanticDocumentPrepareRequest,
+    ) -> Result<(), String> {
+        self.with_router(settings, |router| router.active().prepare_document(request))
+    }
+
+    pub fn inspect_current(&self) -> LanguageServiceReport {
+        let router = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .router
+            .clone();
+        router.active().report()
+    }
 }
 
 pub fn goto_definition_candidates(
@@ -159,6 +177,20 @@ pub fn complete_symbol_with_document_version(
         router
             .active()
             .completion_with_document_version(request, document_version)
+    })
+}
+
+pub fn resolve_completion(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+    item: &CompletionItem,
+    document_version: Option<u64>,
+) -> CompletionItem {
+    runtime.with_router(settings, |router| {
+        router
+            .active()
+            .resolve_completion(request, item, document_version)
     })
 }
 

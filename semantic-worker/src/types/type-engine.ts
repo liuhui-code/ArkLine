@@ -21,6 +21,7 @@ export interface SemanticTypeEngineState {
 export interface SemanticTypeQueryContext {
   state: SemanticTypeEngineState
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
+  resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null
 }
@@ -49,6 +50,7 @@ export class SemanticTypeEngineRegistry {
     return {
       state,
       complete: (position) => entry.engine.complete(position),
+      resolveCompletion: (position, item) => entry.engine.resolveCompletion(position, item),
       define: (position) => entry.engine.define(position),
       signatureHelp: (position) => entry.engine.signatureHelp(position),
     }

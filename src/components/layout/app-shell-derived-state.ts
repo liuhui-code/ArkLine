@@ -26,6 +26,7 @@ export type AppShellDerivedStateOptions = {
     sdkIndexText: string | null;
   };
   quickOpenQuery: string;
+  persistentQuickOpenAvailable?: boolean;
   recentFiles: string[];
   recentProjects: string[];
   activeOverlay: OverlayKey;
@@ -41,6 +42,7 @@ export function getAppShellDerivedState({
   workspaceIndexState,
   workspaceIndexStatusSummary,
   quickOpenQuery,
+  persistentQuickOpenAvailable = false,
   recentFiles,
   recentProjects,
   activeOverlay,
@@ -55,7 +57,7 @@ export function getAppShellDerivedState({
     ? workspaceIndexState.queryReadiness.reason ?? `Index is ${workspaceIndexState.queryReadiness.state}; results may be incomplete.`
     : null;
 
-  const quickOpenResults = activeOverlay === "quickOpen" && workspace
+  const quickOpenResults = activeOverlay === "quickOpen" && workspace && !persistentQuickOpenAvailable
     ? workspaceIndex.queryQuickOpen(quickOpenQuery, 8).flatMap((candidate) => candidate.path ? [{ path: candidate.path }] : [])
     : [];
   const recentFileResults = activeOverlay === "recentFiles"

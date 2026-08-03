@@ -35,7 +35,7 @@ fn reports_recent_unified_index_events_for_diagnostics() {
     assert_eq!(diagnostics.recent_events[0].phase, "queued");
     assert_eq!(diagnostics.recent_events[1].phase, "running");
     assert!(diagnostics.recent_events.iter().any(|event| {
-        event.phase == "ready" && event.task_id.as_deref() == Some("1:refresh-workspace")
+        event.phase == "partial" && event.task_id.as_deref() == Some("1:refresh-workspace")
     }));
     assert!(diagnostics
         .recent_events
@@ -90,7 +90,7 @@ fn reports_task_timeline_from_unified_index_events() {
     assert_eq!(diagnostics.timeline[0].phase, "queued");
     assert_eq!(diagnostics.timeline[0].title, "refresh-workspace queued");
     assert!(diagnostics.timeline.iter().any(|event| {
-        event.phase == "ready"
+        event.phase == "partial"
             && event.task_id.as_deref() == Some("1:refresh-workspace")
             && event.duration_ms.is_some()
     }));

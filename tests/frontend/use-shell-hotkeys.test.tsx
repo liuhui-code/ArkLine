@@ -64,6 +64,57 @@ describe("useShellHotkeys", () => {
     expect(onCommand).not.toHaveBeenCalled();
   });
 
+  it("leaves Ctrl+Space to CodeMirror while completion is available", () => {
+    const onCommand = vi.fn();
+    const onEditorKeyDown = vi.fn();
+
+    function Harness() {
+      useShellHotkeys({ onCommand });
+      return <div className="cm-editor"><input aria-label="Editor" onKeyDown={onEditorKeyDown} /></div>;
+    }
+
+    const editor = render(<Harness />).getByLabelText("Editor");
+    fireEvent.keyDown(editor, { key: " ", code: "Space", ctrlKey: true });
+
+    expect(onCommand).not.toHaveBeenCalled();
+    expect(onEditorKeyDown).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Ctrl+Space at the shell while settings are applying", () => {
+    const onCommand = vi.fn();
+
+    function Harness() {
+      useShellHotkeys({ context: { settingsApplying: true }, onCommand });
+      return <div className="cm-editor"><input aria-label="Editor" /></div>;
+    }
+
+    const editor = render(<Harness />).getByLabelText("Editor");
+    fireEvent.keyDown(editor, { key: " ", code: "Space", ctrlKey: true });
+
+    expect(onCommand).toHaveBeenCalledWith("openCompletion");
+  });
+
+  it("leaves Escape to CodeMirror while its completion tooltip is open", () => {
+    const onCommand = vi.fn();
+    const onEditorKeyDown = vi.fn();
+
+    function Harness() {
+      useShellHotkeys({ onCommand });
+      return (
+        <div>
+          <div className="cm-editor"><input aria-label="Editor" onKeyDown={onEditorKeyDown} /></div>
+          <div className="cm-tooltip-autocomplete" />
+        </div>
+      );
+    }
+
+    const editor = render(<Harness />).getByLabelText("Editor");
+    fireEvent.keyDown(editor, { key: "Escape" });
+
+    expect(onCommand).not.toHaveBeenCalled();
+    expect(onEditorKeyDown).toHaveBeenCalledTimes(1);
+  });
+
   it("does not treat Shift presses used for camel-case input as Double Shift", () => {
     const onCommand = vi.fn();
 

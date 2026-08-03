@@ -27,6 +27,29 @@ An explicit invalid path is reported as invalid when it is the only configured
 source. Auto-detection may recover from an invalid optional value only when a
 valid fallback is available.
 
+## Canonical Project Model
+
+`inspect_harmony_build_project_command` is the only authority for a native build
+root. It accepts a workspace directory, module directory, or source file and
+returns one immutable project model containing:
+
+- the canonical root and platform wrapper command;
+- root marker readiness;
+- modules and the default module;
+- products and the default product parsed from the project-level profile.
+
+Root markers have different strength. A module-level `oh-package.json5` is only
+a fallback candidate; it must never stop the ancestor search before a root that
+owns `hvigorw`, `hvigorfile.ts`, and `build-profile.json5`. The browser-visible
+file detector is provisional UI data only. It cannot start environment discovery
+until the project is confirmed as a Harmony project.
+
+All later stages consume `HarmonyBuildProject.rootPath`. Environment detection,
+build configuration persistence, command planning, process `cwd`, and build
+history must not independently infer another root. Configuration loads use a
+generation guard so an older parent-workspace request cannot overwrite a newer
+canonical-project result.
+
 ## Environment Variables
 
 For a validated SDK, ArkLine injects these compatibility names with the
@@ -55,6 +78,19 @@ project selection
   -> parse output and retain environment snapshot
 ```
 
+Hvigor global options precede the task, matching the supported command-line
+shape documented by Huawei:
+
+```text
+hvigorw --mode module -p module=entry@default -p product=default \
+  -p buildMode=debug assembleHap --no-daemon
+```
+
+Clean and Build remain separate structured process requests. On Windows, both
+direct executables and `.bat` wrappers are launched through the shared hidden
+command factory with `CREATE_NO_WINDOW`; builds must not open transient console
+windows.
+
 Preflight and execution consume the same resolution. A build cannot start when
 the wrapper, Node, or SDK check is unavailable. This avoids a false-positive
 preflight followed by a Hvigor process that cannot see the configured variables.
@@ -76,6 +112,10 @@ Project metadata is authoritative when available:
 This keeps Build usable while a workspace tree is still loading and avoids
 silently dropping a valid module just because its files are not currently
 visible in the UI.
+
+Native inspection provides product defaults synchronously to `runBuild()`. The
+first Build click therefore does not race the UI effect that opens
+`build-profile.json5`. The frontend parser remains a browser-preview fallback.
 
 ## Configuration Selection and Persistence
 
@@ -106,6 +146,16 @@ write settings into the wrong workspace.
 - Never put secrets or full environment dumps in build output.
 - Keep project build configuration separate from global SDK settings.
 - Preserve the project wrapper as the source of Hvigor version truth.
+- Keep the realistic DevEco fixture under
+  `src-tauri/src/services/fixtures/harmony-project` aligned with root and module
+  profile shapes.
+- Treat external DevEco command-line-tools Hvigor discovery as a separate future
+  execution source. Do not silently substitute it for a missing project wrapper.
+
+Primary references:
+
+- [Huawei Hvigor command examples](https://developer.huawei.com/consumer/en/doc/harmonyos-guides-V14/ide-hvigor-compilation-options-customizing-sample-V14)
+- [OpenHarmony Stage project structure](https://gitee.com/openharmony/docs/blob/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/start-with-ets-stage.md)
 
 ## Troubleshooting
 

@@ -28,6 +28,7 @@ export interface SemanticResponseState {
   documentVersion?: number
   dependencyGeneration: number
   documentCacheHit: boolean
+  dependencyClosureCacheHit: boolean
   queryCacheHit: boolean
   loadedDocumentCount: number
   syntaxReady: boolean
@@ -37,15 +38,23 @@ export interface SemanticResponseState {
   typeGeneration?: number
 }
 
+export interface SemanticLatencySummary {
+  count: number
+  p50Us: number
+  p95Us: number
+  maxUs: number
+}
+
 export interface SemanticRuntimeState {
   rssBytes: number
   heapUsedBytes: number
   heapTotalBytes: number
   externalBytes: number
   uptimeMs: number
+  providerLatencies: Record<string, SemanticLatencySummary>
 }
 
-export const SEMANTIC_PROTOCOL_VERSION = 4
+export const SEMANTIC_PROTOCOL_VERSION = 5
 
 export type SemanticRequestMethod =
   | "health"
@@ -53,8 +62,10 @@ export type SemanticRequestMethod =
   | "didOpen"
   | "didChange"
   | "didClose"
+  | "prepareDocument"
   | "gotoDefinition"
   | "completion"
+  | "resolveCompletion"
   | "signatureHelp"
   | "listCodeActions"
   | "resolveCodeAction"
@@ -66,6 +77,7 @@ export interface SemanticRequest {
   method: SemanticRequestMethod
   position?: SemanticDocumentPosition
   action?: SemanticCodeActionRequest
+  completion?: SemanticCompletionItem
   newName?: string
   documents?: SemanticReplayDocument[]
   document?: SemanticDocumentSync
@@ -84,7 +96,15 @@ export interface SemanticCompletionItem {
   replacementRange?: SemanticTextRange
   commitCharacters?: string[]
   definitionTarget?: SemanticDefinitionTarget
+  additionalTextEdits?: SemanticCompletionTextEdit[]
   data?: Record<string, unknown>
+}
+
+export interface SemanticCompletionTextEdit {
+  path: string
+  range: SemanticTextRange
+  newText: string
+  expectedVersion?: number
 }
 
 export interface SemanticSignatureParameter {
@@ -190,11 +210,13 @@ export interface SemanticUnsupportedResult {
 export type SemanticResponsePayload =
   | { status: "ready"; protocolVersion: number; capabilities: string[] }
   | { status: "ready"; path: string; documentVersion: number; contentGeneration: number }
+  | { status: "ready"; path: string; contentGeneration: number; typeStatus: string; typeGeneration?: number }
   | { status: "closed"; path: string }
   | { restoredDocumentCount: number }
   | SemanticDefinitionTarget
   | { definition: SemanticDefinitionTarget | null; definitionCandidates?: SemanticDefinitionCandidate[] }
   | SemanticCompletionItem[]
+  | SemanticCompletionItem
   | SemanticSignatureHelp
   | SemanticCodeActionList
   | SemanticWorkspaceEditPlan

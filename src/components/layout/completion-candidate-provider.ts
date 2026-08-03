@@ -3,7 +3,7 @@ import {
   keywordCompletionItems,
   mergeCompletionItems,
 } from "@/components/layout/indexed-completion-model";
-import { isMemberAccessCompletion } from "@/components/layout/completion-context";
+import { isMemberAccessCompletion, type CompletionPosition } from "@/components/layout/completion-context";
 import { shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
@@ -16,6 +16,7 @@ export type CompletionCandidateRequest = {
   line: number;
   column: number;
   content: string;
+  contextLineText?: string;
   semanticContent?: string;
   documentVersion?: number | null;
   query: string;
@@ -30,7 +31,7 @@ export type CompletionCandidateResult = {
 
 export function collectImmediateCompletionCandidates(
   query: string,
-  position?: { content: string; line: number; column: number },
+  position?: CompletionPosition,
 ): LanguageCompletionItem[] {
   return position && isMemberAccessCompletion(position) ? [] : keywordCompletionItems(query);
 }
@@ -47,6 +48,7 @@ export async function collectCompletionCandidateResult({
   line,
   column,
   content,
+  contextLineText,
   query,
   replacePrefix,
   requestGeneration,
@@ -54,7 +56,7 @@ export async function collectCompletionCandidateResult({
   documentVersion,
 }: CompletionCandidateRequest): Promise<CompletionCandidateResult> {
   const queryText = query || replacePrefix;
-  const contextRequest = { path, line, column, content };
+  const contextRequest = { path, line, column, content, lineText: contextLineText };
   const queryContent = documentVersion === null || documentVersion === undefined
     ? content
     : semanticContent;
@@ -67,6 +69,45 @@ export async function collectCompletionCandidateResult({
   };
   const memberAccess = isMemberAccessCompletion(contextRequest);
   scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
+  if (rootPath && workspaceApi.queryLanguageCompletion) {
+    const envelope = await workspaceApi.queryLanguageCompletion(
+      rootPath,
+      languageRequest,
+      requestGeneration ?? 0,
+      documentVersion,
+    );
+    const unavailable = envelope.provider === "none"
+      && envelope.explain?.includes("runtime:unavailable");
+    if (
+      requestGeneration !== undefined
+      && envelope.requestGeneration !== requestGeneration
+      && !unavailable
+    ) {
+      return {
+        items: [],
+        explain: [...(envelope.explain ?? []), "discarded:staleRequestGeneration"],
+      };
+    }
+    if (
+      documentVersion !== null
+      && documentVersion !== undefined
+      && envelope.documentGeneration !== documentVersion
+      && !unavailable
+    ) {
+      return {
+        items: [],
+        explain: [...(envelope.explain ?? []), "discarded:staleDocumentGeneration"],
+      };
+    }
+    if (!unavailable) {
+      return {
+        items: filterCompletionCandidates(memberAccess
+          ? envelope.items.filter(isReceiverMemberCompletion)
+          : envelope.items, queryText),
+        explain: envelope.explain ?? [],
+      };
+    }
+  }
   const semanticRequest = collectSemanticCompletionResult(
     workspaceApi,
     rootPath,
@@ -112,14 +153,35 @@ export async function collectCompletionCandidateResult({
     : [];
 
   return {
-    items: mergeCompletionItems(
+    items: filterCompletionCandidates(mergeCompletionItems(
       semanticItems,
       fileIndexedItems,
       workspaceIndexedItems,
       collectImmediateCompletionCandidates(queryText, contextRequest),
-    ),
+    ), queryText),
     explain,
   };
+}
+
+function filterCompletionCandidates(items: LanguageCompletionItem[], query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return items;
+  return items.filter((item) => [item.label, item.filterText, item.insertText]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => isCompletionSubsequence(normalizedQuery, value.toLowerCase())));
+}
+
+function isCompletionSubsequence(query: string, candidate: string) {
+  let queryIndex = 0;
+  for (const character of candidate) {
+    if (character === query[queryIndex]) queryIndex += 1;
+    if (queryIndex === query.length) return true;
+  }
+  return false;
+}
+
+function isReceiverMemberCompletion(item: LanguageCompletionItem) {
+  return item.kind !== "keyword" && item.kind !== "snippet";
 }
 
 function scheduleForegroundCompletionIndex(

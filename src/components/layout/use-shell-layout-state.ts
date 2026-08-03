@@ -9,14 +9,14 @@ import { getOverlayLabel } from "@/components/layout/search-overlay-model";
 import type { BottomToolKey, LeftToolKey, OverlayKey } from "@/components/layout/shell-state";
 
 export type UseShellLayoutStateOptions = {
-  onBeforeNonCompletionOverlay?: () => void;
+  onBeforeOverlay?: () => void;
   onResetOverlaySearch?: () => void;
   onStatusChange: (message: string) => void;
   onFocusEditorSoon: () => void;
 };
 
 export function useShellLayoutState({
-  onBeforeNonCompletionOverlay,
+  onBeforeOverlay,
   onResetOverlaySearch,
   onStatusChange,
   onFocusEditorSoon,
@@ -100,9 +100,7 @@ export function useShellLayoutState({
   }
 
   function setOverlay(overlay: Exclude<OverlayKey, "none">) {
-    if (overlay !== "completion") {
-      onBeforeNonCompletionOverlay?.();
-    }
+    onBeforeOverlay?.();
     setActiveOverlay(overlay);
     setQuickOpenQuery("");
     onResetOverlaySearch?.();

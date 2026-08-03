@@ -28,7 +28,7 @@ concurrency:
 jobs:
   packaged-soak:
     runs-on: windows-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: true
       max-parallel: 1
@@ -105,8 +105,6 @@ jobs:
 
       - name: Run packaged mixed interaction soak
         shell: pwsh
-        env:
-          ARKLINE_INDEXER_ENABLED: "1"
         run: |
           pnpm perf:packaged:windows -- `
             --mode=soak `
@@ -115,6 +113,26 @@ jobs:
             --fixture=artifacts/packaged-soak-fixture `
             --duration-minutes=${{ inputs.duration_minutes }} `
             --report=artifacts/packaged-soak-report.json `
+            --strict
+
+      - name: Checkout pinned real Harmony project
+        uses: actions/checkout@v4
+        with:
+          repository: Joker-x-dev/CoolMallArkTS
+          ref: 17b6899086a57a4d48448842a14f9e325e3e35a3
+          path: artifacts/real-harmony-project
+
+      - name: Run packaged real-project semantic smoke
+        shell: pwsh
+        run: |
+          pnpm perf:packaged:windows -- `
+            --mode=smoke `
+            --application=dist/ArkLine-windows-x64/ArkLine.exe `
+            --driver="$env:ARKLINE_EDGEDRIVER" `
+            --fixture=artifacts/real-harmony-project `
+            --scenario=docs/performance-fixtures/core-loop-coolmall-v1.json `
+            --sdk=semantic-worker/fixtures/golden-corpus/v1/sdk/openharmony `
+            --report=artifacts/packaged-real-project-report.json `
             --strict
 
       - name: Upload packaged evidence

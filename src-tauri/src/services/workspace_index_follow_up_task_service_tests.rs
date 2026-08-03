@@ -13,12 +13,12 @@ fn schedules_discovery_after_open_workspace_result() {
     let results = vec![TaskResult {
         root_path: "/tmp/project".to_string(),
         kind: "open-workspace".to_string(),
-        status: "ready".to_string(),
+        status: "skipped".to_string(),
         reason: "open-workspace".to_string(),
         generation: 1,
         started_at: None,
         finished_at: None,
-        message: None,
+        message: Some("delegated to sidecar".to_string()),
         error: None,
         refresh_result: None,
         refresh_continuation: None,
@@ -148,4 +148,37 @@ fn schedules_sdk_continuation_after_partial_sdk_result() {
     assert_eq!(pending[0].changed_paths, vec!["/tmp/sdk/api/B.d.ts"]);
     assert_eq!(pending[0].sdk_path.as_deref(), Some("/tmp/sdk"));
     assert_eq!(pending[0].sdk_version.as_deref(), Some("api12"));
+}
+
+#[test]
+fn partial_config_change_schedules_sidecar_rediscovery() {
+    let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
+    let results = vec![TaskResult {
+        root_path: "/tmp/project".to_string(),
+        kind: "changed-paths".to_string(),
+        status: "partial".to_string(),
+        reason: "config-change".to_string(),
+        generation: 4,
+        started_at: None,
+        finished_at: None,
+        message: Some("sidecar rediscovery required".to_string()),
+        error: None,
+        refresh_result: None,
+        refresh_continuation: None,
+        sdk_path: None,
+        sdk_version: None,
+        sdk_remaining_files: Vec::new(),
+        sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
+    }];
+
+    schedule_index_follow_up_tasks(&scheduler, &results).unwrap();
+    let pending = scheduler
+        .lock()
+        .unwrap()
+        .pending_tasks_for_root("/tmp/project");
+
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].reason, discovery_task_reason());
 }

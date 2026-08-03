@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   buildFixtureRelativePath,
+  FIXTURE_VERSION,
   PROFILE_FILE_COUNTS,
 } from "./generate-performance-fixture.mjs";
 
@@ -13,6 +14,7 @@ const MARKER_NAME = ".arkline-performance-fixture.json";
 export async function inspectPackagedSoakPreflight(
   options,
   resolveTool = resolveWindowsTool,
+  inspectWorkspace = inspectGitWorkspace,
 ) {
   const checks = [];
   const application = await inspectFile(options.applicationPath);
@@ -23,19 +25,9 @@ export async function inspectPackagedSoakPreflight(
     executable ? application.detail : `${options.applicationPath} is not an .exe`,
   ));
 
-  const fixture = await inspectFixtureMarker(options.fixturePath);
-  checks.push(check("fixture-marker", fixture.ok, fixture.detail));
-  if (fixture.marker?.fileCount > 0) {
-    const lastIndex = fixture.marker.fileCount - 1;
-    checks.push(await inspectFixtureProbe(options.fixturePath, 0, "fixture-first-file"));
-    checks.push(
-      await inspectFixtureProbe(
-        options.fixturePath,
-        lastIndex,
-        "fixture-last-file",
-      ),
-    );
-  }
+  const fixture = options.scenarioPath
+    ? await inspectRealWorkspace(options, checks, inspectWorkspace)
+    : await inspectGeneratedFixture(options, checks);
 
   for (const [name, command] of [
     ["msedgedriver", options.driverPath],
@@ -51,6 +43,97 @@ export async function inspectPackagedSoakPreflight(
     checks,
     fixture: fixture.marker ?? null,
   };
+}
+
+async function inspectGeneratedFixture(options, checks) {
+  const fixture = await inspectFixtureMarker(options.fixturePath);
+  checks.push(check("fixture-marker", fixture.ok, fixture.detail));
+  if (fixture.marker?.fileCount > 0) {
+    const lastIndex = fixture.marker.fileCount - 1;
+    checks.push(await inspectFixtureProbe(options.fixturePath, 0, "fixture-first-file"));
+    checks.push(await inspectFixtureProbe(
+      options.fixturePath,
+      lastIndex,
+      "fixture-last-file",
+    ));
+  }
+  return fixture;
+}
+
+async function inspectRealWorkspace(options, checks, inspectWorkspace) {
+  const workspace = await inspectDirectory(options.fixturePath);
+  checks.push(check("workspace-directory", workspace.ok, workspace.detail));
+  const scenario = await inspectFile(options.scenarioPath);
+  checks.push(check("scenario", scenario.ok, scenario.detail));
+  const manifest = scenario.ok ? await readScenario(options.scenarioPath) : null;
+  const git = workspace.ok ? await inspectWorkspace(options.fixturePath) : null;
+  const revisionMatches = Boolean(
+    manifest?.revision
+    && git?.revision
+    && manifest.revision.toLowerCase() === git.revision.toLowerCase(),
+  );
+  checks.push(check(
+    "workspace-revision",
+    revisionMatches,
+    revisionMatches
+      ? git.revision
+      : git?.error ?? `${git?.revision ?? "missing"} != ${manifest?.revision ?? "missing"}`,
+  ));
+  const repositoryMatches = sameRepositoryUrl(
+    git?.repositoryUrl,
+    manifest?.repository?.url,
+  );
+  checks.push(check(
+    "workspace-repository",
+    repositoryMatches,
+    git?.repositoryUrl ?? git?.error ?? "missing remote.origin.url",
+  ));
+  const sdk = options.sdkPath
+    ? await inspectDirectory(options.sdkPath)
+    : { ok: false, detail: "--sdk is required for real-workspace scenarios" };
+  checks.push(check("sdk-directory", sdk.ok, sdk.detail));
+  return {
+    ok: workspace.ok && scenario.ok && revisionMatches && repositoryMatches && sdk.ok,
+    detail: workspace.detail,
+    marker: null,
+  };
+}
+
+async function readScenario(scenarioPath) {
+  try {
+    return JSON.parse(await readFile(scenarioPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function inspectGitWorkspace(workspacePath) {
+  try {
+    const [revision, repositoryUrl] = await Promise.all([
+      execFileAsync("git", ["-C", workspacePath, "rev-parse", "HEAD"]),
+      execFileAsync("git", ["-C", workspacePath, "config", "--get", "remote.origin.url"]),
+    ]);
+    return {
+      revision: revision.stdout.trim(),
+      repositoryUrl: repositoryUrl.stdout.trim(),
+    };
+  } catch (error) {
+    return { error: String(error) };
+  }
+}
+
+function sameRepositoryUrl(actual, expected) {
+  if (!actual || !expected) return false;
+  return normalizeRepositoryUrl(actual) === normalizeRepositoryUrl(expected);
+}
+
+function normalizeRepositoryUrl(value) {
+  return value
+    .trim()
+    .replace(/^git@github\.com:/iu, "https://github.com/")
+    .replace(/\.git$/iu, "")
+    .replace(/\/$/u, "")
+    .toLowerCase();
 }
 
 export async function resolveWindowsTool(command) {
@@ -78,7 +161,7 @@ async function inspectFixtureMarker(fixturePath) {
       await readFile(path.join(fixturePath, MARKER_NAME), "utf8"),
     );
     const expectedCount = PROFILE_FILE_COUNTS[marker.profile];
-    const valid = marker.version === 1
+    const valid = marker.version === FIXTURE_VERSION
       && Number.isInteger(expectedCount)
       && marker.fileCount === expectedCount;
     return {
@@ -105,6 +188,17 @@ async function inspectFile(filePath) {
     return metadata.isFile()
       ? { ok: true, detail: filePath }
       : { ok: false, detail: `${filePath} is not a file` };
+  } catch (error) {
+    return { ok: false, detail: String(error) };
+  }
+}
+
+async function inspectDirectory(directoryPath) {
+  try {
+    const metadata = await stat(directoryPath);
+    return metadata.isDirectory()
+      ? { ok: true, detail: directoryPath }
+      : { ok: false, detail: `${directoryPath} is not a directory` };
   } catch (error) {
     return { ok: false, detail: String(error) };
   }

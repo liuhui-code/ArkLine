@@ -111,7 +111,11 @@ export function useDefinitionController({
       onStatusChange(formatDefinitionUnavailableStatus("settingsApplying"));
       return;
     }
-    if (!activePath || (!workspaceApi.gotoDefinition && !workspaceApi.queryDefinitionCandidatesWithReadiness)) {
+    if (!activePath || (
+      !workspaceApi.queryLanguageDefinition
+      && !workspaceApi.gotoDefinition
+      && !workspaceApi.queryDefinitionCandidatesWithReadiness
+    )) {
       const debugMessage = formatDefinitionUnavailableDebugMessage(source, "lookupUnavailable");
       if (debugMessage) setDefinitionDebug(debugMessage);
       onStatusChange(formatDefinitionUnavailableStatus("lookupUnavailable"));
@@ -200,13 +204,19 @@ export function useDefinitionController({
       onStatusChange(missMessage);
     };
 
-    if (workspace?.rootPath && workspaceApi.queryDefinitionCandidatesWithReadiness) {
+    const usesLanguageBroker = Boolean(workspaceApi.queryLanguageDefinition);
+    if (workspace?.rootPath && (
+      workspaceApi.queryLanguageDefinition
+      || workspaceApi.queryDefinitionCandidatesWithReadiness
+    )) {
       void scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       if (isStaleRequest()) return;
       let envelope;
       try {
         envelope = await languageRequestTimeout(
-          workspaceApi.queryDefinitionCandidatesWithReadiness(workspace.rootPath, request),
+          workspaceApi.queryLanguageDefinition
+            ? workspaceApi.queryLanguageDefinition(workspace.rootPath, request, requestId)
+            : workspaceApi.queryDefinitionCandidatesWithReadiness!(workspace.rootPath, request),
           languageSession.timeoutMs,
         );
       } catch (error) {
@@ -218,7 +228,29 @@ export function useDefinitionController({
         return;
       }
       if (isStaleRequest()) return;
+      const brokerUnavailable = usesLanguageBroker
+        && "provider" in envelope
+        && typeof envelope.provider === "string"
+        && envelope.provider === "none"
+        && envelope.explain?.includes("runtime:unavailable");
+      if (
+        usesLanguageBroker
+        && "requestGeneration" in envelope
+        && envelope.requestGeneration !== requestId
+        && !brokerUnavailable
+      ) {
+        setDefinitionDebug("Stale definition response ignored");
+        onStatusChange("Stale definition response ignored");
+        completeDefinitionRequest();
+        return;
+      }
       indexedDefinitionExplain = envelope.explain;
+      const brokerSource = usesLanguageBroker
+        && "provider" in envelope
+        && typeof envelope.provider === "string"
+        && envelope.provider.startsWith("semantic")
+        ? "semantic"
+        : "indexed";
       const decision = decideDefinitionEnvelope(envelope);
       if (decision.kind === "blocked") {
         const blockedDebugMessage = formatDefinitionBlockedDebugMessage(source, decision.message);
@@ -230,14 +262,14 @@ export function useDefinitionController({
       if (decision.kind === "candidates") {
         showDefinitionCandidates(
           decision.items,
-          "indexed",
+          brokerSource,
           formatDefinitionCandidatePanelMessage(decision.readinessState),
         );
         completeDefinitionRequest();
         return;
       }
       if (decision.kind === "resolved") {
-        await showResolvedDefinition(decision.target, "indexed", decision.readinessState);
+        await showResolvedDefinition(decision.target, brokerSource, decision.readinessState);
         completeDefinitionRequest();
         return;
       }
@@ -245,6 +277,11 @@ export function useDefinitionController({
         const message = formatDefinitionRefreshWaitMessage(decision.count, decision.readinessState);
         if (source === "modifierClick") setDefinitionDebug(message);
         onStatusChange(message);
+        completeDefinitionRequest();
+        return;
+      }
+      if (usesLanguageBroker && !brokerUnavailable) {
+        await showDefinitionMiss("languageAndFallbackNoTarget");
         completeDefinitionRequest();
         return;
       }

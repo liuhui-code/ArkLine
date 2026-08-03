@@ -356,6 +356,26 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       backgroundColor: "rgba(88, 166, 255, 0.18)",
       color: editorPalette.foreground,
     },
+    ".arkline-completion-info": {
+      display: "grid",
+      gap: "8px",
+      minWidth: "240px",
+      maxWidth: "420px",
+      padding: "10px 12px",
+      lineHeight: "1.45",
+    },
+    ".arkline-completion-info__signature": {
+      color: editorPalette.foreground,
+      fontFamily: "var(--font-mono)",
+    },
+    ".arkline-completion-info__documentation": {
+      color: editorPalette.foregroundMuted,
+      whiteSpace: "pre-wrap",
+    },
+    ".arkline-completion-info__source": {
+      color: editorPalette.gutterText,
+      fontSize: "11px",
+    },
     ".cm-diagnostic": {
       borderLeft: "3px solid rgba(125, 133, 144, 0.38)",
       paddingLeft: "8px",

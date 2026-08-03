@@ -40,15 +40,18 @@ pub mod git_branch_service;
 pub mod git_command_service;
 pub mod git_conflict_service;
 pub mod git_discard_service;
-pub mod git_file_comparison_service; pub mod git_history_service;
+pub mod git_file_comparison_service;
+pub mod git_history_service;
 pub mod git_patch_service;
 pub mod git_query_service;
 pub mod git_remote_service;
 pub mod git_repository_service;
-pub mod git_stash_service; pub mod git_status_service;
+pub mod git_stash_service;
+pub mod git_status_service;
 pub mod git_trace_service;
 pub mod language_client_runtime_service;
 pub mod language_command_service;
+pub(crate) mod language_query_broker_service;
 #[rustfmt::skip] #[cfg(test)] mod language_runtime_concurrency_tests;
 pub mod language_service;
 #[rustfmt::skip] #[cfg(test)] mod language_service_tests;
@@ -253,6 +256,7 @@ mod workspace_index_maintenance_service_tests;
 mod workspace_index_manager_priority_tests;
 #[cfg(test)]
 mod workspace_index_manager_resume_tests;
+pub(crate) mod workspace_index_manager_retry_wait_service;
 pub mod workspace_index_manager_service;
 #[cfg(test)]
 mod workspace_index_manager_service_tests;
@@ -343,18 +347,14 @@ pub(crate) mod workspace_index_ui_activity_service;
 #[cfg(test)]
 mod workspace_index_ui_activity_service_tests;
 pub mod workspace_index_watcher_service;
-#[cfg(test)]
-mod workspace_index_worker_batch_tests;
-#[cfg(test)]
-mod workspace_index_worker_budget_integration_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_batch_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_budget_integration_tests;
 pub(crate) mod workspace_index_worker_budget_service;
-#[cfg(test)]
-mod workspace_index_worker_budget_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_budget_service_tests;
 pub mod workspace_index_worker_service;
-#[cfg(test)]
-mod workspace_index_worker_service_tests;
-#[cfg(test)]
-mod workspace_index_worker_sidecar_fallback_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_isolation_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_sidecar_fallback_tests;
 pub(crate) mod workspace_index_writer_actor_service;
 pub(crate) mod workspace_index_writer_connection_pool_service;
 #[cfg(test)]

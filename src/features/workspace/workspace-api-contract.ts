@@ -48,6 +48,7 @@ import type {
   WorkspaceIndexUnresolvedImport,
   WorkspaceSdkIndexSummary,
   WorkspaceTextSearchRequest,
+  LanguageQueryBrokerEnvelope,
 } from "@/features/workspace/workspace-index-api-types";
 import type { FileTreeNode } from "@/features/workspace/file-tree-store";
 import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
@@ -99,6 +100,7 @@ export type {
   WorkspaceIndexUnresolvedImport,
   WorkspaceSdkIndexSummary,
   WorkspaceTextSearchRequest,
+  LanguageQueryBrokerEnvelope,
 } from "@/features/workspace/workspace-index-api-types";
 export type WorkspaceSnapshot = {
   rootName: string;
@@ -189,6 +191,11 @@ export type SemanticDocumentCloseRequest = {
   path: string;
 };
 
+export type SemanticDocumentPrepareRequest = {
+  path: string;
+  documentVersion: number;
+};
+
 export type SemanticSupervisorSnapshot = {
   status: string;
   restartCount: number;
@@ -203,6 +210,12 @@ export type SemanticSupervisorSnapshot = {
     heapTotalBytes: number;
     externalBytes: number;
     uptimeMs: number;
+    providerLatencies?: Record<string, {
+      count: number;
+      p50Us: number;
+      p95Us: number;
+      maxUs: number;
+    }>;
   } | null;
   memoryBudgetBytes: number;
   requestActor?: {
@@ -308,7 +321,15 @@ export type LanguageCompletionItem = {
   replacementRange?: TextRange;
   commitCharacters?: string[];
   definitionTarget?: DefinitionTarget;
+  additionalTextEdits?: CompletionTextEdit[];
   data?: LanguageCompletionItemData;
+};
+
+export type CompletionTextEdit = {
+  path: string;
+  range: TextRange;
+  newText: string;
+  expectedVersion?: number;
 };
 
 export type CompletionImportPreviewEdit = {
@@ -397,6 +418,8 @@ type WorkspaceCoreApi = {
   queryCallHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
   queryTypeHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
   semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest, requestGeneration?: number): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
+  queryLanguageDefinition?(rootPath: string, request: LanguageQueryRequest, requestGeneration: number): Promise<LanguageQueryBrokerEnvelope<DefinitionCandidate>>;
+  queryLanguageCompletion?(rootPath: string, request: LanguageQueryRequest, requestGeneration: number, documentVersion?: number | null): Promise<LanguageQueryBrokerEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;
   scheduleForegroundCompletionIndex?(rootPath: string, changedPaths: string[]): Promise<void>;
@@ -410,9 +433,10 @@ type WorkspaceCoreApi = {
   openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
   getLaunchWorkspacePath?(): Promise<string | null>;
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;
-  openFile(path: string): Promise<string>;
+  openFile(path: string, telemetry?: { interactionId?: string }): Promise<string>;
   saveFile(path: string, content: string): Promise<void>;
   syncSemanticDocument?(request: SemanticDocumentSyncRequest): Promise<void>;
+  prepareSemanticDocument?(request: SemanticDocumentPrepareRequest): Promise<void>;
   closeSemanticDocument?(request: SemanticDocumentCloseRequest): Promise<void>;
   runValidation(path: string, content: string): Promise<ValidationProblem[]>;
   loadDiff(rootPath: string | null): Promise<string>;
@@ -422,6 +446,7 @@ type WorkspaceCoreApi = {
   gotoDefinition?(request: LanguageQueryRequest): Promise<DefinitionTarget | null>;
   gotoDefinitionCandidates?(request: LanguageQueryRequest): Promise<DefinitionCandidate[]>;
   completeSymbol?(request: LanguageQueryRequest, requestGeneration?: number, documentVersion?: number): Promise<LanguageCompletionItem[]>;
+  resolveCompletion?(request: LanguageQueryRequest, item: LanguageCompletionItem, documentVersion?: number): Promise<LanguageCompletionItem>;
   signatureHelp?(request: LanguageQueryRequest): Promise<LanguageSignatureHelp | null>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
   findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;

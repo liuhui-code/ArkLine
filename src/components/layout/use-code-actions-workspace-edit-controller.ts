@@ -34,8 +34,7 @@ export function useCodeActionsWorkspaceEditController({
   syncTabs,
   syncWorkspaceIndex,
   setActiveDocument,
-  clearCompletionSession,
-  resetCompletionAnchor,
+  closeCompletion,
   closeOverlay,
   hideCurrentClassMethods,
   focusEditorSoon,
@@ -274,8 +273,7 @@ export function useCodeActionsWorkspaceEditController({
     languageQuerySnapshotStore.record({ kind: "codeActions", snapshot });
     const request = snapshot.request;
 
-    clearCompletionSession();
-    resetCompletionAnchor();
+    closeCompletion();
     closeOverlay();
     hideCurrentClassMethods();
     resetWorkspaceEdit();

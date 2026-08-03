@@ -121,12 +121,12 @@ fn schedules_continuation_tasks_from_worker_results() {
 }
 
 #[test]
-fn schedules_deep_refresh_even_when_file_layer_has_no_remaining_chunks() {
+fn schedules_deep_refresh_after_foreground_file_layer() {
     let result = WorkspaceIndexTaskResult {
         root_path: "/workspace".to_string(),
         kind: "refresh-workspace".to_string(),
         status: "ready".to_string(),
-        reason: "refresh-workspace".to_string(),
+        reason: "foreground-navigation".to_string(),
         generation: 7,
         started_at: Some(100),
         finished_at: Some(200),
@@ -160,6 +160,6 @@ fn schedules_deep_refresh_even_when_file_layer_has_no_remaining_chunks() {
 
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].priority, WorkspaceIndexTaskPriority::Background);
-    assert_eq!(tasks[0].reason, "full-refresh-deep:refresh-workspace");
+    assert_eq!(tasks[0].reason, "full-refresh-deep:foreground-navigation");
     assert_eq!(tasks[0].changed_paths, vec!["A.ets"]);
 }

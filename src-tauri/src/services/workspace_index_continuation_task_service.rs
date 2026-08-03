@@ -170,6 +170,10 @@ fn should_schedule_deep_refresh(result: &WorkspaceIndexTaskResult) -> bool {
     result.error.is_none()
         && result.refresh_result.is_some()
         && (result.reason == "refresh-workspace"
+            || matches!(
+                result.reason.as_str(),
+                "foreground-navigation" | "foreground-completion" | "visible-files"
+            )
             || continuation_phase(&result.reason) == WorkspaceIndexContinuationPhase::FileLayer)
 }
 

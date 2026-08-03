@@ -138,6 +138,100 @@ describe("incremental semantic type engine", () => {
     ]))
   })
 
+  it("maps one-line ArkTS completion positions into the virtual document", () => {
+    const root = createRoot("arkts-source-map-completion")
+    const content = "struct Screen { title: string = ''; render() { this.ti } }\n"
+    const filePath = createFile(root, "Screen.ets", content)
+    const cursor = content.indexOf("this.ti") + "this.ti".length
+
+    const response = new SemanticWorkerSession().handle({
+      id: "arkts-source-map-completion",
+      method: "completion",
+      position: { path: filePath, line: 1, column: cursor + 1 },
+    })
+
+    expect(response.payload).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: "title",
+        source: "type",
+      }),
+    ]))
+  })
+
+  it("maps one-line ArkTS definition targets back to source columns", () => {
+    const root = createRoot("arkts-source-map-definition")
+    const model = "export struct User { name: string }\n"
+    const modelPath = createFile(root, "Model.ets", model)
+    const indexPath = createFile(
+      root,
+      "Index.ets",
+      "import type { User } from './Model'\nconst user = {} as User\nuser.name\n",
+    )
+
+    const response = new SemanticWorkerSession().handle({
+      id: "arkts-source-map-definition",
+      method: "gotoDefinition",
+      position: { path: indexPath, line: 3, column: 7 },
+    })
+
+    expect(response.payload).toEqual({
+      path: modelPath,
+      line: 1,
+      column: model.indexOf("name") + 1,
+    })
+  })
+
+  it("resolves ArkTS auto-import edits back to source coordinates", () => {
+    const root = createRoot("arkts-auto-import")
+    createFile(
+      root,
+      "Model.ets",
+      "export class Existing {}\n/** A reusable widget. */\nexport class Widget {}\n",
+    )
+    const content = [
+      "import { Existing } from './Model'",
+      "struct Screen {",
+      "  value: Existing = new Existing()",
+      "  render() { Wid }",
+      "}",
+      "",
+    ].join("\n")
+    const filePath = createFile(root, "Screen.ets", content)
+    const session = new SemanticWorkerSession()
+    const position = { path: filePath, line: 4, column: 17 }
+    const completion = session.handle({
+      id: "arkts-auto-import-list",
+      method: "completion",
+      position,
+    })
+    const item = Array.isArray(completion.payload)
+      ? completion.payload.find((candidate) => "label" in candidate && candidate.label === "Widget")
+      : undefined
+
+    expect(item).toBeDefined()
+    const resolved = session.handle({
+      id: "arkts-auto-import-resolve",
+      method: "resolveCompletion",
+      position,
+      completion: item,
+    })
+
+    expect(resolved.payload).toEqual(expect.objectContaining({
+      label: "Widget",
+      documentation: expect.any(String),
+      additionalTextEdits: [expect.objectContaining({
+        path: filePath,
+        range: {
+          startLine: 1,
+          startColumn: 18,
+          endLine: 1,
+          endColumn: 18,
+        },
+        newText: ", Widget",
+      })],
+    }))
+  })
+
   it("increments the type generation only when a dependency changes", () => {
     const root = createRoot("generation")
     const modelPath = createFile(root, "Model.ts", "export interface User { name: string }\n")

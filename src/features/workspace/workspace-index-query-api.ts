@@ -3,6 +3,7 @@ import type { UsageResult } from "@/features/workspace/usage-search";
 import type {
   WorkspaceIndexExplainRequest,
   WorkspaceIndexExplainResult,
+  LanguageQueryBrokerEnvelope,
   WorkspaceIndexQueryEnvelope,
   WorkspaceIndexQueryScope,
   WorkspaceSearchRankingContext,
@@ -33,6 +34,8 @@ export type WorkspaceIndexQueryApi = {
   queryCallHierarchy(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
   queryTypeHierarchy(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
   semanticCompleteSymbol(rootPath: string, request: LanguageQueryRequest, requestGeneration?: number): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
+  queryLanguageDefinition(rootPath: string, request: LanguageQueryRequest, requestGeneration: number): Promise<LanguageQueryBrokerEnvelope<DefinitionCandidate>>;
+  queryLanguageCompletion(rootPath: string, request: LanguageQueryRequest, requestGeneration: number, documentVersion?: number | null): Promise<LanguageQueryBrokerEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
 };
 
@@ -136,6 +139,24 @@ export function createWorkspaceIndexQueryApi({
       void requestGeneration;
       return emptyIndexQueryEnvelope(rootPath);
     },
+    async queryLanguageDefinition(rootPath, request, requestGeneration) {
+      if (hasTauriRuntime()) {
+        return invoke<LanguageQueryBrokerEnvelope<DefinitionCandidate>>(
+          "query_language_definition",
+          { rootPath, request, requestGeneration },
+        );
+      }
+      return emptyLanguageBrokerEnvelope(rootPath, requestGeneration);
+    },
+    async queryLanguageCompletion(rootPath, request, requestGeneration, documentVersion) {
+      if (hasTauriRuntime()) {
+        return invoke<LanguageQueryBrokerEnvelope<LanguageCompletionItem>>(
+          "query_language_completion",
+          { rootPath, request, requestGeneration, documentVersion },
+        );
+      }
+      return emptyLanguageBrokerEnvelope(rootPath, requestGeneration, documentVersion);
+    },
     async explainWorkspaceIndexQuery(request) {
       if (hasTauriRuntime()) {
         return invoke<WorkspaceIndexExplainResult>("explain_workspace_index_query", { request });
@@ -148,6 +169,24 @@ export function createWorkspaceIndexQueryApi({
         recommendedAction: "reportBug",
       };
     },
+  };
+}
+
+function emptyLanguageBrokerEnvelope<T>(
+  rootPath: string,
+  requestGeneration: number,
+  documentGeneration: number | null = null,
+): LanguageQueryBrokerEnvelope<T> {
+  return {
+    ...emptyIndexQueryEnvelope<T>(rootPath),
+    requestGeneration,
+    documentGeneration,
+    targetGeneration: null,
+    provider: "none",
+    confidence: "none",
+    fallbackUsed: false,
+    missReason: "Language query broker is unavailable outside the desktop runtime",
+    explain: ["provider:none", "runtime:unavailable"],
   };
 }
 

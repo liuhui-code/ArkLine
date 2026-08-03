@@ -25,6 +25,8 @@ describe("Harmony build project detector", () => {
       hasOhPackage: true,
       modules: ["common", "entry", "feature"],
       defaultModule: "entry",
+      products: [],
+      defaultProduct: null,
     });
   });
 

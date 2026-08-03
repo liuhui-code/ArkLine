@@ -69,6 +69,41 @@ describe("useWorkspaceSession", () => {
     expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/A.ets"]);
   });
 
+  it("appends a newly visible file without rebuilding existing tree projections", () => {
+    const existingNode = { path: "/workspace/src/A.ets", name: "A.ets", title: "/workspace/src/A.ets" };
+    const { result } = renderHook(() => useWorkspaceSession(options()));
+
+    act(() => result.current.applyWorkspaceSnapshot(workspace({
+      rootPath: "/workspace",
+      visibleFiles: [existingNode.path],
+      fileTree: [existingNode],
+    })));
+    act(() => result.current.includeVisibleWorkspaceFile("/workspace/src/B.ets"));
+
+    expect(result.current.workspace?.visibleFiles).toEqual([
+      "/workspace/src/A.ets",
+      "/workspace/src/B.ets",
+    ]);
+    expect(result.current.workspace?.fileTree[0]).toBe(existingNode);
+    expect(result.current.workspace?.fileTree[1]?.path).toBe("/workspace/src/B.ets");
+  });
+
+  it("keeps a truncated lazy tree independent from newly opened files", () => {
+    const existingNode = { path: "/workspace/A.ets", name: "A.ets", title: "/workspace/A.ets" };
+    const { result } = renderHook(() => useWorkspaceSession(options()));
+
+    act(() => result.current.applyWorkspaceSnapshot(workspace({
+      rootPath: "/workspace",
+      visibleFiles: [existingNode.path],
+      fileTree: [existingNode],
+      scanSummary: { scannedFiles: 1, skippedEntries: 0, truncated: true, excludeRules: [] },
+    })));
+    act(() => result.current.includeVisibleWorkspaceFile("/workspace/lazy/B.ets"));
+
+    expect(result.current.workspace?.visibleFiles).toContain("/workspace/lazy/B.ets");
+    expect(result.current.workspace?.fileTree).toEqual([existingNode]);
+  });
+
   it("falls back to visible-file scheduling when index file update is unavailable", () => {
     const scheduleVisibleFilesIndex = vi.fn(async () => undefined);
     const { result } = renderHook(() => useWorkspaceSession(options({

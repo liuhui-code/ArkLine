@@ -119,6 +119,7 @@ export type WorkspaceIndexerHostSnapshot = {
   completedStubRefreshChunks: number;
   cancelledStubRefreshChunks: number;
   fallbackCount: number;
+  degradedCount: number;
   restartCount: number;
   consecutiveFailureCount: number;
   backoffRemainingMs: number | null;
@@ -317,6 +318,16 @@ export type WorkspaceIndexQueryEnvelope<T> = {
   readiness: WorkspaceIndexReadiness;
   explain?: string[];
   nextCursor?: number | null;
+};
+
+export type LanguageQueryBrokerEnvelope<T> = WorkspaceIndexQueryEnvelope<T> & {
+  requestGeneration: number;
+  documentGeneration: number | null;
+  targetGeneration: number | null;
+  provider: "semantic" | "index" | "semantic+index" | "none";
+  confidence: "semantic" | "indexed" | "partial" | "none";
+  fallbackUsed: boolean;
+  missReason: string | null;
 };
 
 export type WorkspaceIndexExplainRequest = {

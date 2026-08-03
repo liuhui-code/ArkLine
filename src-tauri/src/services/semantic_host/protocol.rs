@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::language::CodeActionResolveRequest;
+use crate::models::language::{CodeActionResolveRequest, CompletionItem};
 
-pub const SEMANTIC_PROTOCOL_VERSION: u64 = 4;
+pub const SEMANTIC_PROTOCOL_VERSION: u64 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +46,8 @@ pub struct SemanticRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<CodeActionResolveRequest>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion: Option<CompletionItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub documents: Option<Vec<SemanticReplayDocument>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document: Option<SemanticDocumentSync>,
@@ -68,6 +70,7 @@ impl SemanticRequest {
                 document_version: None,
             }),
             action: None,
+            completion: None,
             documents: None,
             document: None,
             document_path: None,

@@ -138,6 +138,16 @@ impl SemanticProvider for CompositeSemanticProvider {
         }
     }
 
+    fn resolve_completion(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+        item: &crate::models::language::CompletionItem,
+        document_version: Option<u64>,
+    ) -> crate::models::language::CompletionItem {
+        self.semantic
+            .resolve_completion(request, item, document_version)
+    }
+
     fn signature_help(
         &self,
         request: &crate::models::language::LanguageQueryRequest,
@@ -185,6 +195,13 @@ impl SemanticProvider for CompositeSemanticProvider {
         request: &crate::models::language::SemanticDocumentSyncRequest,
     ) -> Result<(), String> {
         self.semantic.sync_document(request)
+    }
+
+    fn prepare_document(
+        &self,
+        request: &crate::models::language::SemanticDocumentPrepareRequest,
+    ) -> Result<(), String> {
+        self.semantic.prepare_document(request)
     }
 
     fn close_document(

@@ -100,7 +100,7 @@ fn worker_runner_requeues_full_refresh_continuation_after_first_chunk() {
     assert_eq!(final_results[0].kind, "changed-paths");
     assert!(matches!(
         final_results[0].status.as_str(),
-        "ready" | "skipped"
+        "partial" | "skipped"
     ));
     assert!(load_resume_tasks(&root_path)
         .unwrap()

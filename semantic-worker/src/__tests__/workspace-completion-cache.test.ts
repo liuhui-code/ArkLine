@@ -25,6 +25,7 @@ function view(content: string) {
       contentGeneration: 1,
       dependencyGeneration: 1,
       documentCacheHit: false,
+      dependencyClosureCacheHit: false,
       queryCacheHit: false,
       loadedDocumentCount: 1,
       syntaxReady: true,

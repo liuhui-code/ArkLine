@@ -7,6 +7,7 @@ import {
 import { resolveCompletion } from "./features/completion.js"
 import { resolveDefinition } from "./features/definition.js"
 import { resolveSignatureHelp } from "./features/signature-help.js"
+import { SemanticLatencyRegistry } from "./performance/latency-registry.js"
 import { SEMANTIC_PROTOCOL_VERSION, type SemanticRequest, type SemanticResponse } from "./protocol.js"
 import { discoverHarmonySdk } from "./sdk/discovery.js"
 import { SemanticDocumentStore, type SemanticWorkspaceView } from "./workspace/document-store.js"
@@ -17,6 +18,7 @@ export class SemanticWorkerSession {
   private readonly documents = new SemanticDocumentStore()
   private readonly queryCache = new SemanticQueryCache()
   private readonly typeEngines = new SemanticTypeEngineRegistry()
+  private readonly latencies = new SemanticLatencyRegistry()
 
   handle(request: SemanticRequest): SemanticResponse {
     let response: SemanticResponse
@@ -30,7 +32,7 @@ export class SemanticWorkerSession {
         error: error instanceof Error ? error.message : String(error),
       }
     }
-    return { ...response, runtime: semanticRuntimeState() }
+    return { ...response, runtime: semanticRuntimeState(this.latencies) }
   }
 
   private handleRequest(request: SemanticRequest): SemanticResponse {
@@ -42,7 +44,7 @@ export class SemanticWorkerSession {
           payload: {
             status: discoverHarmonySdk().ready ? "ready" : "ready",
             protocolVersion: SEMANTIC_PROTOCOL_VERSION,
-            capabilities: ["completion", "definition", "signatureHelp", "typeReadiness", "generations", "documentReplay", "documentSync"],
+            capabilities: ["completion", "completionResolve", "definition", "signatureHelp", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
           },
         }
       case "restoreDocuments":
@@ -79,10 +81,14 @@ export class SemanticWorkerSession {
         this.queryCache.clear()
         return { id: request.id, ok: true, payload: { status: "closed", path: request.documentPath } }
       }
+      case "prepareDocument":
+        return this.prepareDocument(request)
       case "gotoDefinition":
         return this.handleSemanticQuery(request, "gotoDefinition")
       case "completion":
         return this.handleSemanticQuery(request, "completion")
+      case "resolveCompletion":
+        return this.resolveCompletion(request)
       case "signatureHelp":
         return this.handleSemanticQuery(request, "signatureHelp")
       case "listCodeActions":
@@ -126,18 +132,7 @@ export class SemanticWorkerSession {
     if (!request.position) {
       return { id: request.id, ok: true, payload: method === "completion" ? [] : null }
     }
-    const baseWorkspace = this.documents.prepare(request.position)
-    const typeEngine = this.typeEngines.prepare(baseWorkspace)
-    const workspace: SemanticWorkspaceView = {
-      ...baseWorkspace,
-      state: {
-        ...baseWorkspace.state,
-        typeStatus: typeEngine.state.status,
-        typeEngine: typeEngine.state.engine,
-        typeEngineVersion: typeEngine.state.version,
-        typeGeneration: typeEngine.state.generation,
-      },
-    }
+    const { workspace, typeEngine } = this.prepareWorkspace(request.position)
     const key = semanticQueryCacheKey(
       method,
       workspace.state,
@@ -154,9 +149,61 @@ export class SemanticWorkerSession {
       }
     }
 
+    const queryStarted = performance.now()
     const payload = this.resolveSemanticPayload(method, request, workspace, typeEngine)
+    this.latencies.record(method, performance.now() - queryStarted)
     this.queryCache.set(key, { payload, state: workspace.state })
     return { id: request.id, ok: true, payload, state: workspace.state }
+  }
+
+  private prepareDocument(request: SemanticRequest): SemanticResponse {
+    if (!request.position) {
+      return { id: request.id, ok: false, payload: null, error: "prepareDocument requires a position" }
+    }
+    const { workspace, typeEngine } = this.prepareWorkspace(request.position)
+    return {
+      id: request.id,
+      ok: true,
+      payload: {
+        status: "ready",
+        path: workspace.state.path,
+        contentGeneration: workspace.state.contentGeneration,
+        typeStatus: typeEngine.state.status,
+        typeGeneration: typeEngine.state.generation,
+      },
+      state: workspace.state,
+    }
+  }
+
+  private resolveCompletion(request: SemanticRequest): SemanticResponse {
+    if (!request.position || !request.completion) {
+      return { id: request.id, ok: false, payload: null, error: "resolveCompletion requires position and completion" }
+    }
+    const { workspace, typeEngine } = this.prepareWorkspace(request.position)
+    const started = performance.now()
+    const payload = typeEngine.resolveCompletion(request.position, request.completion)
+    this.latencies.record("resolveCompletion", performance.now() - started)
+    return { id: request.id, ok: true, payload, state: workspace.state }
+  }
+
+  private prepareWorkspace(position: NonNullable<SemanticRequest["position"]>) {
+    const workspaceStarted = performance.now()
+    const baseWorkspace = this.documents.prepare(position)
+    this.latencies.record("workspacePrepare", performance.now() - workspaceStarted)
+    const typeStarted = performance.now()
+    const typeEngine = this.typeEngines.prepare(baseWorkspace)
+    this.latencies.record("typePrepare", performance.now() - typeStarted)
+    const workspace: SemanticWorkspaceView = {
+      ...baseWorkspace,
+      state: {
+        ...baseWorkspace.state,
+        typeStatus: typeEngine.state.status,
+        typeEngine: typeEngine.state.engine,
+        typeEngineVersion: typeEngine.state.version,
+        typeGeneration: typeEngine.state.generation,
+      },
+    }
+    return { workspace, typeEngine }
   }
 
   private resolveSemanticPayload(
@@ -173,7 +220,7 @@ export class SemanticWorkerSession {
   }
 }
 
-function semanticRuntimeState() {
+function semanticRuntimeState(latencies: SemanticLatencyRegistry) {
   const memory = process.memoryUsage()
   return {
     rssBytes: memory.rss,
@@ -181,5 +228,6 @@ function semanticRuntimeState() {
     heapTotalBytes: memory.heapTotal,
     externalBytes: memory.external,
     uptimeMs: Math.round(process.uptime() * 1000),
+    providerLatencies: latencies.snapshot(),
   }
 }

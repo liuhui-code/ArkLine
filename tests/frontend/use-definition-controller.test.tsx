@@ -40,6 +40,82 @@ describe("useDefinitionController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Definition: B.ets:8:2");
   });
 
+  it("uses the unified broker as the sole production definition request", async () => {
+    const navigateToLocation = vi.fn(async () => undefined);
+    const queryDefinitionCandidatesWithReadiness = vi.fn();
+    const gotoDefinition = vi.fn();
+    const queryLanguageDefinition = vi.fn(async (
+      _rootPath: string,
+      _request: unknown,
+      requestGeneration: number,
+    ) => ({
+      items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
+      readiness: readiness("ready"),
+      requestGeneration,
+      documentGeneration: null,
+      targetGeneration: 1,
+      provider: "semantic" as const,
+      confidence: "semantic" as const,
+      fallbackUsed: false,
+      missReason: null,
+      explain: ["provider:semantic"],
+    }));
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({
+        queryLanguageDefinition,
+        queryDefinitionCandidatesWithReadiness,
+        gotoDefinition,
+      }),
+      navigateToLocation,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(queryLanguageDefinition).toHaveBeenCalledWith(
+      "/workspace",
+      expect.objectContaining({ path: "/workspace/A.ets", line: 4, column: 2 }),
+      expect.any(Number),
+    );
+    expect(queryDefinitionCandidatesWithReadiness).not.toHaveBeenCalled();
+    expect(gotoDefinition).not.toHaveBeenCalled();
+    expect(navigateToLocation).toHaveBeenCalledWith(
+      { path: "/workspace/B.ets", line: 8, column: 2 },
+      "Definition",
+    );
+  });
+
+  it("rejects a broker response from a stale request generation", async () => {
+    const navigateToLocation = vi.fn(async () => undefined);
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({
+        queryLanguageDefinition: vi.fn(async () => ({
+          items: [{ path: "/workspace/stale.ets", line: 1, column: 1, preview: "stale" }],
+          readiness: readiness("ready"),
+          requestGeneration: Number.MAX_SAFE_INTEGER,
+          documentGeneration: null,
+          targetGeneration: 1,
+          provider: "semantic" as const,
+          confidence: "semantic" as const,
+          fallbackUsed: false,
+          missReason: null,
+          explain: [],
+        })),
+      }),
+      navigateToLocation,
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(navigateToLocation).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenLastCalledWith("Stale definition response ignored");
+  });
+
   it("shows indexed definition candidates in the shared query panel", async () => {
     let usageSearch: UsageSearchState = idleUsageSearchState();
     const openEditorQueryPanel = vi.fn();

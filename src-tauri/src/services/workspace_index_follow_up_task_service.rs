@@ -27,11 +27,35 @@ pub fn schedule_index_follow_up_tasks(
         .superseded_tasks
         .extend(continuation_summary.superseded_tasks);
     schedule_discovery_tasks(scheduler, results, &mut summary)?;
+    schedule_config_rediscovery_tasks(scheduler, results, &mut summary)?;
     schedule_refresh_after_discovery_tasks(scheduler, results, &mut summary)?;
     schedule_sdk_continuation_tasks(scheduler, results, &mut summary)?;
     summary.root_paths.sort();
     summary.root_paths.dedup();
     Ok(summary)
+}
+
+fn schedule_config_rediscovery_tasks(
+    scheduler: &Arc<Mutex<WorkspaceIndexScheduler>>,
+    results: &[WorkspaceIndexTaskResult],
+    summary: &mut WorkspaceIndexFollowUpScheduleSummary,
+) -> Result<(), String> {
+    let tasks = results
+        .iter()
+        .filter(|result| {
+            result.kind == "changed-paths"
+                && result.reason == "config-change"
+                && result.status == "partial"
+                && result.error.is_none()
+        })
+        .map(|result| workspace_discovery_task(&result.root_path, 0));
+    let mut scheduler = scheduler
+        .lock()
+        .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?;
+    for task in tasks {
+        push_schedule_summary(&mut scheduler, task, summary);
+    }
+    Ok(())
 }
 
 fn schedule_discovery_tasks(

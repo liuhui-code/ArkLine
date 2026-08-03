@@ -31,8 +31,15 @@ import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const request = JSON.parse(line);
-  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 4 } } : {};
-  const runtime = { rssBytes: 104857600, heapUsedBytes: 40, heapTotalBytes: 80, externalBytes: 2, uptimeMs: 10 };
+  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 5 } } : {};
+  const runtime = {
+    rssBytes: 104857600,
+    heapUsedBytes: 40,
+    heapTotalBytes: 80,
+    externalBytes: 2,
+    uptimeMs: 10,
+    providerLatencies: { completion: { count: 4, p50Us: 700, p95Us: 1200, maxUs: 1500 } },
+  };
   process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, runtime, error: null })}\n`);
 });
 "#,
@@ -136,7 +143,7 @@ const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.P
 rl.on("line", (line) => {{
   const request = JSON.parse(line);
   if (request.method === "health") {{
-    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 4 }} }})}}\n`);
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 5 }} }})}}\n`);
     return;
   }}
   fs.writeFileSync(marker, "query-started");
@@ -210,6 +217,12 @@ fn parses_completion_v2_fields() {
             "line": 20927,
             "column": 5
         },
+        "additionalTextEdits": [{
+            "path": "/workspace/Main.ets",
+            "range": { "startLine": 1, "startColumn": 1, "endLine": 1, "endColumn": 1 },
+            "newText": "import { Length } from '@kit.ArkUI';\n",
+            "expectedVersion": 7
+        }],
         "data": { "provider": "arkui-sdk" }
     });
 
@@ -227,6 +240,7 @@ fn parses_completion_v2_fields() {
     assert_eq!(parsed.commit_characters, vec!["(", "."]);
     assert_eq!(parsed.replacement_range.unwrap().start_column, 6);
     assert_eq!(parsed.definition_target.unwrap().line, 20927);
+    assert_eq!(parsed.additional_text_edits[0].expected_version, Some(7));
 }
 
 #[test]
@@ -246,6 +260,10 @@ fn drops_and_stops_the_worker_process() {
     assert_eq!(
         session.runtime_snapshot().unwrap().rss_bytes,
         100 * 1024 * 1024
+    );
+    assert_eq!(
+        session.runtime_snapshot().unwrap().provider_latencies["completion"].p95_us,
+        1_200
     );
 
     drop(session);

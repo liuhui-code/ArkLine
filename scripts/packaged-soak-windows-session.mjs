@@ -8,11 +8,17 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export function buildWebView2Environment(baseEnvironment, fixturePath, debugPort) {
+export function buildWebView2Environment(
+  baseEnvironment,
+  fixturePath,
+  debugPort,
+  sdkPath = null,
+) {
   return {
     ...baseEnvironment,
     ARKLINE_WORKSPACE_ROOT: fixturePath,
     ARKLINE_WEBDRIVER_PORT: String(debugPort),
+    ...(sdkPath ? { ARKLINE_HARMONY_SDK_PATH: sdkPath } : {}),
   };
 }
 
@@ -82,6 +88,7 @@ export class WindowsPackagedAutomationSession {
           process.env,
           this.options.fixturePath,
           this.debugPort,
+          this.options.sdkPath,
         ),
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,

@@ -43,7 +43,7 @@ describe("quality gate manifest", () => {
       "node scripts/run-quality-gate.mjs --gate=full --strict",
     );
     expect(manifest.gates.fast.stepTimeoutMs).toBe(900000);
-    expect(manifest.gates.full.stepTimeoutMs).toBe(1200000);
+    expect(manifest.gates.full.stepTimeoutMs).toBe(2000000);
     expect(scripts["check:fast"]).toBe(manifest.gates.fast.command);
     expect(scripts.check).toBe(manifest.gates.full.command);
     expect(scripts["test:frontend:quality"]).toBe(

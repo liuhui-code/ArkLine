@@ -23,6 +23,7 @@ pub fn completion_item(
         replacement_range: None,
         commit_characters: Vec::new(),
         definition_target: None,
+        additional_text_edits: Vec::new(),
         data,
     }
 }
@@ -45,6 +46,7 @@ pub fn snippet_completion_item(
         replacement_range: None,
         commit_characters: Vec::new(),
         definition_target: None,
+        additional_text_edits: Vec::new(),
         data: None,
     }
 }
@@ -89,6 +91,7 @@ pub fn symbol_completion_from_row(
             line: u32::try_from(line).unwrap_or_default(),
             column: u32::try_from(column).unwrap_or_default(),
         }),
+        additional_text_edits: Vec::new(),
         data,
     })
 }

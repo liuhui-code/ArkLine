@@ -90,10 +90,6 @@ fn check_hvigor_wrapper(request: &BuildEnvironmentRequest) -> BuildEnvironmentCh
         Some(windows_wrapper)
     } else if !cfg!(windows) && unix_wrapper.is_file() {
         Some(unix_wrapper)
-    } else if windows_wrapper.is_file() {
-        Some(windows_wrapper)
-    } else if unix_wrapper.is_file() {
-        Some(unix_wrapper)
     } else {
         None
     };
@@ -102,12 +98,21 @@ fn check_hvigor_wrapper(request: &BuildEnvironmentRequest) -> BuildEnvironmentCh
         name: "hvigor".to_string(),
         available,
         detail: wrapper.map_or_else(
-            || format!("No hvigorw or hvigorw.bat found in {}", root.display()),
+            || {
+                let expected = if cfg!(windows) { "hvigorw.bat" } else { "hvigorw" };
+                format!(
+                    "No {expected} found at canonical project root {}. Restore the project-pinned Hvigor wrapper.",
+                    root.display()
+                )
+            },
             |path| {
                 if available {
                     format!("Hvigor wrapper ready at {}", path.display())
                 } else {
-                    format!("Hvigor wrapper is not executable: {}", path.display())
+                    format!(
+                        "Hvigor wrapper is not executable: {}. Run chmod +x on the wrapper.",
+                        path.display()
+                    )
                 }
             },
         ),
@@ -279,6 +284,35 @@ mod tests {
             sdk.to_string_lossy()
         );
         assert_eq!(resolution.environment["NODE_HOME"], root.to_string_lossy());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn explains_a_missing_wrapper_at_the_canonical_project_root() {
+        let root = temporary_root();
+        let node = root.join("node");
+        let sdk = root.join("sdk");
+        fs::create_dir_all(sdk.join("ets")).unwrap();
+        fs::create_dir_all(sdk.join("toolchains")).unwrap();
+        fs::write(&node, "node").unwrap();
+        fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
+        fs::write(root.join("build-profile.json5"), "{}").unwrap();
+
+        let resolution = resolve_build_environment(&BuildEnvironmentRequest {
+            root_path: root.to_string_lossy().to_string(),
+            harmony_sdk_path: sdk.to_string_lossy().to_string(),
+            node_path: node.to_string_lossy().to_string(),
+            auto_detect: false,
+        });
+
+        let hvigor = resolution
+            .checks
+            .iter()
+            .find(|check| check.name == "hvigor")
+            .unwrap();
+        assert!(!hvigor.available);
+        assert!(hvigor.detail.contains("canonical project root"));
+        assert!(hvigor.detail.contains(root.to_string_lossy().as_ref()));
         fs::remove_dir_all(root).unwrap();
     }
 }

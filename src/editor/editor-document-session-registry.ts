@@ -7,17 +7,22 @@ export type EditorDocumentSession = {
   enhanced: boolean;
 };
 
-export function createEditorDocumentSessionRegistry(capacity = 32) {
+export function createEditorDocumentSessionRegistry(capacity = 32, documentCharacterBudget = 2_000_000) {
   const sessions = new Map<string, EditorDocumentSession>();
   const boundedCapacity = Math.max(1, capacity);
+  const boundedCharacterBudget = Math.max(1, documentCharacterBudget);
+  let retainedDocumentCharacters = 0;
 
   return {
     save(path: string, session: EditorDocumentSession) {
+      retainedDocumentCharacters -= sessions.get(path)?.state.doc.length ?? 0;
       sessions.delete(path);
       sessions.set(path, session);
-      while (sessions.size > boundedCapacity) {
+      retainedDocumentCharacters += session.state.doc.length;
+      while (sessions.size > boundedCapacity || retainedDocumentCharacters > boundedCharacterBudget) {
         const oldestPath = sessions.keys().next().value;
         if (oldestPath === undefined) break;
+        retainedDocumentCharacters -= sessions.get(oldestPath)?.state.doc.length ?? 0;
         sessions.delete(oldestPath);
       }
     },
@@ -29,10 +34,14 @@ export function createEditorDocumentSessionRegistry(capacity = 32) {
       return session;
     },
     delete(path: string) {
+      retainedDocumentCharacters -= sessions.get(path)?.state.doc.length ?? 0;
       sessions.delete(path);
     },
     size() {
       return sessions.size;
+    },
+    retainedDocumentCharacters() {
+      return retainedDocumentCharacters;
     },
   };
 }

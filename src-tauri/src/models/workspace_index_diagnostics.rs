@@ -223,6 +223,8 @@ pub struct WorkspaceIndexerHostSnapshot {
     pub cancelled_stub_refresh_chunks: u64,
     pub fallback_count: u64,
     #[serde(default)]
+    pub degraded_count: u64,
+    #[serde(default)]
     pub restart_count: u64,
     #[serde(default)]
     pub consecutive_failure_count: u32,

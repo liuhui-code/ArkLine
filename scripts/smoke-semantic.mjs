@@ -27,7 +27,7 @@ async function main() {
     const health = await worker.request({ id: "health-1", method: "health" })
     timings.healthMs = roundMs(performance.now() - healthStartedAt)
 
-    if (health.payload?.status !== "ready" || health.payload?.protocolVersion !== 4) {
+    if (health.payload?.status !== "ready" || health.payload?.protocolVersion !== 5) {
       throw new Error(`Worker health did not report ready: ${JSON.stringify(health.payload)}`)
     }
 

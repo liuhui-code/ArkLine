@@ -33,6 +33,8 @@ export function useBuildControllerState({
   const buildStoreRef = useRef(createBuildStore());
   const buildRunCounterRef = useRef(0);
   const buildConfigurationPersistenceRef = useRef(Promise.resolve());
+  const buildConfigurationLoadCounterRef = useRef(0);
+  const loadedBuildConfigurationRootRef = useRef<string | null>(null);
   const [buildState, setBuildState] = useState(() => ({ ...buildStoreRef.current.state }));
   const visibleBuildProject = useMemo(
     () => workspace ? detectHarmonyBuildProject(workspace.rootPath, workspace.visibleFiles) : null,
@@ -57,6 +59,17 @@ export function useBuildControllerState({
     () => buildProject?.hasBuildProfile ? `${buildProject.rootPath}/build-profile.json5` : null,
     [buildProject],
   );
+
+  useEffect(() => {
+    if (!buildProject?.isHarmonyProject || !workspaceApi.loadBuildConfigurations) {
+      return;
+    }
+    const rootPath = normalizeComparablePath(buildProject.rootPath);
+    if (loadedBuildConfigurationRootRef.current === rootPath) {
+      return;
+    }
+    void loadBuildConfigurationsForRoot(buildProject.rootPath);
+  }, [buildProject?.isHarmonyProject, buildProject?.rootPath, workspaceApi]);
 
   useEffect(() => {
     if (!workspace?.rootPath || !buildInspectionPath || !workspaceApi.inspectHarmonyBuildProject) {
@@ -121,19 +134,23 @@ export function useBuildControllerState({
   }
 
   useEffect(() => {
-    if (!buildProject?.rootPath || buildStoreRef.current.state.status === "running") {
+    if (!buildProject?.isHarmonyProject || buildStoreRef.current.state.status === "running") {
       return;
     }
     void resolveBuildEnvironment(buildProject.rootPath);
-  }, [buildProject?.rootPath, sdkSettings.autoDetect, sdkSettings.harmonySdkPath, sdkSettings.nodePath]);
+  }, [buildProject?.isHarmonyProject, buildProject?.rootPath, sdkSettings.autoDetect, sdkSettings.harmonySdkPath, sdkSettings.nodePath]);
 
   useEffect(() => {
-    const nextModule = inferBuildModuleForPath(buildProject, selectedProjectPath ?? activePath);
-    if (!nextModule || buildStoreRef.current.state.status === "running" || buildStoreRef.current.state.activeConfigurationId) {
+    if (!buildProject || buildStoreRef.current.state.status === "running" || buildStoreRef.current.state.activeConfigurationId) {
       return;
     }
-    if (buildStoreRef.current.state.moduleName !== nextModule) {
-      buildStoreRef.current.configure({ moduleName: nextModule });
+    const selection = projectBuildSelection(
+      buildProject,
+      buildStoreRef.current.state,
+      selectedProjectPath ?? activePath,
+    );
+    if (Object.keys(selection).length > 0) {
+      buildStoreRef.current.configure(selection);
       syncBuildState();
     }
   }, [activePath, buildProject, selectedProjectPath]);
@@ -178,13 +195,18 @@ export function useBuildControllerState({
   }
 
   async function loadBuildConfigurationsForRoot(rootPath: string) {
+    const loadId = ++buildConfigurationLoadCounterRef.current;
     const configurations = await workspaceApi.loadBuildConfigurations?.(rootPath) ?? [];
+    if (loadId !== buildConfigurationLoadCounterRef.current) {
+      return;
+    }
+    loadedBuildConfigurationRootRef.current = normalizeComparablePath(rootPath);
     buildStoreRef.current.loadConfigurations(configurations);
     syncBuildState();
   }
 
   async function persistBuildConfigurations() {
-    const rootPath = workspace?.rootPath;
+    const rootPath = buildProject?.isHarmonyProject ? buildProject.rootPath : workspace?.rootPath;
     if (!rootPath || !workspaceApi.saveBuildConfigurations) {
       return;
     }
@@ -245,9 +267,15 @@ export function useBuildControllerState({
     const project = workspaceApi.inspectHarmonyBuildProject
       ? await resolveBuildProject(buildInspectionPath ?? workspace.rootPath)
       : buildProject;
-    const currentState = buildStoreRef.current.state;
-    if (currentState.lastTarget !== "app" && !project?.modules.includes(currentState.moduleName) && project?.defaultModule) {
-      buildStoreRef.current.configure({ moduleName: project.defaultModule });
+    if (project) {
+      const selection = projectBuildSelection(
+        project,
+        buildStoreRef.current.state,
+        selectedProjectPath ?? activePath,
+      );
+      if (Object.keys(selection).length > 0) {
+        buildStoreRef.current.configure(selection);
+      }
       syncBuildState();
     }
     const state = buildStoreRef.current.state;
@@ -352,4 +380,29 @@ function isBuildProjectInWorkspace(project: HarmonyBuildProject, workspace: Work
 
 function normalizeComparablePath(path: string) {
   return path.replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function projectBuildSelection(
+  project: HarmonyBuildProject,
+  state: Pick<BuildState, "moduleName" | "products" | "product">,
+  selectedPath: string | null,
+): Partial<Pick<BuildState, "moduleName" | "products" | "product">> {
+  const selection: Partial<Pick<BuildState, "moduleName" | "products" | "product">> = {};
+  const moduleName = inferBuildModuleForPath(project, selectedPath);
+  if (moduleName && moduleName !== state.moduleName) {
+    selection.moduleName = moduleName;
+  }
+  const products = project.products;
+  if (products.length === 0) {
+    return selection;
+  }
+  if (products.length !== state.products.length || products.some((product, index) => product !== state.products[index])) {
+    selection.products = products;
+  }
+  if (!products.includes(state.product)) {
+    selection.product = project.defaultProduct && products.includes(project.defaultProduct)
+      ? project.defaultProduct
+      : products[0];
+  }
+  return selection;
 }

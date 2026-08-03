@@ -50,7 +50,7 @@ fn repeated_requests_do_not_restart_a_crashing_lane_during_backoff() {
     assert!(first_failure.backoff_remaining_ms.is_some());
 
     thread::sleep(Duration::from_millis(300));
-    assert_eq!(runtime.snapshot().status, "fallback");
+    assert_eq!(runtime.snapshot().status, "degraded");
     assert_eq!(
         runtime.discover_workspace_chunk(
             IndexerTaskKey {

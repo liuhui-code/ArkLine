@@ -9,7 +9,7 @@ import type { UsageResult, UsageSearchState } from "@/features/workspace/usage-s
 import type { EditorAppearance } from "@/types/editor";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 import type { Text } from "@codemirror/state";
-import type { CodeMirrorCompletionBroker } from "@/editor/codemirror-completion-source";
+import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 
 export type AppShellEditorWorkbenchProps = {
@@ -22,6 +22,8 @@ export type AppShellEditorWorkbenchProps = {
   openTabs: { path: string; title: string; isDirty: boolean }[];
   appearance: EditorAppearance;
   focusToken: number;
+  completionTarget: { action: "open" | "close"; nonce: number } | null;
+  completionEnabled: boolean;
   insertTextTarget: { text: string; replaceBefore?: number; nonce: number } | null;
   selectionTarget: { line: number; column: number; nonce: number } | null;
   workspaceName: string | null;
@@ -29,10 +31,11 @@ export type AppShellEditorWorkbenchProps = {
   onChange: (content: string) => void;
   onDocumentChange?: (document: Text) => void;
   onSelectionChange: (selection: { line: number; column: number; selectedText?: string }) => void;
-  onCaretRectChange: (rect: EditorCaretRect) => void;
+  onCaretRectChange?: (rect: EditorCaretRect) => void;
   onDefinitionTrigger: (selection?: EditorLineColumn) => void;
-  onTypingCompletionTrigger: (selection: EditorLineColumn) => void;
+  onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
+  onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   blameAttributions: GitBlameAttribution[];
   gitBlameVisible: boolean;
@@ -57,11 +60,14 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
   const onChange = useLatestCallback(props.onChange);
   const onDocumentChange = useLatestCallback((document: Text) => props.onDocumentChange?.(document));
   const onSelectionChange = useLatestCallback(props.onSelectionChange);
-  const onCaretRectChange = useLatestCallback(props.onCaretRectChange);
+  const onCaretRectChange = useLatestCallback((rect: EditorCaretRect) => props.onCaretRectChange?.(rect));
   const onDefinitionTrigger = useLatestCallback(props.onDefinitionTrigger);
-  const onTypingCompletionTrigger = useLatestCallback(props.onTypingCompletionTrigger);
+  const onTypingCompletionTrigger = useLatestCallback((selection: EditorLineColumn) => props.onTypingCompletionTrigger?.(selection));
   const onCodeMirrorCompletionRequest = useLatestCallback((request: Parameters<CodeMirrorCompletionBroker>[0]) => (
     props.onCodeMirrorCompletionRequest?.(request) ?? Promise.resolve([])
+  ));
+  const onCodeMirrorCompletionResolve = useLatestCallback((item: Parameters<CodeMirrorCompletionResolver>[0], request: Parameters<CodeMirrorCompletionResolver>[1]) => (
+    props.onCodeMirrorCompletionResolve?.(item, request) ?? Promise.resolve(item)
   ));
   const onCodeMirrorSignatureHelpRequest = useLatestCallback((request: Parameters<CodeMirrorSignatureHelpBroker>[0], signal: AbortSignal) => (
     props.onCodeMirrorSignatureHelpRequest?.(request, signal) ?? Promise.resolve(null)
@@ -93,6 +99,8 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         openTabs={props.openTabs}
         appearance={props.appearance}
         focusToken={props.focusToken}
+        completionTarget={props.completionTarget}
+        completionEnabled={props.completionEnabled}
         insertTextTarget={props.insertTextTarget}
         selectionTarget={props.selectionTarget}
         workspaceName={props.workspaceName}
@@ -100,10 +108,11 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onChange={onChange}
         onDocumentChange={props.onDocumentChange ? onDocumentChange : undefined}
         onSelectionChange={onSelectionChange}
-        onCaretRectChange={onCaretRectChange}
+        onCaretRectChange={props.onCaretRectChange ? onCaretRectChange : undefined}
         onDefinitionTrigger={onDefinitionTrigger}
-        onTypingCompletionTrigger={onTypingCompletionTrigger}
+        onTypingCompletionTrigger={props.onTypingCompletionTrigger ? onTypingCompletionTrigger : undefined}
         onCodeMirrorCompletionRequest={props.onCodeMirrorCompletionRequest ? onCodeMirrorCompletionRequest : undefined}
+        onCodeMirrorCompletionResolve={props.onCodeMirrorCompletionResolve ? onCodeMirrorCompletionResolve : undefined}
         onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
         blameAttributions={props.blameAttributions}
         gitBlameVisible={props.gitBlameVisible}

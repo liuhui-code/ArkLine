@@ -105,9 +105,9 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
     async openDemoWorkspace() {
       return loadWorkspaceSnapshot(demoWorkspace.rootPath);
     },
-    async openFile(path) {
+    async openFile(path, telemetry) {
       return hasTauriRuntime()
-        ? invoke<string>("open_text_document", { path })
+        ? invoke<string>("open_text_document", { path }, telemetry)
         : loadMockDocumentContent(path);
     },
     async saveFile(path, content) {
@@ -118,6 +118,11 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
     async syncSemanticDocument(request) {
       if (hasTauriRuntime()) {
         await invoke("sync_language_document", { request });
+      }
+    },
+    async prepareSemanticDocument(request) {
+      if (hasTauriRuntime()) {
+        await invoke("prepare_language_document", { request });
       }
     },
     async closeSemanticDocument(request) {
@@ -211,6 +216,12 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       if (!isDemoWorkspacePath(request.path)) return [];
 
       return collectFallbackCompletions(await loadMockDocumentContent(request.path));
+    },
+    async resolveCompletion(request, item, documentVersion) {
+      if (hasTauriRuntime()) {
+        return invoke<LanguageCompletionItem>("resolve_completion", { request, item, documentVersion });
+      }
+      return item;
     },
     async signatureHelp(request) {
       if (hasTauriRuntime()) {

@@ -143,25 +143,30 @@ headless model-level gate rather than packaged WebView evidence.
 The repository includes a `windows-packaged-soak` workflow that builds and
 launches the release portable executable against deterministic 1k, 20k, or 100k
 ArkTS fixtures. The release gate requires its default 20k / 30-minute run with
-`ARKLINE_INDEXER_ENABLED=1`.
+the release default indexer configuration, with no enablement environment
+override.
 
-The workflow first requires a schema-v3 `packaged-smoke-report.json` from an
+The workflow first requires a schema-v5 `packaged-smoke-report.json` from an
 isolated 1k fixture. That report
 proves executable/fixture/tool preflight, WebDriver and WebView capabilities,
 process-tree discovery, and one real search/navigation cycle; it is not latency
 or stability evidence.
 
-After both stages pass, attach the schema-v3 `packaged-soak-report.json`
+After the synthetic smoke, scale soak, and pinned real-project semantic smoke
+pass, attach the schema-v5 reports
 artifact details here with:
 
 - runner image, OS release, commit/run identity, executable SHA-256, and fixture
   marker;
 - duration plus WebDriver dispatch, search-result-visible, navigation
-  stable-paint, Event Timing, LoAF, and frame-gap p95/p99;
+  stable-paint, editor input-visible, editor scroll-frame, Event Timing, LoAF,
+  and frame-gap p95/p99;
 - Event Timing, LoAF, JS heap, and process-tree capability flags;
 - RSS/private/JS-heap and workspace/shared-SDK WAL growth;
 - final queue state, pending loads, process/handle/thread maxima, and sidecar
   restart count;
+- pinned repository/revision, explicit SDK path, Ctrl+Click target, member
+  completion labels, and Definition/Completion p95 for the real-project report;
 - the complete strict verdict and failure identifiers.
 
 Zero Event Timing or LoAF entries is acceptable when the corresponding

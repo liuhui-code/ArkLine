@@ -132,6 +132,42 @@ describe("semantic workspace session", () => {
     expect(completion.state).toMatchObject({ contentGeneration: 7, syntaxReady: true })
   })
 
+  it("prepares the synchronized document type engine before the first user query", () => {
+    const { currentPath, content } = createDependencyFixture()
+    const session = new SemanticWorkerSession()
+    session.handle({
+      id: "prepare-open",
+      method: "didOpen",
+      document: { path: currentPath, content, documentVersion: 3 },
+    })
+
+    const prepared = session.handle({
+      id: "prepare-document",
+      method: "prepareDocument",
+      position: { path: currentPath, line: 1, column: 1, documentVersion: 3 },
+    })
+    const completion = session.handle({
+      id: "prepare-completion",
+      method: "completion",
+      position: { path: currentPath, line: 3, column: 5, documentVersion: 3 },
+    })
+
+    expect(prepared).toMatchObject({
+      ok: true,
+      payload: { status: "ready", path: currentPath },
+      state: { documentVersion: 3 },
+    })
+    expect(["ready", "partial"]).toContain(prepared.state?.typeStatus)
+    expect(prepared.state?.typeGeneration).toBeGreaterThan(0)
+    expect(completion).toMatchObject({
+      ok: true,
+      state: {
+        documentVersion: 3,
+        typeGeneration: prepared.state?.typeGeneration,
+      },
+    })
+  })
+
   it("rejects conflicting or oversized document replay", () => {
     const session = new SemanticWorkerSession()
     const documentPath = path.join(os.tmpdir(), "ArkLineReplayConflict.ets")
@@ -195,7 +231,13 @@ describe("semantic workspace session", () => {
     expect(second.state).toMatchObject({
       contentGeneration: 7,
       documentCacheHit: true,
+      dependencyClosureCacheHit: true,
       queryCacheHit: true,
+    })
+    expect(second.runtime?.providerLatencies).toMatchObject({
+      workspacePrepare: expect.objectContaining({ count: 2 }),
+      typePrepare: expect.objectContaining({ count: 2 }),
+      completion: expect.objectContaining({ count: 1 }),
     })
   })
 
@@ -229,7 +271,24 @@ describe("semantic workspace session", () => {
     expect(first.payload).toMatchObject({ line: 1 })
     expect(second.payload).toMatchObject({ line: 2 })
     expect(second.state?.dependencyGeneration).toBeGreaterThan(first.state?.dependencyGeneration ?? 0)
+    expect(second.state?.dependencyClosureCacheHit).toBe(false)
     expect(second.state?.queryCacheHit).toBe(false)
+  })
+
+  it("does not retain a deleted dependency behind the closure cache", () => {
+    const { currentPath, dependencyPath, content } = createDependencyFixture()
+    const session = new SemanticWorkerSession()
+    const position = { path: currentPath, line: 3, column: 5, content, contentGeneration: 3 }
+    const first = session.handle({ id: "dependency-delete-1", method: "gotoDefinition", position })
+    fs.unlinkSync(dependencyPath)
+    const deleted = session.handle({ id: "dependency-delete-2", method: "gotoDefinition", position })
+    fs.writeFileSync(dependencyPath, "\nexport function sharedSubmit() { return 33 }\n")
+    const restored = session.handle({ id: "dependency-delete-3", method: "gotoDefinition", position })
+
+    expect(first.payload).toMatchObject({ line: 1 })
+    expect(deleted.payload).not.toMatchObject({ path: dependencyPath })
+    expect(deleted.state?.dependencyClosureCacheHit).toBe(false)
+    expect(restored.payload).toMatchObject({ line: 2 })
   })
 
   it("keeps semantic queries bounded when the workspace has many unrelated files", () => {

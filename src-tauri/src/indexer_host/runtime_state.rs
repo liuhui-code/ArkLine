@@ -115,6 +115,7 @@ pub(super) struct IndexerHostState {
     pub(super) completed_stub_refresh_chunks: u64,
     pub(super) cancelled_stub_refresh_chunks: u64,
     pub(super) fallback_count: u64,
+    pub(super) degraded_count: u64,
     pub(super) last_error: Option<String>,
 }
 
@@ -131,6 +132,7 @@ impl IndexerHostState {
             completed_stub_refresh_chunks: 0,
             cancelled_stub_refresh_chunks: 0,
             fallback_count: 0,
+            degraded_count: 0,
             last_error: None,
         }
     }

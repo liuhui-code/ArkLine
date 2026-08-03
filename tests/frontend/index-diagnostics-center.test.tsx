@@ -125,6 +125,7 @@ describe("IndexDiagnosticsCenter", () => {
       completedStubRefreshChunks: 5,
       cancelledStubRefreshChunks: 2,
       fallbackCount: 1,
+      degradedCount: 2,
       restartCount: 2,
       consecutiveFailureCount: 1,
       backoffRemainingMs: 250,
@@ -181,6 +182,7 @@ describe("IndexDiagnosticsCenter", () => {
     expect(within(health).getByText("Discovery cursor")).toBeVisible();
     expect(within(health).getByText("has more")).toBeVisible();
     expect(within(health).getByText("Cancelled chunks").nextElementSibling).toHaveTextContent("2");
+    expect(within(health).getByText("Sidecar degraded").nextElementSibling).toHaveTextContent("2");
   });
   it("renders index layer freshness evidence in health storage", () => {
     const diagnostics = diagnosticsWithBackendQueryEvent();

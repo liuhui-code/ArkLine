@@ -189,7 +189,11 @@ pub fn schedule_interrupted_resume_tasks(
 
 pub fn clear_completed_resume_tasks(results: &[WorkspaceIndexTaskResult]) -> Result<(), String> {
     for result in results {
-        if matches!(result.status.as_str(), "ready" | "skipped")
+        let consumed_continuation = matches!(result.status.as_str(), "ready" | "skipped")
+            || (result.status == "partial"
+                && result.error.is_none()
+                && result.refresh_continuation.is_none());
+        if consumed_continuation
             && result.kind == "changed-paths"
             && is_full_refresh_continuation_reason(&result.reason)
         {

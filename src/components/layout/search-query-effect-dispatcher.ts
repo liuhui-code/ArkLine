@@ -6,7 +6,7 @@ export type SearchQueryEffectDispatcherInput = {
   mode: SearchEverywhereMode;
   query: string;
   hasWorkspace: boolean;
-  startQuery: (kind: "searchEverywhere" | "text") => number;
+  startQuery: (kind: "searchEverywhere" | "text", label?: string) => number;
   clearSearchResults: (query: string) => void;
   runEntitySearch: (requestId: number) => void;
   runTextSearch: (requestId: number) => void;
@@ -23,7 +23,10 @@ export function dispatchSearchOverlayQueryEffect({
   runTextSearch,
 }: SearchQueryEffectDispatcherInput) {
   if (activeOverlay !== "searchEverywhere") return;
-  const requestId = startQuery(mode === "searchEverywhere" ? "searchEverywhere" : "text");
+  const requestId = startQuery(
+    mode === "searchEverywhere" ? "searchEverywhere" : "text",
+    query.trim(),
+  );
   if (!hasWorkspace) {
     clearSearchResults(query.trim());
     return;

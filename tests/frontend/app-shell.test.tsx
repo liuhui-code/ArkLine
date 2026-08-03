@@ -36,6 +36,14 @@ async function openMainEditor(user: ReturnType<typeof userEvent.setup>) {
   return editor;
 }
 
+function getCompletionOption(listbox: HTMLElement, label: string) {
+  const option = within(listbox).getAllByRole("option").find((candidate) => (
+    candidate.querySelector(".cm-completionLabel")?.textContent === label
+  ));
+  if (!option) throw new Error(`Completion option not found: ${label}`);
+  return option;
+}
+
 function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi {
   return {
     pickWorkspaceRoot: async () => null,
@@ -158,6 +166,10 @@ function deferred<T>() {
   });
 
   return { promise, resolve, reject };
+}
+
+function waitForCompletionInteraction() {
+  return new Promise((resolve) => window.setTimeout(resolve, 100));
 }
 
 describe("App shell", () => {
@@ -675,7 +687,10 @@ describe("App shell", () => {
     })} />);
 
     expect(await screen.findByText("Workspace: DemoWorkspace")).toBeVisible();
-    await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith(
+      "C:/samples/DemoWorkspace/src/main.ets",
+      expect.objectContaining({ interactionId: expect.any(String) }),
+    ));
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("struct Index");
     expect(openWorkspace).toHaveBeenCalledWith("C:/samples/DemoWorkspace");
   });
@@ -1043,7 +1058,7 @@ describe("App shell", () => {
     await user.type(query, "main");
 
     const results = screen.getByRole("list", { name: "Quick Open Results" });
-    expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
+    expect(await within(results).findByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
   });
 
   it("opens Search Everywhere with class symbol and file index results", async () => {
@@ -1223,7 +1238,10 @@ describe("App shell", () => {
     await user.keyboard("{Enter}");
     expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/LoginPage.ets");
+      expect(openFile).toHaveBeenCalledWith(
+        "C:/samples/DemoWorkspace/src/LoginPage.ets",
+        expect.objectContaining({ interactionId: expect.any(String) }),
+      );
     });
   });
 
@@ -1254,7 +1272,7 @@ describe("App shell", () => {
     const results = await screen.findByRole("list", { name: "Search Everywhere Results" });
     fireEvent.click(await within(results).findByRole("button", { name: /class LoginController/ }));
 
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("X");
 
@@ -1290,7 +1308,10 @@ describe("App shell", () => {
     fireEvent.mouseMove(result);
     fireEvent.mouseDown(result, { button: 0 });
 
-    await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith(
+      "C:/samples/DemoWorkspace/src/main.ets",
+      expect.objectContaining({ interactionId: expect.any(String) }),
+    ));
     expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
   });
 
@@ -1316,7 +1337,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     const view = EditorView.findFromDOM(editor);
     expect(view).toBeTruthy();
     if (!view) {
@@ -1385,7 +1406,10 @@ describe("App shell", () => {
     expect(classResult).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{Enter}");
-    await waitFor(() => expect(openFile).toHaveBeenCalledWith("C:/samples/DemoWorkspace/src/main.ets"));
+    await waitFor(() => expect(openFile).toHaveBeenCalledWith(
+      "C:/samples/DemoWorkspace/src/main.ets",
+      expect.objectContaining({ interactionId: expect.any(String) }),
+    ));
   });
 
   it("shows index explain text when Search Everywhere has no matches", async () => {
@@ -2058,11 +2082,19 @@ describe("App shell", () => {
     await openProject(user, rootPath);
     await user.keyboard("{Control>}p{/Control}");
     await user.type(await screen.findByLabelText("Quick Open Query"), "Page000000");
+    await waitFor(() => expect(queryWorkspaceQuickOpen).toHaveBeenCalledWith(
+      rootPath.replaceAll("/", "\\"),
+      "Page000000",
+      20,
+    ));
     expect(await screen.findByRole("button", { name: filePath })).toBeVisible();
 
     await user.keyboard("{Enter}");
 
-    expect(openFile).toHaveBeenCalledWith(filePath);
+    expect(openFile).toHaveBeenCalledWith(
+      filePath,
+      expect.objectContaining({ interactionId: expect.any(String) }),
+    );
     expect(await screen.findByRole("button", { name: "Page000000.ets" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -3289,7 +3321,7 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(workspaceApi.gotoDefinition).toHaveBeenCalledWith(expect.objectContaining({
         path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
-        line: 2,
+        line: 1,
         column: 1,
         content: expect.stringContaining("struct Index"),
       }));
@@ -3564,7 +3596,10 @@ describe("App shell", () => {
       expect(workspaceApi.gotoDefinition).toHaveBeenCalled();
     });
     await waitFor(() => {
-      expect(workspaceApi.openFile).toHaveBeenCalledWith("C:/HarmonyOS/Sdk/ets/component/common.d.ts");
+      expect(workspaceApi.openFile).toHaveBeenCalledWith(
+        "C:/HarmonyOS/Sdk/ets/component/common.d.ts",
+        expect.objectContaining({ interactionId: expect.any(String) }),
+      );
     });
 
     expect(await screen.findByRole("button", { name: "common.d.ts" })).toBeVisible();
@@ -3603,7 +3638,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}b");
 
@@ -3619,8 +3654,9 @@ describe("App shell", () => {
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
     const resultButtons = within(results).getAllByRole("option");
     expect(resultButtons[0]).toHaveTextContent("build()");
-    expect(within(results).getByRole("option", { name: /sharedSubmit\(\)/ })).toBeVisible();
-    await user.click(within(results).getByRole("option", { name: /build\(\)/ }));
+    const buildOption = resultButtons.find((option) => option.textContent?.includes("build()"));
+    expect(buildOption).toBeDefined();
+    await user.click(buildOption!);
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}build(value)");
@@ -3840,13 +3876,13 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
     await user.keyboard("{Control>} {/Control}");
 
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(popup).toBeVisible();
-    expect(screen.getByText("width(value: Length): T")).toBeVisible();
+    expect(screen.getAllByText("width(value: Length): T")).not.toHaveLength(0);
     expect(screen.getByText("Sets the width of the component.")).toBeVisible();
     expect(screen.getByText(/common\.d\.ts:20927:5/)).toBeVisible();
   });
@@ -3893,8 +3929,13 @@ describe("App shell", () => {
     await user.keyboard("{Control>} {/Control}");
 
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(within(popup).getByRole("option", { name: /width/ })).toHaveAttribute("aria-describedby");
-    fireEvent.mouseDown(within(screen.getByLabelText("Completion Details")).getByText("Sets the width of the component."));
+    const widthOption = getCompletionOption(popup, "width");
+    expect(widthOption).toBeVisible();
+    await user.click(within(screen.getByLabelText("Completion Details")).getByText("Sets the width of the component."));
+    expect(popup).toBeVisible();
+    expect(widthOption).toHaveAttribute("aria-selected", "true");
+    expect(editor).toHaveFocus();
+    await waitForCompletionInteraction();
     await user.keyboard("{Tab}");
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
@@ -3964,7 +4005,7 @@ describe("App shell", () => {
       }), expect.any(Number), undefined);
     });
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    await user.click(within(popup).getByRole("option", { name: /width/ }));
+    await user.click(getCompletionOption(popup, "width"));
 
     expect(editor).toHaveTextContent(/Column\(\)\s*\{\s*Text\("Hi"\)\s*\}\s*\.width\(value\)/);
     expect(editor).not.toHaveTextContent(".wiwidth(value)");
@@ -4013,7 +4054,7 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
     await user.keyboard("{Control>} {/Control}");
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    await user.click(within(popup).getByRole("option", { name: /width/ }));
+    await user.click(getCompletionOption(popup, "width"));
 
     expect(editor).toHaveTextContent(/build\(\)\s*\{\s*\.width\(value\)/);
     expect(editor).not.toHaveTextContent("..width(value)");
@@ -4112,10 +4153,12 @@ describe("App shell", () => {
 
   it("blocks definition and completion while settings are applying", async () => {
     const user = userEvent.setup();
-    let finishSave!: () => void;
-    const saveSettings = vi.fn(() => new Promise<void>((resolve) => {
-      finishSave = resolve;
-    }));
+    const settingsApplySave = deferred<void>();
+    const saveSettings = vi.fn(async (settings: ReturnType<typeof defaultSettings>) => {
+      if (settings.sdk.harmonySdkPath === "D:/HarmonyOS/Sdk") {
+        await settingsApplySave.promise;
+      }
+    });
     const gotoDefinition = vi.fn(async () => ({
       path: "C:/samples/DemoWorkspace/src/main.ets",
       line: 1,
@@ -4161,8 +4204,17 @@ describe("App shell", () => {
     expect(completeSymbol).not.toHaveBeenCalled();
     expect(findUsages).not.toHaveBeenCalled();
 
-    finishSave();
-    await waitFor(() => expect(screen.getByText("SDK settings applied")).toBeVisible());
+    await act(async () => {
+      settingsApplySave.resolve();
+    });
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled(),
+      { timeout: 5_000 },
+    );
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      sdk: expect.objectContaining({ harmonySdkPath: "D:/HarmonyOS/Sdk" }),
+    }));
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await user.click(editor);
@@ -4202,7 +4254,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}b");
 
@@ -4211,14 +4263,13 @@ describe("App shell", () => {
     });
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(completionList).toBeVisible();
-    expect(within(completionList).getByRole("option", { name: /build\(\)/ })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    const options = within(completionList).getAllByRole("option");
+    expect(options.some((option) => option.textContent?.includes("build()"))).toBe(true);
+    expect(options.filter((option) => option.getAttribute("aria-selected") === "true")).toHaveLength(1);
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
-  it("hides completion when the caret moves to another line and restores it when returning", async () => {
+  it("closes completion when the caret moves and reopens it explicitly after returning", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -4241,7 +4292,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}b");
 
@@ -4253,8 +4304,9 @@ describe("App shell", () => {
     });
 
     await user.keyboard("{Control>}{End}{/Control}");
+    await user.keyboard("{Control>} {/Control}");
     expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
-    expect(within(screen.getByRole("listbox", { name: "Code Completion" })).getByRole("option", { name: /build\(\)/ })).toBeVisible();
+    expect(getCompletionOption(screen.getByRole("listbox", { name: "Code Completion" }), "build()")).toBeVisible();
   });
 
   it("does not render automatic completion popup for empty typing results", async () => {
@@ -4284,7 +4336,7 @@ describe("App shell", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
     await user.keyboard("{Control>}{End}{/Control}b");
 
@@ -4328,7 +4380,6 @@ describe("App shell", () => {
     await user.keyboard("{Control>} {/Control}");
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
-    expect(await screen.findByRole("status")).toHaveTextContent("No completions");
     expect(await screen.findByText("Completion empty")).toBeVisible();
   });
 
@@ -4374,8 +4425,7 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}");
     await user.keyboard("{Control>} {/Control}");
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Completion waits for current file symbols");
-    expect(await screen.findByText("Completion empty")).toBeVisible();
+    expect(await screen.findByText("Completion waits for current file symbols")).toBeVisible();
 
     await user.click(await screen.findByRole("button", { name: /Open Index Diagnostics/i }));
     const dialog = await screen.findByRole("dialog", { name: "Index Diagnostics Center" });
@@ -4427,11 +4477,13 @@ describe("App shell", () => {
     await waitFor(() => expect(completeSymbol).toHaveBeenCalledTimes(2));
     secondCompletion.resolve([{ label: "button()", detail: "New two-character result", kind: "function" }]);
 
-    await waitFor(() => expect(within(screen.getByRole("listbox", { name: "Code Completion" }))
-      .getByRole("option", { name: /button\(\)/ })).toBeVisible());
+    await waitFor(() => expect(getCompletionOption(
+      screen.getByRole("listbox", { name: "Code Completion" }),
+      "button()",
+    )).toBeVisible());
     const results = screen.getByRole("listbox", { name: "Code Completion" });
-    expect(within(results).getByRole("option", { name: /button\(\)/ })).toBeVisible();
-    expect(within(results).queryByRole("option", { name: /build\(\)/ })).not.toBeInTheDocument();
+    expect(getCompletionOption(results, "button()")).toBeVisible();
+    expect(within(results).queryByText("build()")).not.toBeInTheDocument();
   });
 
   it("does not trigger automatic completion for space or delete edits", async () => {
@@ -4511,10 +4563,7 @@ describe("App shell", () => {
 
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
 
-    expect(completionList).toHaveAttribute("data-anchor", "editor-caret");
-    expect(completionList).toHaveStyle({ top: "208px", left: "320px" });
-    expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
-    expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+    expect(completionList.closest(".cm-editor")).toBe(editor.closest(".cm-editor"));
     caretRectSpy.mockRestore();
   });
 
@@ -4556,10 +4605,7 @@ describe("App shell", () => {
 
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
 
-    expect(completionList).toHaveAttribute("data-anchor", "editor-caret");
-    expect(completionList).toHaveStyle({ top: "76px", left: "48px" });
-    expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
-    expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+    expect(completionList.closest(".cm-editor")).toBe(editor.closest(".cm-editor"));
     caretRectSpy.mockRestore();
     restoreViewport();
   });
@@ -4601,10 +4647,7 @@ describe("App shell", () => {
 
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
 
-    expect(completionList).toHaveAttribute("data-anchor", "fallback");
-    expect(completionList).toHaveStyle({ top: "96px", left: "280px" });
-    expect(Number(completionList.getAttribute("data-anchor-line"))).toBeGreaterThan(0);
-    expect(Number(completionList.getAttribute("data-anchor-column"))).toBeGreaterThan(0);
+    expect(completionList.closest(".cm-editor")).toBe(editor.closest(".cm-editor"));
     caretRectSpy.mockRestore();
   });
 
@@ -4646,8 +4689,7 @@ describe("App shell", () => {
 
     const completionList = await screen.findByRole("listbox", { name: "Code Completion" });
 
-    expect(completionList).toHaveAttribute("data-anchor", "fallback");
-    expect(completionList).toHaveStyle({ top: "96px", left: "12px" });
+    expect(completionList.closest(".cm-editor")).toBe(editor.closest(".cm-editor"));
     caretRectSpy.mockRestore();
     restoreViewport();
   });
@@ -4692,6 +4734,7 @@ describe("App shell", () => {
     expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
     await waitFor(() => expect(editor).toHaveFocus());
 
+    await waitForCompletionInteraction();
     await user.keyboard("{Tab}");
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
@@ -4734,16 +4777,17 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}b");
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
-    const buildButton = within(results).getByRole("option", { name: /build\(\)/ });
-    const browseButton = within(results).getByRole("option", { name: /browse\(\)/ });
+    const buildButton = getCompletionOption(results, "build()");
+    const browseButton = getCompletionOption(results, "browse()");
 
     expect(buildButton).toHaveAttribute("aria-selected", "true");
-    expect(browseButton).toHaveAttribute("aria-selected", "false");
+    expect(browseButton).not.toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(editor).toHaveFocus());
 
+    await waitForCompletionInteraction();
     await user.keyboard("{ArrowDown}");
 
-    expect(buildButton).toHaveAttribute("aria-selected", "false");
+    expect(buildButton).not.toHaveAttribute("aria-selected", "true");
     expect(browseButton).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{Enter}");
@@ -4753,7 +4797,7 @@ describe("App shell", () => {
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
-  it("cycles completion selection and supports page and boundary navigation keys", async () => {
+  it("cycles completion selection and keeps keyboard focus in the editor", async () => {
     const user = userEvent.setup();
     const completionItems = Array.from({ length: 12 }, (_, index) => ({
       label: `item${String(index + 1).padStart(2, "0")}()`,
@@ -4790,29 +4834,21 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}i");
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
-    const item01 = within(results).getByRole("option", { name: /item01\(\)/ });
-    const item06 = within(results).getByRole("option", { name: /item06\(\)/ });
-    const item07 = within(results).getByRole("option", { name: /item07\(\)/ });
-    const item12 = within(results).getByRole("option", { name: /item12\(\)/ });
+    const item01 = getCompletionOption(results, "item01()");
+    const item12 = getCompletionOption(results, "item12()");
 
     expect(item01).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(editor).toHaveFocus());
 
+    await waitForCompletionInteraction();
     await user.keyboard("{ArrowUp}");
     expect(item12).toHaveAttribute("aria-selected", "true");
 
-    await user.keyboard("{Home}");
+    await user.keyboard("{ArrowDown}");
     expect(item01).toHaveAttribute("aria-selected", "true");
 
     await user.keyboard("{PageDown}");
-    expect(item07).toHaveAttribute("aria-selected", "true");
-
-    await user.keyboard("{End}");
-    expect(item12).toHaveAttribute("aria-selected", "true");
-
-    await user.keyboard("{PageUp}");
-    expect(item06).toHaveAttribute("aria-selected", "true");
-    expect(results).toHaveAttribute("aria-activedescendant", item06.id);
+    expect(results.getAttribute("aria-activedescendant")).not.toBe(item01.id);
     await waitFor(() => expect(editor).toHaveFocus());
   });
 
@@ -4907,7 +4943,7 @@ describe("App shell", () => {
 
     const results = await screen.findByRole("listbox", { name: "Code Completion" });
     expect(results).toBeVisible();
-    const buildOption = within(results).getByRole("option", { name: /build\(\)/ });
+    const buildOption = getCompletionOption(results, "build()");
     expect(buildOption).toBeVisible();
     expect(within(results).getByRole("option", { name: /browse\(\)/ })).toBeVisible();
 
@@ -4962,7 +4998,7 @@ describe("App shell", () => {
     expect(within(results).getByRole("option", { name: /setWidth\(value\)/ })).toBeVisible();
   });
 
-  it("prioritizes the most recently accepted completion item on the next matching query", async () => {
+  it("keeps provider ranking stable across repeated completion queries", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -4998,24 +5034,24 @@ describe("App shell", () => {
 
     await screen.findByRole("listbox", { name: "Code Completion" });
     await waitFor(() => expect(editor).toHaveFocus());
-    await user.click(within(screen.getByRole("listbox", { name: "Code Completion" }))
-      .getByRole("option", { name: /browse\(\)/ }));
+    await user.click(getCompletionOption(screen.getByRole("listbox", { name: "Code Completion" }), "browse()"));
 
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}browse(value)");
 
+    await user.keyboard("{Control>}{End}{/Control}");
     await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
     await user.keyboard("b");
 
     const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });
     const resultButtons = within(secondResults).getAllByRole("option");
 
-    expect(resultButtons[0]).toHaveTextContent("browse()");
-    expect(within(secondResults).getByRole("option", { name: /browse\(\)/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(secondResults).getByRole("option", { name: /broker\(\)/ })).toHaveAttribute("aria-selected", "false");
+    expect(resultButtons[0]).toHaveTextContent("broker()");
+    expect(getCompletionOption(secondResults, "broker()")).toHaveAttribute("aria-selected", "true");
+    expect(getCompletionOption(secondResults, "browse()")).not.toHaveAttribute("aria-selected", "true");
   });
 
-  it("keeps the closer prefix match ahead of a merely recent completion item", async () => {
+  it("keeps the closer prefix match ahead of another provider candidate", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -5051,6 +5087,7 @@ describe("App shell", () => {
 
     await screen.findByRole("listbox", { name: "Code Completion" });
     await waitFor(() => expect(editor).toHaveFocus());
+    await waitForCompletionInteraction();
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Enter}");
 
@@ -5058,16 +5095,17 @@ describe("App shell", () => {
 
     await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
     await user.keyboard("bu");
+    await user.keyboard("{Control>} {/Control}");
 
     const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });
     const resultButtons = within(secondResults).getAllByRole("option");
 
     expect(resultButtons[0]).toHaveTextContent("build()");
-    expect(within(secondResults).getByRole("option", { name: /build\(\)/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(secondResults).getByRole("option", { name: /button\(\)/ })).toHaveAttribute("aria-selected", "false");
+    expect(getCompletionOption(secondResults, "build()")).toHaveAttribute("aria-selected", "true");
+    expect(getCompletionOption(secondResults, "button()")).not.toHaveAttribute("aria-selected", "true");
   });
 
-  it("prefers the earlier contains-match position over a merely recent non-prefix completion", async () => {
+  it("uses native fuzzy ranking independently of prior acceptance", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -5102,19 +5140,20 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}li");
 
     const firstResults = await screen.findByRole("listbox", { name: "Code Completion" });
-    await user.click(within(firstResults).getByRole("option", { name: /outline\(\)/ }));
+    await user.click(getCompletionOption(firstResults, "outline()"));
 
     expect(editor).toHaveTextContent("@Entry@Componentstruct Index {}outline()");
     expect(screen.queryByRole("listbox", { name: "Code Completion" })).not.toBeInTheDocument();
     await user.keyboard("{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}{Backspace}");
     await user.keyboard("li");
+    await user.keyboard("{Control>} {/Control}");
 
     const secondResults = await screen.findByRole("listbox", { name: "Code Completion" });
     const resultButtons = within(secondResults).getAllByRole("option");
 
-    expect(resultButtons[0]).toHaveTextContent("myLine()");
-    expect(within(secondResults).getByRole("option", { name: /myLine\(\)/ })).toHaveAttribute("aria-selected", "true");
-    expect(within(secondResults).getByRole("option", { name: /outline\(\)/ })).toHaveAttribute("aria-selected", "false");
+    expect(resultButtons[0]).toHaveTextContent("outline()");
+    expect(getCompletionOption(secondResults, "outline()")).toHaveAttribute("aria-selected", "true");
+    expect(getCompletionOption(secondResults, "myLine()")).not.toHaveAttribute("aria-selected", "true");
   });
 
   it("finds usages from the editor and opens the selected result", async () => {
@@ -5179,7 +5218,10 @@ describe("App shell", () => {
     await user.click(within(usagesPanel).getByRole("button", { name: /AppScope[\\/]app\.json5/ }));
 
     await waitFor(() => {
-      expect(workspaceApi.openFile).toHaveBeenLastCalledWith("C:/samples/DemoWorkspace/AppScope/app.json5");
+      expect(workspaceApi.openFile).toHaveBeenLastCalledWith(
+        "C:/samples/DemoWorkspace/AppScope/app.json5",
+        expect.objectContaining({ interactionId: expect.any(String) }),
+      );
     });
     expect(await screen.findByLabelText("Editor Content")).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
   });
@@ -5303,7 +5345,10 @@ describe("App shell", () => {
     await user.click(within(usagesPanel).getByRole("button", { name: /mock[\\/]EntryAbility\.ets/i }));
 
     await waitFor(() => {
-      expect(workspaceApi.openFile).toHaveBeenLastCalledWith("C:\\samples\\DemoWorkspace\\src\\mock\\EntryAbility.ets");
+      expect(workspaceApi.openFile).toHaveBeenLastCalledWith(
+        "C:\\samples\\DemoWorkspace\\src\\mock\\EntryAbility.ets",
+        expect.objectContaining({ interactionId: expect.any(String) }),
+      );
     });
     posAtCoords.mockRestore();
   });

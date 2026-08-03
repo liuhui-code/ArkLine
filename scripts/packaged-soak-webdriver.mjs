@@ -157,12 +157,36 @@ export class PackagedWebDriver {
     await this.performKeyActions(keyActions);
   }
 
+  async clickAt(x, y) {
+    await this.performActions([pointerAction(x, y)]);
+  }
+
+  async modifierClickAt(x, y) {
+    await this.performActions([
+      {
+        type: "key",
+        id: "arkline-modifier",
+        actions: [
+          { type: "keyDown", value: WEBDRIVER_KEYS.control },
+          { type: "pause", duration: 0 },
+          { type: "pause", duration: 0 },
+          { type: "keyUp", value: WEBDRIVER_KEYS.control },
+        ],
+      },
+      pointerAction(x, y),
+    ]);
+  }
+
   async performKeyActions(keyActions) {
+    await this.performActions([
+      { type: "key", id: "arkline-keyboard", actions: keyActions },
+    ]);
+  }
+
+  async performActions(actions) {
     await this.sessionRequest("/actions", {
       method: "POST",
-      body: {
-        actions: [{ type: "key", id: "arkline-keyboard", actions: keyActions }],
-      },
+      body: { actions },
     });
     await this.sessionRequest("/actions", { method: "DELETE" }).catch(() => undefined);
   }
@@ -210,6 +234,20 @@ export class PackagedWebDriver {
       clearTimeout(timeout);
     }
   }
+}
+
+function pointerAction(x, y) {
+  return {
+    type: "pointer",
+    id: "arkline-pointer",
+    parameters: { pointerType: "mouse" },
+    actions: [
+      { type: "pointerMove", duration: 0, origin: "viewport", x, y },
+      { type: "pointerDown", button: 0 },
+      { type: "pointerUp", button: 0 },
+      { type: "pause", duration: 0 },
+    ],
+  };
 }
 
 async function pollUntil(operation, timeoutMs, message) {

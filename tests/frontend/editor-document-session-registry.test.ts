@@ -21,4 +21,21 @@ describe("editor document session registry", () => {
     expect(registry.restore("C")?.state.doc.toString()).toBe("C");
     expect(registry.size()).toBe(2);
   });
+
+  it("evicts old editor states when their documents exceed the character budget", () => {
+    const registry = createEditorDocumentSessionRegistry(10, 6);
+    const session = (content: string) => ({
+      state: EditorState.create({ doc: content }),
+      scrollTop: 0,
+      scrollLeft: 0,
+      enhanced: true,
+    });
+
+    registry.save("A", session("1234"));
+    registry.save("B", session("5678"));
+
+    expect(registry.restore("A")).toBeUndefined();
+    expect(registry.restore("B")?.state.doc.toString()).toBe("5678");
+    expect(registry.retainedDocumentCharacters()).toBe(4);
+  });
 });

@@ -1,0 +1,15 @@
+{
+  app: {
+    products: [
+      { name: "china" },
+      { name: "default" },
+    ],
+    buildModeSet: [
+      { name: "debug" },
+      { name: "release" },
+    ],
+  },
+  modules: [
+    { name: "entry", srcPath: "./entry" },
+  ],
+}

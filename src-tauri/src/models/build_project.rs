@@ -12,4 +12,6 @@ pub struct HarmonyBuildProject {
     pub has_oh_package: bool,
     pub modules: Vec<String>,
     pub default_module: Option<String>,
+    pub products: Vec<String>,
+    pub default_product: Option<String>,
 }

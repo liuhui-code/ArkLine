@@ -28,7 +28,10 @@ describe("useEditorNavigation", () => {
       await result.current.navigateBackFromHistory();
     });
 
-    expect(openFile).toHaveBeenCalledWith("/workspace/A.ets");
+    expect(openFile).toHaveBeenCalledWith(
+      "/workspace/A.ets",
+      expect.objectContaining({ parentInteractionId: expect.any(String) }),
+    );
     expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 4, column: 3 }));
     expect(bumpEditorFocusToken).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenCalledWith("Back: A.ets:4:3");
@@ -134,6 +137,72 @@ describe("useEditorNavigation", () => {
     });
 
     expect(onStatusChange).toHaveBeenCalledWith("Back: no previous location");
+  });
+
+  it("links file loading and visible selection under one navigation trace", async () => {
+    const callbacks: Array<() => void> = [];
+    const phase = { finish: vi.fn() };
+    const trace = { id: "navigation:7", startPhase: vi.fn(() => phase), finish: vi.fn() };
+    const openFile = vi.fn(async () => ({ ok: true }));
+    const { result } = renderHook(() => useEditorNavigation({
+      activePath: "/workspace/Current.ets",
+      editorSelection: { line: 1, column: 1 },
+      editorSurfaceRef: createRef<HTMLElement>(),
+      openFile,
+      setSelectionTarget: vi.fn(),
+      bumpEditorFocusToken: vi.fn(),
+      onStatusChange: vi.fn(),
+      beginTrace: () => trace,
+      scheduleVisibleCommit: (callback) => {
+        callbacks.push(callback);
+        return () => undefined;
+      },
+    }));
+
+    await act(async () => {
+      await result.current.navigateToLocation(
+        { path: "/workspace/Target.ets", line: 8, column: 4 },
+        "Definition",
+      );
+    });
+    callbacks.shift()?.();
+
+    expect(openFile).toHaveBeenCalledWith("/workspace/Target.ets", {
+      parentInteractionId: trace.id,
+    });
+    expect(trace.startPhase).toHaveBeenNthCalledWith(1, "openFile");
+    expect(trace.startPhase).toHaveBeenNthCalledWith(2, "applySelection");
+    expect(trace.startPhase).toHaveBeenNthCalledWith(3, "visibleCommit");
+    expect(trace.finish).toHaveBeenCalledWith("ok");
+  });
+
+  it("closes the navigation trace when file loading rejects", async () => {
+    const phase = { finish: vi.fn() };
+    const trace = { id: "navigation:8", startPhase: vi.fn(() => phase), finish: vi.fn() };
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useEditorNavigation({
+      activePath: "/workspace/Current.ets",
+      editorSelection: { line: 1, column: 1 },
+      editorSurfaceRef: createRef<HTMLElement>(),
+      openFile: vi.fn(async () => { throw new Error("disk unavailable"); }),
+      setSelectionTarget: vi.fn(),
+      bumpEditorFocusToken: vi.fn(),
+      onStatusChange,
+      beginTrace: () => trace,
+    }));
+
+    await act(async () => {
+      await result.current.navigateToLocation(
+        { path: "/workspace/Target.ets", line: 8, column: 4 },
+        "Definition",
+      );
+    });
+
+    expect(phase.finish).toHaveBeenCalledWith("error", "disk unavailable");
+    expect(trace.finish).toHaveBeenCalledWith("error");
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "Definition failed: Target.ets disk unavailable",
+    );
   });
 });
 

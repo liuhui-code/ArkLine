@@ -1,8 +1,8 @@
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentSyncRequest,
-    SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentPrepareRequest,
+    SemanticDocumentSyncRequest, SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;
@@ -13,6 +13,14 @@ pub trait SemanticProvider: Send + Sync {
     fn definition(&self, request: &LanguageQueryRequest) -> Option<DefinitionTarget>;
     fn definition_candidates(&self, request: &LanguageQueryRequest) -> Vec<DefinitionCandidate>;
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem>;
+    fn resolve_completion(
+        &self,
+        _request: &LanguageQueryRequest,
+        item: &CompletionItem,
+        _document_version: Option<u64>,
+    ) -> CompletionItem {
+        item.clone()
+    }
     fn signature_help(&self, _request: &LanguageQueryRequest) -> Option<SignatureHelp> {
         None
     }
@@ -28,6 +36,9 @@ pub trait SemanticProvider: Send + Sync {
     fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction>;
     fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution;
     fn sync_document(&self, request: &SemanticDocumentSyncRequest) -> Result<(), String>;
+    fn prepare_document(&self, _request: &SemanticDocumentPrepareRequest) -> Result<(), String> {
+        Ok(())
+    }
     fn close_document(&self, request: &SemanticDocumentCloseRequest) -> Result<(), String>;
 }
 
@@ -133,6 +144,7 @@ impl SemanticProvider for FallbackProvider {
                 replacement_range: None,
                 commit_characters: Vec::new(),
                 definition_target: None,
+                additional_text_edits: Vec::new(),
                 data: None,
             });
         };

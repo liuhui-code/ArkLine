@@ -3,7 +3,7 @@ import { EditorView, showTooltip, ViewPlugin, type Tooltip, type ViewUpdate } fr
 
 export type CodeMirrorSignatureHelpRequest = {
   path: string;
-  content: string;
+  document: Text;
   line: number;
   column: number;
   argumentIndex: number;
@@ -123,7 +123,7 @@ export function createCodeMirrorSignatureHelpExtension(
     update(update: ViewUpdate) {
       if (!update.docChanged && !update.selectionSet) return;
       const position = this.view.state.selection.main.head;
-      const context = readSignatureContext(this.view.state.doc.toString(), position);
+      const context = readSignatureContextFromDocument(this.view.state.doc, position);
       if (!context) {
         this.cancel();
         this.scheduleEffect(null, this.generation);
@@ -149,7 +149,7 @@ export function createCodeMirrorSignatureHelpExtension(
         const line = document.lineAt(position);
         const request: CodeMirrorSignatureHelpRequest = {
           path: pathValue,
-          content: document.toString(),
+          document,
           line: line.number,
           column: position - line.from + 1,
           argumentIndex,
@@ -195,6 +195,13 @@ export function createCodeMirrorSignatureHelpExtension(
   });
 
   return [signatureHelpState, plugin];
+}
+
+function readSignatureContextFromDocument(document: Text, position: number) {
+  const start = Math.max(0, position - 8192);
+  const content = document.sliceString(start, position);
+  const context = readSignatureContext(content, content.length);
+  return context ? { ...context, open: context.open + start } : null;
 }
 
 function isCallTarget(content: string, open: number) {

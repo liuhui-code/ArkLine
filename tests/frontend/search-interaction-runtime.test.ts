@@ -149,4 +149,60 @@ describe("search interaction runtime", () => {
 
     expect(onError).toHaveBeenCalledWith(failure, 1);
   });
+
+  it("records query, result application, and visible commit under one trace", async () => {
+    const phase = { finish: vi.fn() };
+    const trace = { id: "search:1", startPhase: vi.fn(() => phase), finish: vi.fn() };
+    const visibleCommits: Array<() => void> = [];
+    const runtime = createSearchInteractionRuntime({
+      beginTrace: vi.fn(() => trace),
+      scheduleVisibleCommit: (callback) => {
+        visibleCommits.push(callback);
+        return () => undefined;
+      },
+    });
+
+    const generation = runtime.startQuery("searchEverywhere", "Entry");
+    await runtime.trackQuery({
+      generation,
+      request: Promise.resolve("result"),
+      apply: vi.fn(),
+    });
+    visibleCommits.shift()?.();
+
+    expect(trace.startPhase).toHaveBeenNthCalledWith(1, "queryBroker");
+    expect(trace.startPhase).toHaveBeenNthCalledWith(2, "applyResults");
+    expect(trace.startPhase).toHaveBeenNthCalledWith(3, "visibleCommit");
+    expect(trace.finish).toHaveBeenCalledWith("ok");
+  });
+
+  it("marks an in-flight query superseded when a newer query starts", () => {
+    const first = tracedHandle("first");
+    const second = tracedHandle("second");
+    const beginTrace = vi.fn()
+      .mockReturnValueOnce(first.handle)
+      .mockReturnValueOnce(second.handle);
+    const runtime = createSearchInteractionRuntime({ beginTrace });
+    const firstGeneration = runtime.startQuery("text", "old");
+    void runtime.trackQuery({
+      generation: firstGeneration,
+      request: new Promise(() => undefined),
+      apply: vi.fn(),
+    });
+
+    runtime.startQuery("text", "new");
+
+    expect(first.phase.finish).toHaveBeenCalledWith("superseded", "newer-query");
+    expect(first.finish).toHaveBeenCalledWith("superseded");
+  });
 });
+
+function tracedHandle(id: string) {
+  const phase = { finish: vi.fn() };
+  const finish = vi.fn();
+  return {
+    handle: { id, startPhase: vi.fn(() => phase), finish },
+    phase,
+    finish,
+  };
+}

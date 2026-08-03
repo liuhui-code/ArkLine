@@ -78,6 +78,22 @@ export function collectAncestorDirectories(root: ProjectTreeNode, targetPath: st
   return ancestors;
 }
 
+export function collectPathAncestorDirectories(rootPath: string, targetPath: string) {
+  const root = normalizePath(rootPath).replace(/[\\/]+$/u, "");
+  const target = normalizePath(targetPath);
+  const separator = root.includes("\\") ? "\\" : "/";
+  if (target === root || !target.startsWith(`${root}${separator}`)) return [];
+  const relativeSegments = target.slice(root.length + 1).split(/[\\/]/u).filter(Boolean);
+  const directorySegments = relativeSegments.slice(0, -1);
+  const ancestors: string[] = [];
+  let current = root;
+  for (const segment of directorySegments) {
+    current = `${current}${separator}${segment}`;
+    ancestors.push(current);
+  }
+  return ancestors;
+}
+
 function buildFlatTree(tree: FileTreeNode[]) {
   const paths = tree.map((node) => node.path);
   const splitPaths = paths.map(splitPathSegments);

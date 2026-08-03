@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "kind": "real-workspace",
+  "revision": "17b6899086a57a4d48448842a14f9e325e3e35a3",
+  "sdkIdentity": "arkline-golden-openharmony-subset-v1",
+  "projectSdkTarget": "HarmonyOS 6.0.1 (API 21)",
+  "repository": {
+    "url": "https://github.com/Joker-x-dev/CoolMallArkTS.git",
+    "license": "MIT"
+  },
+  "findQueries": [
+    "aboutToAppear",
+    "WindowAdapter"
+  ],
+  "quickOpenTargets": [
+    {
+      "query": "EntryPage",
+      "title": "EntryPage.ets",
+      "editorNeedle": "struct EntryPage"
+    },
+    {
+      "query": "EntryViewModel",
+      "title": "EntryViewModel.ets",
+      "editorNeedle": "class EntryViewModel"
+    }
+  ],
+  "definitionTargets": [
+    {
+      "source": {
+        "query": "EntryPage",
+        "title": "EntryPage.ets",
+        "editorNeedle": "struct EntryPage"
+      },
+      "token": "EntryViewModel",
+      "occurrence": 1,
+      "target": {
+        "title": "EntryViewModel.ets",
+        "editorNeedle": "export default class EntryViewModel"
+      }
+    }
+  ],
+  "completionTargets": [
+    {
+      "source": {
+        "query": "EntryPage",
+        "title": "EntryPage.ets",
+        "editorNeedle": "struct EntryPage"
+      },
+      "lineNeedle": "this.vm.aboutToAppear(hostContext);",
+      "cursorAfter": "this.vm.",
+      "expectedLabels": [
+        "aboutToAppear",
+        "aboutToDisappear"
+      ],
+      "forbiddenLabels": [
+        "public",
+        "private",
+        "build",
+        "build()"
+      ]
+    }
+  ]
+}

@@ -18,9 +18,11 @@ import {
   createSemanticDocumentSyncQueue,
   type SemanticDocumentSyncQueue,
 } from "@/features/semantic/semantic-document-sync";
+import { beginInteractionTrace } from "@/features/performance/interaction-trace-store";
 
 type DocumentStoreRef = MutableRefObject<{
   getDocument(path: string): { currentContent: string } | undefined;
+  getDocumentText?(path: string): Text | undefined;
   openDocument(path: string, content: string): void;
   openDocumentText?(path: string, content: string, document: Text): void;
   updateDocument(path: string, content: string): { dirtyChanged: boolean };
@@ -41,8 +43,7 @@ export type UseEditorSurfaceControllerOptions = {
   syncTabs: () => void;
   setActiveDocument: (path: string | null) => void;
   includeVisibleWorkspaceFile: (path: string) => void;
-  clearCompletionSession: () => void;
-  resetCompletionAnchor: () => void;
+  closeCompletion: () => void;
   resetCodeActionSession: () => void;
   setEditorSelection: (selection: { line: number; column: number; selectedText?: string }) => void;
   setInsertTextTarget: (target: { text: string; replaceBefore?: number; nonce: number } | null) => void;
@@ -52,7 +53,6 @@ export type UseEditorSurfaceControllerOptions = {
   bumpEditorFocusToken: () => void;
   rememberCurrentLocation: () => void;
   focusEditorSoon: () => void;
-  syncCompletionForEditorSelection: (selection: { line: number; column: number; selectedText?: string }) => void;
   onStatusChange: (message: string) => void;
   documentLoadCoordinator?: DocumentLoadCoordinator;
   scheduleActivation?: (request: DocumentActivationRequest) => Promise<void>;
@@ -65,6 +65,10 @@ export type RestoreFileResult = {
   errorMessage?: string;
 };
 
+export type OpenFileInteractionContext = {
+  parentInteractionId?: string;
+};
+
 export function useEditorSurfaceController({
   workspaceApi,
   activePath,
@@ -74,8 +78,7 @@ export function useEditorSurfaceController({
   syncTabs,
   setActiveDocument,
   includeVisibleWorkspaceFile,
-  clearCompletionSession,
-  resetCompletionAnchor,
+  closeCompletion,
   resetCodeActionSession,
   setEditorSelection,
   setInsertTextTarget,
@@ -85,7 +88,6 @@ export function useEditorSurfaceController({
   bumpEditorFocusToken,
   rememberCurrentLocation,
   focusEditorSoon,
-  syncCompletionForEditorSelection,
   onStatusChange,
   documentLoadCoordinator,
   scheduleActivation = scheduleDocumentActivation,
@@ -99,13 +101,16 @@ export function useEditorSurfaceController({
   const documentLoad = documentLoadCoordinator ?? fallbackDocumentLoadRef.current;
   const semanticSyncRef = useRef(semanticDocumentSync ?? createSemanticDocumentSyncQueue(workspaceApi));
 
-  function syncLoadedDocument(path: string, content: string, method: "didOpen" | "didChange" = "didOpen") {
+  function syncLoadedDocument(path: string, content: string | Text, method: "didOpen" | "didChange" = "didOpen") {
     if (method === "didOpen") semanticSyncRef.current.open(path, content);
     else semanticSyncRef.current.change(path, content);
   }
 
-  async function openFile(path: string): Promise<RestoreFileResult> {
-    return openFileInternal(path, "preview");
+  async function openFile(
+    path: string,
+    interaction: OpenFileInteractionContext = {},
+  ): Promise<RestoreFileResult> {
+    return openFileInternal(path, "preview", interaction);
   }
 
   async function restoreFile(path: string): Promise<RestoreFileResult> {
@@ -119,42 +124,68 @@ export function useEditorSurfaceController({
   async function openFileInternal(
     path: string,
     disposition: "pinned" | "preview",
+    interaction: OpenFileInteractionContext = {},
   ): Promise<RestoreFileResult> {
     const title = getPathBasename(path);
     const transaction = runtimeRef.current.navigation.start(path);
+    const trace = beginInteractionTrace("openFile", title, transaction.id, {
+      parentId: interaction.parentInteractionId,
+      attributes: { path, disposition },
+    });
     if (documentsRef.current.getDocument(path)) {
       if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
-        if (activePath && activePath !== path) semanticSyncRef.current.close(activePath);
+        const activationPhase = trace.startPhase("activateCachedDocument");
         activateLoadedDocument(path, disposition);
-        syncLoadedDocument(path, documentsRef.current.getDocument(path)?.currentContent ?? "");
+        const snapshot = documentsRef.current.getDocumentText?.(path)
+          ?? documentsRef.current.getDocument(path)?.currentContent
+          ?? "";
+        syncLoadedDocument(path, snapshot);
+        activationPhase.finish();
         runtimeRef.current.navigation.finish(transaction.id);
         onStatusChange(`Opened ${title}`);
+        trace.finish();
+      } else {
+        trace.finish("superseded");
       }
       return { ok: true };
     }
     onStatusChange(`Opening ${title}...`);
     const cached = documentLoad.peek(path) !== undefined;
     let content: string;
+    const loadPhase = trace.startPhase(cached ? "loadCachedFile" : "loadFile");
     try {
-      content = await documentLoad.load(path, workspaceApi.openFile);
+      content = await documentLoad.load(
+        path,
+        (filePath) => workspaceApi.openFile(filePath, { interactionId: trace.id }),
+      );
+      loadPhase.finish();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
+      loadPhase.finish("error", message);
+      const current = runtimeRef.current.navigation.isCurrent(transaction.id);
+      if (current) {
         runtimeRef.current.navigation.finish(transaction.id);
         onStatusChange(`Open failed ${title}: ${message}`);
       }
+      trace.finish(current ? "error" : "superseded");
       return { ok: false, errorMessage: message };
     }
     if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
+      trace.finish("superseded");
       return { ok: false, errorMessage: "superseded" };
     }
+    const preparePhase = trace.startPhase("prepareDocument");
     try {
       await scheduleActivation({ cached, contentLength: content.length });
       if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
+        preparePhase.finish("superseded");
+        trace.finish("superseded");
         return { ok: false, errorMessage: "superseded" };
       }
       const document = await prepareDocumentText(content);
       if (!runtimeRef.current.navigation.isCurrent(transaction.id)) {
+        preparePhase.finish("superseded");
+        trace.finish("superseded");
         return { ok: false, errorMessage: "superseded" };
       }
       if (documentsRef.current.openDocumentText) {
@@ -162,19 +193,27 @@ export function useEditorSurfaceController({
       } else {
         documentsRef.current.openDocument(path, content);
       }
+      preparePhase.finish();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
+      preparePhase.finish("error", message);
+      const current = runtimeRef.current.navigation.isCurrent(transaction.id);
+      if (current) {
         runtimeRef.current.navigation.finish(transaction.id);
         onStatusChange(`Open failed ${title}: ${message}`);
       }
+      trace.finish(current ? "error" : "superseded");
       return { ok: false, errorMessage: message };
     }
-    if (activePath && activePath !== path) semanticSyncRef.current.close(activePath);
+    const activationPhase = trace.startPhase("activateEditor");
     activateLoadedDocument(path, disposition);
+    activationPhase.finish();
+    const semanticPhase = trace.startPhase("enqueueSemanticSync");
     syncLoadedDocument(path, content);
+    semanticPhase.finish();
     runtimeRef.current.navigation.finish(transaction.id);
     onStatusChange(`Opened ${title}`);
+    trace.finish();
     return { ok: true };
   }
 
@@ -183,8 +222,7 @@ export function useEditorSurfaceController({
     syncTabs();
     setActiveDocument(path);
     includeVisibleWorkspaceFile(path);
-    clearCompletionSession();
-    resetCompletionAnchor();
+    closeCompletion();
     resetCodeActionSession();
     setEditorSelection({ line: 1, column: 1 });
     setInsertTextTarget(null);
@@ -234,7 +272,7 @@ export function useEditorSurfaceController({
     }
     const result = documentsRef.current.applyEditorDocument?.(activePath, document)
       ?? documentsRef.current.updateDocument(activePath, document.toString());
-    syncLoadedDocument(activePath, document.toString(), "didChange");
+    syncLoadedDocument(activePath, document, "didChange");
     if (result.dirtyChanged) {
       tabsRef.current.pinTab?.(activePath);
       syncTabs();
@@ -244,7 +282,6 @@ export function useEditorSurfaceController({
 
   function handleEditorSelectionChange(selection: { line: number; column: number; selectedText?: string }) {
     setEditorSelection(selection);
-    syncCompletionForEditorSelection(selection);
   }
 
   return {

@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "id": "arkline-core-semantic-v1",
+  "projectDirectory": "project",
+  "sdkDirectory": "sdk/openharmony",
+  "cases": [
+    {
+      "id": "definition.imported-property",
+      "capability": "definition",
+      "coverage": ["definition", "cross-file", "import", "member"],
+      "query": {
+        "file": "Definition.ts",
+        "marker": "definition.imported-property.query"
+      },
+      "expected": {
+        "file": "Model.ts",
+        "marker": "definition.imported-property.target"
+      }
+    },
+    {
+      "id": "definition.local-function",
+      "capability": "definition",
+      "coverage": ["definition", "same-file", "function"],
+      "query": {
+        "file": "LocalDefinition.ts",
+        "marker": "definition.local-function.query"
+      },
+      "expected": {
+        "file": "LocalDefinition.ts",
+        "marker": "definition.local-function.target"
+      }
+    },
+    {
+      "id": "definition.reexported-import-alias",
+      "capability": "definition",
+      "coverage": ["definition", "cross-file", "re-export", "alias"],
+      "query": {
+        "file": "AliasDefinition.ts",
+        "marker": "definition.reexported-import-alias.query"
+      },
+      "expected": {
+        "file": "Domain.ts",
+        "marker": "definition.reexported-import-alias.target"
+      }
+    },
+    {
+      "id": "definition.arkui-width",
+      "capability": "definition",
+      "coverage": ["definition", "arkui", "sdk", "provider"],
+      "query": {
+        "file": "ArkuiProvider.ets",
+        "marker": "definition.arkui-width.query"
+      },
+      "expected": {
+        "file": "@sdk/ets/component/common.d.ts",
+        "marker": "definition.arkui-width.target"
+      }
+    },
+    {
+      "id": "definition.sdk-system-type",
+      "capability": "definition",
+      "coverage": ["definition", "sdk", "system-api", "provider"],
+      "query": {
+        "file": "SdkDefinition.ets",
+        "marker": "definition.sdk-system-type.query"
+      },
+      "expected": {
+        "file": "@sdk/js/api/@ohos.app.ability.common.d.ts",
+        "marker": "definition.sdk-system-type.target"
+      }
+    },
+    {
+      "id": "completion.typed-receiver",
+      "capability": "completion",
+      "coverage": ["completion", "member", "typed-receiver", "typescript"],
+      "query": {
+        "file": "Completion.ts",
+        "marker": "completion.typed-receiver.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "displayName", "kind": "property" },
+          { "label": "refresh", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build"]
+      }
+    },
+    {
+      "id": "completion.generic-member-chain",
+      "capability": "completion",
+      "coverage": ["completion", "member", "generic", "re-export", "typescript"],
+      "query": {
+        "file": "GenericCompletion.ts",
+        "marker": "completion.generic-member-chain.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "accountName", "kind": "property" },
+          { "label": "save", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build"]
+      }
+    },
+    {
+      "id": "completion.async-return-receiver",
+      "capability": "completion",
+      "coverage": ["completion", "member", "async-return", "re-export", "typescript"],
+      "query": {
+        "file": "AsyncCompletion.ts",
+        "marker": "completion.async-return-receiver.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "accountName", "kind": "property" },
+          { "label": "save", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build"]
+      }
+    },
+    {
+      "id": "completion.arkui-column",
+      "capability": "completion",
+      "coverage": ["completion", "arkui", "sdk", "provider", "member"],
+      "query": {
+        "file": "ArkuiProvider.ets",
+        "marker": "completion.arkui-column.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "width", "kind": "method" },
+          { "label": "height", "kind": "method" },
+          { "label": "justifyContent", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build", "build()"]
+      }
+    },
+    {
+      "id": "completion.sdk-interface-receiver",
+      "capability": "completion",
+      "coverage": ["completion", "sdk", "system-api", "sdk-member", "member", "provider"],
+      "query": {
+        "file": "SdkCompletion.ets",
+        "marker": "completion.sdk-interface-receiver.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "filesDir", "kind": "property" },
+          { "label": "terminateSelf", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build", "build()"]
+      }
+    },
+    {
+      "id": "completion.arkts-this-receiver",
+      "capability": "completion",
+      "coverage": ["completion", "member", "arkts", "this-receiver", "negative-candidates"],
+      "query": {
+        "file": "ArktsCompletion.ets",
+        "marker": "completion.arkts-this-receiver.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "title", "kind": "property" },
+          { "label": "updateTitle", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build", "build()"]
+      }
+    },
+    {
+      "id": "completion.arkts-virtual-document",
+      "capability": "completion",
+      "coverage": ["completion", "member", "arkts", "virtual-document", "source-map"],
+      "query": {
+        "file": "VirtualDocumentCompletion.ets",
+        "marker": "completion.arkts-virtual-document.query"
+      },
+      "expected": {
+        "topK": 5,
+        "required": [
+          { "label": "title", "kind": "property" },
+          { "label": "render", "kind": "method" }
+        ],
+        "forbiddenKinds": ["keyword", "snippet"],
+        "forbiddenLabels": ["public", "private", "build", "build()"]
+      }
+    }
+  ]
+}

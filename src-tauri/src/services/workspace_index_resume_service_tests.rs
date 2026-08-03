@@ -102,7 +102,7 @@ fn clears_resume_tasks_for_root() {
 }
 
 #[test]
-fn clears_completed_file_layer_resume_task() {
+fn clears_consumed_partial_file_layer_resume_task() {
     let root = unique_temp_dir("workspace-index-resume-clear-file-layer");
     fs::create_dir_all(&root).unwrap();
     let root_path = root.to_string_lossy().to_string();
@@ -116,7 +116,7 @@ fn clears_completed_file_layer_resume_task() {
     clear_completed_resume_tasks(&[WorkspaceIndexTaskResult {
         root_path: root_path.clone(),
         kind: "changed-paths".to_string(),
-        status: "ready".to_string(),
+        status: "partial".to_string(),
         reason: reason.to_string(),
         generation: 7,
         started_at: Some(100),

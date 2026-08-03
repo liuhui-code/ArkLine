@@ -6,6 +6,7 @@ import {
   symbolAtPosition,
 } from "./document-analysis.js"
 import { discoverHarmonySdk } from "../sdk/discovery.js"
+import { harmonySdkModuleCandidates } from "../sdk/module-resolver.js"
 import { findArkuiApiDefinition } from "../sdk/arkui-api-index.js"
 import { findArkuiContext } from "./arkui-context.js"
 
@@ -179,7 +180,7 @@ function resolveImportedSdkCandidates(
   }
 
   const documents = importedModules.flatMap((moduleSpecifier) =>
-    resolveSdkModulePaths(sdkPath, moduleSpecifier).flatMap((modulePath) => {
+    harmonySdkModuleCandidates(sdkPath, moduleSpecifier).flatMap((modulePath) => {
       const moduleContent = readDocument(modulePath)
       return moduleContent ? [{ path: modulePath, content: moduleContent }] : []
     }),
@@ -199,19 +200,6 @@ function extractImportedModuleSpecifiers(content: string): string[] {
       const match = lineText.match(/import\s+(?:type\s+)?(?:[^'"]+)\s+from\s+['"]([^'"]+)['"]/)
       return match?.[1] ? [match[1]] : []
     })
-}
-
-function resolveSdkModulePaths(sdkRoot: string, moduleSpecifier: string): string[] {
-  if (!moduleSpecifier.startsWith("@ohos.")) {
-    return []
-  }
-
-  return [
-    path.join(sdkRoot, "js", "api", `${moduleSpecifier}.d.ts`),
-    path.join(sdkRoot, "js", "api", `${moduleSpecifier}.d.ets`),
-    path.join(sdkRoot, "ets", "api", `${moduleSpecifier}.d.ts`),
-    path.join(sdkRoot, "ets", "api", `${moduleSpecifier}.d.ets`),
-  ]
 }
 
 export function resolveDefinition(

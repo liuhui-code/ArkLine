@@ -4,6 +4,7 @@ import type { IpcLatencySample } from "@/features/performance/ipc-latency-store"
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 import { formatPerformanceEventEvidence } from "@/components/layout/index-diagnostics-performance-evidence";
 import { formatClockTime } from "@/components/layout/index-diagnostics-model";
+import { useInteractionTraces } from "@/features/performance/use-interaction-traces";
 
 type IndexDiagnosticsPerformanceTimelineSectionProps = {
   timelineCount: number;
@@ -22,8 +23,9 @@ export function IndexDiagnosticsPerformanceTimelineSection({
   ipcLatencySamples,
   renderPressureSamples,
 }: IndexDiagnosticsPerformanceTimelineSectionProps) {
+  const interactionTraces = useInteractionTraces();
   const performanceEvidence = recentEvents.flatMap((event) => formatPerformanceEventEvidence(event));
-  const totalTimelineCount = timelineCount + performanceEvidence.length;
+  const totalTimelineCount = timelineCount + performanceEvidence.length + interactionTraces.length;
   return (
     <section className="index-diagnostics__section" id="index-diagnostics-timeline" aria-label="Performance Timeline">
       <div className="index-diagnostics__section-title">
@@ -31,6 +33,21 @@ export function IndexDiagnosticsPerformanceTimelineSection({
         <span>{totalTimelineCount} events</span>
       </div>
       <div className="index-diagnostics__timeline">
+        {interactionTraces.map((trace) => (
+          <div className="index-diagnostics__timeline-item" key={`interaction:${trace.id}`}>
+            <span className={`index-diagnostics__severity index-diagnostics__severity--${trace.status === "error" ? "error" : trace.status === "ok" ? "info" : "warning"}`}>trace</span>
+            <div>
+              <strong>{trace.kind} · {trace.label}{trace.generation == null ? "" : ` · g${trace.generation}`}</strong>
+              <span>
+                {trace.parentId ? `parent ${trace.parentId} · ` : ""}
+                {trace.phases.map((phase) => (
+                  `${phase.name} ${phase.durationMs}ms ${phase.status}${phase.detail ? ` (${phase.detail})` : ""}`
+                )).join(" · ") || trace.status}
+              </span>
+            </div>
+            <span>{trace.durationMs == null ? trace.status : `${trace.durationMs}ms`}</span>
+          </div>
+        ))}
         {performanceEvidence.length > 0 ? (
           <div className="index-diagnostics__timeline-item">
             <span className="index-diagnostics__severity index-diagnostics__severity--warning">perf</span>
@@ -56,7 +73,11 @@ export function IndexDiagnosticsPerformanceTimelineSection({
             <span className={`index-diagnostics__severity index-diagnostics__severity--${item.status === "error" ? "error" : "info"}`}>ipc</span>
             <div>
               <strong>{item.command}</strong>
-              <span>{item.status}</span>
+              <span>
+                {item.status}
+                {item.generation == null ? "" : ` · g${item.generation}`}
+                {item.interactionId ? ` · trace ${item.interactionId}` : ""}
+              </span>
             </div>
             <span>{item.durationMs}ms</span>
           </div>

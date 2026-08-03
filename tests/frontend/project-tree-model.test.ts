@@ -3,6 +3,7 @@ import {
   buildProjectEntries,
   buildProjectTree,
   collectAncestorDirectories,
+  collectPathAncestorDirectories,
 } from "@/components/layout/project-tree-model";
 
 describe("project tree model", () => {
@@ -52,6 +53,19 @@ describe("project tree model", () => {
 
     expect(collectAncestorDirectories(root, "/workspace/src/pages/Index.ets")).toEqual([
       "/workspace/src/pages",
+    ]);
+  });
+
+  it("derives unloaded lazy ancestors directly from a Windows target path", () => {
+    expect(collectPathAncestorDirectories(
+      "C:/samples/ArkDemo",
+      "C:/samples/ArkDemo/entry/src/main/ets/pages/Index.ets",
+    )).toEqual([
+      "C:\\samples\\ArkDemo\\entry",
+      "C:\\samples\\ArkDemo\\entry\\src",
+      "C:\\samples\\ArkDemo\\entry\\src\\main",
+      "C:\\samples\\ArkDemo\\entry\\src\\main\\ets",
+      "C:\\samples\\ArkDemo\\entry\\src\\main\\ets\\pages",
     ]);
   });
 });

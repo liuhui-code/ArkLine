@@ -1,5 +1,6 @@
 const SAMPLE_LIMIT = 4096;
 const TRACKED_INTERACTION_LABELS = new Set([
+  "Editor Content",
   "Find in Files Query",
   "Quick Open Query",
 ]);
@@ -143,7 +144,8 @@ export const TELEMETRY_SNAPSHOT_SCRIPT = `
     longTaskCount: state.longTaskCount || 0,
     scriptAttributions: Object.values(state.scriptAttributions || {}),
     renderPressure: window.__arklineRenderPressure || null,
-    ipcLatencySamples: window.__arklineIpcLatencySamples || []
+    ipcLatencySamples: window.__arklineIpcLatencySamples || [],
+    interactionTraces: window.__arklineInteractionTraces || []
   };
 `;
 

@@ -109,7 +109,7 @@ impl SemanticHostSupervisor {
             last_heartbeat_epoch_ms: state.last_heartbeat_epoch_ms,
             retry_after_ms: retry_remaining_ms(state.retry_not_before),
             last_error: state.last_error.clone(),
-            runtime: state.runtime,
+            runtime: state.runtime.clone(),
             memory_budget_bytes: self.memory_budget_bytes,
             request_actor: None,
         }
@@ -128,13 +128,14 @@ impl SemanticHostSupervisor {
         state.last_heartbeat_epoch_ms = Some(epoch_ms());
         state.last_heartbeat_instant = Some(Instant::now());
         state.retry_not_before = None;
-        state.runtime = runtime.or(state.runtime);
+        state.runtime = runtime.or_else(|| state.runtime.clone());
         if reset_failures {
             state.consecutive_failures = 0;
             state.last_error = None;
         }
         let exceeded = state
             .runtime
+            .as_ref()
             .is_some_and(|value| value.rss_bytes > self.memory_budget_bytes);
         if exceeded {
             state.status = "recycling";

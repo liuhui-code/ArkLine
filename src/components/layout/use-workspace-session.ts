@@ -101,11 +101,12 @@ export function useWorkspaceSession({
         return current;
       }
 
-      const visibleFiles = uniqueNormalizedPaths([...current.visibleFiles, normalizedPath]);
       const nextWorkspace = {
         ...current,
-        visibleFiles,
-        fileTree: createFileTreeNodes(visibleFiles),
+        visibleFiles: [...current.visibleFiles, normalizedPath],
+        fileTree: current.scanSummary.truncated
+          ? current.fileTree
+          : [...current.fileTree, ...createFileTreeNodes([normalizedPath])],
       };
       onIncludeWorkspaceIndexPath(normalizedPath);
       return nextWorkspace;

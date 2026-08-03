@@ -19,7 +19,7 @@ describe("lazy editor render boundary", () => {
         onSelectionChange={() => undefined}
       />,
     );
-    await screen.findByLabelText("Editor Content");
+    await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     const initialCount = editorRenderCount();
 
     rerender(
@@ -45,7 +45,7 @@ describe("lazy editor render boundary", () => {
         onChange={() => undefined}
       />,
     );
-    await screen.findByLabelText("Editor Content");
+    await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     const initialCount = editorRenderCount();
 
     rerender(

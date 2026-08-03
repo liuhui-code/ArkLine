@@ -1,6 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
+use crate::models::workspace::{
+    WorkspaceIndexRefreshResult, WorkspaceIndexStatus, WorkspaceIndexTaskStatus,
+};
 use crate::services::workspace_discovery_task_service::{
     discovery_task_kind_label, is_workspace_discovery_task_reason,
 };
@@ -43,7 +45,7 @@ pub fn refresh_task_result(
     WorkspaceIndexTaskResult {
         root_path: task.root_path.to_string(),
         kind: kind.to_string(),
-        status: refresh_result.state.status.to_string(),
+        status: refresh_result_task_status(&refresh_result.state.status).to_string(),
         reason: task.reason.to_string(),
         generation: task.generation,
         started_at: Some(started_at),
@@ -58,6 +60,16 @@ pub fn refresh_task_result(
         sdk_symbol_count: None,
         progress_current: 1,
         progress_total: 1,
+    }
+}
+
+fn refresh_result_task_status(status: &WorkspaceIndexStatus) -> &'static str {
+    match status {
+        WorkspaceIndexStatus::Empty | WorkspaceIndexStatus::Ready => "ready",
+        WorkspaceIndexStatus::Scanning
+        | WorkspaceIndexStatus::Partial
+        | WorkspaceIndexStatus::Stale => "partial",
+        WorkspaceIndexStatus::Failed => "failed",
     }
 }
 

@@ -97,6 +97,13 @@ fn background_worker_drains_tasks_and_reports_statuses() {
     assert!(observed
         .iter()
         .any(|status| status == &("sdk".to_string(), "ready".to_string())));
+    for _ in 0..80 {
+        if !manager.is_background_worker_batch_running() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    assert!(!manager.is_background_worker_batch_running());
 
     fs::remove_dir_all(root).unwrap();
 }

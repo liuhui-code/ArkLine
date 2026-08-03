@@ -444,8 +444,7 @@ function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceCont
     syncTabs: vi.fn(),
     setActiveDocument: vi.fn(),
     includeVisibleWorkspaceFile: vi.fn(),
-    clearCompletionSession: vi.fn(),
-    resetCompletionAnchor: vi.fn(),
+    closeCompletion: vi.fn(),
     resetCodeActionSession: vi.fn(),
     setEditorSelection: vi.fn(),
     setInsertTextTarget: vi.fn(),
@@ -455,7 +454,6 @@ function renderHarness(overrides: Partial<Parameters<typeof useEditorSurfaceCont
     bumpEditorFocusToken: vi.fn(),
     rememberCurrentLocation: vi.fn(),
     focusEditorSoon: vi.fn(),
-    syncCompletionForEditorSelection: vi.fn(),
     onStatusChange: vi.fn(),
     ...overrides,
   }));

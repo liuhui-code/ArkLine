@@ -159,6 +159,22 @@ describe("packaged Windows soak foundation", () => {
         "interaction-timing-p95",
       ]),
     });
+
+    expect(evaluateSoakReport(passingSoakMetrics({
+      rendererSearchP99Ms: 751,
+      rendererEditorInputP99Ms: 101,
+      longTaskMaxMs: 501,
+      causalTraceRunningCount: 1,
+      causalTraceKindCount: 2,
+    }))).toMatchObject({
+      failures: expect.arrayContaining([
+        "renderer-search-p99",
+        "renderer-editor-input-p99",
+        "renderer-long-task-max",
+        "causal-trace-left-running",
+        "incomplete-causal-trace-coverage",
+      ]),
+    });
   });
 
   it("keeps WebView telemetry bounded and separates frame blocking evidence", () => {
@@ -207,9 +223,16 @@ describe("packaged Windows soak foundation", () => {
       staleApplyCount: 0,
       successfulSearchCount: 1,
       successfulJumpCount: 1,
+      successfulEditorInputCount: 1,
+      successfulEditorScrollCount: 1,
+      editorInteractionFailureCount: 0,
       eventTimingSupported: true,
       longAnimationFrameSupported: true,
       processTreeSampleCount: 1,
+      causalTraceCount: 3,
+      causalTraceErrorCount: 0,
+      causalTraceRunningCount: 0,
+      causalTraceKindCount: 3,
     })).toMatchObject({ passed: true, failures: [] });
 
     expect(evaluateSmokeReport({
@@ -218,6 +241,9 @@ describe("packaged Windows soak foundation", () => {
       staleApplyCount: 0,
       successfulSearchCount: 0,
       successfulJumpCount: 0,
+      successfulEditorInputCount: 0,
+      successfulEditorScrollCount: 0,
+      editorInteractionFailureCount: 1,
       eventTimingSupported: false,
       longAnimationFrameSupported: false,
       processTreeSampleCount: 0,
@@ -226,6 +252,9 @@ describe("packaged Windows soak foundation", () => {
       failures: expect.arrayContaining([
         "no-search-result",
         "no-navigation",
+        "no-editor-input-evidence",
+        "no-editor-scroll-evidence",
+        "editor-interaction-failure",
         "missing-event-timing",
         "missing-long-animation-frame",
         "no-process-tree-evidence",
@@ -275,7 +304,7 @@ describe("packaged Windows soak foundation", () => {
       await mkdir(fixturePath);
       await writeFile(
         path.join(fixturePath, ".arkline-performance-fixture.json"),
-        JSON.stringify({ version: 1, profile: "small", fileCount: 1_000 }),
+        JSON.stringify({ version: 2, profile: "small", fileCount: 1_000 }),
       );
       for (const index of [0, 999]) {
         const relativePath = buildFixtureRelativePath(index);
@@ -320,7 +349,7 @@ describe("packaged Windows soak foundation", () => {
     });
 
     expect(report).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 5,
       mode: "smoke",
       durationMs: 100,
       fatalError: {
@@ -378,6 +407,8 @@ describe("packaged Windows soak foundation", () => {
       automationDispatchSamples: [5_000],
       searchReadySamples: [80],
       jumpSamples: [90],
+      editorInputSamples: [20],
+      editorScrollSamples: [16],
       diagnostics: [
         { walSizeBytes: 100, sharedSdkWalSizeBytes: 20, workerRestartCount: 0 },
         {
@@ -422,18 +453,30 @@ describe("packaged Windows soak foundation", () => {
           counts: { AppShell: 4 },
           lastRenderedAt: { AppShell: 100 },
         },
+        interactionTraces: [
+          traceEvidence("editorInput", "input:1", 20),
+          traceEvidence("text", "search:1", 80),
+          traceEvidence("navigation", "navigation:1", 210),
+        ],
         eventTimingCount: 1,
         frames: 60,
       },
     });
 
-    expect(report.schemaVersion).toBe(3);
+    expect(report.schemaVersion).toBe(5);
     expect(report.telemetry.scriptAttributions).toEqual([
       expect.objectContaining({ sourceFunctionName: "runSearch", totalDuration: 120 }),
     ]);
     expect(report.telemetry.renderPressure).toEqual({
       counts: { AppShell: 4 },
       lastRenderedAt: { AppShell: 100 },
+    });
+    expect(report.telemetry.interactionTraces).toMatchObject({
+      count: 3,
+      statusCounts: { ok: 3 },
+      slowest: expect.arrayContaining([
+        expect.objectContaining({ id: "navigation:1", durationMs: 210 }),
+      ]),
     });
     expect(report.automationDispatch).toMatchObject({ p95Ms: 5_000 });
     expect(report.searchReady).toMatchObject({ count: 1, p95Ms: 80 });
@@ -465,6 +508,13 @@ describe("packaged Windows soak foundation", () => {
     expect(workflow).toContain('--driver="$env:ARKLINE_EDGEDRIVER"');
     expect(workflow).toContain("packaged-smoke-report.json");
     expect(workflow).toContain("arkline-packaged-soak-evidence");
+    expect(workflow).toContain('ARKLINE_INDEXER_ENABLED: "0"');
+    expect(workflow.match(/ARKLINE_INDEXER_ENABLED/g)).toHaveLength(1);
+    expect(workflow).toContain("Joker-x-dev/CoolMallArkTS");
+    expect(workflow).toContain("17b6899086a57a4d48448842a14f9e325e3e35a3");
+    expect(workflow).toContain("core-loop-coolmall-v1.json");
+    expect(workflow).toContain("packaged-real-project-report.json");
+    expect(workflow).toContain("--sdk=semantic-worker/fixtures/golden-corpus/v1/sdk/openharmony");
   });
 });
 
@@ -472,8 +522,17 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
   return {
     rendererSearchP95Ms: 42,
     rendererJumpP95Ms: 80,
+    rendererEditorInputP95Ms: 20,
+    rendererEditorScrollP95Ms: 16,
+    rendererDefinitionP95Ms: 0,
+    rendererCompletionP95Ms: 0,
+    rendererSearchP99Ms: 80,
+    rendererJumpP99Ms: 120,
+    rendererEditorInputP99Ms: 40,
+    rendererEditorScrollP99Ms: 32,
     crashCount: 0,
     unresponsiveCount: 0,
+    editorInteractionFailureCount: 0,
     pendingLoads: 0,
     staleApplyCount: 0,
     searchMissCount: 0,
@@ -484,10 +543,22 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
     workerRestartGrowth: 0,
     successfulSearchCount: 4,
     successfulJumpCount: 4,
+    successfulEditorInputCount: 4,
+    successfulEditorScrollCount: 4,
+    semanticRequired: false,
+    definitionMissCount: 0,
+    completionMissCount: 0,
+    successfulDefinitionCount: 0,
+    successfulCompletionCount: 0,
     eventTimingSupported: true,
     longAnimationFrameSupported: true,
     interactionTimingCount: 20,
     interactionTimingP95Ms: 40,
+    longTaskMaxMs: 80,
+    causalTraceCount: 30,
+    causalTraceErrorCount: 0,
+    causalTraceRunningCount: 0,
+    causalTraceKindCount: 3,
     jsHeapGrowthBytes: 4 * 1024 * 1024,
     processTreeSampleCount: 9,
     steadyProcessSampleCount: 5,
@@ -495,5 +566,17 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
     indexedContentFileCount: 1_000,
     stalledIndexTaskCount: 0,
     ...overrides,
+  };
+}
+
+function traceEvidence(kind: string, id: string, durationMs: number) {
+  return {
+    id,
+    kind,
+    label: id,
+    startedAt: 100,
+    durationMs,
+    status: "ok",
+    phases: [],
   };
 }

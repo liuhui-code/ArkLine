@@ -26,15 +26,28 @@ interface DocumentRecord extends WorkspaceDocument {
   overlay: boolean
 }
 
+interface DependencyClosureCacheEntry {
+  contentGeneration: number
+  paths: string[]
+}
+
+interface DependencyClosureResult {
+  entries: Array<{ record: DocumentRecord; cacheHit: boolean }>
+  cacheHit: boolean
+  removedPaths: string[]
+}
+
 export interface SemanticWorkspaceView {
   rootPath: string
   documents: WorkspaceDocument[]
+  removedPaths?: string[]
   state: SemanticResponseState
 }
 
 export class SemanticDocumentStore {
   private readonly documents = new Map<string, DocumentRecord>()
   private readonly dependencyGenerations = new Map<string, number>()
+  private readonly dependencyClosures = new Map<string, DependencyClosureCacheEntry>()
   private accessClock = 0
   private cachedBytes = 0
 
@@ -99,6 +112,7 @@ export class SemanticDocumentStore {
     const cached = this.documents.get(resolved)
     if (!cached) return
     this.documents.delete(resolved)
+    this.dependencyClosures.delete(resolved)
     this.cachedBytes -= Buffer.byteLength(cached.content)
   }
 
@@ -109,7 +123,8 @@ export class SemanticDocumentStore {
       : resolveWorkspaceRoot(currentPath)
     const previousCurrent = this.documents.get(currentPath)
     const current = this.loadCurrent(currentPath, position)
-    const closure = this.collectDependencyClosure(current, previousCurrent === current)
+    const closureResult = this.collectDependencyClosure(current, previousCurrent === current)
+    const closure = closureResult.entries
     const documentCacheHit = closure.every(({ cacheHit }) => cacheHit)
     const documents = closure.map(({ record }) => ({ path: record.path, content: record.content }))
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
@@ -118,12 +133,14 @@ export class SemanticDocumentStore {
     return {
       rootPath,
       documents,
+      removedPaths: closureResult.removedPaths,
       state: {
         path: currentPath,
         contentGeneration: current.contentGeneration,
         documentVersion: current.documentVersion,
         dependencyGeneration,
         documentCacheHit,
+        dependencyClosureCacheHit: closureResult.cacheHit,
         queryCacheHit: false,
         loadedDocumentCount: documents.length,
         syntaxReady: current.available,
@@ -171,6 +188,10 @@ export class SemanticDocumentStore {
   }
 
   private loadFromDisk(filePath: string, cached?: DocumentRecord): DocumentRecord {
+    if (cached?.overlay) {
+      cached.lastAccess = ++this.accessClock
+      return cached
+    }
     const stat = safeStat(filePath)
     const fingerprint = stat ? `${stat.mtimeMs}:${stat.size}` : null
     if (cached && fingerprint !== null && cached.diskFingerprint === fingerprint) {
@@ -179,24 +200,48 @@ export class SemanticDocumentStore {
     }
     const content = safeRead(filePath)
     if (content === null) {
-      if (cached) return cached
-      return this.store(filePath, "", 1, fingerprint, false, undefined, false)
+      if (cached && !cached.available && cached.diskFingerprint === fingerprint) return cached
+      return this.store(
+        filePath,
+        "",
+        (cached?.contentGeneration ?? 0) + 1,
+        fingerprint,
+        false,
+        undefined,
+        false,
+      )
     }
     return this.store(filePath, content, (cached?.contentGeneration ?? 0) + 1, fingerprint, true, undefined, false)
   }
 
-  private collectDependencyClosure(current: DocumentRecord, currentCacheHit: boolean) {
+  private collectDependencyClosure(
+    current: DocumentRecord,
+    currentCacheHit: boolean,
+  ): DependencyClosureResult {
+    const changedPaths = new Set<string>()
+    const removedPaths = new Set<string>()
+    const cached = this.reuseDependencyClosure(
+      current,
+      currentCacheHit,
+      changedPaths,
+      removedPaths,
+    )
+    if (cached) return { entries: cached, cacheHit: true, removedPaths: [] }
+
     const result: Array<{ record: DocumentRecord; cacheHit: boolean }> = [
       { record: current, cacheHit: currentCacheHit },
     ]
     const queued = [current]
     const visited = new Set([current.path])
     let totalBytes = Buffer.byteLength(current.content)
+    let complete = true
 
     while (queued.length > 0 && result.length < MAX_CLOSURE_DOCUMENTS) {
       const source = queued.shift()
       if (!source) break
-      for (const dependencyPath of resolveRelativeImports(source.path, source.content)) {
+      const resolved = resolveRelativeImports(source.path, source.content)
+      complete &&= resolved.complete
+      for (const dependencyPath of resolved.paths) {
         if (visited.has(dependencyPath)) continue
         visited.add(dependencyPath)
         const before = this.documents.get(dependencyPath)
@@ -204,12 +249,47 @@ export class SemanticDocumentStore {
         const bytes = Buffer.byteLength(dependency.content)
         if (totalBytes + bytes > MAX_CLOSURE_BYTES) continue
         totalBytes += bytes
-        result.push({ record: dependency, cacheHit: before === dependency })
+        result.push({
+          record: dependency,
+          cacheHit: before === dependency && !changedPaths.has(dependencyPath),
+        })
         queued.push(dependency)
         if (result.length >= MAX_CLOSURE_DOCUMENTS) break
       }
     }
-    return result
+    if (complete) {
+      this.dependencyClosures.set(current.path, {
+        contentGeneration: current.contentGeneration,
+        paths: result.map(({ record }) => record.path),
+      })
+    } else {
+      this.dependencyClosures.delete(current.path)
+    }
+    return { entries: result, cacheHit: false, removedPaths: [...removedPaths] }
+  }
+
+  private reuseDependencyClosure(
+    current: DocumentRecord,
+    currentCacheHit: boolean,
+    changedPaths: Set<string>,
+    removedPaths: Set<string>,
+  ): Array<{ record: DocumentRecord; cacheHit: boolean }> | null {
+    const cached = this.dependencyClosures.get(current.path)
+    if (!currentCacheHit || cached?.contentGeneration !== current.contentGeneration) return null
+
+    const entries = [{ record: current, cacheHit: true }]
+    for (const dependencyPath of cached.paths.slice(1)) {
+      const before = this.documents.get(dependencyPath)
+      const dependency = this.loadFromDisk(dependencyPath, before)
+      if (!dependency.available || dependency !== before) {
+        changedPaths.add(dependencyPath)
+        if (!dependency.available) removedPaths.add(dependencyPath)
+        this.dependencyClosures.delete(current.path)
+        return null
+      }
+      entries.push({ record: dependency, cacheHit: true })
+    }
+    return entries
   }
 
   private store(
@@ -257,16 +337,24 @@ export class SemanticDocumentStore {
     for (const record of candidates) {
       if (this.documents.size <= MAX_CACHED_DOCUMENTS && this.cachedBytes <= MAX_CACHED_BYTES) break
       this.documents.delete(record.path)
+      this.dependencyClosures.delete(record.path)
       this.cachedBytes -= Buffer.byteLength(record.content)
     }
   }
 }
 
-function resolveRelativeImports(documentPath: string, content: string): string[] {
+function resolveRelativeImports(
+  documentPath: string,
+  content: string,
+): { paths: string[]; complete: boolean } {
   const specifiers = [...content.matchAll(/(?:import|export)\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/g)]
     .map((match) => match[1])
     .filter((specifier): specifier is string => Boolean(specifier?.startsWith(".")))
-  return specifiers.flatMap((specifier) => resolveImportPath(documentPath, specifier))
+  const resolved = specifiers.map((specifier) => resolveImportPath(documentPath, specifier))
+  return {
+    paths: resolved.flat(),
+    complete: resolved.every((matches) => matches.length > 0),
+  }
 }
 
 function resolveImportPath(documentPath: string, specifier: string): string[] {

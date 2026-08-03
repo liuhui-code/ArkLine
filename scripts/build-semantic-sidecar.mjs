@@ -76,7 +76,7 @@ export function smokeSemanticSidecar(outputPath) {
     throw new Error(result.error?.message || result.stderr.trim() || "Semantic sidecar failed health check");
   }
   const response = JSON.parse(result.stdout.split(/\r?\n/, 1)[0] || "null");
-  if (response?.id !== "standalone-health" || !response.ok || response.payload?.protocolVersion !== 4) {
+  if (response?.id !== "standalone-health" || !response.ok || response.payload?.protocolVersion !== 5) {
     throw new Error(`Unexpected semantic sidecar response: ${result.stdout.trim()}`);
   }
 }

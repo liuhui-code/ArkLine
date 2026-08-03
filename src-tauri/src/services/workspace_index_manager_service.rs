@@ -17,6 +17,7 @@ use crate::services::workspace_index_cancellation_service::{
 };
 use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
 use crate::services::workspace_index_maintenance_runtime_service::WorkspaceIndexMaintenanceRuntime;
+use crate::services::workspace_index_manager_retry_wait_service::wait_for_sidecar_retry_if_only_background_is_pending;
 use crate::services::workspace_index_manager_status_service::{
     mark_superseded_results, store_cancelled_statuses, store_pending_statuses_for_root,
     store_recent_status, store_recent_statuses, store_superseded_statuses,
@@ -431,6 +432,11 @@ impl WorkspaceIndexManagerRuntime {
                         });
                     }
                     manager.worker_batch_running.store(false, Ordering::SeqCst);
+                    wait_for_sidecar_retry_if_only_background_is_pending(
+                        &manager.scheduler,
+                        manager.indexer.as_ref(),
+                        &manager.worker_signal,
+                    );
                     if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
                         let _ = manager.maintenance.run_pending(|| {
                             is_ui_latency_sensitive() || manager.has_pending_tasks()
