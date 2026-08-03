@@ -29,7 +29,7 @@ export async function exerciseEditorInteraction(
   }
 
   const deleteDispatchMs = await timed(
-    () => driver.typeText(WEBDRIVER_KEYS.backspace.repeat(INPUT_BURST.length)),
+    () => driver.keyChord([WEBDRIVER_KEYS.control, "z"]),
   );
   const deleteStartedAt = await rendererInteractionStart(
     driver,

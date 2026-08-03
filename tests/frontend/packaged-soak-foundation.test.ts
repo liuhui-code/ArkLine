@@ -349,7 +349,7 @@ describe("packaged Windows soak foundation", () => {
     });
 
     expect(report).toMatchObject({
-      schemaVersion: 5,
+      schemaVersion: 6,
       mode: "smoke",
       durationMs: 100,
       fatalError: {
@@ -407,7 +407,7 @@ describe("packaged Windows soak foundation", () => {
       automationDispatchSamples: [5_000],
       searchReadySamples: [80],
       jumpSamples: [90],
-      editorInputSamples: [20],
+      editorInputSamples: [5_000],
       editorScrollSamples: [16],
       diagnostics: [
         { walSizeBytes: 100, sharedSdkWalSizeBytes: 20, workerRestartCount: 0 },
@@ -463,7 +463,7 @@ describe("packaged Windows soak foundation", () => {
       },
     });
 
-    expect(report.schemaVersion).toBe(5);
+    expect(report.schemaVersion).toBe(6);
     expect(report.telemetry.scriptAttributions).toEqual([
       expect.objectContaining({ sourceFunctionName: "runSearch", totalDuration: 120 }),
     ]);
@@ -480,12 +480,15 @@ describe("packaged Windows soak foundation", () => {
     });
     expect(report.automationDispatch).toMatchObject({ p95Ms: 5_000 });
     expect(report.searchReady).toMatchObject({ count: 1, p95Ms: 80 });
+    expect(report.editorInput).toMatchObject({ count: 1, p95Ms: 20 });
+    expect(report.editorAutomation).toMatchObject({ count: 1, p95Ms: 5_000 });
     expect(report.summary).toMatchObject({
       maxProcessCount: 4,
       rssGrowthBytes: 40,
       privateGrowthBytes: 20,
       jsHeapGrowthBytes: 20,
       coldRssGrowthBytes: 80,
+      editorAutomationP95Ms: 5_000,
       steadyProcessSampleCount: 5,
     });
     expect(report.verdict.passed).toBe(true);

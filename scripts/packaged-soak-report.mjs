@@ -18,7 +18,7 @@ export function buildPackagedSoakReport(input) {
   );
   const searchReady = summarizeSamples(input.searchReadySamples);
   const jumps = summarizeSamples(input.jumpSamples);
-  const editorInput = summarizeSamples(input.editorInputSamples ?? []);
+  const editorAutomation = summarizeSamples(input.editorInputSamples ?? []);
   const editorScroll = summarizeSamples(input.editorScrollSamples ?? []);
   const definitions = summarizeSamples(input.definitionSamples ?? []);
   const completions = summarizeSamples(input.completionSamples ?? []);
@@ -31,6 +31,10 @@ export function buildPackagedSoakReport(input) {
     .filter((sample) => sample.supported)
     .map((sample) => sample.usedBytes);
   const telemetry = telemetryDurations(input.telemetry);
+  const editorInput = summarizeSamples(successfulTraceDurations(
+    input.telemetry.interactionTraces ?? [],
+    "editorInput",
+  ));
   const firstDiagnostics = input.diagnostics.find((item) => !item.error) ?? {};
   const lastDiagnostics = [...input.diagnostics]
     .reverse()
@@ -109,7 +113,7 @@ export function buildPackagedSoakReport(input) {
     ? evaluateSmokeReport(verdictMetrics)
     : evaluateSoakReport(verdictMetrics);
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     mode: input.options.mode ?? "soak",
     platform: platformEvidence(),
     ci: ciEvidence(),
@@ -123,6 +127,7 @@ export function buildPackagedSoakReport(input) {
     searchReady,
     jumps,
     editorInput,
+    editorAutomation,
     editorScroll,
     definitions,
     completions,
@@ -148,6 +153,7 @@ export function buildPackagedSoakReport(input) {
       maxProcessCount: maximum(numericSamples(input.processSamples, "processCount")),
       maxHandleCount: maximum(numericSamples(input.processSamples, "handleCount")),
       maxThreadCount: maximum(numericSamples(input.processSamples, "threadCount")),
+      editorAutomationP95Ms: editorAutomation.p95Ms,
     },
     verdict,
   };
@@ -155,7 +161,7 @@ export function buildPackagedSoakReport(input) {
 
 export function buildPackagedSoakFailureReport(input) {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     mode: input.options.mode ?? "soak",
     platform: platformEvidence(),
     ci: ciEvidence(),
@@ -265,6 +271,16 @@ function causalTraceMetrics(traces) {
     causalTraceRunningCount: traces.filter((trace) => trace.status === "running").length,
     causalTraceKindCount: groups.size,
   };
+}
+
+function successfulTraceDurations(traces, kind) {
+  return traces
+    .filter((trace) => (
+      trace.kind === kind
+      && trace.status === "ok"
+      && Number.isFinite(trace.durationMs)
+    ))
+    .map((trace) => trace.durationMs);
 }
 
 function causalTraceGroup(kind) {

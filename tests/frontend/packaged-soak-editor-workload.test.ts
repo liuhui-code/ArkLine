@@ -41,7 +41,9 @@ describe("packaged editor workload", () => {
       typeText: vi.fn(async (text: string) => {
         textLength += text === INPUT_BURST ? INPUT_BURST.length : -INPUT_BURST.length;
       }),
-      keyChord: vi.fn(),
+      keyChord: vi.fn(async () => {
+        textLength = 120;
+      }),
     };
 
     const result = await exerciseEditorInteraction(driver, { timeoutMs: 200 });
@@ -54,6 +56,7 @@ describe("packaged editor workload", () => {
       scrollFrameMs: 12,
     });
     expect(driver.typeText).toHaveBeenNthCalledWith(1, INPUT_BURST);
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
   });
 
   it("fails explicitly when the active CodeMirror editor is missing", async () => {
@@ -106,7 +109,9 @@ describe("packaged editor workload", () => {
       typeText: vi.fn(async (text: string) => {
         textLength += text === INPUT_BURST ? INPUT_BURST.length : -INPUT_BURST.length;
       }),
-      keyChord: vi.fn(),
+      keyChord: vi.fn(async () => {
+        textLength = 20;
+      }),
     };
 
     await expect(exerciseEditorInteraction(driver, { timeoutMs: 200 }))
