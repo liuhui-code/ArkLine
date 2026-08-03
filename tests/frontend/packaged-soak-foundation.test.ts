@@ -349,7 +349,7 @@ describe("packaged Windows soak foundation", () => {
     });
 
     expect(report).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
       mode: "smoke",
       durationMs: 100,
       fatalError: {
@@ -415,7 +415,7 @@ describe("packaged Windows soak foundation", () => {
           walSizeBytes: 120,
           sharedSdkWalSizeBytes: 30,
           workerRestartCount: 0,
-          queuePending: 0,
+          queuePending: 3,
         },
       ],
       processSamples: Array.from({ length: 9 }, (_, index) => ({
@@ -463,7 +463,7 @@ describe("packaged Windows soak foundation", () => {
       },
     });
 
-    expect(report.schemaVersion).toBe(6);
+    expect(report.schemaVersion).toBe(7);
     expect(report.telemetry.scriptAttributions).toEqual([
       expect.objectContaining({ sourceFunctionName: "runSearch", totalDuration: 120 }),
     ]);
@@ -490,6 +490,7 @@ describe("packaged Windows soak foundation", () => {
       coldRssGrowthBytes: 80,
       editorAutomationP95Ms: 5_000,
       steadyProcessSampleCount: 5,
+      pendingLoads: 0,
     });
     expect(report.verdict.passed).toBe(true);
   });

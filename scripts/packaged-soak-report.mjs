@@ -58,7 +58,9 @@ export function buildPackagedSoakReport(input) {
     rendererEditorScrollP99Ms: editorScroll.p99Ms,
     crashCount: input.counters.crashCount,
     unresponsiveCount: input.counters.unresponsiveCount,
-    pendingLoads: lastDiagnostics.queuePending ?? 0,
+    pendingLoads: countPendingDocumentLoads(
+      input.telemetry.interactionTraces ?? [],
+    ),
     staleApplyCount: input.counters.staleApplyCount,
     searchMissCount: input.counters.searchMissCount,
     editorInteractionFailureCount:
@@ -113,7 +115,7 @@ export function buildPackagedSoakReport(input) {
     ? evaluateSmokeReport(verdictMetrics)
     : evaluateSoakReport(verdictMetrics);
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     mode: input.options.mode ?? "soak",
     platform: platformEvidence(),
     ci: ciEvidence(),
@@ -161,7 +163,7 @@ export function buildPackagedSoakReport(input) {
 
 export function buildPackagedSoakFailureReport(input) {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     mode: input.options.mode ?? "soak",
     platform: platformEvidence(),
     ci: ciEvidence(),
@@ -261,6 +263,12 @@ function summarizeInteractionTraces(traces) {
       .sort((left, right) => right.durationMs - left.durationMs)
       .slice(0, 20),
   };
+}
+
+function countPendingDocumentLoads(traces) {
+  return traces.filter(
+    (trace) => trace.kind === "openFile" && trace.status === "running",
+  ).length;
 }
 
 function causalTraceMetrics(traces) {
