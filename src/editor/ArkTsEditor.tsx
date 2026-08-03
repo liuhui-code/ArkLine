@@ -99,6 +99,7 @@ export function ArkTsEditor({
   const activePathRef = useRef(path);
   const activeTransientPreviewRef = useRef(transientPreview);
   const sessionsRef = useRef(createEditorDocumentSessionRegistry());
+  const localDocumentsRef = useRef(new WeakSet<Text>());
   const activeEnhancedRef = useRef(false);
   const onChangeRef = useRef(onChange);
   const onDocumentChangeRef = useRef(onDocumentChange);
@@ -147,6 +148,7 @@ export function ArkTsEditor({
         },
         onDocumentChange ? (document) => {
           inputTraceRuntimeRef.current.documentChanged();
+          localDocumentsRef.current.add(document);
           onDocumentChangeRef.current?.(document);
         } : undefined,
         (selection, shouldMeasureCaret) => {
@@ -305,7 +307,9 @@ export function ArkTsEditor({
       return;
     }
 
-    if (!documentMatches(view.state.doc, documentSource)) {
+    const isStaleLocalSnapshot = typeof documentSource !== "string"
+      && localDocumentsRef.current.has(documentSource);
+    if (!isStaleLocalSnapshot && !documentMatches(view.state.doc, documentSource)) {
       const selection = view.state.selection.main;
       const anchor = Math.min(selection.anchor, documentSource.length);
       const head = Math.min(selection.head, documentSource.length);
@@ -313,6 +317,7 @@ export function ArkTsEditor({
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: documentSource },
         selection: EditorSelection.range(anchor, head),
+        annotations: editorDocumentReplacement.of(true),
       });
     }
   }, [documentSource, path]);
