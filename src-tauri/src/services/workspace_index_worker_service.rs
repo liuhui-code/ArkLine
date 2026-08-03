@@ -85,7 +85,7 @@ pub fn run_index_tasks_with_cancellation_and_ui_activity<F, G>(
 ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
 where
     F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
-    G: FnMut() -> bool,
+    G: Fn() -> bool + Sync,
 {
     run_index_tasks_with_cancellation_and_ui_activity_and_indexer(
         index_runtime,
@@ -100,12 +100,12 @@ pub fn run_index_tasks_with_cancellation_and_ui_activity_and_indexer<F, G>(
     index_runtime: &WorkspaceIndexRuntime,
     tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
     mut on_status: F,
-    mut is_ui_latency_sensitive: G,
+    is_ui_latency_sensitive: G,
     indexer: Option<&IndexerHostRuntime>,
 ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
 where
     F: FnMut(WorkspaceIndexTaskStatus) -> Result<(), String>,
-    G: FnMut() -> bool,
+    G: Fn() -> bool + Sync,
 {
     let mut results = Vec::new();
 
@@ -131,7 +131,7 @@ where
             task.clone(),
             token,
             started_at,
-            is_ui_latency_sensitive(),
+            &is_ui_latency_sensitive,
             indexer,
         ) {
             Ok(Some(result)) => results.push(result),
@@ -165,12 +165,12 @@ fn changed_path_reasons_match(
         || new_task.reason == existing.reason
 }
 
-fn run_index_task(
+fn run_index_task<G: Fn() -> bool + Sync>(
     index_runtime: &WorkspaceIndexRuntime,
     task: WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     started_at: u128,
-    ui_latency_sensitive: bool,
+    is_ui_latency_sensitive: &G,
     indexer: Option<&IndexerHostRuntime>,
 ) -> Result<Option<WorkspaceIndexTaskResult>, (WorkspaceIndexTask, String)> {
     run_index_task_inner(
@@ -178,18 +178,18 @@ fn run_index_task(
         &task,
         token,
         started_at,
-        ui_latency_sensitive,
+        is_ui_latency_sensitive,
         indexer,
     )
     .map_err(|error| (task, error))
 }
 
-fn run_index_task_inner(
+fn run_index_task_inner<G: Fn() -> bool + Sync>(
     index_runtime: &WorkspaceIndexRuntime,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     started_at: u128,
-    ui_latency_sensitive: bool,
+    is_ui_latency_sensitive: &G,
     indexer: Option<&IndexerHostRuntime>,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     match task.kind.clone() {
@@ -249,7 +249,7 @@ fn run_index_task_inner(
                     token,
                     task.changed_paths.clone(),
                     started_at,
-                    ui_latency_sensitive,
+                    is_ui_latency_sensitive,
                 )?
                 else {
                     return Ok(Some(superseded_task_result_from_task(task)));
@@ -375,14 +375,14 @@ fn is_full_refresh_continuation(task: &WorkspaceIndexTask) -> bool {
     is_full_refresh_continuation_reason(&task.reason)
 }
 
-fn refresh_full_refresh_continuation_chunk(
+fn refresh_full_refresh_continuation_chunk<G: Fn() -> bool + Sync>(
     index_runtime: &WorkspaceIndexRuntime,
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     changed_paths: Vec<String>,
     started_at: u128,
-    ui_latency_sensitive: bool,
+    is_ui_latency_sensitive: &G,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     let mut continuation = plan_refresh_continuation(
         &task.root_path,
@@ -397,13 +397,14 @@ fn refresh_full_refresh_continuation_chunk(
         return Ok(None);
     }
     let phase = continuation_phase(&task.reason);
+    let ui_latency_sensitive_at_start = is_ui_latency_sensitive();
     let mut deferred_paths = Vec::new();
     let selected_paths = match phase {
         WorkspaceIndexContinuationPhase::DeepLayer => {
             let budgeted = budget_deep_layer_paths_with_ui_activity(
                 task.priority,
                 chunk.paths,
-                ui_latency_sensitive,
+                ui_latency_sensitive_at_start,
             );
             deferred_paths = budgeted.deferred_paths;
             budgeted.selected_paths
@@ -429,7 +430,8 @@ fn refresh_full_refresh_continuation_chunk(
                 token,
                 &selected_paths,
                 &[],
-                ui_latency_sensitive,
+                ui_latency_sensitive_at_start,
+                is_ui_latency_sensitive,
             )? {
                 WorkspaceDeepLayerUpdate::Applied(state) => (state, false),
                 WorkspaceDeepLayerUpdate::Deferred(state) => (state, true),

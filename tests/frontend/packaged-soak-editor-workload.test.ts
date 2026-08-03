@@ -112,4 +112,30 @@ describe("packaged editor workload", () => {
     await expect(exerciseEditorInteraction(driver, { timeoutMs: 200 }))
       .resolves.toMatchObject({ restored: true, scrollMoved: false });
   });
+
+  it("reports the focus owner when an editor input loses focus", async () => {
+    const driver = {
+      execute: vi.fn(async (script: string) => {
+        if (script === EDITOR_FOCUS_SNAPSHOT_SCRIPT) {
+          return { present: true, focused: true, textLength: 20, at: 10 };
+        }
+        if (script === EDITOR_TEXT_SNAPSHOT_SCRIPT) {
+          return {
+            present: true,
+            focused: false,
+            activeElement: "button:Close",
+            textLength: 20 + INPUT_BURST.length,
+            at: 30,
+          };
+        }
+        return 20;
+      }),
+      executeAsync: vi.fn(),
+      typeText: vi.fn(),
+      keyChord: vi.fn(),
+    };
+
+    await expect(exerciseEditorInteraction(driver, { timeoutMs: 20 }))
+      .rejects.toThrow('Editor lost focus after input: {"present":true,"focused":false,"activeElement":"button:Close"');
+  });
 });

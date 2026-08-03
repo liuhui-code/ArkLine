@@ -27,14 +27,15 @@ pub(crate) enum WorkspaceDeepLayerUpdate {
     Cancelled,
 }
 
-pub(crate) fn update_background_deep_layer(
+pub(crate) fn update_background_deep_layer<G: Fn() -> bool + Sync>(
     index_runtime: &WorkspaceIndexRuntime,
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     changed_paths: &[String],
     removed_paths: &[String],
-    ui_latency_sensitive: bool,
+    ui_latency_sensitive_at_start: bool,
+    is_ui_latency_sensitive: &G,
 ) -> Result<WorkspaceDeepLayerUpdate, String> {
     if token.is_cancelled() {
         return Ok(WorkspaceDeepLayerUpdate::Cancelled);
@@ -58,7 +59,8 @@ pub(crate) fn update_background_deep_layer(
             stub_generation,
             changed_paths,
             removed_paths,
-            ui_latency_sensitive,
+            ui_latency_sensitive_at_start,
+            is_ui_latency_sensitive,
         )
     } else {
         (
@@ -70,6 +72,11 @@ pub(crate) fn update_background_deep_layer(
         || matches!(stub_outcome, LayerChunkOutcome::Cancelled)
     {
         return Ok(WorkspaceDeepLayerUpdate::Cancelled);
+    }
+    if matches!(content_outcome, LayerChunkOutcome::Deferred)
+        || matches!(stub_outcome, LayerChunkOutcome::Deferred)
+    {
+        return Ok(WorkspaceDeepLayerUpdate::Deferred(state));
     }
     let content_applied_by_sidecar = matches!(content_outcome, LayerChunkOutcome::Applied);
     let stub_applied_by_sidecar = matches!(stub_outcome, LayerChunkOutcome::Applied);
@@ -118,11 +125,12 @@ pub(crate) fn update_background_deep_layer(
 #[derive(Clone, Copy)]
 enum LayerChunkOutcome {
     Applied,
+    Deferred,
     Unavailable,
     Cancelled,
 }
 
-fn refresh_sidecar_layers(
+fn refresh_sidecar_layers<G: Fn() -> bool + Sync>(
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
@@ -130,7 +138,8 @@ fn refresh_sidecar_layers(
     stub_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
-    ui_latency_sensitive: bool,
+    ui_latency_sensitive_at_start: bool,
+    is_ui_latency_sensitive: &G,
 ) -> (LayerChunkOutcome, LayerChunkOutcome) {
     let Some(indexer) = indexer else {
         return (
@@ -148,7 +157,8 @@ fn refresh_sidecar_layers(
                     content_generation,
                     changed_paths,
                     removed_paths,
-                    ui_latency_sensitive,
+                    ui_latency_sensitive_at_start,
+                    is_ui_latency_sensitive,
                 )
             });
             let stub = scope.spawn(|| {
@@ -159,7 +169,8 @@ fn refresh_sidecar_layers(
                     stub_generation,
                     changed_paths,
                     removed_paths,
-                    ui_latency_sensitive,
+                    ui_latency_sensitive_at_start,
+                    is_ui_latency_sensitive,
                 )
             });
             (
@@ -175,7 +186,8 @@ fn refresh_sidecar_layers(
         content_generation,
         changed_paths,
         removed_paths,
-        ui_latency_sensitive,
+        ui_latency_sensitive_at_start,
+        is_ui_latency_sensitive,
     );
     let stub = if matches!(content, LayerChunkOutcome::Applied) {
         refresh_stub_chunks(
@@ -185,7 +197,8 @@ fn refresh_sidecar_layers(
             stub_generation,
             changed_paths,
             removed_paths,
-            ui_latency_sensitive,
+            ui_latency_sensitive_at_start,
+            is_ui_latency_sensitive,
         )
     } else {
         LayerChunkOutcome::Unavailable
@@ -193,14 +206,15 @@ fn refresh_sidecar_layers(
     (content, stub)
 }
 
-fn refresh_stub_chunks(
+fn refresh_stub_chunks<G: Fn() -> bool + Sync>(
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     indexed_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
-    ui_latency_sensitive: bool,
+    ui_latency_sensitive_at_start: bool,
+    is_ui_latency_sensitive: &G,
 ) -> LayerChunkOutcome {
     let Some(indexer) = indexer else {
         return LayerChunkOutcome::Unavailable;
@@ -211,7 +225,7 @@ fn refresh_stub_chunks(
     let mut budget = AdaptiveRefreshBudget::new_for_latency(
         INDEXER_STUB_REFRESH_PATH_LIMIT,
         WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
-        ui_latency_sensitive,
+        ui_latency_sensitive_at_start,
     );
     let mut changed_offset = 0usize;
     let mut removed_offset = 0usize;
@@ -224,10 +238,14 @@ fn refresh_stub_chunks(
         budget.path_count(),
         budget.source_bytes(),
     ) {
+        if should_defer_background(task, ui_latency_sensitive_at_start, is_ui_latency_sensitive) {
+            return LayerChunkOutcome::Deferred;
+        }
         let path_count = chunk.changed_paths.len() + chunk.removed_paths.len();
         let source_bytes = chunk.changed_source_bytes;
         let next_changed_offset = chunk.next_changed_offset;
         let next_removed_offset = chunk.next_removed_offset;
+        let mut yielded_for_ui = false;
         match indexer.refresh_stub_chunk_with_priority(
             IndexerTaskKey {
                 root_path: task.root_path.clone(),
@@ -239,7 +257,14 @@ fn refresh_stub_chunks(
             chunk.changed_paths,
             chunk.removed_paths,
             publication_priority(task.priority),
-            || token.is_cancelled(),
+            || {
+                yielded_for_ui |= should_defer_background(
+                    task,
+                    ui_latency_sensitive_at_start,
+                    is_ui_latency_sensitive,
+                );
+                token.is_cancelled() || yielded_for_ui
+            },
         ) {
             IndexerStubRefreshAttempt::Applied(result) => budget.observe(
                 result.publication_profile.total_duration_us,
@@ -247,6 +272,9 @@ fn refresh_stub_chunks(
                 source_bytes,
             ),
             IndexerStubRefreshAttempt::Unavailable => return LayerChunkOutcome::Unavailable,
+            IndexerStubRefreshAttempt::Cancelled if yielded_for_ui && !token.is_cancelled() => {
+                return LayerChunkOutcome::Deferred;
+            }
             IndexerStubRefreshAttempt::Cancelled => return LayerChunkOutcome::Cancelled,
         }
         changed_offset = next_changed_offset;
@@ -255,14 +283,15 @@ fn refresh_stub_chunks(
     LayerChunkOutcome::Applied
 }
 
-fn refresh_content_chunks(
+fn refresh_content_chunks<G: Fn() -> bool + Sync>(
     indexer: Option<&IndexerHostRuntime>,
     task: &WorkspaceIndexTask,
     token: &WorkspaceIndexCancellationToken,
     indexed_generation: u64,
     changed_paths: &[String],
     removed_paths: &[String],
-    ui_latency_sensitive: bool,
+    ui_latency_sensitive_at_start: bool,
+    is_ui_latency_sensitive: &G,
 ) -> LayerChunkOutcome {
     let Some(indexer) = indexer else {
         return LayerChunkOutcome::Unavailable;
@@ -273,7 +302,7 @@ fn refresh_content_chunks(
     let mut budget = AdaptiveRefreshBudget::new_for_latency(
         INDEXER_CONTENT_REFRESH_PATH_LIMIT,
         WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
-        ui_latency_sensitive,
+        ui_latency_sensitive_at_start,
     );
     let mut changed_offset = 0usize;
     let mut removed_offset = 0usize;
@@ -286,9 +315,13 @@ fn refresh_content_chunks(
         budget.path_count(),
         budget.source_bytes(),
     ) {
+        if should_defer_background(task, ui_latency_sensitive_at_start, is_ui_latency_sensitive) {
+            return LayerChunkOutcome::Deferred;
+        }
         let path_count = chunk.changed_paths.len() + chunk.removed_paths.len();
         let next_changed_offset = chunk.next_changed_offset;
         let next_removed_offset = chunk.next_removed_offset;
+        let mut yielded_for_ui = false;
         match indexer.refresh_content_chunk_with_priority(
             IndexerTaskKey {
                 root_path: task.root_path.clone(),
@@ -300,7 +333,14 @@ fn refresh_content_chunks(
             chunk.changed_paths,
             chunk.removed_paths,
             publication_priority(task.priority),
-            || token.is_cancelled(),
+            || {
+                yielded_for_ui |= should_defer_background(
+                    task,
+                    ui_latency_sensitive_at_start,
+                    is_ui_latency_sensitive,
+                );
+                token.is_cancelled() || yielded_for_ui
+            },
         ) {
             IndexerContentRefreshAttempt::Applied(result) => budget.observe(
                 result.publication_profile.total_duration_us,
@@ -308,6 +348,9 @@ fn refresh_content_chunks(
                 result.processed_source_bytes,
             ),
             IndexerContentRefreshAttempt::Unavailable => return LayerChunkOutcome::Unavailable,
+            IndexerContentRefreshAttempt::Cancelled if yielded_for_ui && !token.is_cancelled() => {
+                return LayerChunkOutcome::Deferred;
+            }
             IndexerContentRefreshAttempt::Cancelled => return LayerChunkOutcome::Cancelled,
         }
         changed_offset = next_changed_offset;
@@ -321,6 +364,16 @@ fn sidecar_priority(priority: WorkspaceIndexTaskPriority) -> bool {
         priority,
         WorkspaceIndexTaskPriority::Background | WorkspaceIndexTaskPriority::ChangedFiles
     )
+}
+
+fn should_defer_background<G: Fn() -> bool>(
+    task: &WorkspaceIndexTask,
+    ui_latency_sensitive_at_start: bool,
+    is_ui_latency_sensitive: &G,
+) -> bool {
+    task.priority == WorkspaceIndexTaskPriority::Background
+        && !ui_latency_sensitive_at_start
+        && is_ui_latency_sensitive()
 }
 
 fn publication_priority(priority: WorkspaceIndexTaskPriority) -> PublicationPriority {

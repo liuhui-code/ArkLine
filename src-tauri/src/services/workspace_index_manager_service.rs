@@ -325,7 +325,7 @@ impl WorkspaceIndexManagerRuntime {
     ) -> Result<Vec<WorkspaceIndexTaskResult>, String>
     where
         F: FnMut(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>),
-        G: FnMut() -> bool,
+        G: Fn() -> bool + Sync,
     {
         let _execution_guard = self
             .worker_execution
@@ -405,11 +405,11 @@ impl WorkspaceIndexManagerRuntime {
         &self,
         index_runtime: WorkspaceIndexRuntime,
         on_status: F,
-        mut is_ui_latency_sensitive: G,
+        is_ui_latency_sensitive: G,
     ) -> Result<bool, String>
     where
         F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
-        G: FnMut() -> bool + Send + 'static,
+        G: Fn() -> bool + Send + Sync + 'static,
     {
         if self.worker_running.swap(true, Ordering::SeqCst) {
             return Ok(false);
@@ -424,7 +424,7 @@ impl WorkspaceIndexManagerRuntime {
                     let results = manager.run_index_worker_once_with_events_and_ui_activity(
                         &index_runtime,
                         |status, events| on_status(status, events),
-                        &mut is_ui_latency_sensitive,
+                        &is_ui_latency_sensitive,
                     );
                     if let Ok(results) = results {
                         let _ = manager.maintenance.run_after_results(&results, || {

@@ -167,6 +167,7 @@ fn refresh_incremental_watcher_chunk(
         &content_paths,
         &removed_paths,
         false,
+        &|| false,
     )? {
         WorkspaceDeepLayerUpdate::Applied(state) => state,
         WorkspaceDeepLayerUpdate::Deferred(state) => state,

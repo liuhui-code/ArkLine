@@ -24,6 +24,9 @@ export async function exerciseEditorInteraction(
     timeoutMs,
     "Editor input did not become visible",
   );
+  if (edited.focused === false) {
+    throw new Error(`Editor lost focus after input: ${JSON.stringify(edited)}`);
+  }
 
   const deleteDispatchMs = await timed(
     () => driver.typeText(WEBDRIVER_KEYS.backspace.repeat(INPUT_BURST.length)),
@@ -113,6 +116,7 @@ export const EDITOR_FOCUS_SNAPSHOT_SCRIPT = `
 
 export const EDITOR_TEXT_SNAPSHOT_SCRIPT = `
   const editor = document.querySelector('[aria-label="Editor Content"]');
+  const active = document.activeElement;
   const crashText = document.body?.innerText || "";
   const crashed = crashText.includes("ArkLine hit a UI error")
     || crashText.includes("Editor crash")
@@ -120,6 +124,11 @@ export const EDITOR_TEXT_SNAPSHOT_SCRIPT = `
   return {
     present: Boolean(editor),
     crashed,
+    focused: active === editor,
+    activeElement: active
+      ? [active.tagName.toLowerCase(), active.getAttribute("aria-label") || active.className || ""]
+          .filter(Boolean).join(":")
+      : null,
     textLength: (editor?.textContent || "").length,
     at: performance.now()
   };

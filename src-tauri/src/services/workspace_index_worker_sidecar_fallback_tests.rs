@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::indexer_host::IndexerHostRuntime;
@@ -89,6 +90,7 @@ fn explicit_local_compatibility_mode_still_indexes_content_and_stubs() {
         std::slice::from_ref(&source_path),
         &[],
         false,
+        &|| false,
     )
     .unwrap();
 
@@ -222,6 +224,7 @@ fn degraded_sidecar_preserves_newer_persisted_layer_generation() {
         std::slice::from_ref(&task.changed_paths[0]),
         &[],
         false,
+        &|| false,
     )
     .unwrap();
 
@@ -302,6 +305,7 @@ fn cancelled_deep_refresh_does_not_publish_or_fall_back_locally() {
         &[source_path],
         &[],
         false,
+        &|| false,
     )
     .unwrap();
     assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Cancelled));
@@ -403,6 +407,52 @@ fn watcher_delta_degrades_without_host_deep_refresh_or_root_rescan() {
         .unwrap();
     assert_eq!(unreported_rows, 0, "watcher delta must not rescan the root");
     drop(connection);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn background_deep_refresh_yields_when_ui_becomes_active_after_task_start() {
+    let root = unique_temp_dir("indexer-sidecar-ui-yield");
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("Entry.ets");
+    fs::write(&source, "export class EntryController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime
+        .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
+        .unwrap();
+    let task = WorkspaceIndexTask {
+        root_path: root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Background,
+        changed_paths: vec![source_path],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 51,
+        reason: "full-refresh-deep:dynamic-ui-activity".to_string(),
+    };
+    let token = WorkspaceIndexCancellationToken::new(task.generation);
+    let indexer = IndexerHostRuntime::with_executable(root.join("missing-indexer"));
+    let activity_checks = AtomicUsize::new(0);
+
+    let results = run_index_tasks_with_cancellation_and_ui_activity_and_indexer(
+        &runtime,
+        vec![(task, token)],
+        |_| Ok(()),
+        || activity_checks.fetch_add(1, Ordering::SeqCst) > 0,
+        Some(&indexer),
+    )
+    .unwrap();
+
+    assert_eq!(results[0].status, "partial");
+    assert!(results[0]
+        .message
+        .as_deref()
+        .is_some_and(|message| message.contains("yielded after 0 file(s)")));
+    assert!(results[0].refresh_continuation.is_some());
+    assert!(activity_checks.load(Ordering::SeqCst) >= 2);
+    assert_eq!(indexer.snapshot().degraded_count, 0);
     fs::remove_dir_all(root).unwrap();
 }
 
