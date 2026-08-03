@@ -109,8 +109,10 @@ fixture and 30 minutes. Before that release workload, it launches a separate 1k
 fixture for one interaction cycle. This smoke gate verifies the executable,
 fixture marker and boundary files, Tauri/Edge/PowerShell tools, WebDriver
 session, WebView timing capabilities, process-tree evidence, one real search,
-and one real navigation. It does not evaluate long-run latency, queue drain, or
-memory/WAL growth.
+and one real navigation. Core readiness is based on current-workspace discovery
+and generation-aware content freshness; optional SDK and semantic layers may
+remain partial in this rollback lane. It does not evaluate long-run latency,
+queue drain, or memory/WAL growth.
 
 Release builds enable the packaged indexer sidecar by default. The smoke stage
 sets `ARKLINE_INDEXER_ENABLED=0` to retain an explicit local-compatibility

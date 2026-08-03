@@ -29,26 +29,27 @@ export async function waitForDiscoveryReady(driver, rootPath, timeoutMs) {
   );
 }
 
-export async function waitForFullIndexReady(driver, rootPath, timeoutMs) {
+export async function waitForCoreIndexReady(driver, rootPath, timeoutMs) {
   return waitForIndexState(
     driver,
     rootPath,
     timeoutMs,
-    (value) => (
-      value.status === "ready"
-      && value.fileCount > 0
-      && value.contentLineCount > 0
-      && value.discoveredFileCount > 0
-      && indexedLayerCount(value, "content") >= value.fileCount
-    ),
+    isCoreWorkspaceIndexReady,
     "Workspace index did not become ready",
   );
 }
 
-function indexedLayerCount(value, layerName) {
-  return value.layerReadiness?.layers?.find(
-    (layer) => layer.layer === layerName,
-  )?.indexedCount ?? 0;
+export function isCoreWorkspaceIndexReady(value) {
+  const contentFreshness = value.freshnessLayers?.find(
+    (layer) => layer.layer === "content",
+  );
+  return value.discoveryStatus === "ready"
+    && value.discoveredFileCount > 0
+    && value.fileCount >= value.discoveredFileCount
+    && value.contentLineCount > 0
+    && contentFreshness?.missingCount === 0
+    && contentFreshness?.staleCount === 0
+    && contentFreshness?.readyCount >= value.fileCount;
 }
 
 export async function waitForSearchResult(

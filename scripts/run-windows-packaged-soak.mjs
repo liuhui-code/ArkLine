@@ -20,7 +20,7 @@ import {
 } from "./packaged-soak-telemetry.mjs";
 import {
   waitForDiscoveryReady,
-  waitForFullIndexReady,
+  waitForCoreIndexReady,
   waitForWorkspace,
 } from "./packaged-soak-readiness.mjs";
 import {
@@ -124,7 +124,7 @@ async function runSoak(driver, options, scenario) {
   await driver.waitForSelectorPresent('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
   if (options.mode === "smoke") {
-    await waitForFullIndexReady(driver, options.fixturePath, 90_000);
+    await waitForCoreIndexReady(driver, options.fixturePath, 90_000);
   } else {
     await waitForDiscoveryReady(driver, options.fixturePath, 180_000);
   }
