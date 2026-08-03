@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
 use crate::services::workspace_file_fingerprint_service::{
-    remove_file_fingerprints, update_file_fingerprints,
+    remove_file_fingerprints, update_file_catalog_fingerprints,
 };
 use crate::services::workspace_file_search_index_service::WorkspaceFileSearchIndex;
 use crate::services::workspace_index_persistence_service::persist_incremental_file_symbol_state;
@@ -79,7 +79,7 @@ impl WorkspaceIndexRuntime {
             .lock()
             .map_err(|_| "Workspace index lock poisoned".to_string())?
             .insert(normalized_root, workspace.clone());
-        update_file_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
+        update_file_catalog_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
         remove_file_fingerprints(root_path, removed_paths)?;
         persist_incremental_file_symbol_state(
             root_path,

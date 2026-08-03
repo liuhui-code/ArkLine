@@ -95,12 +95,30 @@ pub fn update_file_fingerprints(
     paths: &[String],
     indexed_generation: u64,
 ) -> Result<(), String> {
+    update_fingerprints(root_path, paths, indexed_generation, true)
+}
+
+pub fn update_file_catalog_fingerprints(
+    root_path: &str,
+    paths: &[String],
+    indexed_generation: u64,
+) -> Result<(), String> {
+    update_fingerprints(root_path, paths, indexed_generation, false)
+}
+
+fn update_fingerprints(
+    root_path: &str,
+    paths: &[String],
+    indexed_generation: u64,
+    layers_ready: bool,
+) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
 
     let root_key = normalize_index_path(root_path);
     with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
+        let version = i64::from(layers_ready);
         let mut insert_statement = transaction
             .prepare(
                 "insert into workspace_file_fingerprints (
@@ -112,9 +130,24 @@ pub fn update_file_fingerprints(
                 mtime_ms = excluded.mtime_ms,
                 size = excluded.size,
                 hash = excluded.hash,
-                content_index_version = excluded.content_index_version,
-                symbol_index_version = excluded.symbol_index_version,
-                stub_parser_version = excluded.stub_parser_version,
+                content_index_version = case
+                    when ?10 = 1 then excluded.content_index_version
+                    when workspace_file_fingerprints.mtime_ms = excluded.mtime_ms
+                        and workspace_file_fingerprints.size = excluded.size
+                        and workspace_file_fingerprints.hash = excluded.hash
+                    then workspace_file_fingerprints.content_index_version else 0 end,
+                symbol_index_version = case
+                    when ?10 = 1 then excluded.symbol_index_version
+                    when workspace_file_fingerprints.mtime_ms = excluded.mtime_ms
+                        and workspace_file_fingerprints.size = excluded.size
+                        and workspace_file_fingerprints.hash = excluded.hash
+                    then workspace_file_fingerprints.symbol_index_version else 0 end,
+                stub_parser_version = case
+                    when ?10 = 1 then excluded.stub_parser_version
+                    when workspace_file_fingerprints.mtime_ms = excluded.mtime_ms
+                        and workspace_file_fingerprints.size = excluded.size
+                        and workspace_file_fingerprints.hash = excluded.hash
+                    then workspace_file_fingerprints.stub_parser_version else 0 end,
                 indexed_generation = excluded.indexed_generation",
             )
             .map_err(|error| error.to_string())?;
@@ -130,10 +163,23 @@ pub fn update_file_fingerprints(
                     current.mtime_ms,
                     current.size,
                     current.hash,
-                    CONTENT_INDEX_VERSION,
-                    SYMBOL_INDEX_VERSION,
-                    ARKTS_STUB_PARSER_VERSION,
+                    if layers_ready {
+                        CONTENT_INDEX_VERSION
+                    } else {
+                        0
+                    },
+                    if layers_ready {
+                        SYMBOL_INDEX_VERSION
+                    } else {
+                        0
+                    },
+                    if layers_ready {
+                        ARKTS_STUB_PARSER_VERSION
+                    } else {
+                        0
+                    },
                     indexed_generation as i64,
+                    version,
                 ])
                 .map_err(|error| error.to_string())?;
         }

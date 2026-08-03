@@ -137,6 +137,42 @@ fn reports_freshness_layers_for_stale_index_versions() {
 }
 
 #[test]
+fn content_freshness_requires_published_content_state() {
+    let root = unique_temp_dir("workspace-index-diagnostics-content-truth");
+    fs::create_dir_all(&root).unwrap();
+    let source_path = root.join("Truth.ets");
+    fs::write(&source_path, "export class Truth {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let connection = Connection::open(
+        root.join(".arkline")
+            .join("index")
+            .join("workspace-catalog.sqlite"),
+    )
+    .unwrap();
+    connection
+        .execute(
+            "delete from workspace_content_files where path = ?1",
+            params![source_path.to_string_lossy().replace('/', "\\")],
+        )
+        .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+    let content = diagnostics
+        .freshness_layers
+        .iter()
+        .find(|layer| layer.layer == "content")
+        .unwrap();
+
+    assert_eq!(content.ready_count, 0);
+    assert_eq!(content.stale_count, 0);
+    assert_eq!(content.missing_count, 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_discovery_state_for_diagnostics() {
     let root = unique_temp_dir("workspace-index-diagnostics-discovery");
     fs::create_dir_all(&root).unwrap();

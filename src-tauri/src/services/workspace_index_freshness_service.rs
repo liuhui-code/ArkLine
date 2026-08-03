@@ -29,6 +29,9 @@ fn load_layer_freshness(
     column: &str,
     expected_version: i64,
 ) -> Result<WorkspaceIndexFreshnessLayerSummary, String> {
+    if layer == "content" {
+        return load_content_freshness(connection, root_key, expected_version);
+    }
     let sql = format!(
         "select
             sum(case when fingerprint.path is not null and fingerprint.{column} = ?2 then 1 else 0 end),
@@ -49,5 +52,39 @@ fn load_layer_freshness(
                 expected_version,
             })
         })
+        .map_err(|error| error.to_string())
+}
+
+fn load_content_freshness(
+    connection: &Connection,
+    root_key: &str,
+    expected_version: i64,
+) -> Result<WorkspaceIndexFreshnessLayerSummary, String> {
+    connection
+        .query_row(
+            "select
+                sum(case when content.path is not null and content.status = 'ready'
+                    and fingerprint.content_index_version = ?2 then 1 else 0 end),
+                sum(case when content.path is not null and (content.status != 'ready'
+                    or fingerprint.path is null
+                    or fingerprint.content_index_version != ?2) then 1 else 0 end),
+                sum(case when content.path is null then 1 else 0 end)
+             from workspace_files file
+             left join workspace_file_fingerprints fingerprint
+                on fingerprint.root_path = file.root_path and fingerprint.path = file.path
+             left join workspace_content_files content
+                on content.root_path = file.root_path and content.path = file.path
+             where file.root_path = ?1",
+            params![root_key, expected_version],
+            |row| {
+                Ok(WorkspaceIndexFreshnessLayerSummary {
+                    layer: "content".to_string(),
+                    ready_count: row.get::<_, Option<i64>>(0)?.unwrap_or(0),
+                    stale_count: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                    missing_count: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    expected_version,
+                })
+            },
+        )
         .map_err(|error| error.to_string())
 }

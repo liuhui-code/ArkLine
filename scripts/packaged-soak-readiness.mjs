@@ -43,13 +43,17 @@ export function isCoreWorkspaceIndexReady(value) {
   const contentFreshness = value.freshnessLayers?.find(
     (layer) => layer.layer === "content",
   );
+  const contentReadiness = value.layerReadiness?.layers?.find(
+    (layer) => layer.layer === "content",
+  );
   return value.discoveryStatus === "ready"
     && value.discoveredFileCount > 0
     && value.fileCount >= value.discoveredFileCount
     && value.contentLineCount > 0
     && contentFreshness?.missingCount === 0
     && contentFreshness?.staleCount === 0
-    && contentFreshness?.readyCount >= value.fileCount;
+    && contentFreshness?.readyCount >= value.fileCount
+    && contentReadiness?.indexedCount >= value.fileCount;
 }
 
 export async function waitForSearchResult(

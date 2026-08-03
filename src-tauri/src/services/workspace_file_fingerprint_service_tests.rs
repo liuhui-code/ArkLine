@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::services::workspace_file_fingerprint_service::{
-    classify_file_fingerprints, remove_file_fingerprints, update_file_fingerprints,
-    WorkspaceFileFingerprintStatus,
+    classify_file_fingerprints, remove_file_fingerprints, update_file_catalog_fingerprints,
+    update_file_fingerprints, WorkspaceFileFingerprintStatus,
 };
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -13,6 +13,34 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .expect("clock should be after unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("arkline-{name}-{suffix}"))
+}
+
+#[test]
+fn catalog_observation_preserves_ready_layers_until_source_changes() {
+    let root = unique_temp_dir("workspace-file-catalog-fingerprints");
+    fs::create_dir_all(&root).unwrap();
+    let source_file = root.join("Observed.ets");
+    fs::write(&source_file, "export class Observed {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source_file.to_string_lossy().to_string();
+    update_file_fingerprints(&root_path, std::slice::from_ref(&source_path), 1).unwrap();
+
+    update_file_catalog_fingerprints(&root_path, std::slice::from_ref(&source_path), 2).unwrap();
+    assert_eq!(
+        classify_file_fingerprints(&root_path, std::slice::from_ref(&source_path)).unwrap()[0]
+            .status,
+        WorkspaceFileFingerprintStatus::Unchanged
+    );
+
+    fs::write(&source_file, "export class Observed { value = 1 }\n").unwrap();
+    update_file_catalog_fingerprints(&root_path, std::slice::from_ref(&source_path), 3).unwrap();
+    assert_eq!(
+        classify_file_fingerprints(&root_path, std::slice::from_ref(&source_path)).unwrap()[0]
+            .status,
+        WorkspaceFileFingerprintStatus::Changed
+    );
+
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

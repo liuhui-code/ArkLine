@@ -8,6 +8,9 @@ use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
 use crate::services::workspace_content_chunk_plan_service::take_refresh_chunk;
 use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
 use crate::services::workspace_content_refresh_service::WORKSPACE_CONTENT_MAX_CHUNK_BYTES;
+use crate::services::workspace_file_fingerprint_service::{
+    remove_file_fingerprints, update_file_fingerprints,
+};
 use crate::services::workspace_index_adaptive_chunk_service::AdaptiveRefreshBudget;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_layer_generation_service::{
@@ -81,6 +84,7 @@ pub(crate) fn update_background_deep_layer<G: Fn() -> bool + Sync>(
     let content_applied_by_sidecar = matches!(content_outcome, LayerChunkOutcome::Applied);
     let stub_applied_by_sidecar = matches!(stub_outcome, LayerChunkOutcome::Applied);
     if content_applied_by_sidecar && stub_applied_by_sidecar {
+        publish_deep_fingerprints(task, changed_paths, removed_paths, catalog_generation)?;
         return Ok(WorkspaceDeepLayerUpdate::Applied(state));
     }
     if indexer.is_some_and(IndexerHostRuntime::requires_process_isolation) {
@@ -119,7 +123,18 @@ pub(crate) fn update_background_deep_layer<G: Fn() -> bool + Sync>(
             task.priority,
         )?;
     }
+    publish_deep_fingerprints(task, changed_paths, removed_paths, catalog_generation)?;
     Ok(WorkspaceDeepLayerUpdate::Applied(state))
+}
+
+fn publish_deep_fingerprints(
+    task: &WorkspaceIndexTask,
+    changed_paths: &[String],
+    removed_paths: &[String],
+    generation: u64,
+) -> Result<(), String> {
+    update_file_fingerprints(&task.root_path, changed_paths, generation)?;
+    remove_file_fingerprints(&task.root_path, removed_paths)
 }
 
 #[derive(Clone, Copy)]

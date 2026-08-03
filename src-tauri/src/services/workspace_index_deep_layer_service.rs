@@ -1,5 +1,8 @@
 use crate::models::workspace::WorkspaceIndexState;
 use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
+use crate::services::workspace_file_fingerprint_service::{
+    remove_file_fingerprints, update_file_fingerprints,
+};
 use crate::services::workspace_index_persistence_service::persist_incremental_deep_index_state_with_priority;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -41,6 +44,12 @@ impl WorkspaceIndexRuntime {
             removed_paths,
             priority,
         )?;
+        update_file_fingerprints(
+            root_path,
+            changed_paths,
+            state.indexed_at.unwrap_or_default() as u64,
+        )?;
+        remove_file_fingerprints(root_path, removed_paths)?;
         Ok(state)
     }
 }
