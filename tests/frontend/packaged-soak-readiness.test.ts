@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isCoreWorkspaceIndexReady,
+  isInteractiveWorkspaceIndexReady,
 } from "../../scripts/packaged-soak-readiness.mjs";
 
 describe("packaged soak index readiness", () => {
@@ -82,6 +83,33 @@ describe("packaged soak index readiness", () => {
       }],
       layerReadiness: {
         layers: [{ layer: "content", indexedCount: 128 }],
+      },
+    })).toBe(false);
+  });
+
+  it("allows interaction when the target file is ready during background indexing", () => {
+    const partialWorkspace = {
+      discoveryStatus: "ready",
+      discoveredFileCount: 20_001,
+      fileCount: 20_001,
+      layerReadiness: {
+        layers: [{
+          layer: "content",
+          indexedCount: 128,
+          currentFileStatus: "ready",
+        }],
+      },
+    };
+
+    expect(isInteractiveWorkspaceIndexReady(partialWorkspace)).toBe(true);
+    expect(isInteractiveWorkspaceIndexReady({
+      ...partialWorkspace,
+      layerReadiness: {
+        layers: [{
+          layer: "content",
+          indexedCount: 128,
+          currentFileStatus: "missing",
+        }],
       },
     })).toBe(false);
   });

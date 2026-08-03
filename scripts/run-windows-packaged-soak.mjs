@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { parsePackagedSoakArguments } from "./packaged-soak-model.mjs";
+import { buildFixtureRelativePath } from "./generate-performance-fixture.mjs";
 import { inspectPackagedSoakPreflight } from "./packaged-soak-preflight.mjs";
 import {
   PackagedWebDriver,
@@ -20,7 +21,7 @@ import {
 } from "./packaged-soak-telemetry.mjs";
 import {
   waitForDiscoveryReady,
-  waitForCoreIndexReady,
+  waitForInteractiveIndexReady,
   waitForWorkspace,
 } from "./packaged-soak-readiness.mjs";
 import {
@@ -123,8 +124,13 @@ async function main() {
 async function runSoak(driver, options, scenario) {
   await driver.waitForSelectorPresent('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
-  if (options.mode === "smoke") {
-    await waitForCoreIndexReady(driver, options.fixturePath, 90_000);
+  if (options.mode === "smoke" && scenario.kind === "generated") {
+    await waitForInteractiveIndexReady(
+      driver,
+      options.fixturePath,
+      path.join(options.fixturePath, buildFixtureRelativePath(0)),
+      90_000,
+    );
   } else {
     await waitForDiscoveryReady(driver, options.fixturePath, 180_000);
   }

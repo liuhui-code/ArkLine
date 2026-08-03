@@ -204,6 +204,7 @@ export const STABLE_FRAME_SCRIPT = `
 export const DIAGNOSTICS_SCRIPT = `
   const done = arguments[arguments.length - 1];
   const rootPath = arguments[0];
+  const currentFilePath = arguments[1] || null;
   const invoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
   if (!invoke) { done({ ok: false, error: "Tauri invoke unavailable" }); return; }
   Promise.all([
@@ -211,7 +212,7 @@ export const DIAGNOSTICS_SCRIPT = `
     invoke("get_workspace_index_task_statuses", { rootPath }),
     invoke("get_workspace_index_layer_readiness", {
       rootPath,
-      currentFilePath: null
+      currentFilePath
     })
   ])
     .then(([value, taskStatuses, layerReadiness]) => done({

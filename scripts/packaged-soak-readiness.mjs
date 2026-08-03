@@ -39,6 +39,33 @@ export async function waitForCoreIndexReady(driver, rootPath, timeoutMs) {
   );
 }
 
+export async function waitForInteractiveIndexReady(
+  driver,
+  rootPath,
+  currentFilePath,
+  timeoutMs,
+) {
+  return waitForIndexState(
+    driver,
+    rootPath,
+    timeoutMs,
+    isInteractiveWorkspaceIndexReady,
+    "Workspace interactive index did not become ready",
+    currentFilePath,
+  );
+}
+
+export function isInteractiveWorkspaceIndexReady(value) {
+  const contentReadiness = value.layerReadiness?.layers?.find(
+    (layer) => layer.layer === "content",
+  );
+  return value.discoveryStatus === "ready"
+    && value.discoveredFileCount > 0
+    && value.fileCount >= value.discoveredFileCount
+    && contentReadiness?.indexedCount > 0
+    && contentReadiness?.currentFileStatus === "ready";
+}
+
 export function isCoreWorkspaceIndexReady(value) {
   const contentFreshness = value.freshnessLayers?.find(
     (layer) => layer.layer === "content",
@@ -104,10 +131,14 @@ async function waitForIndexState(
   timeoutMs,
   isReady,
   timeoutMessage,
+  currentFilePath = null,
 ) {
   let latest = null;
   await pollUntil(async () => {
-    const response = await driver.executeAsync(DIAGNOSTICS_SCRIPT, [rootPath]);
+    const response = await driver.executeAsync(
+      DIAGNOSTICS_SCRIPT,
+      [rootPath, currentFilePath],
+    );
     latest = response?.ok ? response.value : response;
     return response?.ok && isReady(response.value);
   }, timeoutMs, () => `${timeoutMessage}: ${JSON.stringify(latest)}`);
