@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::services::workspace_search_session_service::WorkspaceSearchSessionRuntime;
 
-pub const ENTITY_QUERY_DEADLINE_MS: u64 = 250;
+pub const ENTITY_QUERY_DEADLINE_MS: u64 = 1_000;
 pub const CONTENT_QUERY_DEADLINE_MS: u64 = 1_500;
 const MAX_QUERY_DEADLINE_MS: u64 = 30_000;
 

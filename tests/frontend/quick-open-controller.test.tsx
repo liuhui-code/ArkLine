@@ -43,7 +43,7 @@ describe("Quick Open", () => {
       null,
       undefined,
       1,
-      250,
+      1_000,
       "quickOpen",
     );
   });

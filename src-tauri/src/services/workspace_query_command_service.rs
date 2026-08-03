@@ -67,6 +67,7 @@ pub async fn query_workspace_candidates_facade_blocking(
 pub async fn query_workspace_candidates_brokered_blocking(
     index_runtime: WorkspaceIndexRuntime,
     query_broker: WorkspaceQueryBrokerRuntime,
+    ui_activity: WorkspaceIndexUiActivityRuntime,
     root_path: String,
     query: String,
     scope: WorkspaceIndexQueryScope,
@@ -78,13 +79,19 @@ pub async fn query_workspace_candidates_brokered_blocking(
     query_lane: Option<String>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     let query_lane = entity_query_lane(query_lane.as_deref())?;
+    ui_activity.record_ui_activity(
+        WorkspaceIndexUiActivityKind::SearchInput,
+        current_time_millis() as u64,
+    )?;
     let ticket = query_broker.begin(
         &root_path,
         query_lane,
         generation,
         deadline_ms.unwrap_or(ENTITY_QUERY_DEADLINE_MS),
     )?;
+    let foreground_read = WorkspaceIndexWriterActor::shared().begin_foreground_read();
     spawn_blocking(move || {
+        let _foreground_read = foreground_read;
         ticket.check()?;
         let result = if cursor.is_none() {
             query_facade_search_everywhere_with_readiness_context(

@@ -28,7 +28,7 @@ describe("search overlay actions", () => {
     expect(setActiveOverlay).toHaveBeenCalledWith("searchEverywhere");
   });
 
-  it("opens find with selected text only when it normalizes to a valid query", () => {
+  it("opens find and replace with isolated selected-text queries", () => {
     const setQuickOpenQuery = vi.fn();
     const setActiveOverlay = vi.fn();
 
@@ -49,8 +49,8 @@ describe("search overlay actions", () => {
       setActiveOverlay,
     });
 
-    expect(setQuickOpenQuery).toHaveBeenCalledTimes(1);
-    expect(setQuickOpenQuery).toHaveBeenCalledWith("width");
+    expect(setQuickOpenQuery).toHaveBeenNthCalledWith(1, "width");
+    expect(setQuickOpenQuery).toHaveBeenNthCalledWith(2, "");
     expect(setActiveOverlay).toHaveBeenCalledWith("searchEverywhere");
   });
 

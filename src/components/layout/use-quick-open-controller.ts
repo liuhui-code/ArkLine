@@ -33,7 +33,7 @@ export type UseQuickOpenControllerOptions = {
 
 const QUICK_OPEN_LIMIT = 20;
 const QUICK_OPEN_DEBOUNCE_MS = 40;
-const QUICK_OPEN_DEADLINE_MS = 250;
+const QUICK_OPEN_DEADLINE_MS = 1_000;
 
 export function useQuickOpenController({
   active,

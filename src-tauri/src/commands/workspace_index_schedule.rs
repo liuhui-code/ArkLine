@@ -1,3 +1,4 @@
+use tauri::async_runtime::spawn_blocking;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::workspace_emit::emit_workspace_index_events;
@@ -10,7 +11,7 @@ use crate::services::workspace_index_ui_activity_service::{
 };
 
 #[tauri::command]
-pub fn schedule_foreground_completion_index(
+pub async fn schedule_foreground_completion_index(
     root_path: String,
     changed_paths: Vec<String>,
     app_handle: AppHandle,
@@ -18,20 +19,27 @@ pub fn schedule_foreground_completion_index(
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<(), String> {
-    ui_activity.record_ui_activity(
-        WorkspaceIndexUiActivityKind::Completion,
-        current_time_millis() as u64,
-    )?;
-    schedule_foreground_completion_index_through_manager(
-        &index_manager,
-        &root_path,
-        &changed_paths,
-    )?;
-    start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+    let index_runtime = index_runtime.inner().clone();
+    let index_manager = index_manager.inner().clone();
+    let ui_activity = ui_activity.inner().clone();
+    spawn_blocking(move || {
+        ui_activity.record_ui_activity(
+            WorkspaceIndexUiActivityKind::Completion,
+            current_time_millis() as u64,
+        )?;
+        schedule_foreground_completion_index_through_manager(
+            &index_manager,
+            &root_path,
+            &changed_paths,
+        )?;
+        start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn schedule_foreground_navigation_index(
+pub async fn schedule_foreground_navigation_index(
     root_path: String,
     changed_paths: Vec<String>,
     app_handle: AppHandle,
@@ -39,20 +47,27 @@ pub fn schedule_foreground_navigation_index(
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<(), String> {
-    ui_activity.record_ui_activity(
-        WorkspaceIndexUiActivityKind::Navigation,
-        current_time_millis() as u64,
-    )?;
-    schedule_foreground_navigation_index_through_manager(
-        &index_manager,
-        &root_path,
-        &changed_paths,
-    )?;
-    start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+    let index_runtime = index_runtime.inner().clone();
+    let index_manager = index_manager.inner().clone();
+    let ui_activity = ui_activity.inner().clone();
+    spawn_blocking(move || {
+        ui_activity.record_ui_activity(
+            WorkspaceIndexUiActivityKind::Navigation,
+            current_time_millis() as u64,
+        )?;
+        schedule_foreground_navigation_index_through_manager(
+            &index_manager,
+            &root_path,
+            &changed_paths,
+        )?;
+        start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn schedule_visible_files_index(
+pub async fn schedule_visible_files_index(
     root_path: String,
     changed_paths: Vec<String>,
     app_handle: AppHandle,
@@ -60,12 +75,19 @@ pub fn schedule_visible_files_index(
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<(), String> {
-    ui_activity.record_ui_activity(
-        WorkspaceIndexUiActivityKind::FileOpen,
-        current_time_millis() as u64,
-    )?;
-    schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)?;
-    start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+    let index_runtime = index_runtime.inner().clone();
+    let index_manager = index_manager.inner().clone();
+    let ui_activity = ui_activity.inner().clone();
+    spawn_blocking(move || {
+        ui_activity.record_ui_activity(
+            WorkspaceIndexUiActivityKind::FileOpen,
+            current_time_millis() as u64,
+        )?;
+        schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)?;
+        start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 pub(super) fn schedule_foreground_completion_index_through_manager(
@@ -109,14 +131,13 @@ pub(super) fn schedule_visible_files_index_through_manager(
 
 fn start_index_worker(
     app_handle: AppHandle,
-    index_runtime: State<'_, WorkspaceIndexRuntime>,
-    index_manager: State<'_, WorkspaceIndexManagerRuntime>,
-    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
+    index_runtime: WorkspaceIndexRuntime,
+    index_manager: WorkspaceIndexManagerRuntime,
+    ui_activity: WorkspaceIndexUiActivityRuntime,
 ) -> Result<(), String> {
     let app_handle = app_handle.clone();
-    let ui_activity = ui_activity.inner().clone();
     index_manager.start_background_worker_with_events_and_ui_activity(
-        index_runtime.inner().clone(),
+        index_runtime,
         move |status, events| {
             let _ = app_handle.emit("workspace-index-task-updated", status);
             emit_workspace_index_events(&app_handle, &events);

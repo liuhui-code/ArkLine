@@ -3,6 +3,7 @@ use tauri::State;
 use crate::models::workspace::{WorkspaceIndexQueryEnvelope, WorkspaceSearchCandidate};
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime;
 use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
 use crate::services::workspace_query_command_service::{
     query_workspace_candidates_brokered_blocking, query_workspace_file_symbols_facade_blocking,
@@ -50,10 +51,12 @@ pub async fn query_workspace_candidates(
     query_lane: Option<String>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
     Ok(query_workspace_candidates_brokered_blocking(
         index_runtime.inner().clone(),
         query_broker.inner().clone(),
+        ui_activity.inner().clone(),
         root_path,
         query,
         parse_index_query_scope(&scope)?,
@@ -81,10 +84,12 @@ pub async fn query_workspace_candidates_with_readiness(
     query_lane: Option<String>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate>, String> {
     query_workspace_candidates_brokered_blocking(
         index_runtime.inner().clone(),
         query_broker.inner().clone(),
+        ui_activity.inner().clone(),
         root_path,
         query,
         parse_index_query_scope(&scope)?,

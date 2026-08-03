@@ -56,9 +56,7 @@ export function openSearchOverlayAction({
   setActiveOverlay("searchEverywhere");
   if (mode === "find" || mode === "replace") {
     const selectedSearchText = normalizeSelectedSearchText(editorSelectedText);
-    if (selectedSearchText) {
-      setQuickOpenQuery(selectedSearchText);
-    }
+    setQuickOpenQuery(selectedSearchText);
   }
 }
 

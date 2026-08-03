@@ -5,8 +5,12 @@ use crate::services::workspace_index_facade_service::{
 };
 use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
+use crate::services::workspace_index_task_status_service::current_time_millis;
 use crate::services::workspace_index_test_fixture_service::{
     create_empty_workspace, create_workspace_source_dir,
+};
+use crate::services::workspace_index_ui_activity_service::{
+    WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
 };
 use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
 use crate::services::workspace_query_command_service::{
@@ -107,6 +111,7 @@ fn brokered_candidate_command_rejects_a_superseded_generation() {
     let error = tauri::async_runtime::block_on(query_workspace_candidates_brokered_blocking(
         WorkspaceIndexRuntime::default(),
         broker,
+        WorkspaceIndexUiActivityRuntime::default(),
         "/workspace".to_string(),
         "Entry".to_string(),
         WorkspaceIndexQueryScope::All,
@@ -131,6 +136,7 @@ fn quick_open_generation_is_isolated_from_search_everywhere() {
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
     let broker = WorkspaceQueryBrokerRuntime::new(WorkspaceSearchSessionRuntime::default());
+    let ui_activity = WorkspaceIndexUiActivityRuntime::default();
     broker
         .begin(&root_path, "searchEverywhere", Some(24), 1_000)
         .unwrap();
@@ -138,6 +144,7 @@ fn quick_open_generation_is_isolated_from_search_everywhere() {
     let result = tauri::async_runtime::block_on(query_workspace_candidates_brokered_blocking(
         runtime,
         broker,
+        ui_activity.clone(),
         root_path,
         "Entry".to_string(),
         WorkspaceIndexQueryScope::Files,
@@ -154,6 +161,12 @@ fn quick_open_generation_is_isolated_from_search_everywhere() {
         .items
         .iter()
         .any(|candidate| candidate.title == "Entry.ets"));
+    assert_eq!(
+        ui_activity
+            .current_ui_activity(current_time_millis() as u64)
+            .unwrap(),
+        Some(WorkspaceIndexUiActivityKind::SearchInput),
+    );
 }
 
 #[test]
