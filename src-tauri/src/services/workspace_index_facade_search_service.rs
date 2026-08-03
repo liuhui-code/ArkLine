@@ -129,7 +129,12 @@ pub(crate) fn query_facade_search_everywhere_page_with_context(
         Some("indexed"),
     );
     let mut explain = explain;
-    append_layer_explain(root_path, &mut explain)?;
+    // File-only queries are the Quick Open latency path. Their result and
+    // readiness already come from the published in-memory FileIndex snapshot;
+    // layer diagnostics must not make that path wait for SQLite publications.
+    if scope != WorkspaceIndexQueryScope::Files {
+        append_layer_explain(root_path, &mut explain)?;
+    }
     Ok(WorkspaceIndexFacadeEnvelope {
         items: items
             .into_iter()

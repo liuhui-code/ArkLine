@@ -1,6 +1,8 @@
 use std::fs;
 
-use crate::models::workspace::WorkspaceIndexReadinessState;
+use crate::models::workspace::{
+    WorkspaceIndexReadinessState, WorkspaceScanSummary, WorkspaceSnapshot,
+};
 use crate::services::workspace_index_facade_service::{
     query_workspace_index_facade, WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
     WorkspaceIndexFacadeRequest,
@@ -132,6 +134,50 @@ fn facade_routes_scoped_search_queries() {
         .iter()
         .all(|source| *source == "symbol"));
     assert!(search_sources(&apis).iter().all(|source| *source == "api"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn file_scope_query_does_not_depend_on_persistent_layer_diagnostics() {
+    let root = create_empty_workspace("facade-file-scope-memory-snapshot");
+    let source_dir = create_workspace_source_dir(&root);
+    let file_path = source_dir.join("ImmediatePage.ets");
+    fs::write(&file_path, "class ImmediatePage {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime
+        .index_workspace_snapshot_for_open(&WorkspaceSnapshot {
+            root_name: "ArkDemo".to_string(),
+            root_path: root_path.clone(),
+            files: vec![file_path.to_string_lossy().to_string()],
+            scan_summary: WorkspaceScanSummary {
+                scanned_files: 1,
+                skipped_entries: 0,
+                truncated: false,
+                exclude_rules: Vec::new(),
+            },
+        })
+        .unwrap();
+    let store_dir = root.join(".arkline/index");
+    fs::create_dir_all(&store_dir).unwrap();
+    fs::write(store_dir.join("workspace-catalog.sqlite"), "not sqlite").unwrap();
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhere {
+            root_path: root_path.clone(),
+            query: "ImmediatePage".to_string(),
+            scope: WorkspaceIndexQueryScope::Files,
+            limit: 8,
+        },
+    )
+    .unwrap();
+
+    assert!(search_titles(&envelope).contains(&"ImmediatePage.ets"));
+    assert!(envelope
+        .explain
+        .iter()
+        .all(|line| !line.starts_with("layer:")));
     fs::remove_dir_all(root).unwrap();
 }
 
