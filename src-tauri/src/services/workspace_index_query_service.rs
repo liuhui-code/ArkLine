@@ -30,16 +30,7 @@ pub fn query_workspace_quick_open(
     query: &str,
     limit: usize,
 ) -> Result<Vec<WorkspaceSearchCandidate>, String> {
-    let mut candidates = query_workspace_entities_with_file_index(
-        index_runtime,
-        root_path,
-        query,
-        WorkspaceEntityQueryScope::Files,
-        limit,
-    )?;
-    if candidates.is_empty() {
-        candidates = index_runtime.query_quick_open(root_path, query, limit)?;
-    }
+    let mut candidates = index_runtime.query_quick_open(root_path, query, limit)?;
     normalize_candidate_paths_for_filesystem(root_path, &mut candidates);
     Ok(candidates)
 }
@@ -74,9 +65,12 @@ pub(crate) fn query_workspace_candidates(
     if scope == WorkspaceIndexQueryScope::Text {
         return text_search_candidates(index_runtime, root_path, query, limit);
     }
+    if scope == WorkspaceIndexQueryScope::Files {
+        return query_workspace_quick_open(index_runtime, root_path, query, limit);
+    }
     let entity_scope = match scope {
         WorkspaceIndexQueryScope::All => WorkspaceEntityQueryScope::All,
-        WorkspaceIndexQueryScope::Files => WorkspaceEntityQueryScope::Files,
+        WorkspaceIndexQueryScope::Files => unreachable!("file scope uses the in-memory index"),
         WorkspaceIndexQueryScope::Classes => WorkspaceEntityQueryScope::Classes,
         WorkspaceIndexQueryScope::Symbols => WorkspaceEntityQueryScope::Symbols,
         WorkspaceIndexQueryScope::Apis => WorkspaceEntityQueryScope::Apis,

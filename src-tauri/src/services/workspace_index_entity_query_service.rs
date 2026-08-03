@@ -17,7 +17,6 @@ use crate::services::workspace_symbol_posting_service::query_posted_symbols;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum WorkspaceEntityQueryScope {
     All,
-    Files,
     Classes,
     Symbols,
     Apis,
@@ -36,7 +35,6 @@ pub(crate) fn query_workspace_entities(
             candidates.extend(query_workspace_sdk_symbols(root_path, query, limit)?);
             candidates
         }
-        WorkspaceEntityQueryScope::Files => query_file_entities(root_path, query, limit)?,
         WorkspaceEntityQueryScope::Classes => {
             query_symbol_entities(root_path, query, Some("class"), limit)?
         }
@@ -62,9 +60,6 @@ pub(crate) fn query_workspace_entities_with_file_index(
             candidates.extend(query_symbol_entities(root_path, query, None, limit)?);
             candidates.extend(query_workspace_sdk_symbols(root_path, query, limit)?);
             candidates
-        }
-        WorkspaceEntityQueryScope::Files => {
-            return index_runtime.query_quick_open(root_path, query, limit);
         }
         _ => return query_workspace_entities(root_path, query, scope, limit),
     };

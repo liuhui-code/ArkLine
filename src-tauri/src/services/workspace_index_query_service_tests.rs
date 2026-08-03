@@ -75,6 +75,56 @@ fn query_service_preserves_partial_freshness_for_quick_open() {
 }
 
 #[test]
+fn quick_open_does_not_depend_on_the_persistent_entity_store() {
+    let root = unique_temp_dir("workspace-query-file-index-isolation");
+    let source_dir = root.join("entry/src/main/ets/pages");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("Immediate.ets"),
+        "export class Immediate {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime
+        .index_workspace_snapshot_for_open(&WorkspaceSnapshot {
+            root_name: "ArkDemo".to_string(),
+            root_path: root_path.clone(),
+            files: vec![source_dir
+                .join("Immediate.ets")
+                .to_string_lossy()
+                .to_string()],
+            scan_summary: WorkspaceScanSummary {
+                scanned_files: 1,
+                skipped_entries: 0,
+                truncated: false,
+                exclude_rules: Vec::new(),
+            },
+        })
+        .unwrap();
+    let store_dir = root.join(".arkline/index");
+    fs::create_dir_all(&store_dir).unwrap();
+    fs::write(
+        store_dir.join("workspace-catalog.sqlite"),
+        "not a sqlite store",
+    )
+    .unwrap();
+
+    let matches = query_workspace_candidates(
+        &runtime,
+        &root_path,
+        "Immediate",
+        WorkspaceIndexQueryScope::Files,
+        8,
+    )
+    .unwrap();
+
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].title, "Immediate.ets");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn query_service_preserves_stale_freshness_from_restored_index() {
     let root = unique_temp_dir("workspace-query-facade-stale");
     fs::create_dir_all(
