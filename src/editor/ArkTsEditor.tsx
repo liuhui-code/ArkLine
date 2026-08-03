@@ -194,6 +194,7 @@ export function ArkTsEditor({
       parent: hostRef.current,
     });
     const contentDom = viewRef.current.contentDOM;
+    contentDom.dataset.documentLength = String(viewRef.current.state.doc.length);
     const handleBeforeInput = (event: InputEvent) => {
       inputTraceRuntimeRef.current.begin(
         getPathBasename(activePathRef.current),

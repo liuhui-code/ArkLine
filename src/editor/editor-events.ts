@@ -213,6 +213,9 @@ export function createDocumentChangeListener(
 ) {
   const dispatcher = createEditorChangeDispatcher(onChange);
   return EditorView.updateListener.of((update: ViewUpdate) => {
+    if (update.docChanged) {
+      update.view.contentDOM.dataset.documentLength = String(update.state.doc.length);
+    }
     if (!update.docChanged || isEditorDocumentReplacement(update)) {
       return;
     }

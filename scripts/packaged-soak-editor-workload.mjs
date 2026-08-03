@@ -109,7 +109,8 @@ export const EDITOR_FOCUS_SNAPSHOT_SCRIPT = `
     present: document.activeElement === editor,
     focused: document.activeElement === editor,
     crashed: false,
-    textLength: (editor.textContent || "").length,
+    textLength: Number.parseInt(editor.dataset.documentLength || "", 10)
+      || (editor.textContent || "").length,
     at: performance.now()
   };
 `;
@@ -129,7 +130,8 @@ export const EDITOR_TEXT_SNAPSHOT_SCRIPT = `
       ? [active.tagName.toLowerCase(), active.getAttribute("aria-label") || active.className || ""]
           .filter(Boolean).join(":")
       : null,
-    textLength: (editor?.textContent || "").length,
+    textLength: Number.parseInt(editor?.dataset.documentLength || "", 10)
+      || (editor?.textContent || "").length,
     at: performance.now()
   };
 `;
