@@ -184,6 +184,7 @@ export const RETAINED_HEAP_SNAPSHOT_SCRIPT = `
       openDocumentCount: Number(shell?.dataset.openDocumentCount ?? 0),
       hotEditorSessionCount: Number(editor?.dataset.hotSessionCount ?? 0),
       hotEditorSessionCharacters: Number(editor?.dataset.hotSessionCharacters ?? 0),
+      editorStateCreationCount: Number(editor?.dataset.stateCreationCount ?? 0),
       domNodeCount: document.getElementsByTagName("*").length
     });
   }));

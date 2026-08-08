@@ -186,6 +186,8 @@ export function SearchOverlayContent({
           onChange={(event) => onChangeQuery(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
               onSubmitGoToLine();
             }
           }}

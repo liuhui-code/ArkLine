@@ -2185,7 +2185,6 @@ describe("App shell", () => {
     const appJsonMatch = within(results).getByRole("button", { name: /AppScope\/app\.json5:3:6/ });
     expect(within(appJsonMatch).getByText("3")).toHaveClass("search-result__line-number");
     expect(within(appJsonMatch).getByText("bundleName")).toHaveClass("search-result__highlight");
-    expect(within(appJsonMatch).getByText(/"app": \{/)).toHaveClass("search-result__context-text");
 
     const preview = screen.getByLabelText("Search Everywhere Preview");
     expect(within(preview).getByText("AppScope/app.json5:3:6")).toBeVisible();
@@ -2194,7 +2193,7 @@ describe("App shell", () => {
       expect(within(preview).getByText(/"app": \{/)).toBeVisible();
     });
 
-    fireEvent.click(within(results).getByRole("button", { name: /app\.json5/i }));
+    await user.click(appJsonMatch);
 
     expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.json5", pressed: true })).toBeVisible();

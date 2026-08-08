@@ -1,7 +1,6 @@
 import type { EditorCompletionTarget, EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
 import { useEffect, useMemo, useRef } from "react";
 import { closeCompletion, startCompletion } from "@codemirror/autocomplete";
-import { history } from "@codemirror/commands";
 import { EditorSelection, EditorState, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
@@ -10,7 +9,6 @@ import {
   createEditorExtensions,
   editorStructureCompartment,
   gitTraceCompartment,
-  historyCompartment,
   languageCompartment,
   languageExtensionForPath,
   structureExtensionForDocument,
@@ -99,6 +97,7 @@ export function ArkTsEditor({
   const activePathRef = useRef(path);
   const activeTransientPreviewRef = useRef(transientPreview);
   const sessionsRef = useRef(createEditorDocumentSessionRegistry());
+  const stateCreationCountRef = useRef(0);
   const localDocumentsRef = useRef(new WeakSet<Text>());
   const activeEnhancedRef = useRef(false);
   const onChangeRef = useRef(onChange);
@@ -128,6 +127,7 @@ export function ArkTsEditor({
     if (!host) return;
     host.dataset.hotSessionCount = String(sessionsRef.current.size());
     host.dataset.hotSessionCharacters = String(sessionsRef.current.retainedDocumentCharacters());
+    host.dataset.stateCreationCount = String(stateCreationCountRef.current);
   }
 
   onChangeRef.current = onChange;
@@ -144,6 +144,7 @@ export function ArkTsEditor({
   onContextMenuRef.current = onContextMenu;
 
   function createState(documentPath: string, content: string | Text, reducedMode: boolean) {
+    stateCreationCountRef.current += 1;
     return EditorState.create({
       doc: content,
       extensions: createEditorExtensions(
@@ -254,7 +255,6 @@ export function ArkTsEditor({
       });
     }
     const cached = sessionsRef.current.restore(path);
-    publishSessionStats();
     const cachedMatchesDocument = cached && documentMatches(cached.state.doc, documentSource);
 
     activePathRef.current = path;
@@ -263,8 +263,9 @@ export function ArkTsEditor({
     if (cachedMatchesDocument) {
       view.setState(cached.state);
     } else {
-      replaceDocumentInView(view, path, documentSource, reducedPerformanceMode);
+      view.setState(createState(path, documentSource, reducedPerformanceMode));
     }
+    publishSessionStats();
     statePhase.finish();
     if (sessionRestoreFrameRef.current != null) {
       window.cancelAnimationFrame(sessionRestoreFrameRef.current);
@@ -284,31 +285,6 @@ export function ArkTsEditor({
       sessionRestoreFrameRef.current = null;
     });
   }, [appearance, documentSource, onDocumentChange, path, reducedPerformanceMode, transientPreview]);
-
-  function replaceDocumentInView(
-    view: EditorView,
-    documentPath: string,
-    content: string | Text,
-    reducedMode: boolean,
-  ) {
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: content },
-      selection: EditorSelection.cursor(0),
-      annotations: editorDocumentReplacement.of(true),
-      effects: [
-        historyCompartment.reconfigure([]),
-        editorStructureCompartment.reconfigure(structureExtensionForDocument(true)),
-        languageCompartment.reconfigure(languageExtensionForPath(documentPath, true)),
-        setJumpRevealEffect.of(null),
-      ],
-    });
-    view.dispatch({
-      effects: historyCompartment.reconfigure(history()),
-    });
-    if (reducedMode) {
-      activeEnhancedRef.current = true;
-    }
-  }
 
   useEffect(() => {
     const view = viewRef.current;

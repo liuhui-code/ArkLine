@@ -5,7 +5,7 @@ import { ArkTsEditor } from "@/editor/ArkTsEditor";
 import { defaultSettings } from "@/features/settings/settings-store";
 
 describe("editor preview recycling", () => {
-  it("reuses one editor state across transient preview navigation", () => {
+  it("resets per-document state across transient preview navigation", () => {
     const createState = vi.spyOn(EditorState, "create");
     const appearance = defaultSettings().editor;
     const { rerender } = render(
@@ -30,7 +30,7 @@ describe("editor preview recycling", () => {
       );
     }
 
-    expect(createState).toHaveBeenCalledTimes(1);
+    expect(createState).toHaveBeenCalledTimes(101);
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("file 100");
     createState.mockRestore();
   });

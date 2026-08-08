@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("useUiLatencyMonitor", () => {
-  it("records heartbeat lag without rerendering the app shell", () => {
+  it("keeps interaction recording off React until diagnostics request a snapshot", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     let renderCount = 0;
@@ -26,6 +26,10 @@ describe("useUiLatencyMonitor", () => {
     act(() => {
       result.current.recordUiInteraction("globalSearch", "target", 1_000, 1_020);
     });
+
+    expect(renderCount).toBe(1);
+
+    act(() => result.current.refreshSamples());
 
     expect(renderCount).toBe(2);
     expect(result.current.uiLatencySamples.map((sample) => sample.kind)).toEqual([

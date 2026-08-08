@@ -202,6 +202,7 @@ describe("packaged Windows soak foundation", () => {
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openTabCount");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openDocumentCount");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("hotEditorSessionCount");
+    expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("editorStateCreationCount");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("domNodeCount");
     expect(UI_READINESS_SCRIPT).toContain(
       '[aria-label="Find in Files Results"]',

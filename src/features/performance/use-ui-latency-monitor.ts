@@ -49,8 +49,7 @@ export function useUiLatencyMonitor() {
     endedAt: number,
   ) => {
     monitor.recordInteraction(kind, label, startedAt, endedAt);
-    refreshSamples();
-  }, [monitor, refreshSamples]);
+  }, [monitor]);
 
   useEffect(() => {
     monitor.recordHeartbeat(Date.now());
@@ -60,5 +59,5 @@ export function useUiLatencyMonitor() {
     return () => window.clearInterval(timer);
   }, [monitor]);
 
-  return { recordUiInteraction, uiLatencySamples: samples, renderPressureSamples, ipcLatencySamples };
+  return { recordUiInteraction, refreshSamples, uiLatencySamples: samples, renderPressureSamples, ipcLatencySamples };
 }

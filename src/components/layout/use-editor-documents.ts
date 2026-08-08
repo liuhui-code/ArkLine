@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { createDocumentStore } from "@/features/documents/document-store";
 import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
+import { normalizePath } from "@/features/workspace/workspace-store";
 
 export function useEditorDocuments() {
   const documentsRef = useRef(createDocumentStore());
@@ -13,7 +14,7 @@ export function useEditorDocuments() {
   }
 
   function setActiveDocument(path: string | null) {
-    setActivePath(path);
+    setActivePath(path ? normalizePath(path) : null);
   }
 
   function resetTabs() {
