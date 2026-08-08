@@ -224,6 +224,57 @@ describe("Quick Open", () => {
     expect(queryLocal).toHaveBeenCalledWith("Visible");
   });
 
+  it("keeps a confirmed file available while its refreshed index is not ready", async () => {
+    let requestCount = 0;
+    const queryWorkspaceWithReadiness = vi.fn(async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return {
+          items: [{
+            id: "file:/workspace/EntryPage.ets",
+            source: "file" as const,
+            kind: "file" as const,
+            title: "EntryPage.ets",
+            subtitle: "/workspace/EntryPage.ets",
+            path: "/workspace/EntryPage.ets",
+            score: 100,
+            freshness: "ready" as const,
+          }],
+          readiness: {
+            rootPath: "/workspace",
+            requestedGeneration: 1,
+            servedGeneration: 1,
+            state: "ready" as const,
+            retryable: false,
+          },
+        };
+      }
+      return missingQuickOpenEnvelope();
+    });
+    const { result, rerender } = renderHook(
+      ({ active, query }) => useQuickOpenController({
+        active,
+        rootPath: "/workspace",
+        query,
+        localResults: [],
+        queryLocal: () => [],
+        queryWorkspaceWithReadiness,
+      }),
+      { initialProps: { active: true, query: "EntryPage" } },
+    );
+
+    await waitFor(() => expect(result.current.results).toEqual([
+      { path: "/workspace/EntryPage.ets" },
+    ]));
+    rerender({ active: false, query: "" });
+    rerender({ active: true, query: "EntryPage" });
+    await waitFor(() => expect(queryWorkspaceWithReadiness).toHaveBeenCalledTimes(2));
+
+    expect(result.current.results).toEqual([
+      { path: "/workspace/EntryPage.ets" },
+    ]);
+  });
+
   it("keeps the confirmed hot-catalog fallback responsive while the next query is pending", async () => {
     let resolveNext: ((value: ReturnType<typeof missingQuickOpenEnvelope>) => void) | null = null;
     const queryLocal = vi.fn((query: string) => [{ path: `/workspace/${query}.ets` }]);

@@ -34,6 +34,7 @@ export type UseQuickOpenControllerOptions = {
 const QUICK_OPEN_LIMIT = 20;
 const QUICK_OPEN_DEBOUNCE_MS = 40;
 const QUICK_OPEN_DEADLINE_MS = 1_000;
+const CONFIRMED_QUERY_CACHE_LIMIT = 50;
 
 export function useQuickOpenController({
   active,
@@ -54,6 +55,7 @@ export function useQuickOpenController({
   }>({ rootPath: null, query: "", results: [], fallbackToLocal: false });
   const [selectedIndex, setSelectedIndex] = useState(0);
   const requestGenerationRef = useRef(0);
+  const confirmedResultsRef = useRef(new Map<string, QuickOpenResult[]>());
   const queryLocalRef = useRef(queryLocal);
   queryLocalRef.current = queryLocal;
   const trimmedQuery = query.trim();
@@ -92,25 +94,34 @@ export function useQuickOpenController({
         ).then((envelope) => ({
           candidates: envelope.items,
           fallbackToLocal: envelope.items.length === 0 && envelope.readiness.state !== "ready",
+          readiness: envelope.readiness.state,
         }))
         : queryWorkspace!(rootPath, trimmedQuery, QUICK_OPEN_LIMIT).then((candidates) => ({
           candidates,
           fallbackToLocal: false,
+          readiness: "legacy",
         }));
       void request
-        .then(({ candidates, fallbackToLocal }) => {
+        .then(({ candidates, fallbackToLocal, readiness }) => {
           requestSettled = true;
-          queryPhase.finish();
+          queryPhase.finish("ok", `results=${candidates.length}; readiness=${readiness}`);
           if (generation !== requestGenerationRef.current) {
             trace.finish("superseded");
             return;
           }
           const publishPhase = trace.startPhase("publishResults");
+          const queryKey = quickOpenQueryKey(rootPath, trimmedQuery);
+          const results = candidates.flatMap((candidate) =>
+            candidate.path ? [{ path: candidate.path }] : []);
+          if (results.length > 0) {
+            rememberConfirmedResults(confirmedResultsRef.current, queryKey, results);
+          }
           setRemoteState({
             rootPath,
             query: trimmedQuery,
-            results: candidates.flatMap((candidate) =>
-              candidate.path ? [{ path: candidate.path }] : []),
+            results: results.length > 0
+              ? results
+              : confirmedResultsRef.current.get(queryKey) ?? [],
             fallbackToLocal,
           });
           publishPhase.finish();
@@ -148,7 +159,8 @@ export function useQuickOpenController({
         && remoteState.query === trimmedQuery
       ) {
         if (remoteState.fallbackToLocal) {
-          return queryLocalRef.current?.(trimmedQuery) ?? localResults;
+          const localFallback = queryLocalRef.current?.(trimmedQuery) ?? localResults;
+          return localFallback.length > 0 ? localFallback : remoteState.results;
         }
         return remoteState.results;
       }
@@ -181,4 +193,22 @@ export function useQuickOpenController({
     moveSelection,
     selectedResult: results[selectedIndex] ?? null,
   };
+}
+
+function quickOpenQueryKey(rootPath: string, query: string) {
+  return `${rootPath}\u0000${query}`;
+}
+
+function rememberConfirmedResults(
+  cache: Map<string, QuickOpenResult[]>,
+  key: string,
+  results: QuickOpenResult[],
+) {
+  cache.delete(key);
+  cache.set(key, results);
+  while (cache.size > CONFIRMED_QUERY_CACHE_LIMIT) {
+    const oldestKey = cache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    cache.delete(oldestKey);
+  }
 }
