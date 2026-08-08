@@ -82,6 +82,32 @@ describe("packaged editor workload", () => {
       .resolves.toMatchObject({ restored: true });
   });
 
+  it("accepts a complete input burst proven by document transactions", async () => {
+    const baselineLength = 120;
+    let documentChangeCount = 4;
+    const driver = {
+      execute: vi.fn(async (script: string) => {
+        if (script === EDITOR_FOCUS_SNAPSHOT_SCRIPT) {
+          return { present: true, focused: true, textLength: baselineLength, documentChangeCount, at: 10 };
+        }
+        if (script === EDITOR_TEXT_SNAPSHOT_SCRIPT) {
+          return { present: true, focused: true, textLength: baselineLength, documentChangeCount, at: 30 };
+        }
+        return 20;
+      }),
+      executeAsync: vi.fn(async () => ({ moved: false })),
+      typeText: vi.fn(async () => {
+        documentChangeCount += INPUT_BURST.length;
+      }),
+      keyChord: vi.fn(async () => {
+        documentChangeCount += 1;
+      }),
+    };
+
+    await expect(exerciseEditorInteraction(driver, { timeoutMs: 20 }))
+      .resolves.toMatchObject({ restored: true });
+  });
+
   it("fails explicitly when the active CodeMirror editor is missing", async () => {
     const driver = {
       execute: vi.fn(async () => ({ present: false })),

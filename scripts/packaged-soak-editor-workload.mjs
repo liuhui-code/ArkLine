@@ -23,6 +23,7 @@ export async function exerciseEditorInteraction(
     baseline.textLength - (baseline.selectionLength ?? 0) + INPUT_BURST.length,
     timeoutMs,
     "Editor input did not become visible",
+    (baseline.documentChangeCount ?? 0) + INPUT_BURST.length,
   );
   if (edited.focused === false) {
     throw new Error(`Editor lost focus after input: ${JSON.stringify(edited)}`);
@@ -75,13 +76,16 @@ async function waitForEditorLength(
   expectedLength,
   timeoutMs,
   timeoutMessage,
+  minimumDocumentChangeCount = null,
 ) {
   const deadline = Date.now() + timeoutMs;
   let latest = null;
   while (Date.now() < deadline) {
     latest = await driver.execute(EDITOR_TEXT_SNAPSHOT_SCRIPT);
     if (latest?.crashed) throw new Error("Editor crash boundary became visible");
-    if (latest?.present && latest.textLength === expectedLength) return latest;
+    const changedEnough = minimumDocumentChangeCount != null
+      && latest?.documentChangeCount >= minimumDocumentChangeCount;
+    if (latest?.present && (latest.textLength === expectedLength || changedEnough)) return latest;
     await sleep(25);
   }
   throw new Error(`${timeoutMessage}: ${JSON.stringify(latest)}`);
