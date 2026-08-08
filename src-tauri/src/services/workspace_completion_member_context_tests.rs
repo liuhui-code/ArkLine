@@ -184,7 +184,7 @@ fn semantic_completion_resolves_members_through_object_aliases() {
 }
 
 #[test]
-fn semantic_completion_resolves_default_import_members_from_decorated_arkts_fields() {
+fn semantic_completion_resolves_decorated_import_members_before_background_indexing() {
     let root = create_empty_workspace("completion-decorated-field");
     let source_dir = create_workspace_source_dir(&root);
     fs::write(
@@ -210,9 +210,6 @@ fn semantic_completion_resolves_default_import_members_from_decorated_arkts_fiel
     .join("\n");
     fs::write(&app_path, &content).unwrap();
     let root_path = root.to_string_lossy().to_string();
-    WorkspaceIndexRuntime::default()
-        .refresh_workspace_index(&root_path)
-        .unwrap();
 
     let items = query_semantic_completions(
         &root_path,
