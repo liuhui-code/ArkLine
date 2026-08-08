@@ -8,10 +8,12 @@ export async function exerciseEditorInteraction(
   driver,
   { timeoutMs = 3_000 } = {},
 ) {
-  const baseline = await driver.execute(EDITOR_FOCUS_SNAPSHOT_SCRIPT);
-  if (!baseline?.present || !baseline.focused) {
+  const focused = await driver.execute(EDITOR_FOCUS_SNAPSHOT_SCRIPT);
+  if (!focused?.present || !focused.focused) {
     throw new Error("Active CodeMirror editor is missing or did not receive focus");
   }
+  await driver.keyChord([WEBDRIVER_KEYS.control, WEBDRIVER_KEYS.end]);
+  const baseline = await waitForEditorCaretAtEnd(driver, timeoutMs);
 
   const inputDispatchMs = await timed(() => driver.typeText(INPUT_BURST));
   const inputStartedAt = await rendererInteractionStart(
@@ -30,7 +32,7 @@ export async function exerciseEditorInteraction(
   }
 
   const deleteDispatchMs = await timed(
-    () => driver.keyChord([WEBDRIVER_KEYS.control, "z"]),
+    () => driver.typeText(WEBDRIVER_KEYS.backspace.repeat(INPUT_BURST.length)),
   );
   const deleteStartedAt = await rendererInteractionStart(
     driver,
@@ -97,6 +99,17 @@ async function timed(operation) {
   return performance.now() - startedAt;
 }
 
+async function waitForEditorCaretAtEnd(driver, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let latest = null;
+  while (Date.now() < deadline) {
+    latest = await driver.execute(EDITOR_TEXT_SNAPSHOT_SCRIPT);
+    if (latest?.present && latest.selectionHead === latest.textLength) return latest;
+    await sleep(25);
+  }
+  throw new Error(`Editor caret did not move to document end: ${JSON.stringify(latest)}`);
+}
+
 function sleep(durationMs) {
   return new Promise((resolve) => setTimeout(resolve, durationMs));
 }
@@ -116,6 +129,7 @@ export const EDITOR_FOCUS_SNAPSHOT_SCRIPT = `
     textLength: Number.parseInt(editor.dataset.documentLength || "", 10)
       || (editor.textContent || "").length,
     selectionLength: Number.parseInt(editor.dataset.selectionLength || "", 10) || 0,
+    selectionHead: Number.parseInt(editor.dataset.selectionHead || "", 10) || 0,
     keyDownCount: Number.parseInt(editor.dataset.keyDownCount || "", 10) || 0,
     beforeInputCount: Number.parseInt(editor.dataset.beforeInputCount || "", 10) || 0,
     documentChangeCount: Number.parseInt(editor.dataset.documentChangeCount || "", 10) || 0,
@@ -143,6 +157,7 @@ export const EDITOR_TEXT_SNAPSHOT_SCRIPT = `
     textLength: Number.parseInt(editor?.dataset.documentLength || "", 10)
       || (editor?.textContent || "").length,
     selectionLength: Number.parseInt(editor?.dataset.selectionLength || "", 10) || 0,
+    selectionHead: Number.parseInt(editor?.dataset.selectionHead || "", 10) || 0,
     keyDownCount: Number.parseInt(editor?.dataset.keyDownCount || "", 10) || 0,
     beforeInputCount: Number.parseInt(editor?.dataset.beforeInputCount || "", 10) || 0,
     documentChangeCount: Number.parseInt(editor?.dataset.documentChangeCount || "", 10) || 0,

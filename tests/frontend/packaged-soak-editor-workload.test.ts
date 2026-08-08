@@ -29,6 +29,7 @@ describe("packaged editor workload", () => {
           return {
             present: true,
             textLength,
+            selectionHead: textLength,
             at: textLength === 120 + INPUT_BURST.length ? 118 : 130,
           };
         }
@@ -41,9 +42,7 @@ describe("packaged editor workload", () => {
       typeText: vi.fn(async (text: string) => {
         textLength += text === INPUT_BURST ? INPUT_BURST.length : -INPUT_BURST.length;
       }),
-      keyChord: vi.fn(async () => {
-        textLength = 120;
-      }),
+      keyChord: vi.fn(async () => undefined),
     };
 
     const result = await exerciseEditorInteraction(driver, { timeoutMs: 200 });
@@ -56,10 +55,11 @@ describe("packaged editor workload", () => {
       scrollFrameMs: 12,
     });
     expect(driver.typeText).toHaveBeenNthCalledWith(1, INPUT_BURST);
-    expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
+    expect(driver.typeText).toHaveBeenNthCalledWith(2, "\uE003".repeat(INPUT_BURST.length));
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "\uE010"]);
   });
 
-  it("treats typing over an active selection as a visible edit", async () => {
+  it("moves past an active selection before exercising input", async () => {
     const baselineLength = 120;
     const selectionLength = INPUT_BURST.length;
     let textLength = baselineLength;
@@ -69,12 +69,14 @@ describe("packaged editor workload", () => {
           return { present: true, focused: true, textLength, selectionLength, at: 10 };
         }
         if (script === EDITOR_TEXT_SNAPSHOT_SCRIPT) {
-          return { present: true, focused: true, textLength, at: 30 };
+          return { present: true, focused: true, textLength, selectionLength: 0, selectionHead: textLength, at: 30 };
         }
         return 20;
       }),
       executeAsync: vi.fn(async () => ({ moved: false })),
-      typeText: vi.fn(async () => undefined),
+      typeText: vi.fn(async (text: string) => {
+        textLength += text === INPUT_BURST ? INPUT_BURST.length : -INPUT_BURST.length;
+      }),
       keyChord: vi.fn(async () => undefined),
     };
 
@@ -91,7 +93,7 @@ describe("packaged editor workload", () => {
           return { present: true, focused: true, textLength: baselineLength, documentChangeCount, at: 10 };
         }
         if (script === EDITOR_TEXT_SNAPSHOT_SCRIPT) {
-          return { present: true, focused: true, textLength: baselineLength, documentChangeCount, at: 30 };
+          return { present: true, focused: true, textLength: baselineLength, selectionHead: baselineLength, documentChangeCount, at: 30 };
         }
         return 20;
       }),
@@ -144,6 +146,7 @@ describe("packaged editor workload", () => {
           return {
             present: true,
             textLength,
+            selectionHead: textLength,
             at: textLength === 20 + INPUT_BURST.length ? 106 : 120,
           };
         }
@@ -158,9 +161,7 @@ describe("packaged editor workload", () => {
       typeText: vi.fn(async (text: string) => {
         textLength += text === INPUT_BURST ? INPUT_BURST.length : -INPUT_BURST.length;
       }),
-      keyChord: vi.fn(async () => {
-        textLength = 20;
-      }),
+      keyChord: vi.fn(async () => undefined),
     };
 
     await expect(exerciseEditorInteraction(driver, { timeoutMs: 200 }))
@@ -168,6 +169,7 @@ describe("packaged editor workload", () => {
   });
 
   it("reports the focus owner when an editor input loses focus", async () => {
+    let typed = false;
     const driver = {
       execute: vi.fn(async (script: string) => {
         if (script === EDITOR_FOCUS_SNAPSHOT_SCRIPT) {
@@ -176,16 +178,19 @@ describe("packaged editor workload", () => {
         if (script === EDITOR_TEXT_SNAPSHOT_SCRIPT) {
           return {
             present: true,
-            focused: false,
-            activeElement: "button:Close",
-            textLength: 20 + INPUT_BURST.length,
+            focused: !typed,
+            activeElement: typed ? "button:Close" : "div:Editor Content",
+            textLength: typed ? 20 + INPUT_BURST.length : 20,
+            selectionHead: typed ? 20 + INPUT_BURST.length : 20,
             at: 30,
           };
         }
         return 20;
       }),
       executeAsync: vi.fn(),
-      typeText: vi.fn(),
+      typeText: vi.fn(async () => {
+        typed = true;
+      }),
       keyChord: vi.fn(),
     };
 

@@ -141,6 +141,7 @@ export function ArkTsEditor({
     content.dataset.documentChangeCount = String(stats.documentChanged);
     content.dataset.externalReplacementCount = String(stats.externalReplacement);
     content.dataset.selectionLength = String(selection ? selection.to - selection.from : 0);
+    content.dataset.selectionHead = String(selection?.head ?? 0);
   }
 
   onChangeRef.current = onChange;

@@ -6,6 +6,7 @@ export const WEBDRIVER_KEYS = Object.freeze({
   shift: "\uE008",
   control: "\uE009",
   escape: "\uE00C",
+  end: "\uE010",
   arrowUp: "\uE013",
   arrowDown: "\uE015",
 });
