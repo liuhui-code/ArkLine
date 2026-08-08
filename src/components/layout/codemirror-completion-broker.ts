@@ -1,4 +1,5 @@
 import { collectCompletionCandidateResult } from "@/components/layout/completion-candidate-provider";
+import { isMemberAccessCompletion } from "@/components/layout/completion-context";
 import type {
   CodeMirrorCompletionBroker,
   CodeMirrorCompletionRequest,
@@ -30,6 +31,13 @@ export function createCodeMirrorCompletionBroker({
     if (!rootPath) return [];
 
     const documentVersion = await ensureSemanticDocument(request.path, request.document);
+    const memberFallbackContent = documentVersion !== null && isMemberAccessCompletion({
+      lineText: request.lineText,
+      line: request.line,
+      column: request.column,
+    })
+      ? request.document.toString()
+      : undefined;
     const content = documentVersion === null ? request.document.toString() : request.lineText;
     const result = await languageRequestTimeout(collectCompletionCandidateResult({
       workspaceApi,
@@ -39,7 +47,7 @@ export function createCodeMirrorCompletionBroker({
       column: request.column,
       content,
       contextLineText: request.lineText,
-      semanticContent: documentVersion === null ? content : undefined,
+      semanticContent: documentVersion === null ? content : memberFallbackContent,
       documentVersion,
       query: request.query,
       replacePrefix: request.replacePrefix,
