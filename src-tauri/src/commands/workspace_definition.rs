@@ -11,7 +11,7 @@ use crate::services::language_command_service::{
     complete_symbol_with_document_version_blocking, goto_definition_candidates_blocking,
 };
 use crate::services::language_query_broker_service::deadline::{
-    await_semantic_until, elapsed_millis, SemanticDeadlineOutcome,
+    await_semantic_until, completion_semantic_budget, elapsed_millis, SemanticDeadlineOutcome,
 };
 use crate::services::language_query_broker_service::{
     assemble_language_completion, assemble_language_definition,
@@ -31,7 +31,6 @@ use crate::services::workspace_symbol_hierarchy_service::{
     query_type_hierarchy as query_type_hierarchy_service,
 };
 
-const COMPLETION_SEMANTIC_BUDGET: Duration = Duration::from_millis(80);
 const DEFINITION_SEMANTIC_BUDGET: Duration = Duration::from_millis(180);
 
 #[tauri::command]
@@ -197,8 +196,8 @@ pub async fn query_language_completion(
     });
     let mut facade = index_task.await.map_err(|error| error.to_string())??;
     let index_ms = elapsed_millis(started_at);
-    let semantic_outcome =
-        await_semantic_until(semantic_task, started_at, COMPLETION_SEMANTIC_BUDGET).await;
+    let semantic_budget = completion_semantic_budget(!facade.items.is_empty());
+    let semantic_outcome = await_semantic_until(semantic_task, started_at, semantic_budget).await;
     let (language_items, semantic_error, semantic_state) = match semantic_outcome {
         SemanticDeadlineOutcome::Ready(items) => {
             let error = items
@@ -212,7 +211,7 @@ pub async fn query_language_completion(
             Vec::new(),
             Some(format!(
                 "Semantic completion exceeded the {}ms foreground budget",
-                COMPLETION_SEMANTIC_BUDGET.as_millis()
+                semantic_budget.as_millis()
             )),
             "deadline",
         ),

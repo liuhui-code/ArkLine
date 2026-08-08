@@ -2,11 +2,22 @@ use std::time::{Duration, Instant};
 
 use tauri::async_runtime::JoinHandle;
 
+const COMPLETION_SEMANTIC_BUDGET: Duration = Duration::from_millis(80);
+const COMPLETION_SEMANTIC_ENRICHMENT_BUDGET: Duration = Duration::from_millis(24);
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum SemanticDeadlineOutcome<T> {
     Ready(T),
     Failed(String),
     TimedOut,
+}
+
+pub fn completion_semantic_budget(has_indexed_results: bool) -> Duration {
+    if has_indexed_results {
+        COMPLETION_SEMANTIC_ENRICHMENT_BUDGET
+    } else {
+        COMPLETION_SEMANTIC_BUDGET
+    }
 }
 
 pub async fn await_semantic_until<T>(
@@ -43,7 +54,7 @@ pub fn elapsed_millis(started_at: Instant) -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{await_semantic_until, SemanticDeadlineOutcome};
+    use super::{await_semantic_until, completion_semantic_budget, SemanticDeadlineOutcome};
     use std::time::{Duration, Instant};
 
     #[test]
@@ -83,5 +94,11 @@ mod tests {
 
             assert_eq!(outcome, SemanticDeadlineOutcome::Ready(vec!["ready"]));
         });
+    }
+
+    #[test]
+    fn gives_indexed_completions_a_short_semantic_enrichment_window() {
+        assert_eq!(completion_semantic_budget(true), Duration::from_millis(24));
+        assert_eq!(completion_semantic_budget(false), Duration::from_millis(80));
     }
 }
