@@ -7,6 +7,26 @@ import {
 } from "../../scripts/packaged-soak-semantic-workload.mjs";
 
 describe("packaged semantic workload", () => {
+  it("reads member labels from the active CodeMirror completion list", async () => {
+    document.body.innerHTML = `
+      <ul aria-label="Code Completion">
+        <li><span class="cm-completionLabel">aboutToAppear</span></li>
+        <li><span class="cm-completionLabel">aboutToDisappear</span></li>
+      </ul>
+    `;
+
+    const result = await runAsyncBrowserScript(COMPLETION_READINESS_SCRIPT, [
+      ["aboutToAppear", "aboutToDisappear"],
+      20,
+      [],
+    ]);
+
+    expect(result).toEqual(expect.objectContaining({
+      matched: true,
+      labels: ["aboutToAppear", "aboutToDisappear"],
+    }));
+  });
+
   it("control-clicks a source token and verifies the rendered definition target", async () => {
     const driver = createDriver();
     const samples: number[] = [];
@@ -43,6 +63,12 @@ describe("packaged semantic workload", () => {
     expect(counters.completionMissCount).toBe(0);
   });
 });
+
+function runAsyncBrowserScript<T>(script: string, args: unknown[]): Promise<T> {
+  return new Promise((resolve) => {
+    Function(script)(...args, resolve);
+  });
+}
 
 function createDriver() {
   const modifierClickAt = vi.fn(async () => undefined);

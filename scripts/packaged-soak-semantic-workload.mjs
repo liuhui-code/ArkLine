@@ -192,6 +192,7 @@ export const COMPLETION_READINESS_SCRIPT = `
   let observer;
   let timer;
   let finished = false;
+  let lastLabels = [];
   const finish = (value) => {
     if (finished) return;
     finished = true;
@@ -202,9 +203,10 @@ export const COMPLETION_READINESS_SCRIPT = `
   const inspect = () => {
     const list = document.querySelector('[aria-label="Code Completion"]');
     if (!list) return;
-    const labels = [...list.querySelectorAll('.completion-popup__label')]
+    const labels = [...list.querySelectorAll('.cm-completionLabel, .completion-popup__label')]
       .map((item) => (item.textContent || "").trim())
       .filter(Boolean);
+    lastLabels = labels;
     const forbidden = forbiddenLabels.filter((label) => labels.includes(label));
     if (forbidden.length > 0) {
       finish({ matched: false, labels, forbidden, at: performance.now() });
@@ -216,6 +218,6 @@ export const COMPLETION_READINESS_SCRIPT = `
   };
   observer = new MutationObserver(inspect);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  timer = setTimeout(() => finish({ matched: false, labels: [], timeout: true }), timeoutMs);
+  timer = setTimeout(() => finish({ matched: false, labels: lastLabels, timeout: true }), timeoutMs);
   inspect();
 `;
