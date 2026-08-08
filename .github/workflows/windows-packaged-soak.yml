@@ -17,6 +17,11 @@ on:
         required: true
         default: "30"
         type: string
+      run_full_soak:
+        description: "Run protocol and mixed interaction soak before semantic smoke"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -78,6 +83,7 @@ jobs:
         run: pnpm package:windows:portable
 
       - name: Generate protocol smoke workspace
+        if: ${{ inputs.run_full_soak }}
         shell: pwsh
         run: |
           pnpm fixture:performance -- `
@@ -85,6 +91,7 @@ jobs:
             --output=artifacts/packaged-smoke-fixture
 
       - name: Run packaged protocol smoke
+        if: ${{ inputs.run_full_soak }}
         shell: pwsh
         env:
           ARKLINE_INDEXER_ENABLED: "0"
@@ -97,6 +104,7 @@ jobs:
             --report=artifacts/packaged-smoke-report.json
 
       - name: Generate performance workspace
+        if: ${{ inputs.run_full_soak }}
         shell: pwsh
         run: |
           pnpm fixture:performance -- `
@@ -104,6 +112,7 @@ jobs:
             --output=artifacts/packaged-soak-fixture
 
       - name: Run packaged mixed interaction soak
+        if: ${{ inputs.run_full_soak }}
         shell: pwsh
         run: |
           pnpm perf:packaged:windows -- `
