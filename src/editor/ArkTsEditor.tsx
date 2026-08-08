@@ -98,6 +98,7 @@ export function ArkTsEditor({
   const activeTransientPreviewRef = useRef(transientPreview);
   const sessionsRef = useRef(createEditorDocumentSessionRegistry());
   const stateCreationCountRef = useRef(0);
+  const inputStatsRef = useRef({ keyDown: 0, beforeInput: 0, documentChanged: 0, externalReplacement: 0 });
   const localDocumentsRef = useRef(new WeakSet<Text>());
   const activeEnhancedRef = useRef(false);
   const onChangeRef = useRef(onChange);
@@ -130,6 +131,16 @@ export function ArkTsEditor({
     host.dataset.stateCreationCount = String(stateCreationCountRef.current);
   }
 
+  function publishInputStats() {
+    const content = viewRef.current?.contentDOM;
+    if (!content) return;
+    const stats = inputStatsRef.current;
+    content.dataset.keyDownCount = String(stats.keyDown);
+    content.dataset.beforeInputCount = String(stats.beforeInput);
+    content.dataset.documentChangeCount = String(stats.documentChanged);
+    content.dataset.externalReplacementCount = String(stats.externalReplacement);
+  }
+
   onChangeRef.current = onChange;
   onDocumentChangeRef.current = onDocumentChange;
   onSelectionChangeRef.current = onSelectionChange;
@@ -156,8 +167,10 @@ export function ArkTsEditor({
         },
         onDocumentChange ? (document) => {
           inputTraceRuntimeRef.current.documentChanged();
+          inputStatsRef.current.documentChanged += 1;
           localDocumentsRef.current.add(document);
           onDocumentChangeRef.current?.(document);
+          publishInputStats();
         } : undefined,
         (selection, shouldMeasureCaret) => {
           onSelectionChangeRef.current?.(selection);
@@ -207,12 +220,20 @@ export function ArkTsEditor({
     const contentDom = viewRef.current.contentDOM;
     contentDom.dataset.documentLength = String(viewRef.current.state.doc.length);
     const handleBeforeInput = (event: InputEvent) => {
+      inputStatsRef.current.beforeInput += 1;
+      publishInputStats();
       inputTraceRuntimeRef.current.begin(
         getPathBasename(activePathRef.current),
         event.inputType || "unknown",
       );
     };
+    const handleKeyDown = () => {
+      inputStatsRef.current.keyDown += 1;
+      publishInputStats();
+    };
     contentDom.addEventListener("beforeinput", handleBeforeInput);
+    contentDom.addEventListener("keydown", handleKeyDown);
+    publishInputStats();
     onCaretRectChangeRef.current?.(readCaretRect(viewRef.current));
 
     return () => {
@@ -225,6 +246,7 @@ export function ArkTsEditor({
       editorSwitchTraceRef.current?.finish("cancelled");
       inputTraceRuntimeRef.current.cancel();
       contentDom.removeEventListener("beforeinput", handleBeforeInput);
+      contentDom.removeEventListener("keydown", handleKeyDown);
       viewRef.current?.destroy();
       viewRef.current = null;
     };
@@ -295,6 +317,7 @@ export function ArkTsEditor({
     const isStaleLocalSnapshot = typeof documentSource !== "string"
       && localDocumentsRef.current.has(documentSource);
     if (!isStaleLocalSnapshot && !documentMatches(view.state.doc, documentSource)) {
+      inputStatsRef.current.externalReplacement += 1;
       const selection = view.state.selection.main;
       const anchor = Math.min(selection.anchor, documentSource.length);
       const head = Math.min(selection.head, documentSource.length);
@@ -304,6 +327,7 @@ export function ArkTsEditor({
         selection: EditorSelection.range(anchor, head),
         annotations: editorDocumentReplacement.of(true),
       });
+      publishInputStats();
     }
   }, [documentSource, path]);
 
