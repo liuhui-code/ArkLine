@@ -156,6 +156,9 @@ export function createDocumentStore() {
     getDocuments(): DocumentRecord[] {
       return [...documents.values()];
     },
+    documentCount() {
+      return documents.size;
+    },
     releaseDocument(path: string) {
       const normalized = normalizePath(path);
       const existing = documents.get(normalized);

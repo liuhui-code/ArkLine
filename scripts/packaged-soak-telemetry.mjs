@@ -170,6 +170,8 @@ export const RETAINED_HEAP_SNAPSHOT_SCRIPT = `
   requestAnimationFrame(() => requestAnimationFrame(() => {
     if (collect) globalThis.gc();
     const memory = performance.memory;
+    const shell = document.querySelector(".app-shell");
+    const editor = document.querySelector(".editor-codemirror");
     done({
       supported: Boolean(memory),
       gcSupported: collect,
@@ -177,7 +179,11 @@ export const RETAINED_HEAP_SNAPSHOT_SCRIPT = `
       usedBytes: memory?.usedJSHeapSize ?? null,
       totalBytes: memory?.totalJSHeapSize ?? null,
       limitBytes: memory?.jsHeapSizeLimit ?? null,
-      openTabCount: document.querySelectorAll(".editor-tab[title]").length
+      openTabCount: Number(shell?.dataset.openTabCount ?? 0),
+      openDocumentCount: Number(shell?.dataset.openDocumentCount ?? 0),
+      hotEditorSessionCount: Number(editor?.dataset.hotSessionCount ?? 0),
+      hotEditorSessionCharacters: Number(editor?.dataset.hotSessionCharacters ?? 0),
+      domNodeCount: document.getElementsByTagName("*").length
     });
   }));
 `;

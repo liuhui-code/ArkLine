@@ -195,6 +195,9 @@ describe("packaged Windows soak foundation", () => {
     expect(TELEMETRY_INSTALL_SCRIPT).toContain("entry.scripts || []");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("globalThis.gc");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openTabCount");
+    expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openDocumentCount");
+    expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("hotEditorSessionCount");
+    expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("domNodeCount");
     expect(UI_READINESS_SCRIPT).toContain(
       '[aria-label="Find in Files Results"]',
     );

@@ -1,5 +1,8 @@
 import { EditorState } from "@codemirror/state";
-import { createEditorDocumentSessionRegistry } from "@/editor/editor-document-session-registry";
+import {
+  createEditorDocumentSessionRegistry,
+  DEFAULT_HOT_EDITOR_SESSION_CAPACITY,
+} from "@/editor/editor-document-session-registry";
 
 describe("editor document session registry", () => {
   it("keeps recently used sessions within a bounded capacity", () => {
@@ -37,5 +40,20 @@ describe("editor document session registry", () => {
     expect(registry.restore("A")).toBeUndefined();
     expect(registry.restore("B")?.state.doc.toString()).toBe("5678");
     expect(registry.retainedDocumentCharacters()).toBe(4);
+  });
+
+  it("keeps the default full-state cache smaller than the editor tab limit", () => {
+    const registry = createEditorDocumentSessionRegistry();
+    for (let index = 0; index <= DEFAULT_HOT_EDITOR_SESSION_CAPACITY; index += 1) {
+      registry.save(String(index), {
+        state: EditorState.create({ doc: String(index) }),
+        scrollTop: index,
+        scrollLeft: 0,
+        enhanced: true,
+      });
+    }
+
+    expect(registry.size()).toBe(DEFAULT_HOT_EDITOR_SESSION_CAPACITY);
+    expect(registry.restore("0")).toBeUndefined();
   });
 });

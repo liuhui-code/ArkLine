@@ -123,6 +123,13 @@ export function ArkTsEditor({
     [documentSource],
   );
 
+  function publishSessionStats() {
+    const host = hostRef.current;
+    if (!host) return;
+    host.dataset.hotSessionCount = String(sessionsRef.current.size());
+    host.dataset.hotSessionCharacters = String(sessionsRef.current.retainedDocumentCharacters());
+  }
+
   onChangeRef.current = onChange;
   onDocumentChangeRef.current = onDocumentChange;
   onSelectionChangeRef.current = onSelectionChange;
@@ -195,6 +202,7 @@ export function ArkTsEditor({
       state,
       parent: hostRef.current,
     });
+    publishSessionStats();
     const contentDom = viewRef.current.contentDOM;
     contentDom.dataset.documentLength = String(viewRef.current.state.doc.length);
     const handleBeforeInput = (event: InputEvent) => {
@@ -246,6 +254,7 @@ export function ArkTsEditor({
       });
     }
     const cached = sessionsRef.current.restore(path);
+    publishSessionStats();
     const cachedMatchesDocument = cached && documentMatches(cached.state.doc, documentSource);
 
     activePathRef.current = path;

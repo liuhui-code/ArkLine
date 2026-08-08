@@ -7,7 +7,13 @@ export type EditorDocumentSession = {
   enhanced: boolean;
 };
 
-export function createEditorDocumentSessionRegistry(capacity = 32, documentCharacterBudget = 2_000_000) {
+export const DEFAULT_HOT_EDITOR_SESSION_CAPACITY = 8;
+export const DEFAULT_HOT_EDITOR_CHARACTER_BUDGET = 500_000;
+
+export function createEditorDocumentSessionRegistry(
+  capacity = DEFAULT_HOT_EDITOR_SESSION_CAPACITY,
+  documentCharacterBudget = DEFAULT_HOT_EDITOR_CHARACTER_BUDGET,
+) {
   const sessions = new Map<string, EditorDocumentSession>();
   const boundedCapacity = Math.max(1, capacity);
   const boundedCharacterBudget = Math.max(1, documentCharacterBudget);
