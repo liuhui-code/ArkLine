@@ -213,8 +213,11 @@ export function createDocumentChangeListener(
 ) {
   const dispatcher = createEditorChangeDispatcher(onChange);
   return EditorView.updateListener.of((update: ViewUpdate) => {
-    if (update.docChanged) {
+    if (update.docChanged || update.selectionSet) {
+      const selection = update.state.selection.main;
       update.view.contentDOM.dataset.documentLength = String(update.state.doc.length);
+      update.view.contentDOM.dataset.selectionHead = String(selection.head);
+      update.view.contentDOM.dataset.selectionLength = String(selection.to - selection.from);
     }
     if (!update.docChanged || isEditorDocumentReplacement(update)) {
       return;

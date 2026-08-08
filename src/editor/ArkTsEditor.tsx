@@ -135,13 +135,18 @@ export function ArkTsEditor({
     const content = viewRef.current?.contentDOM;
     if (!content) return;
     const stats = inputStatsRef.current;
-    const selection = viewRef.current?.state.selection.main;
     content.dataset.keyDownCount = String(stats.keyDown);
     content.dataset.beforeInputCount = String(stats.beforeInput);
     content.dataset.documentChangeCount = String(stats.documentChanged);
     content.dataset.externalReplacementCount = String(stats.externalReplacement);
-    content.dataset.selectionLength = String(selection ? selection.to - selection.from : 0);
-    content.dataset.selectionHead = String(selection?.head ?? 0);
+  }
+
+  function publishCurrentSelectionStats() {
+    const view = viewRef.current;
+    if (!view) return;
+    const selection = view.state.selection.main;
+    view.contentDOM.dataset.selectionLength = String(selection.to - selection.from);
+    view.contentDOM.dataset.selectionHead = String(selection.head);
   }
 
   onChangeRef.current = onChange;
@@ -223,6 +228,7 @@ export function ArkTsEditor({
     publishSessionStats();
     const contentDom = viewRef.current.contentDOM;
     contentDom.dataset.documentLength = String(viewRef.current.state.doc.length);
+    publishCurrentSelectionStats();
     const handleBeforeInput = (event: InputEvent) => {
       inputStatsRef.current.beforeInput += 1;
       publishInputStats();
@@ -293,6 +299,7 @@ export function ArkTsEditor({
     }
     publishSessionStats();
     publishInputStats();
+    publishCurrentSelectionStats();
     statePhase.finish();
     if (sessionRestoreFrameRef.current != null) {
       window.cancelAnimationFrame(sessionRestoreFrameRef.current);

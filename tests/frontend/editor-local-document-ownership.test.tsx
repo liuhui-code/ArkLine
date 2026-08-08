@@ -1,4 +1,4 @@
-import { Text } from "@codemirror/state";
+import { EditorSelection, Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { render, screen } from "@testing-library/react";
 import { ArkTsEditor } from "@/editor/ArkTsEditor";
@@ -78,7 +78,12 @@ describe("editor local document ownership", () => {
     );
     const editor = screen.getByLabelText("Editor Content");
     const view = EditorView.findFromDOM(editor.closest(".cm-editor") as HTMLElement)!;
-    view.dispatch({ changes: { from: second.length, insert: " edited" } });
+    view.dispatch({
+      changes: { from: second.length, insert: " edited" },
+      selection: EditorSelection.cursor(second.length + " edited".length),
+    });
+    expect(editor).toHaveAttribute("data-document-length", String(view.state.doc.length));
+    expect(editor).toHaveAttribute("data-selection-head", String(view.state.selection.main.head));
 
     rerender(
       <ArkTsEditor
