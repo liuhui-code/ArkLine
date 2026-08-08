@@ -1,4 +1,5 @@
 const SAMPLE_LIMIT = 4096;
+export const EVENT_TIMING_SAMPLE_LIMIT = 512;
 const TRACKED_INTERACTION_LABELS = new Set([
   "Editor Content",
   "Find in Files Query",
@@ -51,7 +52,7 @@ export const TELEMETRY_INSTALL_SCRIPT = `
         interactionId: entry.interactionId || 0,
         targetLabel
       });
-      if (state.eventTimings.length >= ${SAMPLE_LIMIT}) {
+      if (state.eventTimings.length >= ${EVENT_TIMING_SAMPLE_LIMIT}) {
         state.eventTimingSamplingComplete = true;
         return false;
       }

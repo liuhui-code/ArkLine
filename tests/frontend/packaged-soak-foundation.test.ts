@@ -19,6 +19,7 @@ import {
   resolveWindowsPowerShell,
 } from "../../scripts/packaged-soak-preflight.mjs";
 import {
+  EVENT_TIMING_SAMPLE_LIMIT,
   TELEMETRY_INSTALL_SCRIPT,
   RETAINED_HEAP_SNAPSHOT_SCRIPT,
   UI_READINESS_SCRIPT,
@@ -182,6 +183,7 @@ describe("packaged Windows soak foundation", () => {
   });
 
   it("keeps WebView telemetry bounded and separates frame blocking evidence", () => {
+    expect(EVENT_TIMING_SAMPLE_LIMIT).toBe(512);
     expect(TELEMETRY_INSTALL_SCRIPT).toContain('supported.has("event")');
     expect(TELEMETRY_INSTALL_SCRIPT).toContain(
       'supported.has("long-animation-frame")',
