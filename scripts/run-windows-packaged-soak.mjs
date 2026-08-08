@@ -5,7 +5,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { parsePackagedSoakArguments } from "./packaged-soak-model.mjs";
 import { buildFixtureRelativePath } from "./generate-performance-fixture.mjs";
-import { inspectPackagedSoakPreflight } from "./packaged-soak-preflight.mjs";
+import {
+  inspectPackagedSoakPreflight,
+  resolveWindowsPowerShell,
+} from "./packaged-soak-preflight.mjs";
 import {
   PackagedWebDriver,
   WEBDRIVER_KEYS,
@@ -343,8 +346,9 @@ function indexedLayerCount(value, layerName) {
 
 async function inspectArkLineProcesses(applicationPath) {
   try {
+    const powerShellPath = await resolveWindowsPowerShell();
     const { stdout } = await execFileAsync(
-      "powershell.exe",
+      powerShellPath,
       ["-NoProfile", "-Command", WINDOWS_PROCESS_TREE_SCRIPT],
       {
         env: {

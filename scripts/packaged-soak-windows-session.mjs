@@ -5,6 +5,7 @@ import {
   parsePowerShellProcessPayload,
   WINDOWS_PROCESS_TREE_SCRIPT,
 } from "./packaged-soak-process-evidence.mjs";
+import { resolveWindowsPowerShell } from "./packaged-soak-preflight.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -161,8 +162,9 @@ export class WindowsPackagedAutomationSession {
   async captureProcessEvidence() {
     if (!this.applicationProcess?.pid) return;
     try {
+      const powerShellPath = await resolveWindowsPowerShell();
       const { stdout } = await execFileAsync(
-        "powershell.exe",
+        powerShellPath,
         ["-NoProfile", "-Command", WINDOWS_PROCESS_TREE_SCRIPT],
         {
           env: {

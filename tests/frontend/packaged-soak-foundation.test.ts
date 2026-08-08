@@ -14,7 +14,10 @@ import {
   parsePackagedSoakArguments,
   summarizeSamples,
 } from "../../scripts/packaged-soak-model.mjs";
-import { inspectPackagedSoakPreflight } from "../../scripts/packaged-soak-preflight.mjs";
+import {
+  inspectPackagedSoakPreflight,
+  resolveWindowsPowerShell,
+} from "../../scripts/packaged-soak-preflight.mjs";
 import {
   TELEMETRY_INSTALL_SCRIPT,
   RETAINED_HEAP_SNAPSHOT_SCRIPT,
@@ -338,6 +341,18 @@ describe("packaged Windows soak foundation", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("falls back to PowerShell 7 when Windows PowerShell is unavailable", async () => {
+    const attempts: string[] = [];
+    const resolved = await resolveWindowsPowerShell(async (command: string) => {
+      attempts.push(command);
+      if (command === "powershell.exe") throw new Error("missing");
+      return "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
+    });
+
+    expect(attempts).toEqual(["powershell.exe", "pwsh.exe"]);
+    expect(resolved).toContain("pwsh.exe");
   });
 
   it("builds an uploadable failure report before a WebDriver session exists", () => {

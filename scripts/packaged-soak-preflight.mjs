@@ -29,13 +29,18 @@ export async function inspectPackagedSoakPreflight(
     ? await inspectRealWorkspace(options, checks, inspectWorkspace)
     : await inspectGeneratedFixture(options, checks);
 
-  for (const [name, command] of [
-    ["msedgedriver", options.driverPath],
-    ["powershell", "powershell.exe"],
-  ]) {
-    const resolved = await resolveTool(command).catch(() => null);
-    checks.push(check(name, Boolean(resolved), resolved ?? `${command} not found`));
-  }
+  const driver = await resolveTool(options.driverPath).catch(() => null);
+  checks.push(check(
+    "msedgedriver",
+    Boolean(driver),
+    driver ?? `${options.driverPath} not found`,
+  ));
+  const powerShell = await resolveWindowsPowerShell(resolveTool).catch(() => null);
+  checks.push(check(
+    "powershell",
+    Boolean(powerShell),
+    powerShell ?? "powershell.exe and pwsh.exe not found",
+  ));
 
   return {
     capturedAt: Date.now(),
@@ -153,6 +158,14 @@ export async function resolveWindowsTool(command) {
     .find(Boolean);
   if (!resolved) throw new Error(`${command} not found`);
   return resolved;
+}
+
+export async function resolveWindowsPowerShell(resolveTool = resolveWindowsTool) {
+  for (const command of ["powershell.exe", "pwsh.exe"]) {
+    const resolved = await resolveTool(command).catch(() => null);
+    if (resolved) return resolved;
+  }
+  throw new Error("powershell.exe and pwsh.exe not found");
 }
 
 async function inspectFixtureMarker(fixturePath) {
