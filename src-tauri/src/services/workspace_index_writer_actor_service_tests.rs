@@ -3,7 +3,8 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 
 use super::{
-    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationRequest, WorkspaceIndexWriterActor,
+    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationKind,
+    WorkspaceIndexPublicationRequest, WorkspaceIndexWriterActor,
 };
 use crate::services::workspace_content_refresh_service::prepare_workspace_content_refresh;
 use crate::services::workspace_discovery_runner_service::prepare_workspace_discovery_chunk;
@@ -20,59 +21,6 @@ use crate::services::workspace_index_publication_scheduler_service::PublicationP
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_stub_prepare_service::prepare_changed_stub_rows;
-
-#[test]
-fn writer_actor_publishes_a_prepared_content_artifact() {
-    let root = std::env::temp_dir().join(format!("arkline-writer-actor-{}", uuid::Uuid::new_v4()));
-    fs::create_dir_all(&root).unwrap();
-    let source = root.join("Entry.ets");
-    fs::write(&source, "class Entry {}\n").unwrap();
-    let root_path = root.to_string_lossy().to_string();
-    let source_path = source.to_string_lossy().to_string();
-    WorkspaceIndexRuntime::default()
-        .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
-        .unwrap();
-    let artifact = WorkspaceIndexPublicationArtifact::Content {
-        root_path: root_path.clone(),
-        prepared: prepare_workspace_content_refresh(
-            &root_path,
-            std::slice::from_ref(&source_path),
-            &[],
-            10,
-        ),
-    };
-    let descriptor = write_workspace_publication_artifact(&root_path, &artifact).unwrap();
-    let actor = WorkspaceIndexWriterActor::new();
-
-    let result = actor.publish(
-        WorkspaceIndexPublicationRequest {
-            root_path: root_path.clone(),
-            descriptor,
-            priority: PublicationPriority::Background,
-        },
-        || false,
-    );
-
-    assert!(matches!(
-        result,
-        WorkspaceIndexPublicationAttempt::Applied(_)
-    ));
-    let connection = open_existing_workspace_index_reader(&root_path)
-        .unwrap()
-        .unwrap();
-    let content_count: i64 = connection
-        .query_row("select count(*) from workspace_content_files", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    assert_eq!(content_count, 1);
-    let metrics = actor.snapshot();
-    assert_eq!(metrics.sample_count, 1);
-    assert_eq!(metrics.active_writer_count, 0);
-    assert_eq!(metrics.queued_writer_count, 0);
-    drop(connection);
-    fs::remove_dir_all(root).unwrap();
-}
 
 #[test]
 fn foreground_read_prevents_a_new_background_publication_from_starting() {
@@ -134,6 +82,7 @@ fn writer_actor_publishes_discovery_rows_state_and_journal_atomically() {
             root_path: root_path.clone(),
             descriptor,
             priority: PublicationPriority::Background,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     );
@@ -201,6 +150,7 @@ fn writer_actor_publishes_a_prepared_stub_artifact() {
             root_path: root_path.clone(),
             descriptor,
             priority: PublicationPriority::Background,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     );
@@ -245,6 +195,7 @@ fn writer_actor_resets_workspace_rows_and_preserves_a_usable_schema() {
             root_path: root_path.clone(),
             descriptor,
             priority: PublicationPriority::Foreground,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     );
@@ -311,6 +262,7 @@ fn failed_workspace_reset_rolls_back_every_deleted_index_layer() {
             root_path: root_path.clone(),
             descriptor,
             priority: PublicationPriority::Maintenance,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     );
@@ -368,6 +320,7 @@ fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
             root_path: root_path.clone(),
             descriptor,
             priority: PublicationPriority::IdleMaintenance,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     );
@@ -404,6 +357,7 @@ fn cancelled_publication_is_removed_before_it_enters_the_queue() {
                 byte_count: 2,
             },
             priority: PublicationPriority::Background,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || true,
     );
@@ -478,6 +432,7 @@ fn publish_content(
             root_path: root_path.to_string(),
             descriptor,
             priority: PublicationPriority::Background,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     )

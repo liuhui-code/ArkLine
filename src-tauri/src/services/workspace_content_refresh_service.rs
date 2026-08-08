@@ -5,20 +5,21 @@ use std::path::Path;
 #[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, Statement};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::models::workspace_index_publication::{
-    WorkspaceIndexPublicationProfile, WorkspaceIndexPublicationProfiler,
+use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
+pub(crate) use crate::services::workspace_content_publication_service::existing_content_paths;
+use crate::services::workspace_content_publication_service::{
+    clear_workspace_content, publish_content_core_profiled, publish_content_substring_profiled,
 };
-use crate::services::workspace_file_identity_service::ensure_workspace_file_id;
+use crate::services::workspace_file_index_policy_service::{
+    classify_workspace_file, WorkspaceFileLayerPolicy, WORKSPACE_FULL_CONTENT_MAX_BYTES,
+};
 use crate::services::workspace_index_connection_service::with_workspace_index_writer;
-use crate::services::workspace_index_layer_generation_service::{
-    publish_layer_generation, CONTENT_LAYER,
-};
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
-pub(crate) const WORKSPACE_CONTENT_MAX_FILE_BYTES: usize = 4 * 1024 * 1024;
+pub(crate) const WORKSPACE_CONTENT_MAX_FILE_BYTES: usize = WORKSPACE_FULL_CONTENT_MAX_BYTES;
 pub(crate) const WORKSPACE_CONTENT_MAX_CHUNK_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -37,11 +38,19 @@ pub(crate) struct PreparedWorkspaceContentFailure {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub(crate) struct PreparedWorkspaceContentSkip {
+    pub(crate) path: String,
+    pub(crate) index_class: String,
+    pub(crate) reason: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct PreparedWorkspaceContentRefresh {
     pub(crate) indexed_generation: u64,
     pub(crate) refreshed_paths: Vec<String>,
     pub(crate) removed_paths: Vec<String>,
     pub(crate) files: Vec<PreparedWorkspaceContentFile>,
+    pub(crate) skips: Vec<PreparedWorkspaceContentSkip>,
     pub(crate) failures: Vec<PreparedWorkspaceContentFailure>,
     pub(crate) source_bytes: usize,
 }
@@ -135,6 +144,7 @@ pub(crate) fn prepare_workspace_content_refresh_with_limits(
     let mut seen = HashSet::new();
     let mut normalized_refreshed_paths = Vec::new();
     let mut files = Vec::new();
+    let mut skips = Vec::new();
     let mut failures = Vec::new();
     let mut source_bytes = 0usize;
     for path in refreshed_paths {
@@ -144,6 +154,25 @@ pub(crate) fn prepare_workspace_content_refresh_with_limits(
         }
         normalized_refreshed_paths.push(normalized_path.clone());
         let file_path = to_filesystem_path(root_path, path);
+        match classify_workspace_file(Path::new(root_path), Path::new(&file_path), max_file_bytes) {
+            Ok(policy) if policy.content == WorkspaceFileLayerPolicy::Skip => {
+                skips.push(PreparedWorkspaceContentSkip {
+                    path: normalized_path,
+                    index_class: policy.class.as_str().to_string(),
+                    reason: policy.reason,
+                });
+                continue;
+            }
+            Err(error) => {
+                failures.push(PreparedWorkspaceContentFailure {
+                    path: normalized_path,
+                    error: format!("Source file policy could not be determined: {error}"),
+                    resource_limited: false,
+                });
+                continue;
+            }
+            Ok(_) => {}
+        }
         let remaining_bytes = max_chunk_bytes.saturating_sub(source_bytes);
         match read_bounded_content(&file_path, max_file_bytes, remaining_bytes) {
             Ok(content) => {
@@ -168,6 +197,7 @@ pub(crate) fn prepare_workspace_content_refresh_with_limits(
         refreshed_paths: normalized_refreshed_paths,
         removed_paths: normalized_unique_paths(removed_paths),
         files,
+        skips,
         failures,
         source_bytes,
     }
@@ -228,200 +258,13 @@ pub(crate) fn publish_workspace_content_refresh_profiled(
     root_key: &str,
     prepared: &PreparedWorkspaceContentRefresh,
 ) -> Result<WorkspaceIndexPublicationProfile, String> {
-    let mut profiler = WorkspaceIndexPublicationProfiler::start();
-    profiler.measure("contentDelete", || {
-        let candidates = prepared
-            .removed_paths
-            .iter()
-            .chain(prepared.refreshed_paths.iter())
-            .collect::<Vec<_>>();
-        for path in existing_content_paths(connection, root_key, &candidates)? {
-            delete_indexed_path(connection, root_key, path)?;
-        }
-        Ok(())
-    })?;
-    profiler.measure("contentInsert", || {
-        insert_prepared_files(connection, root_key, &prepared.files)
-    })?;
-    profiler.measure("contentState", || {
-        publish_content_file_states(connection, root_key, prepared)
-    })?;
-    profiler.measure("contentGeneration", || {
-        publish_layer_generation(
-            connection,
-            root_key,
-            CONTENT_LAYER,
-            prepared.indexed_generation,
-        )
-    })?;
-    Ok(profiler.finish())
-}
-
-fn clear_workspace_content(connection: &Connection, root_key: &str) -> Result<(), String> {
-    for table in [
-        "workspace_content_lines",
-        "workspace_content_fts",
-        "workspace_content_trigram_fts",
-        "workspace_content_files",
-    ] {
-        connection
-            .execute(
-                &format!("delete from {table} where root_path = ?1"),
-                params![root_key],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
-fn delete_indexed_path(connection: &Connection, root_key: &str, path: &str) -> Result<(), String> {
-    for table in [
-        "workspace_content_lines",
-        "workspace_content_fts",
-        "workspace_content_trigram_fts",
-        "workspace_content_files",
-    ] {
-        connection
-            .execute(
-                &format!("delete from {table} where root_path = ?1 and path = ?2"),
-                params![root_key, path],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
-pub(crate) fn existing_content_paths<'a>(
-    connection: &Connection,
-    root_key: &str,
-    candidates: &[&'a String],
-) -> Result<Vec<&'a str>, String> {
-    let mut statement = connection
-        .prepare(
-            "select exists(
-                select 1 from workspace_content_files
-                where root_path = ?1 and path = ?2
-             )",
-        )
-        .map_err(|error| error.to_string())?;
-    let mut existing = Vec::new();
-    for path in candidates {
-        let present = statement
-            .query_row(params![root_key, path], |row| row.get::<_, bool>(0))
-            .map_err(|error| error.to_string())?;
-        if present {
-            existing.push(path.as_str());
-        }
-    }
-    Ok(existing)
-}
-
-fn insert_prepared_files(
-    connection: &Connection,
-    root_key: &str,
-    files: &[PreparedWorkspaceContentFile],
-) -> Result<(), String> {
-    let mut line_statement = prepare_insert(connection, "workspace_content_lines")?;
-    let mut fts_statement = prepare_insert(connection, "workspace_content_fts")?;
-    let mut trigram_statement = prepare_insert(connection, "workspace_content_trigram_fts")?;
-    for file in files {
-        let file_id = ensure_workspace_file_id(connection, root_key, &file.path)?;
-        for (line_index, line_text) in file.content.lines().enumerate() {
-            insert_indexed_line(
-                [
-                    &mut line_statement,
-                    &mut fts_statement,
-                    &mut trigram_statement,
-                ],
-                root_key,
-                &file.path,
-                file_id,
-                line_index,
-                line_text,
-            )?;
-        }
-    }
-    Ok(())
-}
-
-fn publish_content_file_states(
-    connection: &Connection,
-    root_key: &str,
-    prepared: &PreparedWorkspaceContentRefresh,
-) -> Result<(), String> {
-    let indexed_generation = i64::try_from(prepared.indexed_generation)
-        .map_err(|_| "Content index generation exceeds SQLite integer range".to_string())?;
-    for path in &prepared.refreshed_paths {
-        let indexed = prepared.files.iter().find(|file| file.path == *path);
-        let failure = prepared.failures.iter().find(|item| item.path == *path);
-        let (status, line_count, error) = indexed.map_or_else(
-            || {
-                (
-                    "failed",
-                    0,
-                    Some(
-                        failure
-                            .map(|item| item.error.as_str())
-                            .unwrap_or("Source file could not be indexed"),
-                    ),
-                )
-            },
-            |file| ("ready", file.line_count as i64, None),
-        );
-        connection
-            .execute(
-                "insert into workspace_content_files (
-                    root_path, path, indexed_generation, line_count, status, error, updated_at
-                 ) values (?1, ?2, ?3, ?4, ?5, ?6, strftime('%s','now') * 1000)
-                 on conflict(root_path, path) do update set
-                    indexed_generation = excluded.indexed_generation,
-                    line_count = excluded.line_count,
-                    status = excluded.status,
-                    error = excluded.error,
-                    updated_at = excluded.updated_at",
-                params![
-                    root_key,
-                    path,
-                    indexed_generation,
-                    line_count,
-                    status,
-                    error
-                ],
-            )
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
-fn prepare_insert<'a>(connection: &'a Connection, table: &str) -> Result<Statement<'a>, String> {
-    connection
-        .prepare(&format!(
-            "insert into {table} (root_path, path, file_id, line, text)
-             values (?1, ?2, ?3, ?4, ?5)"
-        ))
-        .map_err(|error| error.to_string())
-}
-
-fn insert_indexed_line(
-    statements: [&mut Statement<'_>; 3],
-    root_key: &str,
-    path: &str,
-    file_id: i64,
-    line_index: usize,
-    line_text: &str,
-) -> Result<(), String> {
-    for statement in statements {
-        statement
-            .execute(params![
-                root_key,
-                path,
-                file_id,
-                (line_index + 1) as i64,
-                line_text
-            ])
-            .map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    let mut profile = publish_content_core_profiled(connection, root_key, prepared)?;
+    let substring = publish_content_substring_profiled(connection, root_key, prepared)?;
+    profile.total_duration_us = profile
+        .total_duration_us
+        .saturating_add(substring.total_duration_us);
+    profile.stages.extend(substring.stages);
+    Ok(profile)
 }
 
 fn normalized_unique_paths(paths: &[String]) -> Vec<String> {

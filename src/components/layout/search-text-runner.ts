@@ -20,7 +20,9 @@ import type {
   WorkspaceIndexQueryScope,
   WorkspaceIndexReadiness,
 } from "@/features/workspace/workspace-index-api-types";
+import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
+import { runStreamingTextSearch } from "@/components/layout/search-text-stream-runner";
 
 type TrackQuery = <T>(options: SearchQueryTrackOptions<T>) => Promise<void>;
 type PatchSearchSession = (patch: Partial<SearchSessionSnapshot>) => void;
@@ -36,6 +38,7 @@ export type SearchTextWorkspaceApi = {
     generation?: number,
     deadlineMs?: number,
   ) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
+  streamWorkspaceText?: WorkspaceApi["streamWorkspaceText"];
 };
 
 export type SearchTextRunnerInput = {
@@ -50,11 +53,13 @@ export type SearchTextRunnerInput = {
   runFallback: (query: string, dirty: boolean, generation: number) => Promise<WorkspaceTextSearchResult>;
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
   trackQuery: TrackQuery;
+  isCurrentQuery?: (generation: number) => boolean;
   clearSearchResults: (query: string) => void;
   patchSearchSession: PatchSearchSession;
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   scheduleSelectedPreview: (selectedIndex: number) => void;
   reportMiss: TextSearchRequestRunnerInput["reportMiss"];
+  onStreamError?: (message: string) => void;
 };
 
 export function runSearchTextQuery({
@@ -69,11 +74,13 @@ export function runSearchTextQuery({
   runFallback,
   replaceQueryReadiness,
   trackQuery,
+  isCurrentQuery = (generation) => generation === requestId,
   clearSearchResults,
   patchSearchSession,
   recordUiInteraction,
   scheduleSelectedPreview,
   reportMiss,
+  onStreamError,
 }: SearchTextRunnerInput) {
   if (!rootPath) return;
   patchSearchSession({ candidates: [], truncationNotice: null });
@@ -87,6 +94,31 @@ export function runSearchTextQuery({
   });
   if (plan.kind === "clear") {
     clearSearchResults(plan.query);
+    return;
+  }
+  if (mode !== "searchEverywhere" && !dirty && workspaceApi.streamWorkspaceText) {
+    runStreamingTextSearch({
+      requestId,
+      mode,
+      query,
+      request: {
+        rootPath,
+        query,
+        generation: requestId,
+        cursor: null,
+        options,
+        limit: 50,
+        contextLines: 0,
+      },
+      stream: workspaceApi.streamWorkspaceText,
+      isCurrentQuery,
+      trackQuery,
+      patchSearchSession,
+      scheduleSelectedPreview,
+      reportMiss,
+      recordUiInteraction,
+      onStreamError,
+    });
     return;
   }
 

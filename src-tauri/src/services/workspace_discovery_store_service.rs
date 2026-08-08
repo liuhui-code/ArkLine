@@ -5,6 +5,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::services::workspace_discovery_service::{
     WorkspaceDiscoveredFile, WorkspaceDiscoveryCursor,
 };
+use crate::services::workspace_file_index_policy_service::WORKSPACE_FULL_CONTENT_MAX_BYTES;
 use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, with_workspace_index_transaction,
 };
@@ -194,6 +195,40 @@ pub(crate) fn load_ready_discovery_generation(root_path: &str) -> Result<Option<
         )
         .optional()
         .map_err(|error| error.to_string())
+}
+
+pub(crate) fn load_ready_searchable_discovered_files(
+    root_path: &str,
+    limit: usize,
+) -> Result<Vec<String>, String> {
+    let connection = open_existing_workspace_index_reader(root_path)?
+        .ok_or_else(|| "Workspace discovery index is unavailable".to_string())?;
+    let mut statement = connection
+        .prepare(
+            "select discovered.path
+             from workspace_discovered_files discovered
+             left join workspace_file_fingerprints fingerprint
+               on fingerprint.root_path = discovered.root_path
+              and fingerprint.path = discovered.path
+             where discovered.root_path = ?1 and discovered.excluded = 0
+               and coalesce(discovered.size_bytes, 0) <= ?2
+               and coalesce(fingerprint.content_policy, 'index') = 'index'
+             order by discovered.path limit ?3",
+        )
+        .map_err(|error| error.to_string())?;
+    let paths = statement
+        .query_map(
+            params![
+                normalize_index_path(root_path),
+                WORKSPACE_FULL_CONTENT_MAX_BYTES as i64,
+                limit as i64
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(paths)
 }
 
 pub fn load_discovery_cursor(root_path: &str) -> Result<Option<WorkspaceDiscoveryCursor>, String> {

@@ -2,7 +2,8 @@ use crate::models::workspace::{
     WorkspaceTextSearchCursor, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
 use crate::services::workspace_text_search_service::{
-    search_workspace_text, search_workspace_text_with_cancellation,
+    search_workspace_text, search_workspace_text_with_budget_and_cancellation,
+    search_workspace_text_with_cancellation, WorkspaceTextSearchBudget,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -61,6 +62,25 @@ fn finds_text_matches_with_context_from_indexed_paths() {
     assert!(!result.partial);
     assert_eq!(result.prefilter_skipped_files, 0);
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn filesystem_search_skips_oversized_files_before_loading_content() {
+    let root = unique_temp_dir("workspace-text-search-oversized");
+    fs::create_dir_all(&root).unwrap();
+    let oversized = root.join("Oversized.txt");
+    let mut content = vec![b'x'; 4 * 1024 * 1024 + 1];
+    content[..6].copy_from_slice(b"target");
+    fs::write(&oversized, content).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let paths = vec![oversized.to_string_lossy().to_string()];
+
+    let result = search_workspace_text(&request(&root_path, "target"), &paths);
+
+    assert!(result.matches.is_empty());
+    assert_eq!(result.searched_files, 0);
+    assert_eq!(result.prefilter_skipped_files, 1);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -227,6 +247,45 @@ fn stops_between_files_when_cancelled() {
     assert_eq!(result.matches[0].file_name, "First.ets");
     assert!(result.partial);
     assert_eq!(result.searched_files, 1);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn byte_budget_returns_a_cursor_that_continues_at_the_next_file() {
+    let root = unique_temp_dir("workspace-text-search-byte-budget");
+    fs::create_dir_all(&root).unwrap();
+    let first = root.join("First.ets");
+    let second = root.join("Second.ets");
+    fs::write(&first, "target first").unwrap();
+    fs::write(&second, "target second").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let paths = vec![
+        first.to_string_lossy().to_string(),
+        second.to_string_lossy().to_string(),
+    ];
+    let budget = WorkspaceTextSearchBudget::with_max_bytes(12);
+
+    let first_page = search_workspace_text_with_budget_and_cancellation(
+        &request(&root_path, "target"),
+        &paths,
+        budget,
+        || false,
+    );
+
+    assert_eq!(first_page.matches[0].file_name, "First.ets");
+    assert!(first_page.partial);
+    let cursor = first_page
+        .next_cursor
+        .expect("budget should preserve continuation");
+    assert_eq!(cursor.path_index, 1);
+    assert_eq!(cursor.source.as_deref(), Some("filesystem"));
+
+    let mut next_request = request(&root_path, "target");
+    next_request.cursor = Some(cursor);
+    let second_page =
+        search_workspace_text_with_budget_and_cancellation(&next_request, &paths, budget, || false);
+    assert_eq!(second_page.matches[0].file_name, "Second.ets");
 
     fs::remove_dir_all(root).unwrap();
 }

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 use regex::RegexBuilder;
 
@@ -8,9 +9,15 @@ use crate::models::workspace::{
     WorkspaceTextSearchOptions, WorkspaceTextSearchQuery, WorkspaceTextSearchRequest,
     WorkspaceTextSearchResult,
 };
+use crate::services::workspace_file_index_policy_service::WORKSPACE_FULL_CONTENT_MAX_BYTES;
 use crate::services::workspace_text_search_prefilter_service::{
     content_matches_prefilter, plan_regex_prefilter, WorkspaceTextSearchPrefilterPlan,
 };
+
+#[path = "workspace_text_search_budget_service.rs"]
+mod budget;
+use budget::budget_exhausted;
+pub(crate) use budget::WorkspaceTextSearchBudget;
 
 enum ParsedTextSearchQuery {
     Text(String),
@@ -36,6 +43,23 @@ pub fn search_workspace_text_with_cancellation<F>(
 where
     F: FnMut() -> bool,
 {
+    search_workspace_text_with_budget_and_cancellation(
+        request,
+        indexed_paths,
+        WorkspaceTextSearchBudget::interactive(),
+        is_cancelled,
+    )
+}
+
+pub(crate) fn search_workspace_text_with_budget_and_cancellation<F>(
+    request: &WorkspaceTextSearchRequest,
+    indexed_paths: &[String],
+    budget: WorkspaceTextSearchBudget,
+    is_cancelled: F,
+) -> WorkspaceTextSearchResult
+where
+    F: FnMut() -> bool,
+{
     let start_path_index = request
         .cursor
         .as_ref()
@@ -48,6 +72,7 @@ where
             .enumerate()
             .skip(start_path_index)
             .map(|(index, path)| (index, path.as_str())),
+        budget,
         is_cancelled,
     )
 }
@@ -68,6 +93,7 @@ where
         path_indices
             .into_iter()
             .filter_map(|index| indexed_paths.get(index).map(|path| (index, path.as_str()))),
+        WorkspaceTextSearchBudget::interactive(),
         is_cancelled,
     )
 }
@@ -76,6 +102,7 @@ fn search_workspace_text_entries_with_cancellation<'a, F>(
     request: &WorkspaceTextSearchRequest,
     path_count: usize,
     indexed_paths: impl Iterator<Item = (usize, &'a str)>,
+    budget: WorkspaceTextSearchBudget,
     mut is_cancelled: F,
 ) -> WorkspaceTextSearchResult
 where
@@ -102,6 +129,9 @@ where
     let mut partial = false;
     let mut limit_reached = false;
     let mut next_cursor = None;
+    let started_at = Instant::now();
+    let mut attempted_files = 0usize;
+    let mut inspected_bytes = 0u64;
     let start_path_index = request
         .cursor
         .as_ref()
@@ -109,6 +139,25 @@ where
     for (path_index, indexed_path) in indexed_paths {
         if is_cancelled() {
             partial = true;
+            break;
+        }
+        let file_path = to_filesystem_path(&request.root_path, indexed_path);
+        let next_file_bytes = fs::metadata(&file_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or_default();
+        if next_file_bytes > WORKSPACE_FULL_CONTENT_MAX_BYTES as u64 {
+            prefilter_skipped_files += 1;
+            continue;
+        }
+        if attempted_files > 0
+            && budget_exhausted(budget, started_at, inspected_bytes, next_file_bytes)
+        {
+            partial = true;
+            next_cursor = Some(WorkspaceTextSearchCursor {
+                path_index,
+                line_index: 0,
+                source: Some("filesystem".to_string()),
+            });
             break;
         }
         if matches.len() >= request.limit {
@@ -122,17 +171,18 @@ where
             break;
         }
 
-        let file_path = to_filesystem_path(&request.root_path, indexed_path);
+        attempted_files += 1;
         let Ok(content) = fs::read_to_string(&file_path) else {
             continue;
         };
+        inspected_bytes = inspected_bytes.saturating_add(content.len() as u64);
         if !content_may_match(&content, &parsed_query, &request.options) {
             prefilter_skipped_files += 1;
             continue;
         }
         searched_files += 1;
 
-        let lines = content.lines().map(str::to_string).collect::<Vec<_>>();
+        let lines = content.lines().collect::<Vec<_>>();
         let start_line_index = if path_index == start_path_index {
             request
                 .cursor
@@ -168,7 +218,7 @@ where
                 line: line_index + 1,
                 column: start + 1,
                 summary: build_summary(line_text, start, end),
-                preview: line_text.clone(),
+                preview: line_text.to_string(),
                 preview_start: start,
                 preview_end: end,
                 context_before: slice_context(
@@ -364,16 +414,12 @@ fn next_char_boundary(value: &str, index: usize) -> usize {
     boundary
 }
 
-fn slice_context(
-    lines: &[String],
-    start: usize,
-    end: usize,
-) -> Vec<WorkspaceTextSearchContextLine> {
+fn slice_context(lines: &[&str], start: usize, end: usize) -> Vec<WorkspaceTextSearchContextLine> {
     let mut context = Vec::new();
     for index in start..usize::min(lines.len(), end) {
         context.push(WorkspaceTextSearchContextLine {
             line: index + 1,
-            text: lines[index].clone(),
+            text: lines[index].to_string(),
         });
     }
     context

@@ -1,4 +1,3 @@
-use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -8,36 +7,73 @@ use std::time::{Duration, Instant};
 pub(crate) mod foreground_read;
 #[path = "workspace_index_writer_maintenance_metric_service.rs"]
 mod maintenance_metric;
+#[path = "workspace_index_writer_actor_metric_service.rs"]
+mod metric;
+#[path = "workspace_index_writer_publication_service.rs"]
+mod publication;
 
 use self::foreground_read::{WorkspaceIndexForegroundReadGate, WorkspaceIndexForegroundReadGuard};
-use self::maintenance_metric::{maintenance_metric_sample, MaintenanceMetricSample};
+use self::maintenance_metric::maintenance_metric_sample;
+use self::metric::{record_finished, WriterActorMetricState};
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
 use crate::models::workspace_index_publication::{
     WorkspaceIndexPublicationArtifactDescriptor, WorkspaceIndexPublicationProfile,
 };
-use crate::services::workspace_content_refresh_chunk_service::publish_prepared_workspace_content_refresh_chunk;
-use crate::services::workspace_discovery_runner_service::publish_prepared_workspace_discovery_chunk;
-use crate::services::workspace_index_maintenance_publication_service::publish_workspace_index_maintenance;
 use crate::services::workspace_index_publication_artifact_service::{
-    read_workspace_publication_artifact, recover_workspace_publication_staging,
-    remove_workspace_publication_artifact, WorkspaceIndexPublicationArtifact,
+    recover_workspace_publication_staging, remove_workspace_publication_artifact,
     PUBLICATION_ARTIFACT_RECOVERY_GRACE,
 };
 use crate::services::workspace_index_publication_scheduler_service::{
     PublicationPriority, WorkspaceIndexPublicationQueue,
 };
-use crate::services::workspace_sdk_index_service::publish_prepared_workspace_sdk_catalog_chunk;
-use crate::services::workspace_stub_refresh_chunk_service::publish_prepared_workspace_stub_refresh_chunk;
+use publication::publish_artifact;
 
 const PUBLICATION_QUEUE_CAPACITY: usize = 64;
 const FOREGROUND_BURST_LIMIT: usize = 4;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
-const METRIC_SAMPLE_LIMIT: usize = 128;
+const IDLE_PUBLICATION_GRACE: Duration = Duration::from_millis(75);
 
 pub(crate) struct WorkspaceIndexPublicationRequest {
     pub(crate) root_path: String,
     pub(crate) descriptor: WorkspaceIndexPublicationArtifactDescriptor,
     pub(crate) priority: PublicationPriority,
+    pub(crate) kind: WorkspaceIndexPublicationKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WorkspaceIndexPublicationKind {
+    Default,
+    ContentCore,
+    ContentSubstring,
+}
+
+impl WorkspaceIndexPublicationRequest {
+    pub(crate) fn new(
+        root_path: String,
+        descriptor: WorkspaceIndexPublicationArtifactDescriptor,
+        priority: PublicationPriority,
+    ) -> Self {
+        Self {
+            root_path,
+            descriptor,
+            priority,
+            kind: WorkspaceIndexPublicationKind::Default,
+        }
+    }
+
+    pub(crate) fn content(
+        root_path: String,
+        descriptor: WorkspaceIndexPublicationArtifactDescriptor,
+        priority: PublicationPriority,
+        kind: WorkspaceIndexPublicationKind,
+    ) -> Self {
+        Self {
+            root_path,
+            descriptor,
+            priority,
+            kind,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +169,31 @@ impl WorkspaceIndexWriterActor {
             .unwrap_or_default()
     }
 
+    pub(crate) fn publish_detached(
+        &self,
+        request: WorkspaceIndexPublicationRequest,
+    ) -> Result<(), String> {
+        self.recover_workspace_once(&request.root_path);
+        let (response, _response_rx) = mpsc::channel();
+        let envelope = PublicationEnvelope {
+            request,
+            queued_at: Instant::now(),
+            cancelled: Arc::new(AtomicBool::new(false)),
+            started: Arc::new(AtomicBool::new(false)),
+            response,
+        };
+        self.enqueue(envelope, &mut || false)
+            .map_err(|attempt| match attempt {
+                WorkspaceIndexPublicationAttempt::Failed(error) => error,
+                WorkspaceIndexPublicationAttempt::Cancelled => {
+                    "Detached workspace publication was cancelled".to_string()
+                }
+                WorkspaceIndexPublicationAttempt::Applied(_) => {
+                    "Detached workspace publication returned an invalid enqueue state".to_string()
+                }
+            })
+    }
+
     pub(crate) fn begin_foreground_read(&self) -> WorkspaceIndexForegroundReadGuard {
         self.foreground_reads.begin()
     }
@@ -223,10 +284,28 @@ fn run_writer_actor(
     foreground_reads: WorkspaceIndexForegroundReadGate,
 ) {
     let mut queue = WorkspaceIndexPublicationQueue::new(FOREGROUND_BURST_LIMIT);
+    let mut idle_grace_pending = true;
     while let Ok(envelope) = receiver.recv() {
         queue.push(envelope.request.priority, envelope);
         drain_ingress(&receiver, &mut queue);
         while let Some(envelope) = queue.pop() {
+            if envelope.request.priority == PublicationPriority::IdleMaintenance
+                && idle_grace_pending
+            {
+                match receiver.recv_timeout(IDLE_PUBLICATION_GRACE) {
+                    Ok(next) => {
+                        queue.push(envelope.request.priority, envelope);
+                        queue.push(next.request.priority, next);
+                        drain_ingress(&receiver, &mut queue);
+                        continue;
+                    }
+                    Err(RecvTimeoutError::Timeout) => idle_grace_pending = false,
+                    Err(RecvTimeoutError::Disconnected) => {}
+                }
+            }
+            if envelope.request.priority != PublicationPriority::IdleMaintenance {
+                idle_grace_pending = true;
+            }
             foreground_reads.yield_background(envelope.request.priority, &envelope.cancelled);
             process_envelope(envelope, &metrics);
             drain_ingress(&receiver, &mut queue);
@@ -262,7 +341,11 @@ fn process_envelope(envelope: PublicationEnvelope, metrics: &Arc<Mutex<WriterAct
     let started = Instant::now();
     let result = publish_artifact(&envelope.request);
     let hold = started.elapsed();
-    remove_workspace_publication_artifact(&envelope.request.descriptor);
+    let retain_artifact =
+        result.is_ok() && envelope.request.kind == WorkspaceIndexPublicationKind::ContentCore;
+    if !retain_artifact {
+        remove_workspace_publication_artifact(&envelope.request.descriptor);
+    }
     let sdk_duration_us = result
         .as_ref()
         .ok()
@@ -279,191 +362,19 @@ fn process_envelope(envelope: PublicationEnvelope, metrics: &Arc<Mutex<WriterAct
         wait,
         hold,
         result.is_err(),
+        envelope.request.kind,
         sdk_duration_us,
         maintenance_sample,
     );
     let _ = envelope.response.send(result);
 }
 
-fn publish_artifact(
-    request: &WorkspaceIndexPublicationRequest,
-) -> Result<WorkspaceIndexPublicationProfile, String> {
-    match read_workspace_publication_artifact(&request.root_path, &request.descriptor)? {
-        WorkspaceIndexPublicationArtifact::Discovery {
-            root_path,
-            prepared,
-        } if root_path == request.root_path => {
-            publish_prepared_workspace_discovery_chunk(&prepared)
-        }
-        WorkspaceIndexPublicationArtifact::Discovery { .. } => {
-            Err("Discovery publication artifact root did not match the request".to_string())
-        }
-        WorkspaceIndexPublicationArtifact::SdkCatalog {
-            root_path,
-            prepared,
-        } if root_path == request.root_path => {
-            publish_prepared_workspace_sdk_catalog_chunk(&prepared)
-        }
-        WorkspaceIndexPublicationArtifact::SdkCatalog { .. } => {
-            Err("SDK publication artifact root did not match the request".to_string())
-        }
-        WorkspaceIndexPublicationArtifact::Content {
-            root_path,
-            prepared,
-        } if root_path == request.root_path => {
-            publish_prepared_workspace_content_refresh_chunk(&root_path, &prepared)
-        }
-        WorkspaceIndexPublicationArtifact::Content { .. } => {
-            Err("Content publication artifact root did not match the request".to_string())
-        }
-        WorkspaceIndexPublicationArtifact::Stub {
-            root_path,
-            prepared,
-        } if root_path == request.root_path => {
-            publish_prepared_workspace_stub_refresh_chunk(&root_path, &prepared)
-        }
-        WorkspaceIndexPublicationArtifact::Stub { .. } => {
-            Err("Stub publication artifact root did not match the request".to_string())
-        }
-        WorkspaceIndexPublicationArtifact::Maintenance {
-            root_path,
-            operation,
-        } if root_path == request.root_path => {
-            publish_workspace_index_maintenance(&root_path, operation)
-        }
-        WorkspaceIndexPublicationArtifact::Maintenance { .. } => {
-            Err("Maintenance publication artifact root did not match the request".to_string())
-        }
-    }
-}
-
-#[derive(Default)]
-struct WriterActorMetricState {
-    sample_count: u64,
-    queued: usize,
-    active: usize,
-    failures: u64,
-    recovered_roots: HashSet<String>,
-    recovery_workspace_count: u64,
-    orphan_artifact_scanned_count: u64,
-    orphan_artifact_removed_count: u64,
-    orphan_artifact_retained_count: u64,
-    recovery_failure_count: u64,
-    sdk_publication_count: u64,
-    sdk_publication_max_us: u64,
-    maintenance_publication_count: u64,
-    maintenance_publication_max_us: u64,
-    maintenance_optimize_count: u64,
-    maintenance_checkpoint_count: u64,
-    maintenance_incremental_vacuum_count: u64,
-    maintenance_copy_swap_count: u64,
-    maintenance_copy_swap_deferred_count: u64,
-    wait_us: VecDeque<u64>,
-    hold_us: VecDeque<u64>,
-}
-
-impl WriterActorMetricState {
-    fn snapshot(&self) -> WorkspaceIndexWriterMetrics {
-        WorkspaceIndexWriterMetrics {
-            sample_count: self.sample_count,
-            active_writer_count: self.active,
-            queued_writer_count: self.queued,
-            failure_count: self.failures,
-            recovery_workspace_count: self.recovery_workspace_count,
-            orphan_artifact_scanned_count: self.orphan_artifact_scanned_count,
-            orphan_artifact_removed_count: self.orphan_artifact_removed_count,
-            orphan_artifact_retained_count: self.orphan_artifact_retained_count,
-            recovery_failure_count: self.recovery_failure_count,
-            sdk_publication_count: self.sdk_publication_count,
-            sdk_publication_max_us: self.sdk_publication_max_us,
-            maintenance_publication_count: self.maintenance_publication_count,
-            maintenance_publication_max_us: self.maintenance_publication_max_us,
-            maintenance_optimize_count: self.maintenance_optimize_count,
-            maintenance_checkpoint_count: self.maintenance_checkpoint_count,
-            maintenance_incremental_vacuum_count: self.maintenance_incremental_vacuum_count,
-            maintenance_copy_swap_count: self.maintenance_copy_swap_count,
-            maintenance_copy_swap_deferred_count: self.maintenance_copy_swap_deferred_count,
-            wait_p50_us: percentile(&self.wait_us, 50),
-            wait_p95_us: percentile(&self.wait_us, 95),
-            wait_p99_us: percentile(&self.wait_us, 99),
-            wait_max_us: self.wait_us.iter().copied().max().unwrap_or_default(),
-            hold_p50_us: percentile(&self.hold_us, 50),
-            hold_p95_us: percentile(&self.hold_us, 95),
-            hold_p99_us: percentile(&self.hold_us, 99),
-            hold_max_us: self.hold_us.iter().copied().max().unwrap_or_default(),
-            last_wait_us: self.wait_us.back().copied().unwrap_or_default(),
-            last_hold_us: self.hold_us.back().copied().unwrap_or_default(),
-        }
-    }
-}
-
-fn record_finished(
-    metrics: &Arc<Mutex<WriterActorMetricState>>,
-    wait: Duration,
-    hold: Duration,
-    failed: bool,
-    sdk_duration_us: Option<u64>,
-    maintenance_sample: Option<MaintenanceMetricSample>,
-) {
-    let Ok(mut metrics) = metrics.lock() else {
-        return;
-    };
-    metrics.active = metrics.active.saturating_sub(1);
-    metrics.sample_count = metrics.sample_count.saturating_add(1);
-    metrics.failures = metrics.failures.saturating_add(u64::from(failed));
-    if let Some(duration_us) = sdk_duration_us {
-        metrics.sdk_publication_count = metrics.sdk_publication_count.saturating_add(1);
-        metrics.sdk_publication_max_us = metrics.sdk_publication_max_us.max(duration_us);
-    }
-    if let Some(sample) = maintenance_sample {
-        metrics.maintenance_publication_count =
-            metrics.maintenance_publication_count.saturating_add(1);
-        metrics.maintenance_publication_max_us = metrics
-            .maintenance_publication_max_us
-            .max(sample.duration_us);
-        metrics.maintenance_optimize_count = metrics
-            .maintenance_optimize_count
-            .saturating_add(u64::from(sample.optimized));
-        metrics.maintenance_checkpoint_count = metrics
-            .maintenance_checkpoint_count
-            .saturating_add(u64::from(sample.checkpointed));
-        metrics.maintenance_incremental_vacuum_count = metrics
-            .maintenance_incremental_vacuum_count
-            .saturating_add(u64::from(sample.incremental_vacuumed));
-        metrics.maintenance_copy_swap_count = metrics
-            .maintenance_copy_swap_count
-            .saturating_add(u64::from(sample.copy_swapped));
-        metrics.maintenance_copy_swap_deferred_count = metrics
-            .maintenance_copy_swap_deferred_count
-            .saturating_add(u64::from(sample.copy_swap_deferred));
-    }
-    push_sample(&mut metrics.wait_us, wait);
-    push_sample(&mut metrics.hold_us, hold);
-}
-
-fn push_sample(samples: &mut VecDeque<u64>, duration: Duration) {
-    if samples.len() == METRIC_SAMPLE_LIMIT {
-        samples.pop_front();
-    }
-    samples.push_back(u64::try_from(duration.as_micros()).unwrap_or(u64::MAX));
-}
-
-fn percentile(samples: &VecDeque<u64>, percentage: usize) -> u64 {
-    let mut sorted = samples.iter().copied().collect::<Vec<_>>();
-    sorted.sort_unstable();
-    if sorted.is_empty() {
-        return 0;
-    }
-    let index = (sorted.len() * percentage)
-        .div_ceil(100)
-        .saturating_sub(1)
-        .min(sorted.len() - 1);
-    sorted[index]
-}
-
 #[cfg(test)]
 #[path = "workspace_index_writer_actor_compaction_tests.rs"]
 mod compaction_tests;
+#[cfg(test)]
+#[path = "workspace_index_writer_content_layer_tests.rs"]
+mod content_layer_tests;
 #[cfg(test)]
 #[path = "workspace_index_writer_actor_service_tests.rs"]
 mod tests;

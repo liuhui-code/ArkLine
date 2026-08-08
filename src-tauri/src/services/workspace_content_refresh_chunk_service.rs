@@ -1,16 +1,18 @@
 use rusqlite::OptionalExtension;
 
 use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
+use crate::services::workspace_content_publication_service::{
+    publish_content_core_profiled, publish_content_substring_profiled,
+};
 use crate::services::workspace_content_refresh_service::{
     normalize_index_path, prepare_workspace_content_refresh,
-    publish_workspace_content_refresh_profiled,
 };
 use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, with_workspace_index_transaction,
     workspace_index_writer_metrics,
 };
 use crate::services::workspace_index_layer_generation_service::{
-    reject_stale_layer_generation, CONTENT_LAYER,
+    reject_stale_layer_generation, CONTENT_LAYER, CONTENT_SUBSTRING_LAYER,
 };
 use crate::services::workspace_index_schema_version_service::verify_workspace_index_schema_versions;
 use crate::services::workspace_stub_refresh_chunk_service::workspace_file_catalog_contains_paths;
@@ -21,6 +23,7 @@ pub(crate) struct WorkspaceContentRefreshChunkSummary {
     pub(crate) indexed_line_count: usize,
     pub(crate) unreadable_file_count: usize,
     pub(crate) resource_limited_file_count: usize,
+    pub(crate) policy_skipped_file_count: usize,
     pub(crate) processed_source_bytes: usize,
     pub(crate) publication_profile: WorkspaceIndexPublicationProfile,
 }
@@ -35,7 +38,7 @@ pub(crate) fn run_workspace_content_refresh_chunk(
         return Err("Content refresh path is absent from workspace file index".to_string());
     }
     let root_key = normalize_index_path(root_path);
-    reject_stale_content_generation(root_path, &root_key, indexed_generation)?;
+    reject_stale_content_generation(root_path, &root_key, CONTENT_LAYER, indexed_generation)?;
     let prepared = prepare_workspace_content_refresh(
         root_path,
         changed_paths,
@@ -57,6 +60,7 @@ pub(crate) fn run_workspace_content_refresh_chunk(
             .iter()
             .filter(|failure| failure.resource_limited)
             .count(),
+        policy_skipped_file_count: prepared.skips.len(),
         processed_source_bytes: prepared.source_bytes,
         publication_profile,
     })
@@ -66,9 +70,52 @@ pub(crate) fn publish_prepared_workspace_content_refresh_chunk(
     root_path: &str,
     prepared: &crate::services::workspace_content_refresh_service::PreparedWorkspaceContentRefresh,
 ) -> Result<WorkspaceIndexPublicationProfile, String> {
+    let mut profile = publish_prepared_workspace_content_core_chunk(root_path, prepared)?;
+    let substring = publish_prepared_workspace_content_substring_chunk(root_path, prepared)?;
+    profile.total_duration_us = profile
+        .total_duration_us
+        .saturating_add(substring.total_duration_us);
+    profile.stages.extend(substring.stages);
+    Ok(profile)
+}
+
+pub(crate) fn publish_prepared_workspace_content_core_chunk(
+    root_path: &str,
+    prepared: &crate::services::workspace_content_refresh_service::PreparedWorkspaceContentRefresh,
+) -> Result<WorkspaceIndexPublicationProfile, String> {
+    publish_prepared_content_layer(
+        root_path,
+        prepared,
+        CONTENT_LAYER,
+        publish_content_core_profiled,
+    )
+}
+
+pub(crate) fn publish_prepared_workspace_content_substring_chunk(
+    root_path: &str,
+    prepared: &crate::services::workspace_content_refresh_service::PreparedWorkspaceContentRefresh,
+) -> Result<WorkspaceIndexPublicationProfile, String> {
+    publish_prepared_content_layer(
+        root_path,
+        prepared,
+        CONTENT_SUBSTRING_LAYER,
+        publish_content_substring_profiled,
+    )
+}
+
+fn publish_prepared_content_layer(
+    root_path: &str,
+    prepared: &crate::services::workspace_content_refresh_service::PreparedWorkspaceContentRefresh,
+    layer: &str,
+    publish: fn(
+        &rusqlite::Connection,
+        &str,
+        &crate::services::workspace_content_refresh_service::PreparedWorkspaceContentRefresh,
+    ) -> Result<WorkspaceIndexPublicationProfile, String>,
+) -> Result<WorkspaceIndexPublicationProfile, String> {
     let indexed_generation = prepared.indexed_generation;
     let root_key = normalize_index_path(root_path);
-    reject_stale_content_generation(root_path, &root_key, indexed_generation)?;
+    reject_stale_content_generation(root_path, &root_key, layer, indexed_generation)?;
     let mut publication_profile = with_workspace_index_transaction(
         root_path,
         verify_workspace_index_schema_versions,
@@ -76,9 +123,10 @@ pub(crate) fn publish_prepared_workspace_content_refresh_chunk(
             reject_stale_content_generation_in_connection(
                 transaction,
                 &root_key,
+                layer,
                 indexed_generation,
             )?;
-            publish_workspace_content_refresh_profiled(transaction, &root_key, &prepared)
+            publish(transaction, &root_key, prepared)
         },
     )?;
     publication_profile.root_path = root_path.to_string();
@@ -89,6 +137,7 @@ pub(crate) fn publish_prepared_workspace_content_refresh_chunk(
 fn reject_stale_content_generation(
     root_path: &str,
     root_key: &str,
+    layer: &str,
     indexed_generation: u64,
 ) -> Result<(), String> {
     let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
@@ -97,7 +146,7 @@ fn reject_stale_content_generation(
     if !content_file_table_exists(&connection)? {
         return Ok(());
     }
-    reject_stale_content_generation_in_connection(&connection, root_key, indexed_generation)
+    reject_stale_content_generation_in_connection(&connection, root_key, layer, indexed_generation)
 }
 
 fn content_file_table_exists(connection: &rusqlite::Connection) -> Result<bool, String> {
@@ -115,7 +164,8 @@ fn content_file_table_exists(connection: &rusqlite::Connection) -> Result<bool, 
 fn reject_stale_content_generation_in_connection(
     connection: &rusqlite::Connection,
     root_key: &str,
+    layer: &str,
     indexed_generation: u64,
 ) -> Result<(), String> {
-    reject_stale_layer_generation(connection, root_key, CONTENT_LAYER, indexed_generation)
+    reject_stale_layer_generation(connection, root_key, layer, indexed_generation)
 }

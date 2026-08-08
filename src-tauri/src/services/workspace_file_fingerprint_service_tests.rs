@@ -2,9 +2,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::services::workspace_content_refresh_service::index_workspace_content;
 use crate::services::workspace_file_fingerprint_service::{
     classify_file_fingerprints, remove_file_fingerprints, update_file_catalog_fingerprints,
     update_file_fingerprints, WorkspaceFileFingerprintStatus,
+};
+use crate::services::workspace_index_connection_service::with_workspace_index_writer;
+use crate::services::workspace_file_index_policy_service::{
+    classify_workspace_file, WorkspaceFileIndexClass, WorkspaceFileLayerPolicy,
 };
 
 fn unique_temp_dir(name: &str) -> PathBuf {
@@ -13,6 +18,47 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .expect("clock should be after unix epoch")
         .as_nanos();
     std::env::temp_dir().join(format!("arkline-{name}-{suffix}"))
+}
+
+#[test]
+fn classifies_large_generated_and_binary_files_for_tiered_indexing() {
+    let root = unique_temp_dir("workspace-file-index-policy");
+    let generated_dir = root.join("entry").join("generated");
+    fs::create_dir_all(&generated_dir).unwrap();
+    let large = root.join("Large.ets");
+    let generated = generated_dir.join("Bindings.ets");
+    let binary = root.join("payload.dat");
+    fs::write(&large, "123456789").unwrap();
+    fs::write(&generated, "export class Bindings {}\n").unwrap();
+    fs::write(&binary, b"text\0binary").unwrap();
+
+    let large_policy = classify_workspace_file(&root, &large, 8).unwrap();
+    let generated_policy = classify_workspace_file(&root, &generated, 1024).unwrap();
+    let binary_policy = classify_workspace_file(&root, &binary, 1024).unwrap();
+
+    assert_eq!(large_policy.class, WorkspaceFileIndexClass::LargeText);
+    assert_eq!(large_policy.content, WorkspaceFileLayerPolicy::Skip);
+    assert_eq!(generated_policy.class, WorkspaceFileIndexClass::Generated);
+    assert_eq!(generated_policy.symbols, WorkspaceFileLayerPolicy::Skip);
+    assert_eq!(binary_policy.class, WorkspaceFileIndexClass::Binary);
+    assert!(binary_policy.reason.to_lowercase().contains("binary"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn policy_skipped_file_is_stable_after_deep_fingerprint_publication() {
+    let root = unique_temp_dir("workspace-file-policy-stable");
+    fs::create_dir_all(&root).unwrap();
+    let binary = root.join("payload.bin");
+    fs::write(&binary, b"\0payload").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let binary_path = binary.to_string_lossy().to_string();
+
+    update_file_fingerprints(&root_path, std::slice::from_ref(&binary_path), 1).unwrap();
+    let changes = classify_file_fingerprints(&root_path, &[binary_path]).unwrap();
+
+    assert_eq!(changes[0].status, WorkspaceFileFingerprintStatus::Unchanged);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
@@ -90,5 +136,32 @@ fn classifies_changed_unchanged_and_deleted_files_from_persisted_fingerprints() 
     assert_eq!(changes[2].status, WorkspaceFileFingerprintStatus::Deleted);
 
     remove_file_fingerprints(&root_path, &[deleted_file.to_string_lossy().to_string()]).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn missing_substring_publication_forces_crash_recovery_reindex() {
+    let root = unique_temp_dir("workspace-file-fingerprint-substring-recovery");
+    fs::create_dir_all(&root).unwrap();
+    let source_file = root.join("Recover.ets");
+    fs::write(&source_file, "export class Recoverable {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source_file.to_string_lossy().to_string();
+    index_workspace_content(&root_path, std::slice::from_ref(&source_path)).unwrap();
+    update_file_fingerprints(&root_path, std::slice::from_ref(&source_path), 1).unwrap();
+    with_workspace_index_writer(&root_path, |connection| {
+        connection
+            .execute("delete from workspace_content_trigram_fts", [])
+            .map_err(|error| error.to_string())?;
+        connection
+            .execute("delete from workspace_content_substring_files", [])
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })
+    .unwrap();
+
+    let change = classify_file_fingerprints(&root_path, &[source_path]).unwrap();
+
+    assert_eq!(change[0].status, WorkspaceFileFingerprintStatus::Changed);
     fs::remove_dir_all(root).unwrap();
 }

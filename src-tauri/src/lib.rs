@@ -126,6 +126,7 @@ pub fn run() {
             commands::workspace::refresh_workspace_index_with_changes,
             commands::workspace::cancel_workspace_search,
             commands::workspace::search_workspace_text,
+            commands::workspace::stream_workspace_text,
             commands::workspace_index::explain_workspace_index_query,
             commands::workspace_index::get_workspace_index_file_readiness,
             commands::workspace_index::get_workspace_index_layer_readiness,

@@ -125,11 +125,11 @@ fn publish_sdk_catalog(
         }
     }
     match WorkspaceIndexWriterActor::shared().publish(
-        WorkspaceIndexPublicationRequest {
-            root_path: prepared.root_path.clone(),
+        WorkspaceIndexPublicationRequest::new(
+            prepared.root_path.clone(),
             descriptor,
-            priority: PublicationPriority::Background,
-        },
+            PublicationPriority::Background,
+        ),
         || token.is_cancelled(),
     ) {
         WorkspaceIndexPublicationAttempt::Applied(_) => Ok(true),

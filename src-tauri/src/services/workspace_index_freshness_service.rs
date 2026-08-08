@@ -63,9 +63,9 @@ fn load_content_freshness(
     connection
         .query_row(
             "select
-                sum(case when content.path is not null and content.status = 'ready'
+                sum(case when content.path is not null and content.status in ('ready', 'skipped')
                     and fingerprint.content_index_version = ?2 then 1 else 0 end),
-                sum(case when content.path is not null and (content.status != 'ready'
+                sum(case when content.path is not null and (content.status not in ('ready', 'skipped')
                     or fingerprint.path is null
                     or fingerprint.content_index_version != ?2) then 1 else 0 end),
                 sum(case when content.path is null then 1 else 0 end)

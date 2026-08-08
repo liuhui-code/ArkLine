@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{ipc::Channel, AppHandle, Emitter, State};
 
 use crate::commands::workspace_emit::{
     emit_workspace_index_events, emit_workspace_index_task_statuses,
@@ -30,7 +30,9 @@ use crate::services::workspace_index_ui_activity_service::{
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
 use crate::services::workspace_open_command_service::open_workspace_through_manager_blocking;
 use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
-use crate::services::workspace_query_command_service::search_workspace_text_blocking;
+use crate::services::workspace_query_command_service::{
+    search_workspace_text_blocking, stream_workspace_text_blocking, WorkspaceTextSearchStreamEvent,
+};
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
 use crate::services::workspace_service::list_workspace_directory as list_workspace_directory_service;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
@@ -276,6 +278,26 @@ pub async fn search_workspace_text(
         query_broker.inner().clone(),
         ui_activity.inner().clone(),
         request,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn stream_workspace_text(
+    request: WorkspaceTextSearchRequest,
+    on_event: Channel<WorkspaceTextSearchStreamEvent>,
+    index_runtime: State<'_, WorkspaceIndexRuntime>,
+    text_search_cancellation: State<'_, WorkspaceTextSearchCancellationRuntime>,
+    query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
+) -> Result<(), String> {
+    stream_workspace_text_blocking(
+        index_runtime.inner().clone(),
+        text_search_cancellation.inner().clone(),
+        query_broker.inner().clone(),
+        ui_activity.inner().clone(),
+        request,
+        move |event| on_event.send(event).map_err(|error| error.to_string()),
     )
     .await
 }

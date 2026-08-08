@@ -13,7 +13,7 @@ use crate::services::workspace_index_query_path_service::normalize_candidate_pat
 use crate::services::workspace_index_readiness_service::readiness_for_query;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_text_candidate_service::text_search_candidates;
-use crate::services::workspace_text_search_service::search_workspace_text as search_filesystem_text;
+use crate::services::workspace_parallel_text_search_service::search_workspace_files_responsive;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceIndexQueryScope {
     All,
@@ -129,7 +129,11 @@ pub fn search_workspace_text(
     }
 
     let index_state = index_runtime.get_index_state(&request.root_path)?;
-    Ok(search_filesystem_text(&request, &index_state.file_paths))
+    Ok(search_workspace_files_responsive(
+        &request,
+        &index_state.file_paths,
+        || false,
+    ))
 }
 
 pub(crate) fn readiness_for_index_state(state: &WorkspaceIndexState) -> WorkspaceIndexReadiness {

@@ -78,11 +78,13 @@ pub mod workspace_content_index_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_content_index_service_tests;
 pub(crate) mod workspace_content_match_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_content_match_service_tests;
+pub(crate) mod workspace_content_publication_service;
 pub mod workspace_content_query_service;
 pub(crate) mod workspace_content_readiness_store_service;
 pub(crate) mod workspace_content_refresh_chunk_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_content_refresh_chunk_service_tests;
 pub(crate) mod workspace_content_refresh_service;
+#[rustfmt::skip] #[cfg(test)] mod workspace_content_publication_profile_tests;
 pub(crate) mod workspace_content_stats_schema_service;
 pub(crate) mod workspace_definition_candidate_query_service;
 #[cfg(test)]
@@ -136,8 +138,8 @@ pub(crate) mod workspace_edit_summary_service;
 #[cfg(test)]
 mod workspace_edit_test_fixture_service;
 pub mod workspace_file_fingerprint_service;
-#[cfg(test)]
-mod workspace_file_fingerprint_service_tests;
+pub(crate) mod workspace_file_index_policy_service;
+#[rustfmt::skip] #[cfg(test)] mod workspace_file_fingerprint_service_tests;
 pub(crate) mod workspace_file_identity_service;
 mod workspace_file_search_index_service;
 #[cfg(test)]
@@ -367,9 +369,9 @@ mod workspace_large_project_index_tests;
 mod workspace_large_update_profile_tests;
 pub mod workspace_number_format_service;
 pub mod workspace_open_command_service;
+pub(crate) mod workspace_parallel_text_search_service;
 pub mod workspace_performance_config_service;
-#[cfg(test)]
-mod workspace_performance_config_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_performance_config_service_tests;
 pub(crate) mod workspace_query_broker_service;
 #[cfg(test)]
 mod workspace_query_broker_service_tests;
@@ -478,11 +480,9 @@ pub(crate) mod workspace_symbol_resolution_refresh_plan_service;
 mod workspace_symbol_resolution_refresh_plan_service_tests;
 pub mod workspace_symbol_resolution_schema_service;
 pub mod workspace_symbol_resolution_service;
-#[cfg(test)]
-mod workspace_symbol_resolution_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_symbol_resolution_service_tests;
 pub(crate) mod workspace_symbol_resolution_unresolved_service;
-#[cfg(test)]
-mod workspace_symbol_resolution_unresolved_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_symbol_resolution_unresolved_service_tests;
 #[allow(dead_code)]
 pub(crate) mod workspace_text_search_cancellation_service;
 #[cfg(test)]

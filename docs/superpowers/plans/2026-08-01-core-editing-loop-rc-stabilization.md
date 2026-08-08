@@ -129,3 +129,31 @@ no stale file activation or visible crash during burst search and repeated file
 switching. This narrows no native root cause: the next Windows reproduction must
 use the emitted causal traces to identify the first slow phase before changing
 architecture.
+
+## 2026-08-08 Candidate Freeze Verification
+
+The Phase 8-10 working candidate passed the complete local stabilization loop
+without producing a repeatable failure that would justify another hot-path
+change:
+
+- strict runtime search input/delete p95: `0.364 ms`, with 2 committed queries,
+  102 cancellations, and no stale result application;
+- strict runtime file-switch p95: `0.157 ms`, with 49 stale jumps rejected and
+  one current jump applied;
+- core navigation and crash-boundary coverage: 13 passed;
+- changed search streaming and workspace API coverage: 32 passed;
+- frontend quality and packaged-soak contract coverage: 41 passed;
+- semantic Worker coverage: 71 passed, including a 12-case golden corpus with
+  exact definition and receiver-member completion baselines;
+- serial Rust library gate: 985 passed, 0 failed, and 12 ignored profiling or
+  platform tests;
+- production frontend and semantic-worker build passed;
+- whitespace passed and 900 source files remained at or below 500 lines.
+
+This is local candidate evidence, not release evidence. The working candidate
+does not yet have a commit SHA or executable hash, so dispatching the hosted
+Windows workflow would test an older revision. Freeze and publish the exact
+candidate before running the native small gate, then the 20k / 30-minute gate.
+Any native failure must be reproduced by the existing workload and repaired at
+the first slow causal phase; a speculative scheduler, renderer, or indexing
+redesign is outside this RC stabilization decision.

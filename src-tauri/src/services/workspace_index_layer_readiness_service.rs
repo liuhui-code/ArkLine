@@ -60,6 +60,7 @@ fn build_workspace_index_layer_readiness(
             current_file_path,
         )?,
         content_layer(connection, &root_key, file_readiness.as_ref())?,
+        content_substring_layer(connection, &root_key, current_file_path)?,
         stub_layer(connection, &root_key, file_readiness.as_ref())?,
         symbol_layer(connection, &root_key, file_readiness.as_ref())?,
         reference_layer(connection, &root_key, current_file_path)?,
@@ -286,6 +287,63 @@ fn content_layer(
         summary.failed_count,
         0,
         None,
+    ))
+}
+
+fn content_substring_layer(
+    connection: &Connection,
+    root_key: &str,
+    current_file_path: Option<&str>,
+) -> Result<WorkspaceIndexLayerReadiness, String> {
+    let (ready, failed, stale): (i64, i64, i64) = connection
+        .query_row(
+            "select
+                coalesce(sum(case when substring.status = 'ready'
+                    and substring.indexed_generation = core.indexed_generation then 1 else 0 end), 0),
+                coalesce(sum(case when substring.status = 'failed' then 1 else 0 end), 0),
+                coalesce(sum(case when substring.path is null
+                    or substring.status = 'pending'
+                    or substring.indexed_generation != core.indexed_generation then 1 else 0 end), 0)
+             from workspace_content_files core
+             left join workspace_content_substring_files substring
+               on substring.root_path = core.root_path and substring.path = core.path
+             where core.root_path = ?1 and core.status = 'ready'",
+            [root_key],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    let current = current_file_path
+        .map(|path| {
+            connection
+                .query_row(
+                    "select exists(
+                        select 1 from workspace_content_files core
+                        join workspace_content_substring_files substring
+                          on substring.root_path = core.root_path and substring.path = core.path
+                        where core.root_path = ?1 and core.path = ?2
+                          and substring.status = 'ready'
+                          and substring.indexed_generation = core.indexed_generation
+                     )",
+                    params![root_key, normalize_index_path(path)],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map(status_from_bool)
+                .map_err(|error| error.to_string())
+        })
+        .transpose()?;
+    let status = if stale > 0 {
+        WorkspaceIndexLayerStatus::Partial
+    } else {
+        status_with_expected_count(ready, failed, ready + failed)
+    };
+    Ok(layer_with_current(
+        "contentSubstring",
+        status,
+        current,
+        ready,
+        failed,
+        stale,
+        (stale > 0).then_some("wait"),
     ))
 }
 

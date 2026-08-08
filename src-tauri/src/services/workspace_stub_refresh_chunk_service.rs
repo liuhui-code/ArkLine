@@ -183,4 +183,27 @@ mod tests {
         assert_eq!(stages.last(), Some(&"stubGeneration"));
         fs::remove_dir_all(root).unwrap();
     }
+
+    #[test]
+    fn generated_sources_are_removed_from_background_symbol_rows() {
+        let root = std::env::temp_dir().join(format!(
+            "arkline-stub-generated-policy-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let generated_dir = root.join("generated");
+        fs::create_dir_all(&generated_dir).unwrap();
+        let source = generated_dir.join("Bindings.ets");
+        fs::write(&source, "export class Bindings {}\n").unwrap();
+        let root_path = root.to_string_lossy().to_string();
+        let source_path = source.to_string_lossy().to_string();
+        WorkspaceIndexRuntime::default()
+            .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
+            .unwrap();
+
+        let summary =
+            run_workspace_stub_refresh_chunk(&root_path, &[source_path], &[], 100).unwrap();
+
+        assert_eq!(summary.parsed_file_count, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
 }

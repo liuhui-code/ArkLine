@@ -94,12 +94,91 @@ describe("search text runner", () => {
     expect(runFallback).toHaveBeenCalledWith("width", false, 9);
   });
 
+  it("applies current streaming batches incrementally and ignores stale generations", async () => {
+    const runFallback = vi.fn(async () => textResult("fallback"));
+    const patchSearchSession = vi.fn();
+    const streamWorkspaceText = vi.fn(async (_request, onEvent) => {
+      onEvent({ event: "started", generation: 9 });
+      onEvent({ event: "batch", generation: 8, sequence: 0, result: textResult("stale") });
+      onEvent({ event: "batch", generation: 9, sequence: 0, result: textResult("first") });
+      const second = textResult("second");
+      second.matches[0]!.line = 2;
+      onEvent({ event: "batch", generation: 9, sequence: 1, result: second });
+      onEvent({ event: "finished", generation: 9, sequence: 2, status: "complete" });
+    });
+    const trackQuery = vi.fn(async ({ request, apply }) => apply(await request, 9));
+
+    runSearchTextQuery({
+      requestId: 9,
+      mode: "find",
+      query: "width",
+      rootPath: "/workspace",
+      minimumQueryLength: 2,
+      options: { caseSensitive: true, wholeWord: false },
+      dirty: false,
+      workspaceApi: { streamWorkspaceText },
+      runFallback,
+      replaceQueryReadiness: vi.fn(),
+      trackQuery,
+      isCurrentQuery: (generation) => generation === 9,
+      clearSearchResults: vi.fn(),
+      patchSearchSession,
+      recordUiInteraction: vi.fn(),
+      scheduleSelectedPreview: vi.fn(),
+      reportMiss: vi.fn(),
+    });
+    await vi.waitFor(() => expect(streamWorkspaceText).toHaveBeenCalledTimes(1));
+
+    const resultPatches = patchSearchSession.mock.calls
+      .map(([patch]) => patch.result)
+      .filter(Boolean);
+    expect(resultPatches).toHaveLength(2);
+    expect((resultPatches.at(-1) as WorkspaceTextSearchResult).matches.map((match) => match.summary)).toEqual(["first", "second"]);
+    expect(runFallback).not.toHaveBeenCalled();
+  });
+
+  it("stops loading when a streaming sequence has a gap", async () => {
+    const patchSearchSession = vi.fn();
+    const onStreamError = vi.fn();
+    const trackQuery = vi.fn(async ({ request, apply }) => apply(await request, 3));
+
+    runSearchTextQuery({
+      requestId: 3,
+      mode: "find",
+      query: "width",
+      rootPath: "/workspace",
+      minimumQueryLength: 2,
+      options: { caseSensitive: false, wholeWord: false },
+      dirty: false,
+      workspaceApi: {
+        streamWorkspaceText: async (_request, onEvent) => {
+          onEvent({ event: "started", generation: 3 });
+          onEvent({ event: "batch", generation: 3, sequence: 1, result: textResult("gap") });
+        },
+      },
+      runFallback: vi.fn(),
+      replaceQueryReadiness: vi.fn(),
+      trackQuery,
+      isCurrentQuery: (generation) => generation === 3,
+      clearSearchResults: vi.fn(),
+      patchSearchSession,
+      scheduleSelectedPreview: vi.fn(),
+      reportMiss: vi.fn(),
+      onStreamError,
+    });
+    await vi.waitFor(() => expect(trackQuery).toHaveBeenCalled());
+
+    expect(patchSearchSession).toHaveBeenCalledWith({ textPageLoading: false });
+    expect(onStreamError).toHaveBeenCalledWith("Workspace text search stream sequence gap");
+  });
+
   it("falls back when dirty documents require live content", async () => {
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
       items: [textCandidate()],
       readiness: readinessState("ready"),
     }));
     const runFallback = vi.fn(async () => textResult("fallback"));
+    const streamWorkspaceText = vi.fn(async () => undefined);
     const patchSearchSession = vi.fn();
     const trackQuery = vi.fn(async ({ request, apply }) => {
       apply(await request, 12);
@@ -113,7 +192,7 @@ describe("search text runner", () => {
       minimumQueryLength: 2,
       options: { caseSensitive: false, wholeWord: false },
       dirty: true,
-      workspaceApi: { queryWorkspaceCandidatesWithReadiness },
+      workspaceApi: { queryWorkspaceCandidatesWithReadiness, streamWorkspaceText },
       runFallback,
       replaceQueryReadiness: vi.fn(),
       trackQuery,
@@ -130,6 +209,7 @@ describe("search text runner", () => {
     });
 
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
+    expect(streamWorkspaceText).not.toHaveBeenCalled();
     expect(runFallback).toHaveBeenCalledWith("width", true, 12);
   });
 

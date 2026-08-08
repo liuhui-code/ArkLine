@@ -34,8 +34,7 @@ describe("useSearchEverywhereController preview loading", () => {
       }],
     }));
     const { result } = renderHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      selectedText: "width",
       workspaceApi: workspaceApi({ openFile, searchWorkspaceText }),
     });
 
@@ -70,8 +69,7 @@ describe("useSearchEverywhereController preview loading", () => {
       matches: [textMatch("/workspace/Other.ets")],
     }));
     const { result } = renderHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      selectedText: "width",
       workspaceApi: workspaceApi({ openFile, searchWorkspaceText }),
       getOpenDocumentContent: (path) => path.endsWith("Other.ets") ? "struct Other {\n  width(100)\n}" : null,
     });
@@ -99,7 +97,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
       workspaceApi: stableWorkspaceApi,
       workspace: stableWorkspace,
       activePath: overrides.activePath ?? "/workspace/Entry.ets",
-      getEditorSelectedText: () => "",
+      getEditorSelectedText: () => overrides.selectedText ?? "",
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",
@@ -138,6 +136,7 @@ type HarnessOptions = {
   activePath: string | null;
   query: string;
   overlay: OverlayKey;
+  selectedText: string;
   getOpenDocumentContent: (path: string) => string | null;
 };
 

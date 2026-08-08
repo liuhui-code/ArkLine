@@ -78,7 +78,7 @@ fn search_indexed_workspace_content_on_connection(
         .as_ref()
         .map_or(0, |cursor| cursor.path_index);
     let scan_limit = indexed_candidate_scan_limit(request);
-    let candidate_lines = load_candidate_lines(
+    let candidate_page = load_candidate_lines(
         connection,
         &root_key,
         query,
@@ -86,6 +86,7 @@ fn search_indexed_workspace_content_on_connection(
         scan_limit + 1,
         offset,
     )?;
+    let candidate_lines = candidate_page.lines;
     let loaded_candidate_count = candidate_lines.len();
     let searched_files = candidate_lines
         .iter()
@@ -153,7 +154,7 @@ fn search_indexed_workspace_content_on_connection(
     Ok(WorkspaceTextSearchResult {
         query: result_query,
         matches,
-        partial: limit_reached,
+        partial: candidate_page.partial || limit_reached,
         searched_files,
         prefilter_skipped_files: 0,
         limit_reached,

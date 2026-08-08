@@ -1,4 +1,7 @@
 use crate::models::workspace::{ArkTsFileStub, ArkTsParseError};
+use crate::services::workspace_file_index_policy_service::{
+    classify_workspace_file, WorkspaceFileLayerPolicy, WORKSPACE_FULL_CONTENT_MAX_BYTES,
+};
 use crate::services::workspace_index_parse_pool_service::{
     WorkspaceIndexParseJob, WorkspaceIndexParsePool, WorkspaceIndexParseResult,
 };
@@ -11,6 +14,7 @@ use crate::services::workspace_stub_refresh_plan_service::{
     plan_workspace_stub_refresh, WorkspaceStubRefreshPlan,
 };
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct PreparedWorkspaceStubRefresh {
@@ -26,13 +30,29 @@ pub(crate) fn prepare_changed_stub_rows(
     indexed_generation: u64,
     priority: WorkspaceIndexTaskPriority,
 ) -> PreparedWorkspaceStubRefresh {
-    let plan = plan_workspace_stub_refresh(changed_paths, removed_paths);
+    let (indexed_paths, policy_skipped_paths) = partition_symbol_paths(root_key, changed_paths);
+    let mut removed_or_skipped = removed_paths.to_vec();
+    removed_or_skipped.extend(policy_skipped_paths);
+    let plan = plan_workspace_stub_refresh(&indexed_paths, &removed_or_skipped);
     let stubs = parse_stub_files(root_key, &plan.indexed_paths, indexed_generation, priority);
     PreparedWorkspaceStubRefresh {
         indexed_generation,
         plan,
         stubs,
     }
+}
+
+fn partition_symbol_paths(root_key: &str, paths: &[String]) -> (Vec<String>, Vec<String>) {
+    let filesystem_root = root_key.replace('\\', "/");
+    paths.iter().cloned().partition(|path| {
+        classify_workspace_file(
+            Path::new(&filesystem_root),
+            Path::new(path),
+            WORKSPACE_FULL_CONTENT_MAX_BYTES,
+        )
+        .map(|policy| policy.symbols == WorkspaceFileLayerPolicy::Index)
+        .unwrap_or(true)
+    })
 }
 
 pub(crate) fn parse_stub_files(

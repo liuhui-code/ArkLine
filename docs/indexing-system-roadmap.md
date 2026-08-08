@@ -67,6 +67,8 @@ Implemented foundations:
 - In-memory workspace catalog with persisted JSON and SQLite state.
 - Structured SQLite tables for files and symbols.
 - FTS5-backed content index with line-level previews and context.
+- Independently published ContentCore and ContentSubstring layers, with token
+  search usable before low-priority trigram publication completes.
 - Incremental content index updates for added/removed/changed paths.
 - Lightweight ArkTS symbol extraction for class-like declarations and methods.
 - Incremental symbol updates for changed/added/removed paths.
@@ -84,16 +86,24 @@ Implemented foundations:
 - Index diagnostics, health, repair, and explain services expose queue state,
   layer readiness, parser failures, unresolved imports, SDK counts, and recent
   unified index events.
+- File fingerprints persist a four-class indexing policy (`normal`,
+  `large-text`, `generated`, `binary`). Reduced-index files remain in the file
+  catalog while background content/symbol work publishes an intentional
+  `skipped` state.
 
 Known remaining architectural weakness:
 
 - Some older compatibility wrappers still call lower-level services directly.
-- Search scaling still needs regex literal prefiltering, streaming delivery, and
-  richer large-result ranking policy.
+- Search scaling has bounded backend-to-renderer streaming and an explicit
+  large/generated/binary metadata policy; it still needs richer large-result
+  ranking policy.
 - SDK indexing captures useful API declarations and members, but still needs
   deeper ArkUI signature/overload metadata and versioned invalidation polish.
 - Diagnostics are available, but the roadmap needs to keep closing gaps between
   backend explain data and the most actionable UI affordances.
+- Packaged Windows evidence is still required for the layered content publisher;
+  local tests prove priority, crash recovery, partial-query, and readiness
+  contracts but do not establish 20k release throughput.
 
 ## Gap Analysis
 
@@ -188,14 +198,23 @@ Missing:
 Current:
 
 - SQLite line table plus FTS5.
-- Regex and whole-word still rely on fallback scan path.
+- Literal and whole-word search use the content index when coverage is ready.
+- Regex queries with a provably required literal use ContentSubstring to select
+  candidate files before bounded filesystem verification.
+- Filesystem verification uses one to four workers, 150 ms / 8 MiB per-worker
+  page budgets, generation cancellation, and resumable cursors.
+- Find in Files and Replace in Files consume generation-scoped Tauri Channel
+  batches. A stream publishes at most eight pages before returning the last
+  cursor to the existing pull-based pagination path.
+- Files larger than the 4 MiB background full-index threshold, generated
+  sources, and binary/non-UTF-8 files are catalogued with a persisted reduced
+  indexing policy. Filesystem fallback filters these candidates and enforces
+  the same size ceiling before allocation.
 
 Missing:
 
-- Regex prefilter using extracted literal tokens or trigram-like candidates.
-- Pagination/streaming of search results.
-- Cancellation for long searches.
-- Large-file and generated-file policies in index metadata.
+- Better required-literal analysis for safe alternation/common-prefix cases.
+- User/project overrides for generated roots and large-file thresholds.
 - Better ranking using recent files, file type, path proximity, and symbol
   context.
 
@@ -445,7 +464,7 @@ Tasks:
   - query FTS/trigram-like candidates
   - run regex only on candidates
 - Add pagination and cancellation.
-- Add search result streaming to UI.
+- Add bounded search result streaming to UI. (Implemented)
 - Add ranking signals:
   - active/open files
   - recent files

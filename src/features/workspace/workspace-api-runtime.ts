@@ -1,9 +1,10 @@
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import * as tauriCore from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { createIpcLatencyStore } from "@/features/performance/ipc-latency-store";
 
 const ipcLatencyStore = createIpcLatencyStore();
+const tauriInvoke = tauriCore.invoke;
 
 declare global {
   interface Window {
@@ -33,6 +34,10 @@ export async function invoke<T>(
 
 export function getIpcLatencySnapshot() {
   return ipcLatencyStore.snapshot();
+}
+
+export function createChannel<T>() {
+  return new tauriCore.Channel<T>();
 }
 
 export { listen, open, save };

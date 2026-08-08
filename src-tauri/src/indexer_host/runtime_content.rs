@@ -1,7 +1,8 @@
 use crate::indexer_sidecar::{IndexerContentRefreshResult, IndexerTaskKey};
 use crate::services::workspace_index_publication_scheduler_service::PublicationPriority;
 use crate::services::workspace_index_writer_actor_service::{
-    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationRequest,
+    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationKind,
+    WorkspaceIndexPublicationRequest,
 };
 
 use super::runtime::IndexerHostRuntime;
@@ -80,17 +81,30 @@ impl IndexerHostRuntime {
                     );
                     return IndexerContentRefreshAttempt::Unavailable;
                 };
+                let substring_descriptor = descriptor.clone();
+                let root_path = result.task.root_path.clone();
                 match self.writer.publish(
-                    WorkspaceIndexPublicationRequest {
-                        root_path: result.task.root_path.clone(),
+                    WorkspaceIndexPublicationRequest::content(
+                        root_path.clone(),
                         descriptor,
                         priority,
-                    },
+                        WorkspaceIndexPublicationKind::ContentCore,
+                    ),
                     || is_cancelled(),
                 ) {
                     WorkspaceIndexPublicationAttempt::Applied(profile) => {
                         result.publication_profile = profile;
                         session.record_publication_profile(&result.publication_profile);
+                        let substring = WorkspaceIndexPublicationRequest::content(
+                            root_path,
+                            substring_descriptor,
+                            PublicationPriority::IdleMaintenance,
+                            WorkspaceIndexPublicationKind::ContentSubstring,
+                        );
+                        if let Err(error) = self.writer.publish_detached(substring) {
+                            self.finish_failure(IndexerRequestKind::ContentRefresh, error);
+                            return IndexerContentRefreshAttempt::Applied(result);
+                        }
                         self.finish_success(session, IndexerRequestKind::ContentRefresh);
                         IndexerContentRefreshAttempt::Applied(result)
                     }

@@ -314,6 +314,10 @@ pub struct WorkspaceIndexFileReadiness {
     pub parser_status: String,
     pub parser_error: Option<String>,
     pub indexed_generation: Option<u64>,
+    pub index_class: String,
+    pub content_policy: String,
+    pub symbol_policy: String,
+    pub policy_reason: Option<String>,
     pub semantic_layers:
         Vec<crate::models::workspace_semantic_layer::WorkspaceSemanticLayerReadiness>,
     pub definition_available: bool,

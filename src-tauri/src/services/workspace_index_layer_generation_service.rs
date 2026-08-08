@@ -3,6 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::services::workspace_index_connection_service::open_existing_workspace_index_reader;
 
 pub(crate) const CONTENT_LAYER: &str = "content";
+pub(crate) const CONTENT_SUBSTRING_LAYER: &str = "content_substring";
 pub(crate) const STUB_LAYER: &str = "stub";
 
 pub(crate) fn create_layer_generation_table(connection: &Connection) -> Result<(), String> {

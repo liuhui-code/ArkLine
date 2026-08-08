@@ -135,6 +135,29 @@ fn reports_empty_file_content_as_ready_without_requiring_a_content_row() {
 }
 
 #[test]
+fn reports_policy_skipped_binary_as_catalogued_without_code_insight() {
+    let root = create_empty_workspace("file-readiness-binary-policy");
+    let path = root.join("payload.bin");
+    fs::write(&path, b"text\0binary").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let file_path = path.to_string_lossy().to_string();
+
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    let readiness = get_workspace_index_file_readiness(&root_path, &file_path).unwrap();
+
+    assert_eq!(readiness.file_index, "ready");
+    assert_eq!(readiness.content_index, "skipped");
+    assert_eq!(readiness.index_class, "binary");
+    assert_eq!(readiness.parser_status, "skipped");
+    assert!(!readiness.completion_available);
+    assert!(!readiness.search_available);
+    assert!(readiness.reason.contains("reduced indexing"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_persisted_content_read_failure_instead_of_missing() {
     let root = create_empty_workspace("file-readiness-content-failed");
     let source_dir = create_workspace_source_dir(&root);

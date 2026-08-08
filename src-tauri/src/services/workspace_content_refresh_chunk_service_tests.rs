@@ -11,7 +11,7 @@ use crate::services::workspace_content_refresh_service::{
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 
 #[test]
-fn content_chunk_atomically_publishes_lines_and_both_search_indexes() {
+fn content_chunk_publishes_independently_profiled_core_and_substring_layers() {
     let root = unique_temp_dir("content-refresh-chunk-publish");
     fs::create_dir_all(&root).unwrap();
     let source = root.join("Entry.ets");
@@ -32,10 +32,15 @@ fn content_chunk_atomically_publishes_lines_and_both_search_indexes() {
             .map(|stage| stage.name.as_str())
             .collect::<Vec<_>>(),
         [
-            "contentDelete",
-            "contentInsert",
-            "contentState",
-            "contentGeneration",
+            "contentCoreDelete",
+            "contentCoreInsert",
+            "contentCoreState",
+            "contentSubstringInvalidate",
+            "contentCoreGeneration",
+            "contentSubstringDelete",
+            "contentSubstringInsert",
+            "contentSubstringState",
+            "contentSubstringGeneration",
         ]
     );
     let connection = open_index(&root);
@@ -59,6 +64,14 @@ fn content_chunk_atomically_publishes_lines_and_both_search_indexes() {
         )
         .unwrap();
     assert_eq!(generation, 100);
+    let substring_generation: i64 = connection
+        .query_row(
+            "select indexed_generation from workspace_content_substring_files",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(substring_generation, 100);
     drop(connection);
     fs::remove_dir_all(root).unwrap();
 }
@@ -235,16 +248,42 @@ fn content_prepare_bounds_file_and_chunk_bytes_without_copying_lines() {
     assert_eq!(prepared.files[0].line_count, 1);
     assert_eq!(prepared.files[0].source_bytes, 6);
     assert_eq!(prepared.source_bytes, 6);
-    assert_eq!(prepared.failures.len(), 2);
+    assert_eq!(prepared.failures.len(), 1);
+    assert_eq!(prepared.skips.len(), 1);
     assert!(prepared.failures.iter().all(|item| item.resource_limited));
     assert!(prepared
         .failures
         .iter()
         .any(|item| item.error.contains("remaining 2 byte")));
-    assert!(prepared
-        .failures
-        .iter()
-        .any(|item| item.error.contains("8 byte content-index")));
+    assert_eq!(prepared.skips[0].index_class, "large-text");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn policy_skipped_content_is_published_as_complete_instead_of_failed() {
+    let root = unique_temp_dir("content-refresh-policy-skip");
+    fs::create_dir_all(&root).unwrap();
+    let binary = root.join("payload.bin");
+    fs::write(&binary, b"text\0binary").unwrap();
+    let (root_path, binary_path) = prepare_catalog(&root, &binary);
+
+    let summary =
+        run_workspace_content_refresh_chunk(&root_path, &[binary_path], &[], 100).unwrap();
+
+    assert_eq!(summary.indexed_file_count, 0);
+    assert_eq!(summary.policy_skipped_file_count, 1);
+    assert_eq!(summary.unreadable_file_count, 0);
+    let connection = open_index(&root);
+    let (status, error): (String, Option<String>) = connection
+        .query_row(
+            "select status, error from workspace_content_files",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "skipped");
+    assert!(error.unwrap().to_lowercase().contains("binary"));
+    drop(connection);
     fs::remove_dir_all(root).unwrap();
 }
 

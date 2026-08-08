@@ -37,12 +37,14 @@ export type SearchRunActionsOptions = {
   workspaceApi: SearchEntityWorkspaceApi & SearchTextWorkspaceApi;
   replaceQueryReadiness: (readiness: WorkspaceIndexReadiness) => void;
   trackQuery: TrackQuery;
+  isCurrentQuery?: (generation: number) => boolean;
   clearSearchResults: (query: string) => void;
   patchSearchSession: (patch: Partial<SearchSessionSnapshot>) => void;
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   scheduleSelectedPreview: (selectedIndex: number) => void;
   reportEntityMiss: SearchMissReporters["reportEntityMiss"];
   reportTextMiss: SearchMissReporters["reportTextMiss"];
+  onStreamError?: (message: string) => void;
   runFallback: (query: string, dirty: boolean, generation: number) => Promise<WorkspaceTextSearchResult>;
 };
 
@@ -82,11 +84,13 @@ export function createSearchRunActions(options: SearchRunActionsOptions) {
         runFallback: options.runFallback,
         replaceQueryReadiness: options.replaceQueryReadiness,
         trackQuery: options.trackQuery,
+        isCurrentQuery: options.isCurrentQuery,
         clearSearchResults: options.clearSearchResults,
         patchSearchSession: options.patchSearchSession,
         recordUiInteraction: options.recordUiInteraction,
         scheduleSelectedPreview: options.scheduleSelectedPreview,
         reportMiss: options.reportTextMiss,
+        onStreamError: options.onStreamError,
       });
     },
   };

@@ -115,6 +115,7 @@ describe("useSearchEverywhereController pagination", () => {
       workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
     });
 
+    act(() => result.current.search.openSearchOverlay("searchEverywhere"));
     await flushSearchDebounce();
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(24);
     act(() => result.current.search.setSearchEverywhereSelectedIndex(49));
@@ -141,13 +142,13 @@ describe("useSearchEverywhereController pagination", () => {
 
 function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   return renderHook(() => {
-    const [overlay, setOverlay] = useState<OverlayKey>("searchEverywhere");
-    const [query, setQuery] = useState(overrides.query ?? "");
+    const [overlay, setOverlay] = useState<OverlayKey>("none");
+    const [query, setQuery] = useState("");
     const search = useSearchEverywhereController({
       workspaceApi: overrides.workspaceApi ?? workspaceApi({}),
       workspace: workspace(),
       activePath: "/workspace/a.ets",
-      getEditorSelectedText: () => "",
+      getEditorSelectedText: () => overrides.query ?? "",
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",

@@ -389,11 +389,11 @@ fn publish_idle_operation(
     };
     let descriptor = write_workspace_publication_artifact(root_path, &artifact)?;
     match WorkspaceIndexWriterActor::shared().publish(
-        WorkspaceIndexPublicationRequest {
-            root_path: root_path.to_string(),
+        WorkspaceIndexPublicationRequest::new(
+            root_path.to_string(),
             descriptor,
-            priority: PublicationPriority::IdleMaintenance,
-        },
+            PublicationPriority::IdleMaintenance,
+        ),
         &mut should_yield,
     ) {
         WorkspaceIndexPublicationAttempt::Applied(profile) => Ok(Some(profile)),

@@ -85,6 +85,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
     let root_path = root.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::remove_file(source_dir.join("Noise.ets")).unwrap();
 
     let plain = query_facade_text_search_result(
         &runtime,

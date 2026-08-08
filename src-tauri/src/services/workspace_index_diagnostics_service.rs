@@ -51,6 +51,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let store_stats = workspace_index_store_stats(root_path, &connection)?;
     let store_generation = workspace_index_store_generation(&cache_path);
     let shared_sdk = load_shared_sdk_store_stats(root_path)?;
+    let file_policies = load_file_policy_counts(&connection, &root_key)?;
 
     let recent_events = load_recent_index_events(root_path, 20)?;
     let timeline = timeline_from_events(&recent_events);
@@ -88,6 +89,11 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         symbol_count: count_rows(&connection, "workspace_symbols", &root_key)?,
         content_line_count: count_rows(&connection, "workspace_content_lines", &root_key)?,
         fingerprint_count: count_rows(&connection, "workspace_file_fingerprints", &root_key)?,
+        normal_file_count: file_policies.normal,
+        large_text_file_count: file_policies.large_text,
+        generated_file_count: file_policies.generated,
+        binary_file_count: file_policies.binary,
+        policy_skipped_file_count: file_policies.skipped,
         stub_file_count: count_rows(&connection, "workspace_stub_files", &root_key)?,
         stub_declaration_count: count_rows(&connection, "workspace_stub_declarations", &root_key)?,
         dependency_edge_count: count_rows(&connection, "workspace_dependency_edges", &root_key)?,
@@ -139,6 +145,42 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         timeline,
         indexer_host: None,
     })
+}
+
+#[derive(Default)]
+struct FilePolicyCounts {
+    normal: i64,
+    large_text: i64,
+    generated: i64,
+    binary: i64,
+    skipped: i64,
+}
+
+fn load_file_policy_counts(
+    connection: &Connection,
+    root_key: &str,
+) -> Result<FilePolicyCounts, String> {
+    connection
+        .query_row(
+            "select
+                sum(case when index_class = 'normal' then 1 else 0 end),
+                sum(case when index_class = 'large-text' then 1 else 0 end),
+                sum(case when index_class = 'generated' then 1 else 0 end),
+                sum(case when index_class = 'binary' then 1 else 0 end),
+                sum(case when content_policy = 'skip' or symbol_policy = 'skip' then 1 else 0 end)
+             from workspace_file_fingerprints where root_path = ?1",
+            [root_key],
+            |row| {
+                Ok(FilePolicyCounts {
+                    normal: row.get::<_, Option<i64>>(0)?.unwrap_or(0),
+                    large_text: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                    generated: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                    binary: row.get::<_, Option<i64>>(3)?.unwrap_or(0),
+                    skipped: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
+                })
+            },
+        )
+        .map_err(|error| error.to_string())
 }
 
 fn load_shared_sdk_store_stats(root_path: &str) -> Result<SharedSdkStoreStats, String> {

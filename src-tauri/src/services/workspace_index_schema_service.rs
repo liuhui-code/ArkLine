@@ -6,14 +6,12 @@ use crate::services::workspace_content_stats_schema_service::create_content_stat
 use crate::services::workspace_dependency_graph_service::create_dependency_graph_tables;
 use crate::services::workspace_discovery_schema_service::create_discovery_tables;
 use crate::services::workspace_file_identity_service::create_workspace_file_identity_table;
+use crate::services::workspace_file_index_policy_service::ensure_workspace_file_index_policy_columns;
 use crate::services::workspace_index_connection_service::with_workspace_index_writer;
 use crate::services::workspace_index_event_service::create_index_event_tables;
 use crate::services::workspace_index_layer_generation_service::create_layer_generation_table;
-#[allow(unused_imports)]
-pub use crate::services::workspace_index_schema_version_service::load_workspace_index_schema_versions;
-use crate::services::workspace_index_schema_version_service::{
-    create_workspace_index_schema_version_table, record_workspace_index_schema_versions,
-};
+#[rustfmt::skip] #[allow(unused_imports)] pub use crate::services::workspace_index_schema_version_service::load_workspace_index_schema_versions;
+#[rustfmt::skip] use crate::services::workspace_index_schema_version_service::{create_workspace_index_schema_version_table, record_workspace_index_schema_versions};
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
 use crate::services::workspace_sdk_schema_service::create_sdk_tables;
 use crate::services::workspace_semantic_layer_state_service::create_semantic_layer_tables;
@@ -153,7 +151,19 @@ fn create_content_tables(connection: &Connection) -> Result<(), String> {
                 primary key (root_path, path)
             );
             create index if not exists workspace_content_files_generation
-                on workspace_content_files(root_path, indexed_generation);",
+                on workspace_content_files(root_path, indexed_generation);
+            create table if not exists workspace_content_substring_files (
+                root_path text not null,
+                path text not null,
+                indexed_generation integer not null,
+                line_count integer not null,
+                status text not null,
+                error text,
+                updated_at integer not null,
+                primary key (root_path, path)
+            );
+            create index if not exists workspace_content_substring_files_generation on workspace_content_substring_files(root_path, indexed_generation);
+            create index if not exists workspace_content_substring_files_status on workspace_content_substring_files(root_path, status);",
         )
         .map_err(|error| error.to_string())?;
     connection
@@ -388,6 +398,7 @@ fn create_fingerprint_tables(connection: &Connection) -> Result<(), String> {
         "stub_parser_version",
         "alter table workspace_file_fingerprints add column stub_parser_version integer not null default 1",
     )?;
+    ensure_workspace_file_index_policy_columns(connection)?;
     Ok(())
 }
 

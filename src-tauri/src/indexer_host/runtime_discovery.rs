@@ -78,11 +78,11 @@ impl IndexerHostRuntime {
                     merge_deferred_discovery_cursor(&mut result, deferred_cursor);
                 }
                 match self.writer.publish(
-                    WorkspaceIndexPublicationRequest {
-                        root_path: result.task.root_path.clone(),
+                    WorkspaceIndexPublicationRequest::new(
+                        result.task.root_path.clone(),
                         descriptor,
-                        priority: PublicationPriority::Background,
-                    },
+                        PublicationPriority::Background,
+                    ),
                     || false,
                 ) {
                     WorkspaceIndexPublicationAttempt::Applied(profile) => {

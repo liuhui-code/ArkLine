@@ -28,6 +28,12 @@ use crate::services::workspace_query_broker_service::{
 use crate::services::workspace_search_ranking_service::WorkspaceSearchRankingContext;
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
+#[path = "workspace_text_search_stream_service.rs"]
+mod text_search_stream;
+pub(crate) use text_search_stream::{
+    stream_workspace_text_blocking, WorkspaceTextSearchStreamEvent,
+};
+
 pub async fn query_workspace_candidates_facade_blocking(
     index_runtime: WorkspaceIndexRuntime,
     root_path: String,

@@ -2021,6 +2021,151 @@ bounded during the long run.
 This closes runner diagnosability. The packaged-gate evidence document records
 the Windows runs against exact commit and executable hashes.
 
+#### Phase 7 Layered Content Publication Result
+
+Implemented locally on 2026-08-04. This phase supersedes the earlier Phase 5
+rule that ordinary rows, token FTS, trigram FTS, and file readiness must always
+publish in one transaction. That rule made correctness simple, but it also made
+the most expensive optional content-search structure block basic indexed text
+readiness.
+
+The content path now has two independently versioned durable layers:
+
+- `ContentCore` owns `workspace_content_lines`, token FTS, and
+  `workspace_content_files`. The sidecar waits for this publication and reports
+  the chunk applied as soon as token/prefix content search is usable. Its same
+  transaction marks affected Substring file states `pending` without touching
+  the trigram virtual table.
+- `ContentSubstring` owns trigram FTS and
+  `workspace_content_substring_files`. It reuses the same immutable staged
+  artifact and publishes as detached `IdleMaintenance` work.
+
+The Writer Actor keeps the artifact after a successful Core commit and removes
+it after the Substring commit. Idle work receives a 75 ms grace period after
+non-idle publication so the next prepared Core chunk can enter the queue first.
+Foreground reads and all higher publication priorities still preempt queued
+Substring work. The two layers have separate generation watermarks and each
+Substring file records status, line count, error, and generation.
+
+The `(root_path,status)` readiness index makes partial-state lookup independent
+of workspace size. Query behavior is deliberately bounded while Substring is incomplete. Queries
+of at least three characters use ready, generation-matched trigram rows and
+merge token FTS candidates. They return `partial=true`; they do not fall back to
+an unbounded leading-wildcard `LIKE` scan. Once every Core file has matching
+Substring readiness, trigram results are authoritative. Old trigram rows are
+ignored when their per-file generation differs from Core.
+
+Crash recovery does not depend on the in-memory detached queue. File
+fingerprint classification treats a Core file with missing or stale Substring
+readiness as changed, so the next refresh reconstructs the lost layer. Staging
+recovery remains responsible for removing abandoned immutable artifacts.
+
+Diagnostics now expose a `contentSubstring` readiness layer and separate Actor
+publication counts/max holds for Core and Substring. Schema domain `content=5`
+forces an incompatible old store through the existing rebuild path.
+
+Local debug evidence for 64 files / 15,360 lines / 952,256 source bytes:
+
+| Measure | Previous combined publication | Layered publication |
+| --- | ---: | ---: |
+| Core insert stage | included below | 0.69 s |
+| Combined three-index insert stage | 1.61 s | split out |
+| First Core usability | 2.01 s | 0.93 s |
+| Substring background publication | blocked Core | 0.71 s |
+| Total publication | 2.01 s | 1.64 s |
+| Storage amplification | 61.9x | 50.8x |
+| Final storage including WAL/catalog | 58.9 MiB | 48.4 MiB observed |
+
+An FTS5 external-content trigger prototype reduced observed storage further but
+made Core insertion about five times slower (`0.83 s` to `4.06 s`). It was
+removed. This is retained as negative evidence: storage deduplication must not
+trade away project-open throughput. Packaged Windows 20k evidence remains the
+release gate for this phase; local debug timings establish direction only.
+
+#### Phase 8 Bounded Search Executor Result
+
+Implemented locally on 2026-08-04. Find in Files, Search Everywhere Text scope,
+and compatibility text-query callers now share one filesystem verification
+executor. The previous first-result pool always requested 64 workers. The new
+policy reserves one logical core for foreground work and clamps search to one
+through four workers.
+
+Every filesystem page has a 150 ms and 8 MiB per-worker budget. Budget stops
+occur only between files, return `partial=true`, and preserve a filesystem
+cursor at the next path. Deleted and unreadable paths count as attempted work,
+so stale catalogs cannot bypass the time budget. File content is retained once
+and line/context views borrow `&str` slices instead of cloning every line into a
+second full-file allocation.
+
+Regex verification now asks ContentSubstring for candidate paths when the
+pattern contains a provably required literal. Only generation-matched ready
+files may be excluded. Pending, stale, and not-yet-indexed paths remain in the
+verification set. Candidate-planning failure falls back to the bounded full
+path set. The conservative analyzer disables index exclusion for alternation
+and zero-occurrence quantifiers because the previous longest-segment heuristic
+could create false negatives.
+
+This phase establishes bounded pull-based pagination. Incremental delivery,
+explicit large/generated-file metadata policy, and packaged Windows 20k/100k
+regex stress evidence remain later acceptance work.
+
+#### Phase 9 Bounded Search Streaming Result
+
+Implemented locally on 2026-08-04. Find in Files and Replace in Files now use a
+typed Tauri Channel when documents are clean. The backend publishes an ordered
+`started -> batch* -> finished` protocol. Every event carries the query
+generation, every batch carries a monotonic sequence, and the terminal event
+distinguishes complete, partial, cancelled, deadline, and failed outcomes.
+
+The stream reuses the Phase 8 facade, cancellation runtime, per-page time/byte
+budget, and cursor. It does not create a second search implementation. Each
+page acquires and releases the Writer Actor foreground-read guard independently
+so a long result stream cannot retain that guard while waiting on IPC. A hard
+30 second deadline protects the worker, while an eight-batch application cap
+limits one renderer delivery to roughly 400 matches. Partial streams expose
+the final cursor through the existing explicit next-page path.
+
+The renderer applies one store update per batch, deduplicates the first-result
+parallel overlap, accumulates scan diagnostics, ignores stale generations,
+duplicate sequences, and post-terminal events, and fails closed on a sequence
+gap or missing terminal event. Dirty documents deliberately
+retain the existing live-buffer overlay path so disk-backed stream batches
+cannot overwrite unsaved editor truth. Transport rejection clears the loading
+state, and backend cancellation remains generation-based.
+
+This closes incremental backend-to-renderer delivery for the global content
+search surface. Richer large-result ranking and packaged Windows 20k/100k
+stress evidence remain the next search-scaling acceptance work.
+
+#### Phase 10 Tiered File Index Policy Result
+
+Implemented locally on 2026-08-08. The fingerprint catalog now persists a
+four-class policy for every observed file: `normal`, `large-text`, `generated`,
+or `binary`. Policy metadata includes independent content and symbol decisions
+plus a human-readable reason. The 4 MiB threshold governs background full-text
+indexing; it does not prevent opening or editing a file.
+
+Large, generated, binary, and non-UTF-8 files remain in `workspace_files` so
+Quick Open and the project tree retain complete file discovery. Their content
+and symbol publications produce `skipped` readiness instead of `failed`.
+Fingerprint freshness accepts that state as policy-complete, preventing the
+same file from being requeued forever. Generated and oversized ArkTS sources
+are also removed from the background parse plan, with old semantic rows
+deleted through the normal removed-path publication route.
+
+Fingerprinting no longer reads every reduced-index file in full. It hashes
+metadata plus bounded first/tail samples. Filesystem text-search candidates are
+filtered from persisted policy metadata, the cache revision includes
+fingerprint publication state, and the executor independently rejects files
+over the full-index threshold before `read_to_string` allocation.
+
+Current-file readiness reports the class, layer policies, and reason; code
+insight capabilities are disabled for symbol-skipped files. Health / Storage
+diagnostics expose normal, large-text, generated, binary, and total reduced
+indexing counts. Future policy work is limited to explicit project/user
+overrides and more ecosystem-specific generated-root declarations; those are
+not prerequisites for the current bounded default.
+
 ## Explicit Non-Solutions
 
 - Raising the memory limit without eliminating full scans and cloning.

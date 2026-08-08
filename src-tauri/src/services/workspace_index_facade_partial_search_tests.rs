@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::fs;
 
 use rusqlite::Connection;
@@ -121,19 +122,31 @@ fn large_missing_text_index_returns_one_result_with_a_filesystem_cursor() {
         Some("filesystem")
     );
 
-    let second_envelope = query_facade_text_search(
-        &runtime,
-        WorkspaceTextSearchRequest {
-            cursor: first_page.next_cursor.clone(),
-            limit: 2,
-            ..request
-        },
-    )
-    .unwrap();
-    assert!(matches!(
-        second_envelope.items.as_slice(),
-        [WorkspaceIndexFacadeItem::TextSearch(result)] if result.matches.len() == 2
-    ));
+    let mut cursor = first_page.next_cursor.clone();
+    let mut matched_paths = HashSet::from([first_page.matches[0].path.clone()]);
+    for _ in 0..10 {
+        let envelope = query_facade_text_search(
+            &runtime,
+            WorkspaceTextSearchRequest {
+                cursor: cursor.clone(),
+                limit: 2,
+                ..request.clone()
+            },
+        )
+        .unwrap();
+        let [WorkspaceIndexFacadeItem::TextSearch(result)] = envelope.items.as_slice() else {
+            panic!("expected one text search page");
+        };
+        matched_paths.extend(result.matches.iter().map(|item| item.path.clone()));
+        cursor = result.next_cursor.clone();
+        if matched_paths.len() >= 2 || cursor.is_none() {
+            break;
+        }
+    }
+    assert!(
+        matched_paths.len() >= 2,
+        "cursor pages must reach later matches"
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

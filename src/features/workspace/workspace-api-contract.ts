@@ -2,7 +2,10 @@ import type { BuildConfiguration, BuildEnvironmentResolution, HarmonyBuildProjec
 import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
-import type { WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
+import type {
+  WorkspaceTextSearchResult,
+  WorkspaceTextSearchStreamEvent,
+} from "@/features/search/workspace-text-search";
 import type { AppSettings, TerminalSettings } from "@/features/settings/settings-store";
 import type {
   CreateTerminalSessionRequest,
@@ -429,6 +432,7 @@ type WorkspaceCoreApi = {
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
   searchWorkspaceText?(request: WorkspaceTextSearchRequest): Promise<WorkspaceTextSearchResult>;
+  streamWorkspaceText?(request: WorkspaceTextSearchRequest, onEvent: (event: WorkspaceTextSearchStreamEvent) => void): Promise<void>;
   cancelWorkspaceSearch?(rootPath: string, kind: string, generation: number): Promise<void>;
   openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
   getLaunchWorkspacePath?(): Promise<string | null>;

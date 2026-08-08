@@ -10,6 +10,11 @@ export type WorkspaceIndexDiagnostics = {
   symbolCount: number;
   contentLineCount: number;
   fingerprintCount: number;
+  normalFileCount?: number;
+  largeTextFileCount?: number;
+  generatedFileCount?: number;
+  binaryFileCount?: number;
+  policySkippedFileCount?: number;
   stubFileCount: number;
   stubDeclarationCount: number;
   dependencyEdgeCount: number;
@@ -69,6 +74,10 @@ export type WorkspaceIndexWriterMetrics = {
   recoveryFailureCount?: number;
   sdkPublicationCount?: number;
   sdkPublicationMaxUs?: number;
+  contentCorePublicationCount?: number;
+  contentCorePublicationMaxUs?: number;
+  contentSubstringPublicationCount?: number;
+  contentSubstringPublicationMaxUs?: number;
   maintenancePublicationCount?: number;
   maintenancePublicationMaxUs?: number;
   maintenanceOptimizeCount?: number;
@@ -206,6 +215,10 @@ export type WorkspaceIndexFileReadiness = {
   parserStatus: "ready" | "failed" | "unknown" | string;
   parserError: string | null;
   indexedGeneration: number | null;
+  indexClass?: "normal" | "large-text" | "generated" | "binary" | string;
+  contentPolicy?: "index" | "skip" | string;
+  symbolPolicy?: "index" | "skip" | string;
+  policyReason?: string | null;
   semanticLayers: WorkspaceSemanticLayerReadiness[];
   definitionAvailable: boolean;
   completionAvailable: boolean;

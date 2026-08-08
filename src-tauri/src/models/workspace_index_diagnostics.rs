@@ -85,6 +85,14 @@ pub struct WorkspaceIndexWriterMetrics {
     #[serde(default)]
     pub sdk_publication_max_us: u64,
     #[serde(default)]
+    pub content_core_publication_count: u64,
+    #[serde(default)]
+    pub content_core_publication_max_us: u64,
+    #[serde(default)]
+    pub content_substring_publication_count: u64,
+    #[serde(default)]
+    pub content_substring_publication_max_us: u64,
+    #[serde(default)]
     pub maintenance_publication_count: u64,
     #[serde(default)]
     pub maintenance_publication_max_us: u64,
@@ -122,6 +130,11 @@ pub struct WorkspaceIndexDiagnostics {
     pub symbol_count: i64,
     pub content_line_count: i64,
     pub fingerprint_count: i64,
+    pub normal_file_count: i64,
+    pub large_text_file_count: i64,
+    pub generated_file_count: i64,
+    pub binary_file_count: i64,
+    pub policy_skipped_file_count: i64,
     pub stub_file_count: i64,
     pub stub_declaration_count: i64,
     pub dependency_edge_count: i64,

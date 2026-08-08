@@ -34,6 +34,19 @@ export type WorkspaceTextSearchResult = {
   nextCursor?: WorkspaceTextSearchCursor | null;
 };
 
+export type WorkspaceTextSearchStreamStatus = "complete" | "partial" | "cancelled" | "deadline" | "failed";
+
+export type WorkspaceTextSearchStreamEvent =
+  | { event: "started"; generation: number }
+  | { event: "batch"; generation: number; sequence: number; result: WorkspaceTextSearchResult }
+  | {
+    event: "finished";
+    generation: number;
+    sequence: number;
+    status: WorkspaceTextSearchStreamStatus;
+    message?: string;
+  };
+
 export type WorkspaceTextSearchCursor = {
   pathIndex: number;
   lineIndex: number;

@@ -17,7 +17,7 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(versions.get("catalog"), Some(&2));
-    assert_eq!(versions.get("content"), Some(&4));
+    assert_eq!(versions.get("content"), Some(&5));
     assert_eq!(versions.get("symbol"), Some(&3));
     assert_eq!(versions.get("stub"), Some(&2));
     assert_eq!(versions.get("dependency"), Some(&1));
@@ -48,6 +48,15 @@ fn migrates_workspace_index_schema_and_records_domain_versions() {
         .unwrap();
 
     assert_eq!(catalog_count, 1);
+    let content_substring_state_count: i64 = connection
+        .query_row(
+            "select count(*) from sqlite_master where type = 'table'
+             and name = 'workspace_content_substring_files'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(content_substring_state_count, 1);
     let entity_table_count: i64 = connection
         .query_row(
             "select count(*) from sqlite_master where type = 'table' and name = 'workspace_symbol_entities'",

@@ -207,6 +207,7 @@ mod tests {
                 refreshed_paths: vec!["Entry.ets".to_string()],
                 removed_paths: Vec::new(),
                 files: Vec::new(),
+                skips: Vec::new(),
                 failures: Vec::new(),
                 source_bytes: 0,
             },

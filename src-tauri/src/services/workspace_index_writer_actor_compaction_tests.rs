@@ -1,7 +1,8 @@
 use std::fs;
 
 use super::{
-    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationRequest, WorkspaceIndexWriterActor,
+    WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationKind,
+    WorkspaceIndexPublicationRequest, WorkspaceIndexWriterActor,
 };
 use crate::services::workspace_index_compaction_service::prepare_workspace_index_compaction;
 use crate::services::workspace_index_connection_service::{
@@ -48,6 +49,7 @@ fn writer_actor_commits_a_copy_swap_candidate_and_records_metrics() {
             root_path: root_path.clone(),
             descriptor,
             priority: PublicationPriority::IdleMaintenance,
+            kind: WorkspaceIndexPublicationKind::Default,
         },
         || false,
     );

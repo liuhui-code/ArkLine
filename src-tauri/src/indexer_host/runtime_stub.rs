@@ -81,11 +81,11 @@ impl IndexerHostRuntime {
                     return IndexerStubRefreshAttempt::Unavailable;
                 };
                 match self.writer.publish(
-                    WorkspaceIndexPublicationRequest {
-                        root_path: result.task.root_path.clone(),
+                    WorkspaceIndexPublicationRequest::new(
+                        result.task.root_path.clone(),
                         descriptor,
                         priority,
-                    },
+                    ),
                     || is_cancelled(),
                 ) {
                     WorkspaceIndexPublicationAttempt::Applied(profile) => {

@@ -42,7 +42,7 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
 
     assert_eq!(diagnostics.status, "ready");
     assert_eq!(diagnostics.schema_versions.get("catalog"), Some(&2));
-    assert_eq!(diagnostics.schema_versions.get("content"), Some(&4));
+    assert_eq!(diagnostics.schema_versions.get("content"), Some(&5));
     assert_eq!(diagnostics.schema_versions.get("symbol"), Some(&3));
     assert_eq!(diagnostics.schema_versions.get("stub"), Some(&2));
     assert_eq!(diagnostics.schema_versions.get("dependency"), Some(&1));
@@ -60,6 +60,8 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
     assert_eq!(diagnostics.symbol_count, 3);
     assert_eq!(diagnostics.content_line_count, 5);
     assert_eq!(diagnostics.fingerprint_count, 2);
+    assert_eq!(diagnostics.normal_file_count, 2);
+    assert_eq!(diagnostics.policy_skipped_file_count, 0);
     assert_eq!(diagnostics.stub_file_count, 2);
     assert_eq!(diagnostics.stub_declaration_count, 3);
     assert_eq!(diagnostics.dependency_edge_count, 1);

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultWorkspaceApi } from "@/features/workspace/workspace-api";
 const eventListeners = vi.hoisted(() => [] as Array<(event: { payload: unknown }) => void>);
 const unlisten = vi.hoisted(() => vi.fn());
-const invoke = vi.hoisted(() => vi.fn(async (): Promise<unknown> => undefined));
+const invoke = vi.hoisted(() => vi.fn(async (_command?: string, _args?: Record<string, unknown>): Promise<unknown> => undefined));
+const channels = vi.hoisted(() => [] as Array<{ onmessage?: (event: unknown) => void }>);
 
 function deviceLogQueryRequest(streamId: string, query = "") {
   return {
@@ -24,6 +25,13 @@ function deviceLogQueryRequest(streamId: string, query = "") {
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke,
+  Channel: class {
+    onmessage?: (event: unknown) => void;
+
+    constructor() {
+      channels.push(this);
+    }
+  },
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -37,11 +45,42 @@ describe("workspace api", () => {
   beforeEach(() => {
     eventListeners.length = 0;
     invoke.mockClear();
+    channels.length = 0;
     unlisten.mockClear();
     Object.defineProperty(window, "__TAURI_INTERNALS__", {
       configurable: true,
       value: {},
     });
+  });
+
+  it("streams workspace text search events through a Tauri channel", async () => {
+    const onEvent = vi.fn();
+    invoke.mockImplementationOnce(async (_command, args) => {
+      const channel = args?.onEvent as { onmessage?: (event: unknown) => void };
+      channel.onmessage?.({ event: "started", generation: 4 });
+      channel.onmessage?.({
+        event: "finished",
+        generation: 4,
+        sequence: 0,
+        status: "complete",
+      });
+    });
+
+    await defaultWorkspaceApi.streamWorkspaceText?.({
+      rootPath: "/workspace",
+      query: "/target/",
+      generation: 4,
+      cursor: null,
+      options: { caseSensitive: false, wholeWord: false },
+      limit: 50,
+      contextLines: 0,
+    }, onEvent);
+
+    expect(invoke).toHaveBeenCalledWith("stream_workspace_text", expect.objectContaining({
+      request: expect.objectContaining({ generation: 4 }),
+      onEvent: channels[0],
+    }));
+    expect(onEvent).toHaveBeenCalledTimes(2);
   });
 
   it("subscribes to workspace index events and forwards only the active root", async () => {

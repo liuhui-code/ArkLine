@@ -195,12 +195,14 @@ export function useSearchEverywhereController({
     workspaceApi,
     replaceQueryReadiness,
     trackQuery: interactionRuntimeRef.current.trackQuery,
+    isCurrentQuery: interactionRuntimeRef.current.isCurrentQuery,
     clearSearchResults,
     patchSearchSession: searchSessionStoreRef.current.patch,
     recordUiInteraction,
     scheduleSelectedPreview,
     reportEntityMiss: searchMissReporters.reportEntityMiss,
     reportTextMiss: searchMissReporters.reportTextMiss,
+    onStreamError: (message) => onStatusChange(`Search failed: ${message}`),
     runFallback: fallbackTextSearch,
   });
   const searchOverlayCommands = createSearchOverlayCommandActions({

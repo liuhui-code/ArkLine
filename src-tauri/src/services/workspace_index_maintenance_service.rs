@@ -25,11 +25,11 @@ pub fn clear_workspace_index(
     };
     let descriptor = write_workspace_publication_artifact(root_path, &artifact)?;
     let result = WorkspaceIndexWriterActor::shared().publish(
-        WorkspaceIndexPublicationRequest {
-            root_path: root_path.to_string(),
+        WorkspaceIndexPublicationRequest::new(
+            root_path.to_string(),
             descriptor,
-            priority: PublicationPriority::Maintenance,
-        },
+            PublicationPriority::Maintenance,
+        ),
         || false,
     );
     match result {

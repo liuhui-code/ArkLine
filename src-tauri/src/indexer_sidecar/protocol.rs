@@ -92,6 +92,8 @@ pub struct IndexerContentRefreshResult {
     pub indexed_line_count: usize,
     pub unreadable_file_count: usize,
     pub resource_limited_file_count: usize,
+    #[serde(default)]
+    pub policy_skipped_file_count: usize,
     pub processed_source_bytes: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publication_artifact: Option<WorkspaceIndexPublicationArtifactDescriptor>,

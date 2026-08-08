@@ -11,6 +11,21 @@ pub(crate) fn plan_regex_prefilter(source: &str, flags: &str) -> WorkspaceTextSe
     }
 }
 
+pub(crate) fn plan_query_regex_prefilter(query: &str) -> Option<WorkspaceTextSearchPrefilterPlan> {
+    let trimmed = query.trim();
+    if !trimmed.starts_with('/') {
+        return None;
+    }
+    let slash_index = trimmed.rfind('/')?;
+    if slash_index == 0 {
+        return None;
+    }
+    Some(plan_regex_prefilter(
+        &trimmed[1..slash_index],
+        &trimmed[slash_index + 1..],
+    ))
+}
+
 pub(crate) fn content_matches_prefilter(
     content: &str,
     plan: &WorkspaceTextSearchPrefilterPlan,
@@ -25,6 +40,9 @@ pub(crate) fn content_matches_prefilter(
 }
 
 fn regex_literal_hint(source: &str) -> Option<String> {
+    if contains_non_required_literal_construct(source) {
+        return None;
+    }
     let mut best = String::new();
     let mut current = String::new();
     let mut escaped = false;
@@ -54,6 +72,25 @@ fn regex_literal_hint(source: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+fn contains_non_required_literal_construct(source: &str) -> bool {
+    let mut escaped = false;
+    let mut in_character_class = false;
+    for character in source.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match character {
+            '\\' => escaped = true,
+            '[' if !in_character_class => in_character_class = true,
+            ']' if in_character_class => in_character_class = false,
+            '|' | '?' | '*' | '{' if !in_character_class => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn keep_longest_literal(best: &mut String, current: &mut String) {

@@ -17,8 +17,7 @@ describe("useSearchEverywhereController text search", () => {
     vi.useFakeTimers();
     const cancelWorkspaceSearch = vi.fn(async () => undefined);
     const { result } = renderSearchHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      editorSelectedText: "width",
       workspaceApi: workspaceApi({ cancelWorkspaceSearch }),
     });
 
@@ -35,8 +34,7 @@ describe("useSearchEverywhereController text search", () => {
   it("runs text search and loads selected file preview content", async () => {
     vi.useFakeTimers();
     const { result } = renderSearchHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      editorSelectedText: "width",
       editorContent: "struct Entry {\n  width(100)\n}",
       workspaceApi: workspaceApi({
         openFile: vi.fn(async () => "struct Entry {\n  width(100)\n}"),
@@ -59,8 +57,7 @@ describe("useSearchEverywhereController text search", () => {
       matches: [],
     }));
     const { result } = renderSearchHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      editorSelectedText: "width",
       workspaceApi: workspaceApi({ searchWorkspaceText }),
     });
 
@@ -85,8 +82,7 @@ describe("useSearchEverywhereController text search", () => {
       limitReached: true,
     }));
     const { result } = renderSearchHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      editorSelectedText: "width",
       workspaceApi: workspaceApi({ searchWorkspaceText }),
     });
 
@@ -105,8 +101,7 @@ describe("useSearchEverywhereController text search", () => {
       matches: [],
     }));
     const { result } = renderSearchHarness({
-      query: "width",
-      overlay: "searchEverywhere",
+      editorSelectedText: "width",
       workspaceApi: workspaceApi({ searchWorkspaceText }),
     });
 

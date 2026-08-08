@@ -4,7 +4,7 @@ use rusqlite::{params, Connection};
 
 const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("catalog", 2),
-    ("content", 4),
+    ("content", 5),
     ("entity", 1),
     ("symbol", 3),
     ("stub", 2),

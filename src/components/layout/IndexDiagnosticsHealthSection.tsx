@@ -100,6 +100,12 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric label="Discovery" value={diagnostics?.discoveryStatus ?? "none"} />
         <IndexDiagnosticsMetric label="Discovered files" value={(diagnostics?.discoveredFileCount ?? 0).toLocaleString()} />
         <IndexDiagnosticsMetric label="Excluded entries" value={(diagnostics?.discoveryExcludedCount ?? 0).toLocaleString()} />
+        <IndexDiagnosticsMetric label="Fully indexed files" value={(diagnostics?.normalFileCount ?? 0).toLocaleString()} />
+        <IndexDiagnosticsMetric label="Reduced indexing" value={(diagnostics?.policySkippedFileCount ?? 0).toLocaleString()} />
+        <IndexDiagnosticsMetric
+          label="Large / generated / binary"
+          value={`${diagnostics?.largeTextFileCount ?? 0} / ${diagnostics?.generatedFileCount ?? 0} / ${diagnostics?.binaryFileCount ?? 0}`}
+        />
         <IndexDiagnosticsMetric label="Discovery cursor" value={diagnostics?.discoveryHasMore ? "has more" : "complete"} />
         <IndexDiagnosticsMetric label="Stale files" value={String(diagnostics?.staleGenerationCount ?? 0)} />
         <IndexDiagnosticsMetric label="Parser errors" value={String(diagnostics?.parserErrorCount ?? 0)} />
@@ -158,6 +164,14 @@ export function IndexDiagnosticsHealthSection({
         <IndexDiagnosticsMetric
           label="SDK publications / max"
           value={`${publicationWriter?.sdkPublicationCount ?? 0} / ${formatWriterMicros(publicationWriter?.sdkPublicationMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Content core publications / max"
+          value={`${publicationWriter?.contentCorePublicationCount ?? 0} / ${formatWriterMicros(publicationWriter?.contentCorePublicationMaxUs)}`}
+        />
+        <IndexDiagnosticsMetric
+          label="Content substring publications / max"
+          value={`${publicationWriter?.contentSubstringPublicationCount ?? 0} / ${formatWriterMicros(publicationWriter?.contentSubstringPublicationMaxUs)}`}
         />
         <IndexDiagnosticsMetric
           label="Maintenance publications / max"

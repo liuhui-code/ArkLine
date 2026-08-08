@@ -5,15 +5,18 @@ use crate::models::workspace::{
     WorkspaceTextSearchCursor, WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::workspace_text_search_service::{
-    search_workspace_text_in_order_with_cancellation, search_workspace_text_with_cancellation,
+    search_workspace_text_in_order_with_cancellation,
+    search_workspace_text_with_budget_and_cancellation, search_workspace_text_with_cancellation,
+    WorkspaceTextSearchBudget,
 };
 use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
+#[path = "workspace_regex_candidate_service.rs"]
+mod regex_candidate;
+
 const LARGE_WORKSPACE_FILE_COUNT: usize = 1_000;
-const MAXIMUM_FIRST_RESULT_WORKERS: usize = 64;
-const MINIMUM_FIRST_RESULT_WORKERS: usize = 64;
-const WORKERS_PER_LOGICAL_CORE: usize = 4;
+const MAXIMUM_FIRST_RESULT_WORKERS: usize = 4;
 const CANCELLATION_POLL_INTERVAL: usize = 32;
 
 static FIRST_RESULT_POOL: OnceLock<Result<ThreadPool, String>> = OnceLock::new();
@@ -26,10 +29,29 @@ pub(crate) fn search_workspace_files_responsive<F>(
 where
     F: FnMut() -> bool + Send,
 {
-    if request.cursor.is_some() || file_paths.len() < LARGE_WORKSPACE_FILE_COUNT {
-        return search_workspace_text_with_cancellation(request, file_paths, is_cancelled);
-    }
-    search_first_result_parallel(request, file_paths, is_cancelled)
+    let candidate_plan =
+        regex_candidate::plan_regex_candidate_paths(&request.root_path, &request.query, file_paths)
+            .ok();
+    let candidate_paths = candidate_plan
+        .as_ref()
+        .map_or(file_paths, |plan| plan.paths.as_ref());
+    let mut result =
+        if request.cursor.is_some() || candidate_paths.len() < LARGE_WORKSPACE_FILE_COUNT {
+            search_workspace_text_with_budget_and_cancellation(
+                request,
+                candidate_paths,
+                WorkspaceTextSearchBudget::interactive(),
+                is_cancelled,
+            )
+        } else {
+            search_first_result_parallel(request, candidate_paths, is_cancelled)
+        };
+    result.prefilter_skipped_files = result.prefilter_skipped_files.saturating_add(
+        candidate_plan
+            .as_ref()
+            .map_or(0, |plan| plan.index_skipped_files),
+    );
+    result
 }
 
 fn search_first_result_parallel<F>(
@@ -44,12 +66,18 @@ where
     let Some(pool) = first_result_pool(worker_count) else {
         let mut first_request = request.clone();
         first_request.limit = 1;
-        return search_workspace_text_with_cancellation(&first_request, file_paths, is_cancelled);
+        return search_workspace_text_with_budget_and_cancellation(
+            &first_request,
+            file_paths,
+            WorkspaceTextSearchBudget::interactive(),
+            is_cancelled,
+        );
     };
     let cancellation = Mutex::new(is_cancelled);
     let cancellation_observed = AtomicBool::new(false);
     let cancellation_poll_count = AtomicUsize::new(0);
     let search_finished = AtomicBool::new(false);
+    let partial_observed = AtomicBool::new(false);
     let searched_files = AtomicUsize::new(0);
     let prefilter_skipped_files = AtomicUsize::new(0);
     let mut first_request = request.clone();
@@ -82,6 +110,7 @@ where
             );
             searched_files.fetch_add(result.searched_files, Ordering::Relaxed);
             prefilter_skipped_files.fetch_add(result.prefilter_skipped_files, Ordering::Relaxed);
+            partial_observed.fetch_or(result.partial, Ordering::Relaxed);
             if !result.matches.is_empty() {
                 if !search_finished.swap(true, Ordering::Relaxed) {
                     return Some(result);
@@ -95,7 +124,7 @@ where
         first,
         searched_files.load(Ordering::Relaxed),
         prefilter_skipped_files.load(Ordering::Relaxed),
-        cancellation_observed.load(Ordering::Relaxed),
+        cancellation_observed.load(Ordering::Relaxed) || partial_observed.load(Ordering::Relaxed),
     )
 }
 
@@ -140,11 +169,17 @@ fn first_result_pool(requested_workers: usize) -> Option<&'static ThreadPool> {
 }
 
 fn first_result_worker_count() -> usize {
-    std::thread::available_parallelism()
+    let logical_cores = std::thread::available_parallelism()
         .map(|count| count.get())
-        .unwrap_or(1)
-        .saturating_mul(WORKERS_PER_LOGICAL_CORE)
-        .clamp(MINIMUM_FIRST_RESULT_WORKERS, MAXIMUM_FIRST_RESULT_WORKERS)
+        .unwrap_or(1);
+    bounded_search_worker_count(logical_cores)
+}
+
+fn bounded_search_worker_count(logical_cores: usize) -> usize {
+    logical_cores
+        .saturating_sub(1)
+        .max(1)
+        .min(MAXIMUM_FIRST_RESULT_WORKERS)
 }
 
 fn shard_bounds(file_count: usize, worker_count: usize, shard: usize) -> (usize, usize) {
@@ -166,4 +201,17 @@ fn centered_indices(start: usize, end: usize) -> impl Iterator<Item = usize> {
             center + offset / 2
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bounded_search_worker_count;
+
+    #[test]
+    fn search_worker_policy_reserves_capacity_for_foreground_work() {
+        assert_eq!(bounded_search_worker_count(1), 1);
+        assert_eq!(bounded_search_worker_count(2), 1);
+        assert_eq!(bounded_search_worker_count(8), 4);
+        assert_eq!(bounded_search_worker_count(64), 4);
+    }
 }

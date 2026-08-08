@@ -7,6 +7,13 @@ use crate::services::workspace_content_readiness_store_service::load_content_fil
 use crate::services::workspace_index_connection_service::open_existing_workspace_index_reader;
 use crate::services::workspace_semantic_layer_state_service::load_semantic_layers;
 
+struct StoredFilePolicy {
+    index_class: String,
+    content_policy: String,
+    symbol_policy: String,
+    reason: Option<String>,
+}
+
 pub fn get_workspace_index_file_readiness(
     root_path: &str,
     file_path: &str,
@@ -65,11 +72,14 @@ pub fn get_workspace_index_file_readiness(
     let symbol_ready = declaration_ready || reference_ready || stub_ready;
     let parser_error = parser_error_for_path(&connection, &root_key, &path_key)?;
     let indexed_generation = indexed_generation_for_path(&connection, &root_key, &path_key)?;
+    let policy = file_policy_for_path(&connection, &root_key, &path_key)?;
     let semantic_layers = load_semantic_layers(&connection, &root_key, &path_key)?;
     let has_semantic_evidence = semantic_layers
         .iter()
         .any(|layer| layer.source_generation.is_some());
-    let parser_status = if parser_error.is_some() {
+    let parser_status = if policy.symbol_policy == "skip" {
+        "skipped"
+    } else if parser_error.is_some() {
         "failed"
     } else if indexed_generation.is_some() {
         "ready"
@@ -79,23 +89,28 @@ pub fn get_workspace_index_file_readiness(
     let syntax_available = semantic_layer_available(&semantic_layers, "syntax");
     let definitions_ready = semantic_layer_available(&semantic_layers, "definitions");
     let references_ready = semantic_layer_available(&semantic_layers, "references");
-    let definition_available = file_ready
+    let definition_available = policy.symbol_policy == "index"
+        && file_ready
         && parser_error.is_none()
         && if has_semantic_evidence {
             definitions_ready
         } else {
             symbol_ready
         };
-    let completion_available =
-        file_ready && parser_error.is_none() && (!has_semantic_evidence || syntax_available);
-    let usages_available = file_ready
+    let completion_available = policy.symbol_policy == "index"
+        && file_ready
+        && parser_error.is_none()
+        && (!has_semantic_evidence || syntax_available);
+    let usages_available = policy.symbol_policy == "index"
+        && file_ready
         && parser_error.is_none()
         && if has_semantic_evidence {
             references_ready
         } else {
             symbol_ready
         };
-    let search_available = content_ready || Path::new(file_path).is_file();
+    let search_available =
+        content_ready || (policy.content_policy == "index" && Path::new(file_path).is_file());
 
     Ok(WorkspaceIndexFileReadiness {
         root_path: root_key,
@@ -108,6 +123,10 @@ pub fn get_workspace_index_file_readiness(
         parser_status: parser_status.to_string(),
         parser_error,
         indexed_generation,
+        index_class: policy.index_class,
+        content_policy: policy.content_policy.clone(),
+        symbol_policy: policy.symbol_policy.clone(),
+        policy_reason: policy.reason.clone(),
         semantic_layers,
         definition_available,
         completion_available,
@@ -121,6 +140,8 @@ pub fn get_workspace_index_file_readiness(
             content_error,
             symbol_ready,
             parser_status,
+            &policy.content_policy,
+            policy.reason.as_deref(),
         ),
     })
 }
@@ -138,12 +159,18 @@ fn missing_file_readiness(root_path: &str, file_path: &str) -> WorkspaceIndexFil
         parser_status: "unknown".to_string(),
         parser_error: None,
         indexed_generation: None,
+        index_class: "unknown".to_string(),
+        content_policy: "unknown".to_string(),
+        symbol_policy: "unknown".to_string(),
+        policy_reason: None,
         semantic_layers: Vec::new(),
         definition_available: false,
         completion_available: false,
         usages_available: false,
         search_available: Path::new(file_path).is_file(),
-        reason: readiness_reason(&file_name, false, false, "missing", None, false, "unknown"),
+        reason: readiness_reason(
+            &file_name, false, false, "missing", None, false, "unknown", "unknown", None,
+        ),
     }
 }
 
@@ -207,6 +234,38 @@ fn indexed_generation_for_path(
         .map_err(|error| error.to_string())
 }
 
+fn file_policy_for_path(
+    connection: &Connection,
+    root_key: &str,
+    path_key: &str,
+) -> Result<StoredFilePolicy, String> {
+    connection
+        .query_row(
+            "select index_class, content_policy, symbol_policy, policy_reason
+             from workspace_file_fingerprints
+             where root_path = ?1 and path = ?2",
+            params![root_key, path_key],
+            |row| {
+                Ok(StoredFilePolicy {
+                    index_class: row.get(0)?,
+                    content_policy: row.get(1)?,
+                    symbol_policy: row.get(2)?,
+                    reason: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map(|policy| {
+            policy.unwrap_or(StoredFilePolicy {
+                index_class: "normal".to_string(),
+                content_policy: "index".to_string(),
+                symbol_policy: "index".to_string(),
+                reason: None,
+            })
+        })
+        .map_err(|error| error.to_string())
+}
+
 fn layer_status(ready: bool) -> String {
     if ready { "ready" } else { "missing" }.to_string()
 }
@@ -219,7 +278,15 @@ fn readiness_reason(
     content_error: Option<&str>,
     symbol_ready: bool,
     parser_status: &str,
+    content_policy: &str,
+    policy_reason: Option<&str>,
 ) -> String {
+    if content_policy == "skip" {
+        return format!(
+            "{file_name} is catalogued with reduced indexing: {}.",
+            policy_reason.unwrap_or("background content and symbol indexing is disabled by policy")
+        );
+    }
     if parser_status == "failed" {
         return format!(
             "{file_name} is indexed but its parser failed; navigation may be incomplete."

@@ -226,6 +226,38 @@ fn supports_trigram_substring_queries_without_like_scans() {
 }
 
 #[test]
+fn reports_partial_fast_results_while_substring_publication_is_pending() {
+    let root = unique_temp_dir("workspace-content-substring-pending");
+    fs::create_dir_all(root.join("entry").join("src")).unwrap();
+    let file_path = root.join("entry").join("src").join("Index.ets");
+    fs::write(&file_path, "Text(\"Welcome\")").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    index_workspace_content(&root_path, &[file_path.to_string_lossy().to_string()]).unwrap();
+    with_workspace_index_writer(&root_path, |connection| {
+        connection
+            .execute("delete from workspace_content_trigram_fts", [])
+            .map_err(|error| error.to_string())?;
+        connection
+            .execute(
+                "update workspace_content_substring_files set status = 'pending'",
+                [],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    })
+    .unwrap();
+
+    let token_result = search_indexed_workspace_content(&request(&root_path, "welc")).unwrap();
+    let substring_result = search_indexed_workspace_content(&request(&root_path, "elco")).unwrap();
+
+    assert_eq!(token_result.matches.len(), 1);
+    assert!(token_result.partial);
+    assert!(substring_result.matches.is_empty());
+    assert!(substring_result.partial);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn interrupts_short_query_scans_and_clears_the_sqlite_handler() {
     let root = unique_temp_dir("workspace-content-cancel");
     fs::create_dir_all(root.join("entry").join("src")).unwrap();

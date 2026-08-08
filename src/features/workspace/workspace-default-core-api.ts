@@ -1,6 +1,7 @@
 import type { CodeAction } from "@/features/code-actions/code-action-model";
 import {
   searchWorkspaceText as searchWorkspaceTextInMemory,
+  type WorkspaceTextSearchStreamEvent,
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
 import {
@@ -29,7 +30,7 @@ import type {
   WorkspaceDirectoryEntry,
   WorkspaceEditPreview,
 } from "@/features/workspace/workspace-api-contract";
-import { hasTauriRuntime, invoke, open, save } from "@/features/workspace/workspace-api-runtime";
+import { createChannel, hasTauriRuntime, invoke, open, save } from "@/features/workspace/workspace-api-runtime";
 import { normalizePath } from "@/features/workspace/workspace-store";
 
 export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
@@ -87,6 +88,36 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         limit: request.limit,
         contextLines: request.contextLines,
         readFile: loadMockDocumentContent,
+      });
+    },
+    async streamWorkspaceText(request, onEvent) {
+      const generation = request.generation;
+      if (generation == null) throw new Error("Streaming workspace text search requires a generation");
+      if (hasTauriRuntime()) {
+        const channel = createChannel<WorkspaceTextSearchStreamEvent>();
+        channel.onmessage = onEvent;
+        await invoke<void>("stream_workspace_text", { request, onEvent: channel });
+        return;
+      }
+
+      onEvent({ event: "started", generation });
+      const snapshot = await loadWorkspaceSnapshot(request.rootPath);
+      const result = await searchWorkspaceTextInMemory({
+        query: request.query,
+        rootPath: request.rootPath,
+        paths: snapshot.files,
+        options: request.options,
+        limit: request.limit,
+        contextLines: request.contextLines,
+        cursor: request.cursor,
+        readFile: loadMockDocumentContent,
+      });
+      onEvent({ event: "batch", generation, sequence: 0, result });
+      onEvent({
+        event: "finished",
+        generation,
+        sequence: 1,
+        status: result.nextCursor ? "partial" : "complete",
       });
     },
     async cancelWorkspaceSearch(rootPath, kind, generation) {

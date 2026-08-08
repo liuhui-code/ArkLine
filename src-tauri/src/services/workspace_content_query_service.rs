@@ -7,6 +7,11 @@ pub struct IndexedLine {
     pub text: String,
 }
 
+pub struct IndexedCandidatePage {
+    pub lines: Vec<IndexedLine>,
+    pub partial: bool,
+}
+
 pub fn load_candidate_lines(
     connection: &Connection,
     root_key: &str,
@@ -14,18 +19,60 @@ pub fn load_candidate_lines(
     case_sensitive: bool,
     limit: usize,
     offset: usize,
-) -> Result<Vec<IndexedLine>, String> {
+) -> Result<IndexedCandidatePage, String> {
     if !case_sensitive {
+        if query.chars().count() >= 3 {
+            let mut lines =
+                load_trigram_candidate_lines(connection, root_key, query, limit, offset)?;
+            let partial = content_substring_is_partial(connection, root_key)?;
+            if partial && lines.len() < limit {
+                let tokens = load_fts_candidate_lines(connection, root_key, query, limit, offset)?;
+                append_unique(&mut lines, tokens, limit);
+            }
+            return Ok(IndexedCandidatePage { lines, partial });
+        }
         let fts_lines = load_fts_candidate_lines(connection, root_key, query, limit, offset)?;
         if !fts_lines.is_empty() {
-            return Ok(fts_lines);
-        }
-        if query.chars().count() >= 3 {
-            return load_trigram_candidate_lines(connection, root_key, query, limit, offset);
+            return Ok(IndexedCandidatePage {
+                lines: fts_lines,
+                partial: false,
+            });
         }
     }
 
-    load_like_candidate_lines(connection, root_key, query, case_sensitive, limit, offset)
+    load_like_candidate_lines(connection, root_key, query, case_sensitive, limit, offset).map(
+        |lines| IndexedCandidatePage {
+            lines,
+            partial: false,
+        },
+    )
+}
+
+fn content_substring_is_partial(connection: &Connection, root_key: &str) -> Result<bool, String> {
+    connection
+        .query_row(
+            "select exists(
+                select 1 from workspace_content_substring_files
+                where root_path = ?1 and status = 'pending'
+             )",
+            [root_key],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn append_unique(target: &mut Vec<IndexedLine>, source: Vec<IndexedLine>, limit: usize) {
+    for line in source {
+        let duplicate = target
+            .iter()
+            .any(|item| item.path == line.path && item.line_number == line.line_number);
+        if !duplicate {
+            target.push(line);
+        }
+        if target.len() >= limit {
+            break;
+        }
+    }
 }
 
 fn load_trigram_candidate_lines(
@@ -41,10 +88,16 @@ fn load_trigram_candidate_lines(
     let fts_query = format!("\"{}\"", query.replace('"', "\"\""));
     let mut statement = connection
         .prepare(
-            "select path, line, text
-             from workspace_content_trigram_fts
-             where root_path = ?1 and workspace_content_trigram_fts match ?2
-             order by rowid
+            "select trigram.path, trigram.line, trigram.text
+             from workspace_content_trigram_fts trigram
+             join workspace_content_substring_files substring
+               on substring.root_path = trigram.root_path and substring.path = trigram.path
+             join workspace_content_files core
+               on core.root_path = trigram.root_path and core.path = trigram.path
+             where trigram.root_path = ?1 and workspace_content_trigram_fts match ?2
+               and substring.status = 'ready'
+               and substring.indexed_generation = core.indexed_generation
+             order by trigram.rowid
              limit ?3 offset ?4",
         )
         .map_err(|error| error.to_string())?;

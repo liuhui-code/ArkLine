@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::services::workspace_discovery_store_service::{
-    load_ready_discovered_files, load_ready_discovery_generation,
+    load_ready_discovery_generation, load_ready_searchable_discovered_files,
 };
+use crate::services::workspace_file_fingerprint_service::workspace_file_policy_revision;
 
 const CACHED_WORKSPACE_LIMIT: usize = 8;
 
 struct CachedSearchPaths {
-    generation: i64,
+    revision: String,
     paths: Arc<Vec<String>>,
 }
 
@@ -24,29 +25,28 @@ pub(crate) fn cached_ready_discovered_paths(
     let Some(generation) = load_ready_discovery_generation(root_path)? else {
         return Ok(None);
     };
+    let revision = format!("{generation}:{}", workspace_file_policy_revision(root_path));
     let key = normalize_path(root_path);
-    if let Some(paths) = cached_paths(&key, generation) {
+    if let Some(paths) = cached_paths(&key, &revision) {
         return Ok(Some(paths));
     }
-    let Some(paths) = load_ready_discovered_files(root_path, limit)? else {
-        return Ok(None);
-    };
+    let paths = load_ready_searchable_discovered_files(root_path, limit)?;
     let paths = Arc::new(paths);
-    store_paths(key, generation, Arc::clone(&paths));
+    store_paths(key, revision, Arc::clone(&paths));
     Ok(Some(paths))
 }
 
-fn cached_paths(key: &str, generation: i64) -> Option<Arc<Vec<String>>> {
+fn cached_paths(key: &str, revision: &str) -> Option<Arc<Vec<String>>> {
     search_path_cache().lock().ok().and_then(|cache| {
         cache
             .entries
             .get(key)
-            .filter(|entry| entry.generation == generation)
+            .filter(|entry| entry.revision == revision)
             .map(|entry| Arc::clone(&entry.paths))
     })
 }
 
-fn store_paths(key: String, generation: i64, paths: Arc<Vec<String>>) {
+fn store_paths(key: String, revision: String, paths: Arc<Vec<String>>) {
     let Ok(mut cache) = search_path_cache().lock() else {
         return;
     };
@@ -57,7 +57,7 @@ fn store_paths(key: String, generation: i64, paths: Arc<Vec<String>>) {
     }
     cache
         .entries
-        .insert(key, CachedSearchPaths { generation, paths });
+        .insert(key, CachedSearchPaths { revision, paths });
 }
 
 fn search_path_cache() -> &'static Mutex<SearchPathCache> {
@@ -80,6 +80,7 @@ mod tests {
     use crate::services::workspace_discovery_store_service::{
         replace_discovered_file_chunk, update_discovery_state, WorkspaceDiscoveryState,
     };
+    use crate::services::workspace_file_fingerprint_service::update_file_catalog_fingerprints;
 
     #[test]
     fn cache_refreshes_when_discovery_generation_changes() {
@@ -104,6 +105,36 @@ mod tests {
             .unwrap();
         assert_eq!(second.as_slice(), ["entry\\A.ets", "entry\\B.ets"]);
         assert!(!Arc::ptr_eq(&first, &second));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cache_excludes_files_disabled_by_persisted_content_policy() {
+        let root = std::env::temp_dir().join(format!(
+            "arkline-search-path-policy-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let binary = root.join("payload.bin");
+        fs::write(&binary, b"text\0binary").unwrap();
+        let root_path = root.to_string_lossy().to_string();
+        let binary_path = binary.to_string_lossy().to_string();
+        publish(&root_path, 1, &[&binary_path]);
+        let unclassified = cached_ready_discovered_paths(&root_path, 10)
+            .unwrap()
+            .unwrap();
+        assert_eq!(unclassified.len(), 1);
+        update_file_catalog_fingerprints(&root_path, &[binary_path], 1).unwrap();
+
+        let paths = cached_ready_discovered_paths(&root_path, 10)
+            .unwrap()
+            .unwrap();
+
+        assert!(paths.is_empty());
+        assert!(!Arc::ptr_eq(&unclassified, &paths));
         fs::remove_dir_all(root).unwrap();
     }
 

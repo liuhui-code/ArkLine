@@ -20,14 +20,12 @@ use crate::services::workspace_index_query_service::{
     readiness_for_index_runtime, WorkspaceIndexQueryScope,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
-#[path = "workspace_parallel_text_search_service.rs"]
-mod parallel_text_search;
 #[path = "workspace_text_search_path_cache_service.rs"]
 mod text_search_path_cache;
+use crate::services::workspace_parallel_text_search_service::search_workspace_files_responsive;
 use crate::services::workspace_search_ranking_service::{
     sort_search_everywhere_candidates_with_context, WorkspaceSearchRankingContext,
 };
-use parallel_text_search::search_workspace_files_responsive;
 use text_search_path_cache::cached_ready_discovered_paths;
 
 const FILESYSTEM_TEXT_SEARCH_FILE_LIMIT: usize = 200_000;

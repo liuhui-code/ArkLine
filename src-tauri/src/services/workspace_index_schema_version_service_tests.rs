@@ -17,7 +17,7 @@ fn schema_versions_record_all_known_domains_idempotently() {
 
     assert_eq!(versions.len(), WORKSPACE_INDEX_SCHEMA_DOMAIN_COUNT);
     assert_eq!(versions.get("catalog"), Some(&2));
-    assert_eq!(versions.get("content"), Some(&4));
+    assert_eq!(versions.get("content"), Some(&5));
     assert_eq!(versions.get("entity"), Some(&1));
     assert_eq!(versions.get("symbol"), Some(&3));
     assert_eq!(versions.get("stub"), Some(&2));

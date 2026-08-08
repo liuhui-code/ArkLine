@@ -323,6 +323,7 @@ fn run_content_refresh(
             .iter()
             .filter(|failure| failure.resource_limited)
             .count(),
+        policy_skipped_file_count: prepared.skips.len(),
         processed_source_bytes: prepared.source_bytes,
         publication_artifact: Some(publication_artifact),
         publication_profile: Default::default(),
