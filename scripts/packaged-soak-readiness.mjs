@@ -204,7 +204,9 @@ export const SEARCH_RESULT_READINESS_SCRIPT = `
     observer.observe(document.body, {
       childList: true,
       subtree: true,
-      characterData: true
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-query"]
     });
     timer = setTimeout(() => finish(null), timeoutMs);
   }

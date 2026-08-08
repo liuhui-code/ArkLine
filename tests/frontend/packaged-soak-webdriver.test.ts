@@ -269,5 +269,7 @@ describe("packaged Windows WebView2 attachment", () => {
     expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("expectedResultReady");
     expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("results?.dataset.query");
     expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("button.innerText");
+    expect(SEARCH_RESULT_READINESS_SCRIPT).toContain("attributes: true");
+    expect(SEARCH_RESULT_READINESS_SCRIPT).toContain('attributeFilter: ["data-query"]');
   });
 });
