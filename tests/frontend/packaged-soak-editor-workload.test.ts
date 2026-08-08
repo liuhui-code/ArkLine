@@ -59,6 +59,29 @@ describe("packaged editor workload", () => {
     expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
   });
 
+  it("treats typing over an active selection as a visible edit", async () => {
+    const baselineLength = 120;
+    const selectionLength = INPUT_BURST.length;
+    let textLength = baselineLength;
+    const driver = {
+      execute: vi.fn(async (script: string) => {
+        if (script === EDITOR_FOCUS_SNAPSHOT_SCRIPT) {
+          return { present: true, focused: true, textLength, selectionLength, at: 10 };
+        }
+        if (script === EDITOR_TEXT_SNAPSHOT_SCRIPT) {
+          return { present: true, focused: true, textLength, at: 30 };
+        }
+        return 20;
+      }),
+      executeAsync: vi.fn(async () => ({ moved: false })),
+      typeText: vi.fn(async () => undefined),
+      keyChord: vi.fn(async () => undefined),
+    };
+
+    await expect(exerciseEditorInteraction(driver, { timeoutMs: 20 }))
+      .resolves.toMatchObject({ restored: true });
+  });
+
   it("fails explicitly when the active CodeMirror editor is missing", async () => {
     const driver = {
       execute: vi.fn(async () => ({ present: false })),

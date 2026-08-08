@@ -20,7 +20,7 @@ export async function exerciseEditorInteraction(
   );
   const edited = await waitForEditorLength(
     driver,
-    baseline.textLength + INPUT_BURST.length,
+    baseline.textLength - (baseline.selectionLength ?? 0) + INPUT_BURST.length,
     timeoutMs,
     "Editor input did not become visible",
   );
@@ -111,6 +111,7 @@ export const EDITOR_FOCUS_SNAPSHOT_SCRIPT = `
     crashed: false,
     textLength: Number.parseInt(editor.dataset.documentLength || "", 10)
       || (editor.textContent || "").length,
+    selectionLength: Number.parseInt(editor.dataset.selectionLength || "", 10) || 0,
     keyDownCount: Number.parseInt(editor.dataset.keyDownCount || "", 10) || 0,
     beforeInputCount: Number.parseInt(editor.dataset.beforeInputCount || "", 10) || 0,
     documentChangeCount: Number.parseInt(editor.dataset.documentChangeCount || "", 10) || 0,
@@ -137,6 +138,7 @@ export const EDITOR_TEXT_SNAPSHOT_SCRIPT = `
       : null,
     textLength: Number.parseInt(editor?.dataset.documentLength || "", 10)
       || (editor?.textContent || "").length,
+    selectionLength: Number.parseInt(editor?.dataset.selectionLength || "", 10) || 0,
     keyDownCount: Number.parseInt(editor?.dataset.keyDownCount || "", 10) || 0,
     beforeInputCount: Number.parseInt(editor?.dataset.beforeInputCount || "", 10) || 0,
     documentChangeCount: Number.parseInt(editor?.dataset.documentChangeCount || "", 10) || 0,

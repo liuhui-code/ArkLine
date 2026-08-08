@@ -135,10 +135,12 @@ export function ArkTsEditor({
     const content = viewRef.current?.contentDOM;
     if (!content) return;
     const stats = inputStatsRef.current;
+    const selection = viewRef.current?.state.selection.main;
     content.dataset.keyDownCount = String(stats.keyDown);
     content.dataset.beforeInputCount = String(stats.beforeInput);
     content.dataset.documentChangeCount = String(stats.documentChanged);
     content.dataset.externalReplacementCount = String(stats.externalReplacement);
+    content.dataset.selectionLength = String(selection ? selection.to - selection.from : 0);
   }
 
   onChangeRef.current = onChange;
@@ -176,6 +178,7 @@ export function ArkTsEditor({
           onSelectionChangeRef.current?.(selection);
           const view = viewRef.current;
           if (view && shouldMeasureCaret) onCaretRectChangeRef.current?.(readCaretRect(view));
+          publishInputStats();
         },
         (selection) => onDefinitionTriggerRef.current?.(selection),
         (state) => onDefinitionHoverChangeRef.current?.(state),
@@ -288,6 +291,7 @@ export function ArkTsEditor({
       view.setState(createState(path, documentSource, reducedPerformanceMode));
     }
     publishSessionStats();
+    publishInputStats();
     statePhase.finish();
     if (sessionRestoreFrameRef.current != null) {
       window.cancelAnimationFrame(sessionRestoreFrameRef.current);

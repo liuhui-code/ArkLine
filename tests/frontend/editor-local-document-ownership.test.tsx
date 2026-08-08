@@ -50,4 +50,46 @@ describe("editor local document ownership", () => {
     );
     expect(view.state.doc.toString()).toBe("external replacement");
   });
+
+  it("does not restore the initial snapshot after editing a newly activated file", () => {
+    const first = Text.of(["first"]);
+    const second = Text.of(["second"]);
+    const localDocuments: Text[] = [];
+    const appearance = defaultSettings().editor;
+    const onDocumentChange = (document: Text) => localDocuments.push(document);
+    const { rerender } = render(
+      <ArkTsEditor
+        appearance={appearance}
+        document={first}
+        onChange={() => undefined}
+        onDocumentChange={onDocumentChange}
+        path="C:/demo/First.ets"
+      />,
+    );
+
+    rerender(
+      <ArkTsEditor
+        appearance={appearance}
+        document={second}
+        onChange={() => undefined}
+        onDocumentChange={onDocumentChange}
+        path="C:/demo/Second.ets"
+      />,
+    );
+    const editor = screen.getByLabelText("Editor Content");
+    const view = EditorView.findFromDOM(editor.closest(".cm-editor") as HTMLElement)!;
+    view.dispatch({ changes: { from: second.length, insert: " edited" } });
+
+    rerender(
+      <ArkTsEditor
+        appearance={appearance}
+        document={second}
+        onChange={() => undefined}
+        onDocumentChange={onDocumentChange}
+        path="C:/demo/Second.ets"
+      />,
+    );
+
+    expect(view.state.doc.toString()).toBe("second edited");
+  });
 });
