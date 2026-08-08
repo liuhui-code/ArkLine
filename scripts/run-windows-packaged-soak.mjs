@@ -16,6 +16,7 @@ import {
 import {
   DIAGNOSTICS_SCRIPT,
   HEAP_SNAPSHOT_SCRIPT,
+  RETAINED_HEAP_SNAPSHOT_SCRIPT,
   TELEMETRY_INSTALL_SCRIPT,
   TELEMETRY_SNAPSHOT_SCRIPT,
 } from "./packaged-soak-telemetry.mjs";
@@ -242,6 +243,10 @@ async function runSoak(driver, options, scenario) {
   diagnostics.push(await inspectDiagnostics(driver, options.fixturePath));
   processSamples.push(await inspectArkLineProcesses(options.applicationPath));
   heapSamples.push(await inspectHeap(driver));
+  const retainedHeapSample = await inspectRetainedHeap(driver);
+  const retainedProcessSample = await inspectArkLineProcesses(
+    options.applicationPath,
+  );
   const telemetry = await driver.execute(TELEMETRY_SNAPSHOT_SCRIPT).catch(
     (error) => ({
       capabilities: telemetryCapabilities,
@@ -268,6 +273,10 @@ async function runSoak(driver, options, scenario) {
     diagnostics,
     processSamples,
     heapSamples,
+    retentionEvidence: {
+      heap: retainedHeapSample,
+      process: retainedProcessSample,
+    },
     searchEvidence,
     semanticEvidence,
     scenario,
@@ -363,6 +372,16 @@ async function inspectHeap(driver) {
     capturedAt: Date.now(),
     error: String(error),
   }));
+}
+
+async function inspectRetainedHeap(driver) {
+  return driver.executeAsync(RETAINED_HEAP_SNAPSHOT_SCRIPT, [], 5_000)
+    .catch((error) => ({
+      supported: false,
+      gcSupported: false,
+      capturedAt: Date.now(),
+      error: String(error),
+    }));
 }
 
 function assertPreflightPassed(preflight) {

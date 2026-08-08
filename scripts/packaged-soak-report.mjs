@@ -142,6 +142,7 @@ export function buildPackagedSoakReport(input) {
     diagnostics: input.diagnostics,
     processSamples: input.processSamples,
     heapSamples: input.heapSamples,
+    retentionEvidence: input.retentionEvidence ?? null,
     searchEvidence: input.searchEvidence ?? [],
     semanticEvidence: input.semanticEvidence ?? [],
     summary: {

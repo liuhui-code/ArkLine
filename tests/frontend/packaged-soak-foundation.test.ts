@@ -17,6 +17,7 @@ import {
 import { inspectPackagedSoakPreflight } from "../../scripts/packaged-soak-preflight.mjs";
 import {
   TELEMETRY_INSTALL_SCRIPT,
+  RETAINED_HEAP_SNAPSHOT_SCRIPT,
   UI_READINESS_SCRIPT,
   telemetryDurations,
 } from "../../scripts/packaged-soak-telemetry.mjs";
@@ -192,6 +193,8 @@ describe("packaged Windows soak foundation", () => {
     expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("MutationObserver");
     expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("requestAnimationFrame(frame)");
     expect(TELEMETRY_INSTALL_SCRIPT).toContain("entry.scripts || []");
+    expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("globalThis.gc");
+    expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openTabCount");
     expect(UI_READINESS_SCRIPT).toContain(
       '[aria-label="Find in Files Results"]',
     );

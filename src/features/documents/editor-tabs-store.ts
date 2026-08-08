@@ -3,6 +3,9 @@ import type { createDocumentStore } from "@/features/documents/document-store";
 
 type DocumentStore = ReturnType<typeof createDocumentStore>;
 
+export const MAX_OPEN_EDITOR_TABS = 32;
+const MAX_RECENT_FILES = 100;
+
 export type EditorTab = {
   path: string;
   title: string;
@@ -17,7 +20,7 @@ export type EditorTabsState = {
 };
 
 function dedupeMostRecent(items: string[], value: string) {
-  return [value, ...items.filter((item) => item !== value)];
+  return [value, ...items.filter((item) => item !== value)].slice(0, MAX_RECENT_FILES);
 }
 
 export function createEditorTabsStore(documents: DocumentStore) {
@@ -53,6 +56,21 @@ export function createEditorTabsStore(documents: DocumentStore) {
     documents.releaseDocument(preview.path);
   }
 
+  function releaseTabs(tabs: EditorTab[]) {
+    for (const tab of tabs) documents.releaseDocument(tab.path);
+  }
+
+  function evictOverflowTabs(protectedPath: string) {
+    while (state.openTabs.length > MAX_OPEN_EDITOR_TABS) {
+      const evictionIndex = state.openTabs.findIndex((tab) => (
+        tab.path !== protectedPath && !tab.isDirty
+      ));
+      if (evictionIndex < 0) return;
+      const [evicted] = state.openTabs.splice(evictionIndex, 1);
+      if (evicted) documents.releaseDocument(evicted.path);
+    }
+  }
+
   documents.subscribe((path) => {
     syncDirtyState(path);
   });
@@ -78,6 +96,7 @@ export function createEditorTabsStore(documents: DocumentStore) {
       state.activePath = normalized;
       state.recentFiles = dedupeMostRecent(state.recentFiles, normalized);
       syncDirtyState(normalized);
+      evictOverflowTabs(normalized);
     },
     pinTab(path: string) {
       const tab = state.openTabs.find((entry) => entry.path === normalizePath(path));
@@ -95,6 +114,7 @@ export function createEditorTabsStore(documents: DocumentStore) {
       }
 
       state.openTabs.splice(closingIndex, 1);
+      documents.releaseDocument(targetPath);
 
       if (state.activePath !== targetPath) {
         return;
@@ -110,8 +130,10 @@ export function createEditorTabsStore(documents: DocumentStore) {
         return;
       }
 
+      const closedTabs = state.openTabs.filter((tab) => tab.path !== targetPath);
       state.openTabs = [targetTab];
       state.activePath = targetPath;
+      releaseTabs(closedTabs);
     },
     closeTabsToRight(path: string) {
       const targetPath = normalizePath(path);
@@ -120,8 +142,10 @@ export function createEditorTabsStore(documents: DocumentStore) {
         return;
       }
 
-      const closedPaths = new Set(state.openTabs.slice(targetIndex + 1).map((entry) => entry.path));
+      const closedTabs = state.openTabs.slice(targetIndex + 1);
+      const closedPaths = new Set(closedTabs.map((entry) => entry.path));
       state.openTabs.splice(targetIndex + 1);
+      releaseTabs(closedTabs);
       if (state.activePath && closedPaths.has(state.activePath)) {
         state.activePath = targetPath;
       }

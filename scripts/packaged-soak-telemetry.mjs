@@ -163,6 +163,25 @@ export const HEAP_SNAPSHOT_SCRIPT = `
   };
 `;
 
+export const RETAINED_HEAP_SNAPSHOT_SCRIPT = `
+  const done = arguments[arguments.length - 1];
+  const collect = typeof globalThis.gc === "function";
+  if (collect) globalThis.gc();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (collect) globalThis.gc();
+    const memory = performance.memory;
+    done({
+      supported: Boolean(memory),
+      gcSupported: collect,
+      capturedAt: Date.now(),
+      usedBytes: memory?.usedJSHeapSize ?? null,
+      totalBytes: memory?.totalJSHeapSize ?? null,
+      limitBytes: memory?.jsHeapSizeLimit ?? null,
+      openTabCount: document.querySelectorAll(".editor-tab[title]").length
+    });
+  }));
+`;
+
 export const INTERACTION_START_SCRIPT = `
   const state = window.__arklinePackagedSoak || {};
   return state.interactionStarts?.[arguments[0]] ?? null;

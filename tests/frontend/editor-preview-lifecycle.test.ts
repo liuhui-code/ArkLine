@@ -1,5 +1,8 @@
 import { createDocumentStore } from "@/features/documents/document-store";
-import { createEditorTabsStore } from "@/features/documents/editor-tabs-store";
+import {
+  createEditorTabsStore,
+  MAX_OPEN_EDITOR_TABS,
+} from "@/features/documents/editor-tabs-store";
 
 describe("editor preview lifecycle", () => {
   it("keeps transient navigation bounded to one clean preview document", () => {
@@ -55,5 +58,37 @@ describe("editor preview lifecycle", () => {
     tabs.openTab("/workspace/A.ets", "preview");
 
     expect(tabs.state.openTabs[0]?.isPreview).not.toBe(true);
+  });
+
+  it("bounds clean pinned tabs and releases their document snapshots", () => {
+    const documents = createDocumentStore();
+    const tabs = createEditorTabsStore(documents);
+
+    for (let index = 0; index < MAX_OPEN_EDITOR_TABS + 8; index += 1) {
+      const path = `/workspace/Pinned${index}.ets`;
+      documents.openDocument(path, `content ${index}`);
+      tabs.openTab(path, "pinned");
+    }
+
+    expect(tabs.state.openTabs).toHaveLength(MAX_OPEN_EDITOR_TABS);
+    expect(documents.getDocuments()).toHaveLength(MAX_OPEN_EDITOR_TABS);
+    expect(tabs.state.openTabs.at(-1)?.path).toBe(
+      `/workspace/Pinned${MAX_OPEN_EDITOR_TABS + 7}.ets`,
+    );
+  });
+
+  it("releases clean documents when tabs close but retains dirty snapshots", () => {
+    const documents = createDocumentStore();
+    const tabs = createEditorTabsStore(documents);
+    documents.openDocument("/workspace/Clean.ets", "clean");
+    documents.openDocument("/workspace/Dirty.ets", "dirty");
+    documents.updateDocument("/workspace/Dirty.ets", "dirty changed");
+    tabs.openTab("/workspace/Clean.ets");
+    tabs.openTab("/workspace/Dirty.ets");
+
+    tabs.closeOtherTabs("/workspace/Dirty.ets");
+
+    expect(documents.getDocument("/workspace/Clean.ets")).toBeUndefined();
+    expect(documents.getDocument("/workspace/Dirty.ets")?.isDirty).toBe(true);
   });
 });
