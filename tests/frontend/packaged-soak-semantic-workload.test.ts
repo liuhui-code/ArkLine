@@ -53,7 +53,11 @@ function createDriver() {
     clickAt: vi.fn(async () => undefined),
     modifierClickAt,
     execute: vi.fn(async (script: string, args?: unknown[]) => {
-      if (script.includes("interactionStarts")) return 100;
+      if (script.includes("interactionStarts")) {
+        if (args?.[0] === "enter:Quick Open Query") return 100;
+        throw new Error("semantic gestures must not depend on input interaction keys");
+      }
+      if (script.trim() === "return performance.now();") return 100;
       if (script.includes('label === "activeTab"')) {
         const title = modifierClickAt.mock.calls.length > 0
           ? "EntryViewModel.ets"

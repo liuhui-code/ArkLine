@@ -1,5 +1,5 @@
 import {
-  rendererInteractionStart,
+  rendererClockNow,
   waitForActiveTab,
   waitForEditorTarget,
 } from "./packaged-soak-readiness.mjs";
@@ -22,10 +22,7 @@ export async function exerciseDefinitionNavigation(
     target.occurrence,
     null,
   );
-  const startedAt = await rendererInteractionStart(
-    driver,
-    "modifierClick:Editor Content",
-  );
+  const startedAt = await rendererClockNow(driver);
   await driver.modifierClickAt(location.x, location.y);
   try {
     await waitForActiveTab(driver, target.target.title, TARGET_TIMEOUT_MS);
@@ -64,10 +61,7 @@ export async function exerciseMemberCompletion(
     target.cursorAfter,
   );
   await driver.clickAt(location.x, location.y);
-  const startedAt = await rendererInteractionStart(
-    driver,
-    "keyChord:Code Completion",
-  );
+  const startedAt = await rendererClockNow(driver);
   await driver.keyChord([WEBDRIVER_KEYS.control, " "]);
   const completion = await driver.executeAsync(
     COMPLETION_READINESS_SCRIPT,

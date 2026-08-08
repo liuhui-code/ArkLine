@@ -125,6 +125,14 @@ export async function rendererInteractionStart(driver, key) {
   return startedAt;
 }
 
+export async function rendererClockNow(driver) {
+  const startedAt = await driver.execute("return performance.now();");
+  if (!Number.isFinite(startedAt)) {
+    throw new Error("Renderer clock was not captured");
+  }
+  return startedAt;
+}
+
 async function waitForIndexState(
   driver,
   rootPath,
