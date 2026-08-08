@@ -1,8 +1,9 @@
 use std::fs::{self, File, FileTimes};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::{
+    IDLE_PUBLICATION_GRACE,
     WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationKind,
     WorkspaceIndexPublicationRequest, WorkspaceIndexWriterActor,
 };
@@ -315,6 +316,7 @@ fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
     let descriptor = write_workspace_publication_artifact(&root_path, &artifact).unwrap();
     let actor = WorkspaceIndexWriterActor::new();
 
+    let started = Instant::now();
     let result = actor.publish(
         WorkspaceIndexPublicationRequest {
             root_path: root_path.clone(),
@@ -328,6 +330,7 @@ fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
     let WorkspaceIndexPublicationAttempt::Applied(profile) = result else {
         panic!("idle store maintenance should apply");
     };
+    assert!(started.elapsed() >= IDLE_PUBLICATION_GRACE);
     assert!(profile
         .stages
         .iter()

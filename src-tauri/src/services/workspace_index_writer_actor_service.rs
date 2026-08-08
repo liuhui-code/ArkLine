@@ -31,7 +31,7 @@ use publication::publish_artifact;
 const PUBLICATION_QUEUE_CAPACITY: usize = 64;
 const FOREGROUND_BURST_LIMIT: usize = 4;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
-const IDLE_PUBLICATION_GRACE: Duration = Duration::from_millis(75);
+const IDLE_PUBLICATION_GRACE: Duration = Duration::from_millis(500);
 
 pub(crate) struct WorkspaceIndexPublicationRequest {
     pub(crate) root_path: String,

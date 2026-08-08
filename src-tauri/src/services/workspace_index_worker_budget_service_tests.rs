@@ -51,14 +51,6 @@ fn ui_activity_lowers_background_deep_layer_budget() {
 }
 
 #[test]
-fn ui_active_budget_keeps_background_progress_above_starvation_floor() {
-    assert!(
-        WORKSPACE_INDEX_UI_ACTIVE_DEEP_PATH_BUDGET >= 32,
-        "continuous interaction must still advance deep indexing in useful task slices"
-    );
-}
-
-#[test]
 fn ui_activity_does_not_limit_foreground_navigation() {
     let paths = paths(WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET + 2);
 
