@@ -112,7 +112,10 @@ function createDriver() {
         if (args?.[0] === "enter:Quick Open Query") return 100;
         throw new Error("semantic gestures must not depend on input interaction keys");
       }
-      if (script.trim() === "return performance.now();") return 100;
+      if (script.trim() === "return performance.now();") return 10;
+      if (script.includes("semanticGestureStarts")) {
+        return script.includes("return starts") ? 100 : true;
+      }
       if (script.includes('label === "activeTab"')) {
         const title = modifierClickAt.mock.calls.length > 0
           ? "EntryViewModel.ets"

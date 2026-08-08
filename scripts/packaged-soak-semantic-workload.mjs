@@ -1,5 +1,4 @@
 import {
-  rendererClockNow,
   waitForActiveTab,
   waitForEditorTarget,
 } from "./packaged-soak-readiness.mjs";
@@ -22,8 +21,11 @@ export async function exerciseDefinitionNavigation(
     target.occurrence,
     null,
   );
-  const startedAt = await rendererClockNow(driver);
-  await driver.modifierClickAt(location.x, location.y);
+  const startedAt = await performTimedSemanticGesture(
+    driver,
+    "definition",
+    () => driver.modifierClickAt(location.x, location.y),
+  );
   try {
     await waitForActiveTab(driver, target.target.title, TARGET_TIMEOUT_MS);
     const rendered = await waitForEditorTarget(
@@ -70,8 +72,11 @@ export async function exerciseMemberCompletion(
     counters.completionMissCount += 1;
     throw new Error(`Member completion caret did not match: ${JSON.stringify(caret)}`);
   }
-  const startedAt = await rendererClockNow(driver);
-  await driver.keyChord([WEBDRIVER_KEYS.control, " "]);
+  const startedAt = await performTimedSemanticGesture(
+    driver,
+    "completion",
+    () => driver.keyChord([WEBDRIVER_KEYS.control, " "]),
+  );
   const completion = await driver.executeAsync(
     COMPLETION_READINESS_SCRIPT,
     [target.expectedLabels, TARGET_TIMEOUT_MS, target.forbiddenLabels ?? []],
@@ -109,6 +114,44 @@ async function locateEditorText(driver, needle, occurrence, cursorAfter) {
   }
   return result;
 }
+
+async function performTimedSemanticGesture(driver, gesture, perform) {
+  await driver.execute(INSTALL_SEMANTIC_GESTURE_CLOCK_SCRIPT, [gesture]);
+  await perform();
+  const startedAt = await driver.execute(READ_SEMANTIC_GESTURE_CLOCK_SCRIPT, [gesture]);
+  if (!Number.isFinite(startedAt)) {
+    throw new Error(`Renderer did not observe the ${gesture} input gesture`);
+  }
+  return startedAt;
+}
+
+const INSTALL_SEMANTIC_GESTURE_CLOCK_SCRIPT = `
+  const gesture = arguments[0];
+  const automation = window.__arklineAutomation ||= {};
+  const starts = automation.semanticGestureStarts ||= {};
+  starts[gesture] = null;
+  const eventName = gesture === "definition" ? "mousedown" : "keydown";
+  const listenerKey = gesture + "GestureClockListener";
+  const previous = automation[listenerKey];
+  if (previous) document.removeEventListener(eventName, previous, true);
+  const listener = (event) => {
+    const matched = gesture === "definition"
+      ? event.ctrlKey && event.button === 0
+      : event.ctrlKey && (event.key === " " || event.code === "Space");
+    if (!matched) return;
+    starts[gesture] = performance.now();
+    document.removeEventListener(eventName, listener, true);
+    automation[listenerKey] = null;
+  };
+  automation[listenerKey] = listener;
+  document.addEventListener(eventName, listener, true);
+  return true;
+`;
+
+const READ_SEMANTIC_GESTURE_CLOCK_SCRIPT = `
+  const starts = window.__arklineAutomation?.semanticGestureStarts;
+  return starts?.[arguments[0]] ?? null;
+`;
 
 export const EDITOR_TEXT_TARGET_SCRIPT = `
   const needle = arguments[0];
