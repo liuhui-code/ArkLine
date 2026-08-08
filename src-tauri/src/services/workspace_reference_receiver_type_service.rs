@@ -4,6 +4,10 @@ use crate::services::workspace_reference_generic_receiver_service::{
     bind_generic_receiver_type, generic_class_fields, generic_type_parts, GenericClass,
 };
 
+#[path = "workspace_reference_receiver_decorator_service.rs"]
+mod receiver_decorator;
+use receiver_decorator::strip_member_decorators;
+
 pub fn receiver_type_map(content: &str) -> HashMap<String, String> {
     receiver_type_map_with_generic_classes(content, &HashMap::new())
 }
@@ -407,7 +411,7 @@ fn call_expression_name(expression: &str) -> Option<&str> {
 }
 
 fn receiver_type_from_field(line: &str) -> Option<(&str, &str)> {
-    let trimmed = line.trim_start();
+    let trimmed = strip_member_decorators(line);
     let candidate = strip_member_modifiers(trimmed);
     let (name, rest) = candidate.split_once(':')?;
     let field_name = name.trim();

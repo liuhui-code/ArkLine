@@ -61,6 +61,15 @@ export async function exerciseMemberCompletion(
     target.cursorAfter,
   );
   await driver.clickAt(location.x, location.y);
+  const caret = await driver.executeAsync(
+    EDITOR_CARET_READINESS_SCRIPT,
+    [target.lineNeedle, target.cursorAfter, 1_500],
+    2_500,
+  );
+  if (!caret?.matched) {
+    counters.completionMissCount += 1;
+    throw new Error(`Member completion caret did not match: ${JSON.stringify(caret)}`);
+  }
   const startedAt = await rendererClockNow(driver);
   await driver.keyChord([WEBDRIVER_KEYS.control, " "]);
   const completion = await driver.executeAsync(
@@ -184,6 +193,56 @@ export const EDITOR_TEXT_TARGET_SCRIPT = `
   inspect();
 `;
 
+export const EDITOR_CARET_READINESS_SCRIPT = `
+  const lineNeedle = arguments[0];
+  const cursorAfter = arguments[1];
+  const timeoutMs = arguments[2];
+  const done = arguments[arguments.length - 1];
+  let poll;
+  let timer;
+  let finished = false;
+  let latest = { matched: false, reason: "selection-unavailable" };
+  const finish = (value) => {
+    if (finished) return;
+    finished = true;
+    clearInterval(poll);
+    clearTimeout(timer);
+    done(value);
+  };
+  const inspect = () => {
+    const editor = document.querySelector('[aria-label="Editor Content"]');
+    const selection = window.getSelection();
+    const anchor = selection?.anchorNode;
+    if (!editor || !anchor || selection.rangeCount === 0) return;
+    const anchorElement = anchor.nodeType === Node.ELEMENT_NODE
+      ? anchor
+      : anchor.parentElement;
+    const line = anchorElement?.closest?.('.cm-line');
+    if (!line || !editor.contains(line)) return;
+    const range = document.createRange();
+    try {
+      range.setStart(line, 0);
+      range.setEnd(anchor, selection.anchorOffset);
+    } catch {
+      return;
+    }
+    const lineText = line.textContent || "";
+    const textBeforeCursor = range.toString();
+    latest = {
+      matched: lineText.includes(lineNeedle) && textBeforeCursor.endsWith(cursorAfter),
+      focused: document.activeElement === editor,
+      lineText,
+      textBeforeCursor,
+      column: textBeforeCursor.length + 1,
+      at: performance.now()
+    };
+    if (latest.matched) finish(latest);
+  };
+  poll = setInterval(inspect, 25);
+  timer = setTimeout(() => finish({ ...latest, timeout: true }), timeoutMs);
+  inspect();
+`;
+
 export const COMPLETION_READINESS_SCRIPT = `
   const expectedLabels = arguments[0];
   const timeoutMs = arguments[1];
@@ -207,12 +266,14 @@ export const COMPLETION_READINESS_SCRIPT = `
       .map((item) => (item.textContent || "").trim())
       .filter(Boolean);
     lastLabels = labels;
-    const forbidden = forbiddenLabels.filter((label) => labels.includes(label));
+    const normalize = (label) => label.endsWith("()") ? label.slice(0, -2) : label;
+    const normalizedLabels = labels.map(normalize);
+    const forbidden = forbiddenLabels.filter((label) => normalizedLabels.includes(normalize(label)));
     if (forbidden.length > 0) {
       finish({ matched: false, labels, forbidden, at: performance.now() });
       return;
     }
-    if (expectedLabels.every((label) => labels.includes(label))) {
+    if (expectedLabels.every((label) => normalizedLabels.includes(normalize(label)))) {
       finish({ matched: true, labels, at: performance.now() });
     }
   };

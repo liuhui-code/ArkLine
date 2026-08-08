@@ -182,3 +182,55 @@ fn semantic_completion_resolves_members_through_object_aliases() {
     assert!(labels.contains(&"load()"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn semantic_completion_resolves_default_import_members_from_decorated_arkts_fields() {
+    let root = create_empty_workspace("completion-decorated-field");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(
+        source_dir.join("EntryViewModel.ets"),
+        [
+            "export default class EntryViewModel {",
+            "  aboutToAppear() {}",
+            "  aboutToDisappear() {}",
+            "}",
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+    let app_path = source_dir.join("EntryPage.ets");
+    let content = [
+        "import EntryViewModel from \"./EntryViewModel\";",
+        "@ComponentV2",
+        "struct EntryPage {",
+        "  @Local vm: EntryViewModel = new EntryViewModel();",
+        "  run() { this.vm. }",
+        "}",
+    ]
+    .join("\n");
+    fs::write(&app_path, &content).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let items = query_semantic_completions(
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 5,
+            column: 19,
+            content: Some(content),
+        },
+        20,
+    )
+    .unwrap();
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"aboutToAppear()"));
+    assert!(labels.contains(&"aboutToDisappear()"));
+    fs::remove_dir_all(root).unwrap();
+}

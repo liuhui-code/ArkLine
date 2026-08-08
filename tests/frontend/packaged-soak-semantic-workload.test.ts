@@ -1,17 +1,46 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   COMPLETION_READINESS_SCRIPT,
+  EDITOR_CARET_READINESS_SCRIPT,
   EDITOR_TEXT_TARGET_SCRIPT,
   exerciseDefinitionNavigation,
   exerciseMemberCompletion,
 } from "../../scripts/packaged-soak-semantic-workload.mjs";
 
 describe("packaged semantic workload", () => {
+  it("verifies the CodeMirror caret is after the requested receiver", async () => {
+    document.body.innerHTML = `
+      <div aria-label="Editor Content" contenteditable="true">
+        <div class="cm-line">this.vm.aboutToAppear(hostContext);</div>
+      </div>
+    `;
+    const editor = document.querySelector<HTMLElement>('[aria-label="Editor Content"]')!;
+    const line = editor.querySelector<HTMLElement>(".cm-line")!;
+    editor.focus();
+    const range = document.createRange();
+    range.setStart(line.firstChild!, "this.vm.".length);
+    range.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    const result = await runAsyncBrowserScript(EDITOR_CARET_READINESS_SCRIPT, [
+      "this.vm.aboutToAppear(hostContext);",
+      "this.vm.",
+      20,
+    ]);
+
+    expect(result).toEqual(expect.objectContaining({
+      matched: true,
+      column: 9,
+      textBeforeCursor: "this.vm.",
+    }));
+  });
+
   it("reads member labels from the active CodeMirror completion list", async () => {
     document.body.innerHTML = `
       <ul aria-label="Code Completion">
-        <li><span class="cm-completionLabel">aboutToAppear</span></li>
-        <li><span class="cm-completionLabel">aboutToDisappear</span></li>
+        <li><span class="cm-completionLabel">aboutToAppear()</span></li>
+        <li><span class="cm-completionLabel">aboutToDisappear()</span></li>
       </ul>
     `;
 
@@ -23,7 +52,7 @@ describe("packaged semantic workload", () => {
 
     expect(result).toEqual(expect.objectContaining({
       matched: true,
-      labels: ["aboutToAppear", "aboutToDisappear"],
+      labels: ["aboutToAppear()", "aboutToDisappear()"],
     }));
   });
 
@@ -100,6 +129,9 @@ function createDriver() {
       }
       if (script === COMPLETION_READINESS_SCRIPT) {
         return { matched: true, labels: ["aboutToAppear", "aboutToDisappear"], at: 135 };
+      }
+      if (script === EDITOR_CARET_READINESS_SCRIPT) {
+        return { matched: true, column: 9, textBeforeCursor: "this.vm.", at: 109 };
       }
       if (script.includes("expectedNeedle")) return { matched: true, at: 140 };
       if (script.includes("selectors")) return { at: 110, count: 1, query: "EntryPage" };
