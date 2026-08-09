@@ -56,6 +56,15 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Publish PowerShell host path
+        shell: pwsh
+        run: |
+          $hostPath = Join-Path $PSHOME "pwsh.exe"
+          if (-not (Test-Path -LiteralPath $hostPath)) {
+            throw "PowerShell host was not found at $hostPath"
+          }
+          "ARKLINE_POWERSHELL_PATH=$hostPath" >> $env:GITHUB_ENV
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 

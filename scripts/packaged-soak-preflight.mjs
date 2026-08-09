@@ -35,11 +35,14 @@ export async function inspectPackagedSoakPreflight(
     Boolean(driver),
     driver ?? `${options.driverPath} not found`,
   ));
-  const powerShell = await resolveWindowsPowerShell(resolveTool).catch(() => null);
+  const powerShell = await resolveWindowsPowerShell(resolveTool).then(
+    (resolved) => ({ resolved, error: null }),
+    (error) => ({ resolved: null, error: errorMessage(error) }),
+  );
   checks.push(check(
     "powershell",
-    Boolean(powerShell),
-    powerShell ?? "powershell.exe and pwsh.exe not found",
+    Boolean(powerShell.resolved),
+    powerShell.resolved ?? powerShell.error,
   ));
 
   return {
@@ -160,12 +163,81 @@ export async function resolveWindowsTool(command) {
   return resolved;
 }
 
-export async function resolveWindowsPowerShell(resolveTool = resolveWindowsTool) {
-  for (const command of ["powershell.exe", "pwsh.exe"]) {
-    const resolved = await resolveTool(command).catch(() => null);
-    if (resolved) return resolved;
+export async function resolveWindowsPowerShell(
+  resolveTool = resolveWindowsTool,
+  environment = process.env,
+) {
+  const failures = [];
+  for (const candidate of powerShellCandidates(environment)) {
+    try {
+      return await resolveTool(candidate);
+    } catch (error) {
+      failures.push(`${candidate}: ${errorMessage(error)}`);
+    }
   }
-  throw new Error("powershell.exe and pwsh.exe not found");
+  throw new Error([
+    "PowerShell resolution failed",
+    `attempted=${failures.join(" | ") || "none"}`,
+    `ARKLINE_POWERSHELL_PATH=${environment.ARKLINE_POWERSHELL_PATH ?? "unset"}`,
+    `PSModulePath=${truncateDiagnostic(environment.PSModulePath)}`,
+    `PATH=${truncateDiagnostic(environment.PATH)}`,
+  ].join("; "));
+}
+
+function powerShellCandidates(environment) {
+  const programFiles = [
+    environment.ProgramW6432,
+    environment.ProgramFiles,
+    environment["ProgramFiles(x86)"],
+  ];
+  const systemRoots = [environment.SystemRoot, environment.windir];
+  return uniqueCandidates([
+    environment.ARKLINE_POWERSHELL_PATH,
+    ...powerShellPathsFromModulePath(environment.PSModulePath),
+    ...programFiles.map((root) => root && path.win32.join(root, "PowerShell", "7", "pwsh.exe")),
+    ...systemRoots.map((root) => root && path.win32.join(
+      root,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    )),
+    "powershell.exe",
+    "pwsh.exe",
+  ]);
+}
+
+function powerShellPathsFromModulePath(modulePath) {
+  if (!modulePath) return [];
+  return modulePath.split(";").flatMap((entry) => {
+    const modulesPath = entry.trim();
+    if (!modulesPath) return [];
+    const hostPath = path.win32.dirname(modulesPath);
+    const executable = path.win32.basename(hostPath).toLowerCase() === "v1.0"
+      ? "powershell.exe"
+      : "pwsh.exe";
+    return [path.win32.join(hostPath, executable)];
+  });
+}
+
+function uniqueCandidates(candidates) {
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    if (!candidate) return false;
+    const key = candidate.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function truncateDiagnostic(value) {
+  if (!value) return "unset";
+  return value.length > 2_000 ? `${value.slice(0, 2_000)}...` : value;
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function inspectFixtureMarker(fixturePath) {
