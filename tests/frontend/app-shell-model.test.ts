@@ -88,6 +88,9 @@ describe("app shell model", () => {
   it("formats index and sdk status text", () => {
     expect(getIndexStatusText(indexState({ status: "empty" }))).toBe("Index: empty");
     expect(getIndexStatusText(indexState({ status: "partial", filePaths: [] }))).toBe("Index: building project");
+    expect(getIndexStatusText(indexState({ status: "partial", filePaths: [] }), [
+      taskStatus({ kind: "changed-paths", status: "partial" }),
+    ])).toBe("Index: partial (0 files)");
     expect(getIndexStatusText(indexState({ status: "ready", filePaths: ["/a.ets", "/b.ets"] })))
       .toBe("Index: ready (2 files)");
     expect(getIndexStatusText(indexState({ status: "ready" }), [

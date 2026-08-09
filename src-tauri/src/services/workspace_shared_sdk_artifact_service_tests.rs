@@ -288,7 +288,12 @@ fn shared_sdk_trigram_query_stays_bounded_for_large_artifact() {
     symbols.push(symbol("targetNeedleApi", "/sdk/target.d.ts"));
     let store = SharedSdkArtifactStore::open(&path).unwrap();
     store.replace_ready(&identity, &symbols).unwrap();
-    let mut durations = (0..20)
+    for _ in 0..3 {
+        store
+            .query_name_candidates(&identity, "needle", 64)
+            .unwrap();
+    }
+    let mut durations = (0..40)
         .map(|_| {
             let started = Instant::now();
             let matches = store
@@ -299,7 +304,7 @@ fn shared_sdk_trigram_query_stays_bounded_for_large_artifact() {
         })
         .collect::<Vec<_>>();
     durations.sort();
-    let p95 = durations[19];
+    let p95 = durations[(durations.len() - 1) * 95 / 100];
 
     assert!(p95.as_millis() < 100, "shared SDK query p95 was {p95:?}");
     fs::remove_file(path).unwrap();

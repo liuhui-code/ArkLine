@@ -130,7 +130,7 @@ export function getIndexStatusText(indexState: WorkspaceIndexState, taskStatuses
     return "Index: empty";
   }
 
-  if (indexState.status === "partial" && indexState.filePaths.length === 0) {
+  if (indexState.status === "partial" && indexState.filePaths.length === 0 && taskStatuses.length === 0) {
     return "Index: building project";
   }
 

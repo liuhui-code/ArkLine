@@ -91,7 +91,7 @@ fn content_core_returns_before_detached_substring_publication() {
     };
     let descriptor = write_workspace_publication_artifact(&root_path, &artifact).unwrap();
     let substring_descriptor = descriptor.clone();
-    let actor = WorkspaceIndexWriterActor::new();
+    let actor = WorkspaceIndexWriterActor::new_with_idle_grace(Duration::from_millis(20));
 
     let core = actor.publish(
         WorkspaceIndexPublicationRequest::content(
@@ -123,7 +123,7 @@ fn content_core_returns_before_detached_substring_publication() {
 }
 
 fn wait_for_substring(actor: &WorkspaceIndexWriterActor, root_path: &str, artifact_path: &str) {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         let connection = open_existing_workspace_index_reader(root_path)
             .unwrap()

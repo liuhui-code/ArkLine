@@ -20,7 +20,7 @@ export function main() {
       "--manifest-path",
       "src-tauri/Cargo.toml",
       "--",
-      "--test-threads=8",
+      "--test-threads=1",
     ],
     {
       stdio: "inherit",

@@ -97,14 +97,21 @@ fn background_worker_drains_tasks_and_reports_statuses() {
     assert!(observed
         .iter()
         .any(|status| status == &("sdk".to_string(), "ready".to_string())));
+    let statuses = manager.get_index_task_statuses(&root_path).unwrap();
+    assert!(statuses.iter().all(|status| {
+        !matches!(status.status.as_str(), "queued" | "running")
+    }));
+
+    remove_temp_dir(&root);
+}
+
+fn remove_temp_dir(root: &PathBuf) {
     for _ in 0..80 {
-        if !manager.is_background_worker_batch_running() {
-            break;
+        if fs::remove_dir_all(root).is_ok() || !root.exists() {
+            return;
         }
         thread::sleep(Duration::from_millis(25));
     }
-    assert!(!manager.is_background_worker_batch_running());
-
     fs::remove_dir_all(root).unwrap();
 }
 

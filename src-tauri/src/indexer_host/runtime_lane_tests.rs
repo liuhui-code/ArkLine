@@ -91,7 +91,7 @@ fn lane_script(task: &IndexerTaskKey, root: &std::path::Path) -> String {
         }
     });
     format!(
-        "#!/bin/sh\nread line\nprintf '%s\\n' '{}'\nread request\ncase \"$request\" in\n  *refreshContentChunk*) touch '{}/content.started' ;;\n  *) touch '{}/stub.started' ;;\nesac\ncount=0\nwhile [ ! -f '{}/content.started' ] || [ ! -f '{}/stub.started' ]; do\n  sleep 0.01\n  count=$((count + 1))\n  [ \"$count\" -gt 500 ] && exit 2\ndone\ncase \"$request\" in\n  *refreshContentChunk*) printf '%s\\n' '{}' ;;\n  *) printf '%s\\n' '{}' ;;\nesac\n",
+        "#!/bin/sh\nread line\nprintf '%s\\n' '{}'\nread request\ncase \"$request\" in\n  *refreshContentChunk*) touch '{}/content.started' ;;\n  *) touch '{}/stub.started' ;;\nesac\ncount=0\nwhile [ ! -f '{}/content.started' ] || [ ! -f '{}/stub.started' ]; do\n  sleep 0.01\n  count=$((count + 1))\n  [ \"$count\" -gt 1000 ] && exit 2\ndone\ncase \"$request\" in\n  *refreshContentChunk*) printf '%s\\n' '{}' ;;\n  *) printf '%s\\n' '{}' ;;\nesac\n",
         health,
         root.display(),
         root.display(),

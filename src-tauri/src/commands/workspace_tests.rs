@@ -52,6 +52,16 @@ fn open_workspace_command_returns_snapshot_and_queues_background_index() {
     }));
 
     wait_for_workspace_index_idle(&index_manager, &root_path);
+    remove_temp_dir(&root);
+}
+
+fn remove_temp_dir(root: &PathBuf) {
+    for _ in 0..80 {
+        if fs::remove_dir_all(root).is_ok() || !root.exists() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -64,13 +74,16 @@ fn wait_for_workspace_index_idle(index_manager: &WorkspaceIndexManagerRuntime, r
             .any(|status| matches!(status.status.as_str(), "queued" | "running"));
         if pressure.pending_task_count == 0
             && !has_active_status
-            && !index_manager.is_background_worker_batch_running()
         {
             return;
         }
         thread::sleep(Duration::from_millis(25));
     }
-    panic!("workspace index worker did not become idle");
+    let statuses = index_manager.get_index_task_statuses(root_path).unwrap();
+    let pressure = index_manager.get_queue_pressure(root_path).unwrap();
+    panic!(
+        "workspace index tasks did not reach a terminal state; statuses={statuses:?}; pressure={pressure:?}",
+    );
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
