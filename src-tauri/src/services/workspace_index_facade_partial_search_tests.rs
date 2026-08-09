@@ -6,7 +6,9 @@ use rusqlite::Connection;
 use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
-use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
+use crate::services::workspace_discovery_service::{
+    WorkspaceDiscoveredFile, WorkspaceDiscoveryCursor,
+};
 use crate::services::workspace_discovery_store_service::{
     replace_discovered_file_chunk, update_discovery_state, WorkspaceDiscoveryState,
 };
@@ -58,6 +60,64 @@ fn partial_text_search_uses_stable_discovery_fallback_after_an_index_miss() {
         [WorkspaceIndexFacadeItem::TextSearch(result)]
             if result.matches.len() == 1
                 && result.matches[0].summary.contains("DeferredHybridTarget")
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn partial_discovery_searches_files_not_yet_published_to_the_file_index() {
+    let root = create_empty_workspace("facade-text-search-partial-discovery");
+    let source_dir = create_workspace_source_dir(&root);
+    let published = source_dir.join("Published.ets");
+    let deferred = source_dir.join("Deferred.ets");
+    fs::write(&published, "const published = true;\n").unwrap();
+    fs::write(&deferred, "const discoveryDeferredTarget = true;\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    replace_discovered_file_chunk(
+        &root_path,
+        1,
+        &[WorkspaceDiscoveredFile {
+            path: published.to_string_lossy().to_string(),
+            size_bytes: fs::metadata(&published).unwrap().len(),
+            modified_ms: None,
+        }],
+    )
+    .unwrap();
+    update_discovery_state(&WorkspaceDiscoveryState {
+        root_path: root_path.clone(),
+        generation: 1,
+        status: "partial".to_string(),
+        discovered_count: 1,
+        excluded_count: 0,
+        cursor: Some(WorkspaceDiscoveryCursor {
+            pending_directories: vec![source_dir.to_string_lossy().to_string()],
+        }),
+        error: None,
+    })
+    .unwrap();
+
+    let envelope = query_facade_text_search(
+        &WorkspaceIndexRuntime::default(),
+        WorkspaceTextSearchRequest {
+            root_path: root_path.clone(),
+            query: "discoverydeferredtarget".to_string(),
+            generation: None,
+            cursor: None,
+            options: WorkspaceTextSearchOptions {
+                case_sensitive: false,
+                whole_word: false,
+            },
+            limit: 8,
+            context_lines: 0,
+        },
+    )
+    .unwrap();
+
+    assert!(matches!(
+        envelope.items.as_slice(),
+        [WorkspaceIndexFacadeItem::TextSearch(result)]
+            if result.matches.len() == 1
+                && result.matches[0].summary.contains("discoveryDeferredTarget")
     ));
     fs::remove_dir_all(root).unwrap();
 }

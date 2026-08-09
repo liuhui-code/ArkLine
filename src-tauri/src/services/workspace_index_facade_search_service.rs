@@ -26,7 +26,7 @@ use crate::services::workspace_parallel_text_search_service::search_workspace_fi
 use crate::services::workspace_search_ranking_service::{
     sort_search_everywhere_candidates_with_context, WorkspaceSearchRankingContext,
 };
-use text_search_path_cache::cached_ready_discovered_paths;
+use text_search_path_cache::cached_searchable_workspace_paths;
 
 const FILESYSTEM_TEXT_SEARCH_FILE_LIMIT: usize = 200_000;
 
@@ -344,13 +344,10 @@ fn filesystem_search_paths(
     index_runtime: &WorkspaceIndexRuntime,
     root_path: &str,
 ) -> Result<std::sync::Arc<Vec<String>>, String> {
-    if let Some(paths) =
-        cached_ready_discovered_paths(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT)?
-    {
-        return Ok(paths);
-    }
-    index_runtime.inspect_index_state(root_path, |state| {
-        std::sync::Arc::new(state.file_paths.clone())
+    cached_searchable_workspace_paths(root_path, FILESYSTEM_TEXT_SEARCH_FILE_LIMIT).or_else(|_| {
+        index_runtime.inspect_index_state(root_path, |state| {
+            std::sync::Arc::new(state.file_paths.clone())
+        })
     })
 }
 

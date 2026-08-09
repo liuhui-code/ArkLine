@@ -1,16 +1,21 @@
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
+use crate::services::workspace_discovery_service::discover_workspace_chunk;
 use crate::services::workspace_discovery_store_service::{
     load_ready_discovery_generation, load_ready_searchable_discovered_files,
 };
 use crate::services::workspace_file_fingerprint_service::workspace_file_policy_revision;
 
 const CACHED_WORKSPACE_LIMIT: usize = 8;
+const TRANSIENT_SNAPSHOT_TTL: Duration = Duration::from_secs(2);
 
 struct CachedSearchPaths {
     revision: String,
     paths: Arc<Vec<String>>,
+    expires_at: Option<Instant>,
 }
 
 #[derive(Default)]
@@ -32,8 +37,39 @@ pub(crate) fn cached_ready_discovered_paths(
     }
     let paths = load_ready_searchable_discovered_files(root_path, limit)?;
     let paths = Arc::new(paths);
-    store_paths(key, revision, Arc::clone(&paths));
+    store_paths(key, revision, Arc::clone(&paths), None);
     Ok(Some(paths))
+}
+
+pub(crate) fn cached_searchable_workspace_paths(
+    root_path: &str,
+    limit: usize,
+) -> Result<Arc<Vec<String>>, String> {
+    if let Some(paths) = cached_ready_discovered_paths(root_path, limit)? {
+        return Ok(paths);
+    }
+
+    let key = normalize_path(root_path);
+    let revision = format!("transient:{}", workspace_file_policy_revision(root_path));
+    if let Some(paths) = cached_paths(&key, &revision) {
+        return Ok(paths);
+    }
+
+    // Discovery publishes incrementally. A search must not turn the unpublished
+    // tail into a false "No matches" result while that publication is in flight.
+    let paths = discover_workspace_chunk(Path::new(root_path), None, limit)?
+        .files
+        .into_iter()
+        .map(|file| file.path)
+        .collect::<Vec<_>>();
+    let paths = Arc::new(paths);
+    store_paths(
+        key,
+        revision,
+        Arc::clone(&paths),
+        Some(Instant::now() + TRANSIENT_SNAPSHOT_TTL),
+    );
+    Ok(paths)
 }
 
 fn cached_paths(key: &str, revision: &str) -> Option<Arc<Vec<String>>> {
@@ -41,12 +77,22 @@ fn cached_paths(key: &str, revision: &str) -> Option<Arc<Vec<String>>> {
         cache
             .entries
             .get(key)
-            .filter(|entry| entry.revision == revision)
+            .filter(|entry| {
+                entry.revision == revision
+                    && entry
+                        .expires_at
+                        .is_none_or(|expires_at| expires_at > Instant::now())
+            })
             .map(|entry| Arc::clone(&entry.paths))
     })
 }
 
-fn store_paths(key: String, revision: String, paths: Arc<Vec<String>>) {
+fn store_paths(
+    key: String,
+    revision: String,
+    paths: Arc<Vec<String>>,
+    expires_at: Option<Instant>,
+) {
     let Ok(mut cache) = search_path_cache().lock() else {
         return;
     };
@@ -55,9 +101,14 @@ fn store_paths(key: String, revision: String, paths: Arc<Vec<String>>) {
             cache.entries.remove(&expired);
         }
     }
-    cache
-        .entries
-        .insert(key, CachedSearchPaths { revision, paths });
+    cache.entries.insert(
+        key,
+        CachedSearchPaths {
+            revision,
+            paths,
+            expires_at,
+        },
+    );
 }
 
 fn search_path_cache() -> &'static Mutex<SearchPathCache> {
