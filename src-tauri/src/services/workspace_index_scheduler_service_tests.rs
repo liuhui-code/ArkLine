@@ -299,6 +299,42 @@ fn bounded_batches_run_full_refresh_without_background_tail() {
 }
 
 #[test]
+fn bounded_batches_recheck_the_queue_after_each_background_unit() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    scheduler.schedule(changed_paths_task(
+        "/workspace",
+        WorkspaceIndexTaskPriority::Background,
+        "full-refresh-deep:first",
+    ));
+    scheduler.schedule(changed_paths_task(
+        "/workspace",
+        WorkspaceIndexTaskPriority::Background,
+        "full-refresh-deep:second",
+    ));
+
+    let first = scheduler.drain_ready_batch(8);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].reason, "full-refresh-deep:first");
+
+    scheduler.schedule(WorkspaceIndexTask {
+        root_path: "/workspace".to_string(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::ForegroundNavigation,
+        changed_paths: vec!["Entry.ets".to_string()],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 0,
+        reason: "foreground-navigation".to_string(),
+    });
+    let next = scheduler.drain_ready_batch(8);
+    assert_eq!(next.len(), 1);
+    assert_eq!(
+        next[0].priority,
+        WorkspaceIndexTaskPriority::ForegroundNavigation
+    );
+}
+
+#[test]
 fn drains_only_pending_tasks_owned_by_the_rebuilt_workspace() {
     let mut scheduler = WorkspaceIndexScheduler::default();
     scheduler.schedule(changed_task("/workspace", &["A.ets"]));

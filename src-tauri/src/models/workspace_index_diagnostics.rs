@@ -40,6 +40,12 @@ pub struct WorkspaceIndexQueuePressure {
     pub root_path: String,
     pub pending_task_count: usize,
     pub workspace_pending_task_count: usize,
+    #[serde(default)]
+    pub foreground_pending_task_count: usize,
+    #[serde(default)]
+    pub background_pending_task_count: usize,
+    #[serde(default)]
+    pub background_slice_path_budget: usize,
     pub highest_priority: Option<String>,
     pub highest_priority_task_kind: Option<String>,
 }
@@ -146,6 +152,14 @@ pub struct WorkspaceIndexDiagnostics {
     pub discovered_file_count: i64,
     pub discovery_excluded_count: i64,
     pub discovery_has_more: bool,
+    #[serde(default)]
+    pub deep_refresh_active_generation: Option<u64>,
+    #[serde(default)]
+    pub deep_refresh_active_file_count: usize,
+    #[serde(default)]
+    pub deep_refresh_terminal_catalog_count: usize,
+    #[serde(default)]
+    pub deep_refresh_checkpoint_count: usize,
     pub db_size_bytes: u64,
     #[serde(default)]
     pub wal_size_bytes: u64,

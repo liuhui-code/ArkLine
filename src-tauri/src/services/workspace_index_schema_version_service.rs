@@ -16,6 +16,7 @@ const SCHEMA_DOMAINS: &[(&str, i64)] = &[
     ("task_journal", 1),
     ("event", 1),
     ("resume", 1),
+    ("deep_refresh", 1),
     ("discovery", 1),
     ("semantic_layer", 1),
 ];

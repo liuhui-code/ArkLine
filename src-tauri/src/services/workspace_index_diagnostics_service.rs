@@ -13,6 +13,7 @@ use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, require_existing_workspace_index_reader,
     workspace_index_store_path, WorkspaceIndexReader,
 };
+use crate::services::workspace_index_deep_refresh_catalog_service::load_deep_refresh_catalog_lifecycle;
 use crate::services::workspace_index_event_service::load_recent_index_events;
 use crate::services::workspace_index_event_sink_service::flush_index_events;
 use crate::services::workspace_index_freshness_service::load_index_freshness_layers;
@@ -52,6 +53,7 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
     let store_generation = workspace_index_store_generation(&cache_path);
     let shared_sdk = load_shared_sdk_store_stats(root_path)?;
     let file_policies = load_file_policy_counts(&connection, &root_key)?;
+    let deep_refresh = load_deep_refresh_catalog_lifecycle(root_path)?;
 
     let recent_events = load_recent_index_events(root_path, 20)?;
     let timeline = timeline_from_events(&recent_events);
@@ -105,6 +107,10 @@ pub fn inspect_workspace_index(root_path: &str) -> Result<WorkspaceIndexDiagnost
         discovered_file_count: discovery.discovered_count,
         discovery_excluded_count: discovery.excluded_count,
         discovery_has_more: discovery.has_more,
+        deep_refresh_active_generation: deep_refresh.active_generation,
+        deep_refresh_active_file_count: deep_refresh.active_file_count,
+        deep_refresh_terminal_catalog_count: deep_refresh.terminal_catalog_count,
+        deep_refresh_checkpoint_count: deep_refresh.checkpoint_count,
         db_size_bytes: db_size_bytes(&cache_path)?,
         wal_size_bytes: store_stats.wal_size_bytes,
         freelist_bytes: store_stats.freelist_bytes(),
@@ -419,6 +425,10 @@ fn empty_queue_pressure(root_key: &str) -> WorkspaceIndexQueuePressure {
         root_path: root_key.to_string(),
         pending_task_count: 0,
         workspace_pending_task_count: 0,
+        foreground_pending_task_count: 0,
+        background_pending_task_count: 0,
+        background_slice_path_budget:
+            crate::services::workspace_index_adaptive_chunk_service::initial_refresh_limits(false).0,
         highest_priority: None,
         highest_priority_task_kind: None,
     }

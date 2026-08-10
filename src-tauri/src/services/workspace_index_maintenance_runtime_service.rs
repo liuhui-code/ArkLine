@@ -14,6 +14,7 @@ use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, quiesce_workspace_index_store_for_compaction,
     workspace_index_store_path, workspace_index_writer_metrics,
 };
+use crate::services::workspace_index_deep_refresh_maintenance_service::prune_expired_deep_refresh_catalogs;
 use crate::services::workspace_index_maintenance_publication_service::{
     WorkspaceIndexMaintenanceOperation, WorkspaceIndexOptimizeMode,
 };
@@ -232,6 +233,12 @@ impl WorkspaceIndexMaintenanceRuntime {
                     self.record_applied(root_path, plan, writer_samples, now_ms, checkpointed)?;
                     if !checkpointed {
                         return Ok(false);
+                    }
+                    if plan.optimize != WorkspaceIndexOptimizeMode::Skip && should_yield() {
+                        return Ok(false);
+                    }
+                    if plan.optimize != WorkspaceIndexOptimizeMode::Skip {
+                        prune_expired_deep_refresh_catalogs(root_path, now_ms)?;
                     }
                 }
                 None => return Ok(false),

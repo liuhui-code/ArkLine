@@ -13,7 +13,6 @@ use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime
 use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSearchCancellationRuntime;
 
 const STREAM_QUERY_DEADLINE_MS: u64 = 30_000;
-const MAX_STREAM_BATCHES: usize = 8;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -164,15 +163,6 @@ where
             };
             return finish(&mut emit, generation, sequence, status, None);
         };
-        if sequence >= MAX_STREAM_BATCHES {
-            return finish(
-                &mut emit,
-                generation,
-                sequence,
-                WorkspaceTextSearchStreamStatus::Partial,
-                None,
-            );
-        }
         if request.cursor.as_ref() == Some(&next_cursor) {
             return finish(
                 &mut emit,
@@ -296,9 +286,81 @@ mod tests {
     }
 
     #[test]
-    fn stream_stops_at_the_bounded_batch_limit_with_a_partial_terminal_state() {
+    fn stream_continues_after_an_empty_partial_probe_with_a_filesystem_cursor() {
+        let mut requested_cursors = Vec::new();
+        let mut events = Vec::new();
+        drive_text_search_stream(
+            request(),
+            |request| {
+                requested_cursors.push(request.cursor.clone());
+                let mut result = page(request.cursor.is_none());
+                if request.cursor.is_some() {
+                    result.matches.push(match_result());
+                }
+                Ok(result)
+            },
+            |event| {
+                events.push(event);
+                Ok(())
+            },
+            || None,
+        )
+        .unwrap();
+
+        assert_eq!(requested_cursors.len(), 2);
+        assert!(matches!(
+            events.get(1),
+            Some(WorkspaceTextSearchStreamEvent::Batch { result, .. }) if result.matches.is_empty()
+        ));
+        assert!(matches!(
+            events.get(2),
+            Some(WorkspaceTextSearchStreamEvent::Batch { result, .. }) if result.matches.len() == 1
+        ));
+    }
+
+    #[test]
+    fn stream_continues_past_eight_resumable_pages() {
         let mut page_count = 0;
         let mut events = Vec::new();
+        drive_text_search_stream(
+            request(),
+            |_| {
+                page_count += 1;
+                let mut result = page(false);
+                if page_count < 10 {
+                    result.partial = true;
+                    result.next_cursor = Some(WorkspaceTextSearchCursor {
+                        path_index: page_count,
+                        line_index: 0,
+                        source: Some("filesystem".to_string()),
+                    });
+                }
+                Ok(result)
+            },
+            |event| {
+                events.push(event);
+                Ok(())
+            },
+            || None,
+        )
+        .unwrap();
+
+        assert_eq!(page_count, 10);
+        assert!(matches!(
+            events.last(),
+            Some(WorkspaceTextSearchStreamEvent::Finished {
+                status: WorkspaceTextSearchStreamStatus::Complete,
+                sequence: 10,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn stream_stops_when_its_deadline_is_observed_between_pages() {
+        let mut page_count = 0;
+        let mut events = Vec::new();
+        let mut stop_checks = 0;
         drive_text_search_stream(
             request(),
             |request| {
@@ -318,16 +380,19 @@ mod tests {
                 events.push(event);
                 Ok(())
             },
-            || None,
+            || {
+                stop_checks += 1;
+                (stop_checks > 3).then_some(WorkspaceTextSearchStreamStatus::Deadline)
+            },
         )
         .unwrap();
 
-        assert_eq!(page_count, 8);
+        assert_eq!(page_count, 2);
         assert!(matches!(
             events.last(),
             Some(WorkspaceTextSearchStreamEvent::Finished {
-                status: WorkspaceTextSearchStreamStatus::Partial,
-                sequence: 8,
+                status: WorkspaceTextSearchStreamStatus::Deadline,
+                sequence: 2,
                 ..
             })
         ));
@@ -380,6 +445,22 @@ mod tests {
                 line_index: 0,
                 source: Some("filesystem".to_string()),
             }),
+        }
+    }
+
+    fn match_result() -> crate::models::workspace::WorkspaceTextSearchMatch {
+        crate::models::workspace::WorkspaceTextSearchMatch {
+            path: "/workspace/Entry.ets".to_string(),
+            relative_path: "Entry.ets".to_string(),
+            file_name: "Entry.ets".to_string(),
+            line: 1,
+            column: 1,
+            summary: "target".to_string(),
+            preview: "target".to_string(),
+            preview_start: 0,
+            preview_end: 6,
+            context_before: Vec::new(),
+            context_after: Vec::new(),
         }
     }
 }

@@ -1,3 +1,4 @@
+use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEEP_REFRESH_MESSAGE;
 use crate::services::workspace_index_chunk_service::plan_refresh_continuation;
 use crate::services::workspace_index_continuation_task_service::{
     next_refresh_continuation_task, schedule_refresh_continuations,
@@ -162,4 +163,35 @@ fn schedules_deep_refresh_after_foreground_file_layer() {
     assert_eq!(tasks[0].priority, WorkspaceIndexTaskPriority::Background);
     assert_eq!(tasks[0].reason, "full-refresh-deep:foreground-navigation");
     assert_eq!(tasks[0].changed_paths, vec!["A.ets"]);
+}
+
+#[test]
+fn schedules_catalog_deep_refresh_without_readding_path_arrays() {
+    let result = WorkspaceIndexTaskResult {
+        root_path: "/workspace".to_string(),
+        kind: "changed-paths".to_string(),
+        status: "partial".to_string(),
+        reason: "full-refresh-deep:refresh-workspace".to_string(),
+        generation: 9,
+        started_at: Some(100),
+        finished_at: Some(200),
+        message: Some(CATALOG_DEEP_REFRESH_MESSAGE.to_string()),
+        error: None,
+        refresh_result: None,
+        refresh_continuation: None,
+        sdk_path: None,
+        sdk_version: None,
+        sdk_remaining_files: Vec::new(),
+        sdk_symbol_count: None,
+        progress_current: 1,
+        progress_total: 1,
+    };
+    let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
+
+    schedule_refresh_continuations(&scheduler, &[result]).unwrap();
+    let tasks = scheduler.lock().unwrap().pending_tasks();
+
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].reason, "full-refresh-deep:refresh-workspace");
+    assert!(tasks[0].changed_paths.is_empty());
 }

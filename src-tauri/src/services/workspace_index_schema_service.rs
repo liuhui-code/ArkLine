@@ -8,8 +8,10 @@ use crate::services::workspace_discovery_schema_service::create_discovery_tables
 use crate::services::workspace_file_identity_service::create_workspace_file_identity_table;
 use crate::services::workspace_file_index_policy_service::ensure_workspace_file_index_policy_columns;
 use crate::services::workspace_index_connection_service::with_workspace_index_writer;
+use crate::services::workspace_index_deep_refresh_catalog_schema_service::create_deep_refresh_catalog_tables;
 use crate::services::workspace_index_event_service::create_index_event_tables;
 use crate::services::workspace_index_layer_generation_service::create_layer_generation_table;
+use crate::services::workspace_index_resume_schema_service::create_resume_tables;
 #[rustfmt::skip] #[allow(unused_imports)] pub use crate::services::workspace_index_schema_version_service::load_workspace_index_schema_versions;
 #[rustfmt::skip] use crate::services::workspace_index_schema_version_service::{create_workspace_index_schema_version_table, record_workspace_index_schema_versions};
 use crate::services::workspace_reference_index_service::create_reference_index_tables;
@@ -44,6 +46,7 @@ pub fn ensure_workspace_index_schema(connection: &Connection) -> Result<(), Stri
     create_task_journal_tables(connection)?;
     create_index_event_tables(connection)?;
     create_resume_tables(connection)?;
+    create_deep_refresh_catalog_tables(connection)?;
     create_discovery_tables(connection)?;
     create_dependency_graph_tables(connection)?;
     create_symbol_resolution_tables(connection)?;
@@ -465,33 +468,6 @@ fn create_task_journal_tables(connection: &Connection) -> Result<(), String> {
         .execute(
             "create index if not exists workspace_index_task_journal_recent
              on workspace_index_task_journal(root_path, generation)",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn create_resume_tables(connection: &Connection) -> Result<(), String> {
-    connection
-        .execute(
-            "create table if not exists workspace_index_resume_tasks (
-                root_path text not null,
-                task_key text not null,
-                kind text not null,
-                priority integer not null,
-                reason text not null,
-                generation integer not null,
-                changed_paths_json text not null,
-                updated_at integer not null,
-                primary key (root_path, task_key)
-            )",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute(
-            "create index if not exists workspace_index_resume_tasks_lookup
-             on workspace_index_resume_tasks(root_path, priority, generation)",
             [],
         )
         .map_err(|error| error.to_string())?;

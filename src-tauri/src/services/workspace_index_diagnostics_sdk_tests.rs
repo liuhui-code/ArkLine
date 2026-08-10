@@ -43,6 +43,9 @@ fn reports_queued_diagnostics_when_workspace_work_is_pending() {
         root_path: root_path.clone(),
         pending_task_count: 1,
         workspace_pending_task_count: 1,
+        foreground_pending_task_count: 0,
+        background_pending_task_count: 1,
+        background_slice_path_budget: 64,
         highest_priority: Some("full-refresh".to_string()),
         highest_priority_task_kind: Some("refresh-workspace".to_string()),
     };
@@ -73,6 +76,9 @@ fn reports_queued_diagnostics_when_sdk_index_work_is_pending() {
         root_path: root_path.clone(),
         pending_task_count: 1,
         workspace_pending_task_count: 1,
+        foreground_pending_task_count: 0,
+        background_pending_task_count: 0,
+        background_slice_path_budget: 64,
         highest_priority: Some("sdk-indexing".to_string()),
         highest_priority_task_kind: Some("sdk".to_string()),
     };

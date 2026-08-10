@@ -8,6 +8,7 @@ use crate::services::workspace_discovery_task_service::{
     is_workspace_discovery_task_reason, workspace_discovery_task_cursor,
 };
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
+use crate::services::workspace_index_catalog_refresh_worker_service::refresh_catalog_deep_layer_chunk;
 use crate::services::workspace_index_changed_path_worker_service::{
     changed_paths_for_task, refresh_changed_path_chunks, refresh_graph_config_change,
     refresh_user_visible_file_layer,
@@ -241,6 +242,16 @@ fn run_index_task_inner<G: Fn() -> bool + Sync>(
             if is_full_refresh_continuation(task) {
                 if token.is_cancelled() {
                     return Ok(Some(superseded_task_result_from_task(task)));
+                }
+                if continuation_phase(&task.reason) == WorkspaceIndexContinuationPhase::DeepLayer {
+                    return refresh_catalog_deep_layer_chunk(
+                        index_runtime,
+                        indexer,
+                        task,
+                        token,
+                        started_at,
+                        is_ui_latency_sensitive,
+                    );
                 }
                 let Some(result) = refresh_full_refresh_continuation_chunk(
                     index_runtime,

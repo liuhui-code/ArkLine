@@ -1,3 +1,4 @@
+use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEEP_REFRESH_MESSAGE;
 use crate::services::workspace_index_chunk_service::WorkspaceIndexRefreshContinuation;
 use crate::services::workspace_index_resume_service::save_resume_task;
 use crate::services::workspace_index_scheduler_service::{
@@ -114,12 +115,34 @@ pub fn schedule_refresh_continuations(
             root_paths.push(task.root_path.clone());
             superseded_tasks.extend(schedule_and_save(&mut scheduler, task)?);
         }
+        if let Some(task) = next_catalog_deep_refresh_task(result) {
+            root_paths.push(task.root_path.clone());
+            superseded_tasks.extend(schedule_and_save(&mut scheduler, task)?);
+        }
     }
     root_paths.sort();
     root_paths.dedup();
     Ok(WorkspaceIndexContinuationScheduleSummary {
         root_paths,
         superseded_tasks,
+    })
+}
+
+fn next_catalog_deep_refresh_task(result: &WorkspaceIndexTaskResult) -> Option<WorkspaceIndexTask> {
+    (result.kind == "changed-paths"
+        && result.status == "partial"
+        && result.error.is_none()
+        && result.reason.starts_with(DEEP_LAYER_FULL_REFRESH_PREFIX)
+        && result.message.as_deref() == Some(CATALOG_DEEP_REFRESH_MESSAGE))
+    .then(|| WorkspaceIndexTask {
+        root_path: result.root_path.clone(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::Background,
+        changed_paths: Vec::new(),
+        sdk_path: None,
+        sdk_version: None,
+        generation: 0,
+        reason: result.reason.clone(),
     })
 }
 

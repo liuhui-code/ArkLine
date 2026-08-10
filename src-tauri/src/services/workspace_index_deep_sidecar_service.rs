@@ -13,6 +13,7 @@ use crate::services::workspace_file_fingerprint_service::{
 };
 use crate::services::workspace_index_adaptive_chunk_service::AdaptiveRefreshBudget;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
+use crate::services::workspace_index_deep_refresh_cursor_service::WorkspaceIndexDeepRefreshPhase;
 use crate::services::workspace_index_layer_generation_service::{
     latest_layer_generation, CONTENT_LAYER, STUB_LAYER,
 };
@@ -125,6 +126,104 @@ pub(crate) fn update_background_deep_layer<G: Fn() -> bool + Sync>(
     }
     publish_deep_fingerprints(task, changed_paths, removed_paths, catalog_generation)?;
     Ok(WorkspaceDeepLayerUpdate::Applied(state))
+}
+
+pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
+    index_runtime: &WorkspaceIndexRuntime,
+    indexer: Option<&IndexerHostRuntime>,
+    task: &WorkspaceIndexTask,
+    token: &WorkspaceIndexCancellationToken,
+    phase: WorkspaceIndexDeepRefreshPhase,
+    changed_paths: &[String],
+    ui_latency_sensitive_at_start: bool,
+    is_ui_latency_sensitive: &G,
+) -> Result<WorkspaceDeepLayerUpdate, String> {
+    if token.is_cancelled() {
+        return Ok(WorkspaceDeepLayerUpdate::Cancelled);
+    }
+    let state = index_runtime.get_index_state(&task.root_path)?;
+    let catalog_generation = state.indexed_at.unwrap_or_default() as u64;
+    let indexed_generation = latest_layer_generation(
+        &task.root_path,
+        match phase {
+            WorkspaceIndexDeepRefreshPhase::Content => CONTENT_LAYER,
+            WorkspaceIndexDeepRefreshPhase::Stub => STUB_LAYER,
+        },
+    )?
+    .unwrap_or_default()
+    .max(catalog_generation);
+    let sidecar_ready = workspace_file_catalog_contains_paths(&task.root_path, changed_paths)?;
+    let outcome = if sidecar_ready && sidecar_priority(task.priority) {
+        match phase {
+            WorkspaceIndexDeepRefreshPhase::Content => refresh_content_chunks(
+                indexer,
+                task,
+                token,
+                indexed_generation,
+                changed_paths,
+                &[],
+                ui_latency_sensitive_at_start,
+                is_ui_latency_sensitive,
+            ),
+            WorkspaceIndexDeepRefreshPhase::Stub => refresh_stub_chunks(
+                indexer,
+                task,
+                token,
+                indexed_generation,
+                changed_paths,
+                &[],
+                ui_latency_sensitive_at_start,
+                is_ui_latency_sensitive,
+            ),
+        }
+    } else {
+        LayerChunkOutcome::Unavailable
+    };
+    match outcome {
+        LayerChunkOutcome::Cancelled => Ok(WorkspaceDeepLayerUpdate::Cancelled),
+        LayerChunkOutcome::Deferred => Ok(WorkspaceDeepLayerUpdate::Deferred(state)),
+        LayerChunkOutcome::Applied => {
+            if phase == WorkspaceIndexDeepRefreshPhase::Stub {
+                publish_deep_fingerprints(task, changed_paths, &[], catalog_generation)?;
+            }
+            Ok(WorkspaceDeepLayerUpdate::Applied(state))
+        }
+        LayerChunkOutcome::Unavailable
+            if indexer.is_some_and(IndexerHostRuntime::requires_process_isolation) =>
+        {
+            let mut state = state;
+            state.status = WorkspaceIndexStatus::Partial;
+            state.partial_reason = Some(
+                indexer
+                    .expect("checked indexer runtime")
+                    .degraded_message("catalog deep refresh"),
+            );
+            Ok(WorkspaceDeepLayerUpdate::Deferred(state))
+        }
+        LayerChunkOutcome::Unavailable => {
+            match phase {
+                WorkspaceIndexDeepRefreshPhase::Content => update_workspace_content_at_generation(
+                    &task.root_path,
+                    changed_paths,
+                    &[],
+                    indexed_generation,
+                )?,
+                WorkspaceIndexDeepRefreshPhase::Stub => {
+                    let mut stub_state = state.clone();
+                    stub_state.indexed_at = Some(indexed_generation as u128);
+                    persist_incremental_deep_index_state_with_priority(
+                        &task.root_path,
+                        &stub_state,
+                        changed_paths,
+                        &[],
+                        task.priority,
+                    )?;
+                    publish_deep_fingerprints(task, changed_paths, &[], catalog_generation)?;
+                }
+            }
+            Ok(WorkspaceDeepLayerUpdate::Applied(state))
+        }
+    }
 }
 
 fn publish_deep_fingerprints(

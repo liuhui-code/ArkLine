@@ -50,6 +50,9 @@ fn queue_pressure_projects_global_and_workspace_pending_tasks() {
     assert_eq!(pressure.root_path, root_path);
     assert_eq!(pressure.pending_task_count, 3);
     assert_eq!(pressure.workspace_pending_task_count, 2);
+    assert_eq!(pressure.foreground_pending_task_count, 0);
+    assert_eq!(pressure.background_pending_task_count, 0);
+    assert_eq!(pressure.background_slice_path_budget, 16);
     assert_eq!(pressure.highest_priority.as_deref(), Some("visibleFiles"));
     assert_eq!(
         pressure.highest_priority_task_kind.as_deref(),
@@ -64,6 +67,8 @@ fn queue_pressure_reports_empty_queue_without_priority_labels() {
     assert_eq!(pressure.root_path, "/workspace/empty");
     assert_eq!(pressure.pending_task_count, 0);
     assert_eq!(pressure.workspace_pending_task_count, 0);
+    assert_eq!(pressure.foreground_pending_task_count, 0);
+    assert_eq!(pressure.background_pending_task_count, 0);
     assert!(pressure.highest_priority.is_none());
     assert!(pressure.highest_priority_task_kind.is_none());
 }

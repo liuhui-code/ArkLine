@@ -3,6 +3,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::services::workspace_index_deep_refresh_catalog_service::{
+    create_deep_refresh_catalog, supersede_deep_refresh_catalog,
+};
+use crate::services::workspace_index_deep_refresh_cursor_service::{
+    save_deep_refresh_cursor, WorkspaceIndexDeepRefreshCursor, WorkspaceIndexDeepRefreshPhase,
+};
 use crate::services::workspace_index_resume_service::{
     clear_completed_resume_tasks, clear_resume_tasks_for_root, load_resume_tasks, save_resume_task,
     schedule_interrupted_resume_tasks,
@@ -146,6 +152,18 @@ fn requeues_persisted_continuation_after_interrupted_result_once() {
     let root_path = root.to_string_lossy().to_string();
     let reason = "full-refresh-deep:refresh-workspace";
     let task = continuation_task_with_reason(&root_path, &["A.ets"], 7, reason);
+    create_deep_refresh_catalog(&root_path, 7, &task.changed_paths).unwrap();
+    save_deep_refresh_cursor(
+        &root_path,
+        &WorkspaceIndexDeepRefreshCursor {
+            task_key: reason.to_string(),
+            catalog_generation: 7,
+            phase: WorkspaceIndexDeepRefreshPhase::Content,
+            last_file_id: 0,
+            batch_last_file_id: None,
+        },
+    )
+    .unwrap();
     save_resume_task(&root_path, &task).unwrap();
     let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
     let result = superseded_task_result_from_task(&task);
@@ -162,5 +180,31 @@ fn requeues_persisted_continuation_after_interrupted_result_once() {
     assert_eq!(pending[0].reason, reason);
     assert_eq!(pending[0].changed_paths, vec!["A.ets"]);
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn does_not_restore_deep_resume_task_for_superseded_catalog() {
+    let root = unique_temp_dir("workspace-index-resume-superseded-catalog");
+    fs::create_dir_all(&root).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let reason = "full-refresh-deep:refresh-workspace";
+    let task = continuation_task_with_reason(&root_path, &[], 7, reason);
+    create_deep_refresh_catalog(&root_path, 7, &["A.ets".to_string()]).unwrap();
+    save_deep_refresh_cursor(
+        &root_path,
+        &WorkspaceIndexDeepRefreshCursor {
+            task_key: reason.to_string(),
+            catalog_generation: 7,
+            phase: WorkspaceIndexDeepRefreshPhase::Content,
+            last_file_id: 0,
+            batch_last_file_id: None,
+        },
+    )
+    .unwrap();
+    supersede_deep_refresh_catalog(&root_path, 7).unwrap();
+    save_resume_task(&root_path, &task).unwrap();
+
+    assert!(load_resume_tasks(&root_path).unwrap().is_empty());
     fs::remove_dir_all(root).unwrap();
 }

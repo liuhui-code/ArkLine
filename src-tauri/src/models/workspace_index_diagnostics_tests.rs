@@ -42,6 +42,10 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
         discovered_file_count: 0,
         discovery_excluded_count: 0,
         discovery_has_more: false,
+        deep_refresh_active_generation: Some(7),
+        deep_refresh_active_file_count: 12,
+        deep_refresh_terminal_catalog_count: 3,
+        deep_refresh_checkpoint_count: 1,
         db_size_bytes: 0,
         wal_size_bytes: 0,
         freelist_bytes: 0,
@@ -67,6 +71,9 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
             root_path: "/workspace".to_string(),
             pending_task_count: 0,
             workspace_pending_task_count: 0,
+            foreground_pending_task_count: 0,
+            background_pending_task_count: 0,
+            background_slice_path_budget: 16,
             highest_priority: None,
             highest_priority_task_kind: None,
         },
@@ -118,6 +125,7 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
     assert!(json.contains("\"expectedVersion\""));
     assert!(json.contains("\"indexerHost\""));
     assert!(json.contains("\"completedDiscoveryChunks\""));
+    assert!(json.contains("\"deepRefreshActiveGeneration\""));
     assert!(json.contains("\"backoffRemainingMs\""));
     assert!(json.contains("\"writerMetrics\""));
     assert!(json.contains("\"sharedSdkArtifactCount\":2"));

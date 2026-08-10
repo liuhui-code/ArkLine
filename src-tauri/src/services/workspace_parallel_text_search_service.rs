@@ -77,7 +77,7 @@ where
     let cancellation_observed = AtomicBool::new(false);
     let cancellation_poll_count = AtomicUsize::new(0);
     let search_finished = AtomicBool::new(false);
-    let partial_observed = AtomicBool::new(false);
+    let probe_incomplete = AtomicBool::new(false);
     let searched_files = AtomicUsize::new(0);
     let prefilter_skipped_files = AtomicUsize::new(0);
     let mut first_request = request.clone();
@@ -110,7 +110,7 @@ where
             );
             searched_files.fetch_add(result.searched_files, Ordering::Relaxed);
             prefilter_skipped_files.fetch_add(result.prefilter_skipped_files, Ordering::Relaxed);
-            partial_observed.fetch_or(result.partial, Ordering::Relaxed);
+            probe_incomplete.fetch_or(result.partial, Ordering::Relaxed);
             if !result.matches.is_empty() {
                 if !search_finished.swap(true, Ordering::Relaxed) {
                     return Some(result);
@@ -124,7 +124,8 @@ where
         first,
         searched_files.load(Ordering::Relaxed),
         prefilter_skipped_files.load(Ordering::Relaxed),
-        cancellation_observed.load(Ordering::Relaxed) || partial_observed.load(Ordering::Relaxed),
+        cancellation_observed.load(Ordering::Relaxed),
+        probe_incomplete.load(Ordering::Relaxed),
     )
 }
 
@@ -134,6 +135,7 @@ fn merge_first_result(
     searched_files: usize,
     prefilter_skipped_files: usize,
     cancellation_observed: bool,
+    probe_incomplete: bool,
 ) -> WorkspaceTextSearchResult {
     if let Some(mut result) = first {
         result.partial = true;
@@ -149,7 +151,15 @@ fn merge_first_result(
     }
 
     let mut result = search_workspace_text_with_cancellation(request, &[], || false);
-    result.partial = cancellation_observed;
+    // Only an incomplete bounded probe needs a sequential continuation. A
+    // completed probe with no matches remains a definitive negative result.
+    result.partial = cancellation_observed || probe_incomplete;
+    result.next_cursor =
+        (!cancellation_observed && probe_incomplete).then_some(WorkspaceTextSearchCursor {
+            path_index: 0,
+            line_index: 0,
+            source: Some("filesystem".to_string()),
+        });
     result.searched_files = searched_files;
     result.prefilter_skipped_files = prefilter_skipped_files;
     result
@@ -205,7 +215,8 @@ fn centered_indices(start: usize, end: usize) -> impl Iterator<Item = usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::bounded_search_worker_count;
+    use super::{bounded_search_worker_count, merge_first_result};
+    use crate::models::workspace::{WorkspaceTextSearchOptions, WorkspaceTextSearchRequest};
 
     #[test]
     fn search_worker_policy_reserves_capacity_for_foreground_work() {
@@ -213,5 +224,44 @@ mod tests {
         assert_eq!(bounded_search_worker_count(2), 1);
         assert_eq!(bounded_search_worker_count(8), 4);
         assert_eq!(bounded_search_worker_count(64), 4);
+    }
+
+    #[test]
+    fn empty_parallel_probe_returns_a_filesystem_cursor_for_stream_continuation() {
+        let result = merge_first_result(&request(), None, 24, 18, false, true);
+
+        assert!(result.matches.is_empty());
+        assert!(result.partial);
+        assert_eq!(
+            result
+                .next_cursor
+                .as_ref()
+                .and_then(|cursor| cursor.source.as_deref()),
+            Some("filesystem")
+        );
+    }
+
+    #[test]
+    fn complete_parallel_probe_without_matches_does_not_restart_the_search() {
+        let result = merge_first_result(&request(), None, 24, 18, false, false);
+
+        assert!(result.matches.is_empty());
+        assert!(!result.partial);
+        assert!(result.next_cursor.is_none());
+    }
+
+    fn request() -> WorkspaceTextSearchRequest {
+        WorkspaceTextSearchRequest {
+            root_path: "C:\\workspace".to_string(),
+            query: "target".to_string(),
+            generation: Some(1),
+            cursor: None,
+            options: WorkspaceTextSearchOptions {
+                case_sensitive: false,
+                whole_word: false,
+            },
+            limit: 20,
+            context_lines: 0,
+        }
     }
 }

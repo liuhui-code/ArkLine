@@ -8,6 +8,8 @@ use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, with_workspace_index_transaction,
 };
 use crate::services::workspace_index_continuation_task_service::is_full_refresh_continuation_reason;
+use crate::services::workspace_index_deep_refresh_catalog_service::is_deep_refresh_catalog_active;
+use crate::services::workspace_index_deep_refresh_cursor_service::load_deep_refresh_cursor;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
@@ -91,8 +93,26 @@ pub fn load_resume_tasks(root_path: &str) -> Result<Vec<WorkspaceIndexTask>, Str
             })
         })
         .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
+    let tasks = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut recoverable = Vec::new();
+    for task in tasks {
+        if resume_task_has_active_catalog(&task)? {
+            recoverable.push(task);
+        }
+    }
+    Ok(recoverable)
+}
+
+fn resume_task_has_active_catalog(task: &WorkspaceIndexTask) -> Result<bool, String> {
+    if !task.reason.starts_with("full-refresh-deep:") {
+        return Ok(true);
+    }
+    let Some(cursor) = load_deep_refresh_cursor(&task.root_path, &task.reason)? else {
+        return Ok(false);
+    };
+    is_deep_refresh_catalog_active(&task.root_path, cursor.catalog_generation)
 }
 
 #[allow(dead_code)]

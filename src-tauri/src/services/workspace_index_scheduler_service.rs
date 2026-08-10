@@ -123,7 +123,7 @@ impl WorkspaceIndexScheduler {
         let limit = if max_tasks != usize::MAX
             && tasks
                 .first()
-                .map(|task| is_exclusive_batch_priority(task.priority))
+                .map(|task| is_single_unit_batch_priority(task.priority))
                 .unwrap_or(false)
         {
             1
@@ -171,6 +171,7 @@ fn is_empty_noop_changed_paths_task(task: &WorkspaceIndexTask) -> bool {
     task.kind == WorkspaceIndexTaskKind::ChangedPaths
         && task.changed_paths.is_empty()
         && !is_workspace_discovery_task_reason(&task.reason)
+        && !task.reason.starts_with("full-refresh-deep:")
 }
 
 fn changed_path_task_is_noop(existing: &WorkspaceIndexTask, task: &WorkspaceIndexTask) -> bool {
@@ -181,8 +182,9 @@ fn changed_path_task_is_noop(existing: &WorkspaceIndexTask, task: &WorkspaceInde
             .all(|path| existing.changed_paths.binary_search(path).is_ok())
 }
 
-fn is_exclusive_batch_priority(priority: WorkspaceIndexTaskPriority) -> bool {
+fn is_single_unit_batch_priority(priority: WorkspaceIndexTaskPriority) -> bool {
     priority == WorkspaceIndexTaskPriority::FullRefresh
+        || priority == WorkspaceIndexTaskPriority::Background
         || priority >= WorkspaceIndexTaskPriority::ForegroundCompletion
 }
 

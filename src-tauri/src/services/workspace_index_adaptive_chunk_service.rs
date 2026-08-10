@@ -38,16 +38,13 @@ impl AdaptiveRefreshBudget {
             1
         };
         let maximum_source_bytes = maximum_source_bytes.max(1);
-        let initial_source_bytes = if ui_latency_sensitive {
-            INTERACTIVE_INITIAL_SOURCE_BYTES
-        } else {
-            INITIAL_SOURCE_BYTES
-        };
+        let (initial_path_count, initial_source_bytes) =
+            initial_refresh_limits(ui_latency_sensitive);
         Self {
             minimum_path_count,
             maximum_path_count,
             maximum_source_bytes,
-            path_count: maximum_path_count.min(INITIAL_PATH_COUNT),
+            path_count: maximum_path_count.min(initial_path_count),
             source_bytes: maximum_source_bytes.min(initial_source_bytes),
             target_duration_us: if ui_latency_sensitive {
                 INTERACTIVE_PUBLICATION_TARGET_US
@@ -95,6 +92,17 @@ impl AdaptiveRefreshBudget {
             self.path_count = grow(self.path_count, self.maximum_path_count);
             self.source_bytes = grow(self.source_bytes, self.maximum_source_bytes);
         }
+    }
+}
+
+pub(crate) fn initial_refresh_limits(ui_latency_sensitive: bool) -> (usize, usize) {
+    if ui_latency_sensitive {
+        (
+            INTERACTIVE_MAXIMUM_PATH_COUNT,
+            INTERACTIVE_INITIAL_SOURCE_BYTES,
+        )
+    } else {
+        (INITIAL_PATH_COUNT, INITIAL_SOURCE_BYTES)
     }
 }
 

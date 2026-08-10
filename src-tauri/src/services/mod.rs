@@ -87,8 +87,7 @@ pub(crate) mod workspace_content_refresh_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_content_publication_profile_tests;
 pub(crate) mod workspace_content_stats_schema_service;
 pub(crate) mod workspace_definition_candidate_query_service;
-#[cfg(test)]
-mod workspace_definition_member_query_tests;
+#[cfg(test)] mod workspace_definition_member_query_tests;
 #[cfg(test)]
 mod workspace_definition_query_service_tests;
 pub mod workspace_definition_reference_service;
@@ -149,8 +148,8 @@ pub(crate) mod workspace_incremental_path_plan_service;
 mod workspace_incremental_path_plan_service_tests;
 pub(crate) mod workspace_index_adaptive_chunk_service;
 pub(crate) mod workspace_index_cache_path_service;
-#[cfg(test)]
-mod workspace_index_cache_path_service_tests;
+pub(crate) mod workspace_index_catalog_refresh_worker_service;
+#[cfg(test)] mod workspace_index_cache_path_service_tests;
 pub mod workspace_index_cancellation_service;
 #[cfg(test)]
 mod workspace_index_cancellation_service_tests;
@@ -171,6 +170,8 @@ pub mod workspace_index_continuation_task_service;
 mod workspace_index_continuation_task_service_tests;
 pub mod workspace_index_deep_layer_service;
 pub(crate) mod workspace_index_deep_sidecar_service;
+pub(crate) mod workspace_index_deep_refresh_cursor_service;
+pub(crate) mod workspace_index_deep_refresh_maintenance_service;
 #[cfg(test)]
 mod workspace_index_dependency_expansion_service_tests;
 #[cfg(test)]
@@ -299,16 +300,15 @@ pub(crate) mod workspace_index_refresh_path_plan_service;
 mod workspace_index_refresh_path_plan_service_tests;
 pub mod workspace_index_repair_action_service;
 pub mod workspace_index_repair_service;
-#[cfg(test)]
-mod workspace_index_repair_service_tests;
-#[cfg(test)]
-mod workspace_index_restore_tests;
+#[cfg(test)] mod workspace_index_repair_service_tests;
+#[cfg(test)] mod workspace_index_restore_tests;
 pub mod workspace_index_resume_service;
-#[cfg(test)]
-mod workspace_index_resume_service_tests;
+pub(crate) mod workspace_index_resume_schema_service;
+pub(crate) mod workspace_index_deep_refresh_catalog_schema_service;
+pub(crate) mod workspace_index_deep_refresh_catalog_service;
+#[cfg(test)] mod workspace_index_resume_service_tests;
 pub mod workspace_index_retry_policy_service;
-#[cfg(test)]
-mod workspace_index_retry_policy_service_tests;
+#[cfg(test)] mod workspace_index_retry_policy_service_tests;
 #[cfg(test)]
 mod workspace_index_running_lifecycle_service_tests;
 pub mod workspace_index_scheduler_service;
