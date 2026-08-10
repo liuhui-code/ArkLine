@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 const LEGACY_FULL_REFRESH_PREFIX: &str = "full-refresh-continuation:";
 const FILE_LAYER_FULL_REFRESH_PREFIX: &str = "full-refresh-files:";
 const DEEP_LAYER_FULL_REFRESH_PREFIX: &str = "full-refresh-deep:";
+const BACKGROUND_WORKSPACE_REFRESH_REASON: &str = "background-refresh-after-open";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceIndexContinuationPhase {
@@ -192,8 +193,15 @@ fn next_deep_refresh_task(result: &WorkspaceIndexTaskResult) -> Option<Workspace
 fn should_schedule_deep_refresh(result: &WorkspaceIndexTaskResult) -> bool {
     result.error.is_none()
         && result.refresh_result.is_some()
-        && (result.reason == "refresh-workspace"
+        && (is_workspace_deep_refresh_reason(&result.reason)
             || is_file_layer_continuation_reason(&result.reason))
+}
+
+fn is_workspace_deep_refresh_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        "refresh-workspace" | BACKGROUND_WORKSPACE_REFRESH_REASON
+    )
 }
 
 fn is_file_layer_continuation_reason(reason: &str) -> bool {
