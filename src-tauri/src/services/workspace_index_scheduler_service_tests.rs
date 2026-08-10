@@ -427,5 +427,26 @@ fn delays_background_retry_until_its_backoff_window_elapses() {
     assert!(result.scheduled);
     assert!(scheduler.drain_ready().is_empty());
     assert!(scheduler.has_pending_tasks());
-    assert!(scheduler.next_ready_delay().is_some_and(|delay| !delay.is_zero()));
+    assert!(scheduler
+        .next_ready_delay()
+        .is_some_and(|delay| !delay.is_zero()));
+}
+
+#[test]
+fn preserves_deep_catalog_generation_across_delayed_continuations() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    let mut task = changed_paths_task(
+        "/workspace",
+        WorkspaceIndexTaskPriority::Background,
+        "full-refresh-deep:refresh-workspace",
+    );
+    task.changed_paths.clear();
+    task.generation = 41;
+
+    let result = scheduler.schedule_background_retry(task);
+    let pending = scheduler.pending_tasks();
+
+    assert!(result.scheduled);
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].generation, 41);
 }

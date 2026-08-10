@@ -2,7 +2,9 @@ use std::fs;
 
 use crate::services::workspace_index_adaptive_chunk_service::initial_refresh_limits;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
-use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEEP_REFRESH_MESSAGE;
+use crate::services::workspace_index_catalog_refresh_worker_service::{
+    CATALOG_DEEP_REFRESH_MESSAGE, CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE,
+};
 use crate::services::workspace_index_deep_refresh_cursor_service::{
     load_deep_refresh_cursor, WorkspaceIndexDeepRefreshPhase,
 };
@@ -11,9 +13,7 @@ use crate::services::workspace_index_scheduler_service::{
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::create_empty_workspace;
-use crate::services::workspace_index_worker_budget_service::{
-    WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET,
-};
+use crate::services::workspace_index_worker_budget_service::WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET;
 use crate::services::workspace_index_worker_service::{
     run_index_tasks, run_index_tasks_with_cancellation_and_ui_activity,
 };
@@ -39,19 +39,11 @@ fn worker_background_deep_continuation_defers_paths_over_budget() {
     .unwrap();
 
     assert_eq!(results[0].status, "partial");
-    assert_eq!(
-        results[0]
-            .refresh_result
-            .as_ref()
-            .unwrap()
-            .added_paths
-            .len(),
-        initial_refresh_limits(false).0
-    );
+    assert!(results[0].refresh_result.is_none());
     assert!(results[0].refresh_continuation.is_none());
     assert_eq!(
         results[0].message.as_deref(),
-        Some(CATALOG_DEEP_REFRESH_MESSAGE)
+        Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
     );
     fs::remove_dir_all(root).unwrap();
 }
@@ -81,19 +73,11 @@ fn worker_background_deep_continuation_uses_ui_active_budget() {
     )
     .unwrap();
 
-    assert_eq!(
-        results[0]
-            .refresh_result
-            .as_ref()
-            .unwrap()
-            .added_paths
-            .len(),
-        initial_refresh_limits(true).0
-    );
+    assert!(results[0].refresh_result.is_none());
     assert!(results[0].refresh_continuation.is_none());
     assert_eq!(
         results[0].message.as_deref(),
-        Some(CATALOG_DEEP_REFRESH_MESSAGE)
+        Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
     );
     fs::remove_dir_all(root).unwrap();
 }
@@ -139,6 +123,7 @@ fn stub_waits_for_idle_without_losing_the_paired_content_range() {
         yielded[0].message.as_deref(),
         Some(CATALOG_DEEP_REFRESH_MESSAGE)
     );
+    assert!(yielded[0].refresh_result.is_none());
     assert_eq!(after, before);
     fs::remove_dir_all(root).unwrap();
 }

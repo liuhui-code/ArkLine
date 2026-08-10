@@ -1,6 +1,6 @@
 use std::fs::{self, File, FileTimes};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 use super::{
     WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationKind,
@@ -291,7 +291,6 @@ fn failed_workspace_reset_rolls_back_every_deleted_index_layer() {
 
 #[test]
 fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
-    let idle_grace = Duration::from_millis(100);
     let root =
         std::env::temp_dir().join(format!("arkline-idle-maintenance-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
@@ -314,9 +313,7 @@ fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
         },
     };
     let descriptor = write_workspace_publication_artifact(&root_path, &artifact).unwrap();
-    let actor = WorkspaceIndexWriterActor::new_with_idle_grace(idle_grace);
-
-    let started = Instant::now();
+    let actor = WorkspaceIndexWriterActor::new();
     let result = actor.publish(
         WorkspaceIndexPublicationRequest {
             root_path: root_path.clone(),
@@ -330,7 +327,6 @@ fn writer_actor_runs_bounded_store_maintenance_on_the_idle_lane() {
     let WorkspaceIndexPublicationAttempt::Applied(profile) = result else {
         panic!("idle store maintenance should apply");
     };
-    assert!(started.elapsed() >= idle_grace);
     assert!(profile
         .stages
         .iter()

@@ -1,4 +1,6 @@
-use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEEP_REFRESH_MESSAGE;
+use crate::services::workspace_index_catalog_refresh_worker_service::{
+    CATALOG_DEEP_REFRESH_MESSAGE, CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE,
+};
 use crate::services::workspace_index_chunk_service::WorkspaceIndexRefreshContinuation;
 use crate::services::workspace_index_resume_service::save_resume_task;
 use crate::services::workspace_index_scheduler_service::{
@@ -120,10 +122,8 @@ pub fn schedule_refresh_continuations(
             root_paths.push(task.root_path.clone());
             if catalog_refresh_made_progress(result) {
                 scheduler.clear_background_retry(&task.root_path, &task.reason);
-                superseded_tasks.extend(schedule_and_save(&mut scheduler, task)?);
-            } else {
-                superseded_tasks.extend(schedule_background_retry_and_save(&mut scheduler, task)?);
             }
+            superseded_tasks.extend(schedule_background_retry_and_save(&mut scheduler, task)?);
         }
     }
     root_paths.sort();
@@ -135,9 +135,7 @@ pub fn schedule_refresh_continuations(
 }
 
 fn catalog_refresh_made_progress(result: &WorkspaceIndexTaskResult) -> bool {
-    result.refresh_result.as_ref().is_some_and(|refresh| {
-        refresh.changed || !refresh.added_paths.is_empty() || !refresh.removed_paths.is_empty()
-    })
+    result.message.as_deref() == Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
 }
 
 fn next_catalog_deep_refresh_task(result: &WorkspaceIndexTaskResult) -> Option<WorkspaceIndexTask> {
@@ -145,7 +143,10 @@ fn next_catalog_deep_refresh_task(result: &WorkspaceIndexTaskResult) -> Option<W
         && result.status == "partial"
         && result.error.is_none()
         && result.reason.starts_with(DEEP_LAYER_FULL_REFRESH_PREFIX)
-        && result.message.as_deref() == Some(CATALOG_DEEP_REFRESH_MESSAGE))
+        && matches!(
+            result.message.as_deref(),
+            Some(CATALOG_DEEP_REFRESH_MESSAGE | CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
+        ))
     .then(|| WorkspaceIndexTask {
         root_path: result.root_path.clone(),
         kind: WorkspaceIndexTaskKind::ChangedPaths,
@@ -153,7 +154,7 @@ fn next_catalog_deep_refresh_task(result: &WorkspaceIndexTaskResult) -> Option<W
         changed_paths: Vec::new(),
         sdk_path: None,
         sdk_version: None,
-        generation: 0,
+        generation: result.generation,
         reason: result.reason.clone(),
     })
 }

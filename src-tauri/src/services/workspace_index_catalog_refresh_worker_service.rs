@@ -23,6 +23,7 @@ use crate::services::workspace_index_task_status_service::{
 use crate::services::workspace_index_worker_budget_service::effective_deep_layer_path_budget;
 
 pub(crate) const CATALOG_DEEP_REFRESH_MESSAGE: &str = "Catalog deep refresh yielded";
+pub(crate) const CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE: &str = "Catalog deep refresh progressed";
 
 pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
     index_runtime: &WorkspaceIndexRuntime,
@@ -99,8 +100,11 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
         },
         started_at,
     );
+    // Deep indexing is an internal catalog cursor. Publishing its full workspace
+    // snapshot would repeatedly serialize and rebuild the complete file tree.
+    result.refresh_result = None;
     result.status = "partial".to_string();
-    result.message = Some(CATALOG_DEEP_REFRESH_MESSAGE.to_string());
+    result.message = Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE.to_string());
     Ok(Some(result))
 }
 
@@ -177,6 +181,9 @@ fn yielded_result(
         },
         started_at,
     );
+    // A deferred deep slice also has no user-visible file-tree change. Keep the continuation
+    // status lightweight so it cannot serialize the full workspace snapshot while yielding.
+    result.refresh_result = None;
     result.status = "partial".to_string();
     result.message = Some(CATALOG_DEEP_REFRESH_MESSAGE.to_string());
     result

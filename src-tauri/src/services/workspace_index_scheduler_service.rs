@@ -102,7 +102,7 @@ impl WorkspaceIndexScheduler {
             }
         }
 
-        if preserves_discovery_generation(&task) {
+        if preserves_continuation_generation(&task) {
             self.generation = self.generation.max(task.generation);
         } else {
             self.generation += 1;
@@ -150,8 +150,12 @@ impl WorkspaceIndexScheduler {
             };
         }
 
-        self.generation += 1;
-        task.generation = self.generation;
+        if preserves_continuation_generation(&task) {
+            self.generation = self.generation.max(task.generation);
+        } else {
+            self.generation += 1;
+            task.generation = self.generation;
+        }
         self.delayed_tasks.push(DelayedWorkspaceIndexTask {
             ready_at: Instant::now() + delay,
             task,
@@ -278,11 +282,12 @@ fn background_retry_delay(attempt: usize) -> Duration {
     BASE_DELAY.saturating_mul(multiplier).min(MAX_DELAY)
 }
 
-fn preserves_discovery_generation(task: &WorkspaceIndexTask) -> bool {
-    task.kind == WorkspaceIndexTaskKind::ChangedPaths
-        && is_workspace_discovery_task_reason(&task.reason)
-        && task.generation > 0
-        && !task.changed_paths.is_empty()
+fn preserves_continuation_generation(task: &WorkspaceIndexTask) -> bool {
+    if task.kind != WorkspaceIndexTaskKind::ChangedPaths || task.generation == 0 {
+        return false;
+    }
+    (is_workspace_discovery_task_reason(&task.reason) && !task.changed_paths.is_empty())
+        || task.reason.starts_with("full-refresh-deep:")
 }
 
 fn is_empty_noop_changed_paths_task(task: &WorkspaceIndexTask) -> bool {

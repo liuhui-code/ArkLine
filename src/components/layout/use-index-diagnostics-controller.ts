@@ -6,12 +6,16 @@ import {
 import {
   isTerminalIndexTaskStatus,
   isTerminalProjectIndexTaskStatus,
+  mergeIndexDiagnosticsProjection,
   workspaceIndexStatusSummary as buildWorkspaceIndexStatusSummary,
 } from "@/components/layout/index-diagnostics-controller-model";
 import type { IndexExplainContext } from "@/components/layout/app-shell-types";
 import { formatIndexExplainMessage } from "@/features/workspace/index-explain-model";
 import type { AppSettings } from "@/features/settings/settings-store";
-import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
+import {
+  workspaceIndexProjectionStore,
+  type WorkspaceIndexProjectionSnapshot,
+} from "@/features/workspace/workspace-index-projection-store";
 import type {
   WorkspaceApi,
   WorkspaceIndexDiagnostics,
@@ -56,6 +60,7 @@ export function useIndexDiagnosticsController({
   const [indexDiagnosticsSectionTarget, setIndexDiagnosticsSectionTarget] = useState<string | null>(null);
   const [indexDiagnosticsLoading, setIndexDiagnosticsLoading] = useState(false);
   const [indexDiagnostics, setIndexDiagnostics] = useState<WorkspaceIndexDiagnostics | null>(null);
+  const [diagnosticsProjection, setDiagnosticsProjection] = useState<WorkspaceIndexProjectionSnapshot | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
   const fileReadinessRequestIdRef = useRef(0);
@@ -65,13 +70,23 @@ export function useIndexDiagnosticsController({
     workspaceIndexProjectionStore.statusSnapshot,
     workspaceIndexProjectionStore.statusSnapshot,
   );
-  const workspaceIndexTaskStatuses = indexProjection.rootPath === workspace?.rootPath
+  const statusTaskStatuses = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.taskStatuses
     : [];
+  const activeDiagnosticsProjection = diagnosticsProjection
+    && diagnosticsProjection.rootPath === workspace?.rootPath
+    ? diagnosticsProjection
+    : null;
+  const workspaceIndexTaskStatuses = activeDiagnosticsProjection
+    ? activeDiagnosticsProjection.taskStatuses
+    : statusTaskStatuses;
   const indexHealthSummary = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.healthSummary
     : null;
-  const effectiveIndexDiagnostics = indexDiagnostics;
+  const effectiveIndexDiagnostics = mergeIndexDiagnosticsProjection(
+    indexDiagnostics,
+    activeDiagnosticsProjection,
+  );
   const workspaceIndexStatusSummary = buildWorkspaceIndexStatusSummary({
     diagnostics: effectiveIndexDiagnostics,
     healthSummary: indexHealthSummary,
@@ -97,6 +112,20 @@ export function useIndexDiagnosticsController({
     if (!indexDiagnosticsVisible) return;
     void refreshCurrentFileReadiness();
   }, [indexDiagnosticsVisible, workspace?.rootPath, activePath]);
+
+  useEffect(() => {
+    if (!indexDiagnosticsVisible || !workspace?.rootPath) {
+      setDiagnosticsProjection(null);
+      return;
+    }
+    const rootPath = workspace.rootPath;
+    const refreshProjection = () => {
+      const projection = workspaceIndexProjectionStore.snapshot();
+      setDiagnosticsProjection(projection.rootPath === rootPath ? projection : null);
+    };
+    refreshProjection();
+    return workspaceIndexProjectionStore.subscribe(refreshProjection);
+  }, [indexDiagnosticsVisible, workspace?.rootPath]);
 
   useEffect(() => () => clearDiagnosticsRebuildPoll(), []);
 

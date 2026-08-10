@@ -133,7 +133,9 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
     recordTaskStatus(status: WorkspaceIndexTaskStatus) {
       const current = snapshot.rootPath === status.rootPath ? snapshot.taskStatuses : [];
       const taskStatuses = mergeTaskStatus(current, status);
-      const healthSummary = healthSummaryFromTaskStatuses(status, taskStatuses);
+      const healthSummary = isActiveDeepRefresh(status)
+        ? undefined
+        : healthSummaryFromTaskStatuses(status, taskStatuses);
       commit({
         ...snapshot,
         rootPath: status.rootPath,
@@ -211,7 +213,7 @@ function statusProjectionFrom(snapshot: WorkspaceIndexProjectionSnapshot): Works
   return {
     rootPath: snapshot.rootPath,
     healthSummary: snapshot.healthSummary,
-    taskStatuses: snapshot.taskStatuses,
+    taskStatuses: snapshot.taskStatuses.map(projectStatusTask),
     updatedAt: snapshot.updatedAt,
   };
 }
@@ -221,8 +223,58 @@ function sameStatusProjection(
   next: WorkspaceIndexStatusProjection,
 ) {
   return current.rootPath === next.rootPath
-    && current.healthSummary === next.healthSummary
-    && current.taskStatuses === next.taskStatuses;
+    && sameHealthSummary(current.healthSummary, next.healthSummary)
+    && sameStatusTasks(current.taskStatuses, next.taskStatuses);
+}
+
+function projectStatusTask(status: WorkspaceIndexTaskStatus): WorkspaceIndexTaskStatus {
+  if (!isActiveDeepRefresh(status)) {
+    return status;
+  }
+  return {
+    ...status,
+    status: "running",
+    progressCurrent: 0,
+    progressTotal: 0,
+    startedAt: undefined,
+    lastHeartbeatAt: undefined,
+    finishedAt: undefined,
+    message: "Background deep index running",
+  };
+}
+
+function isActiveDeepRefresh(status: WorkspaceIndexTaskStatus) {
+  return status.kind === "changed-paths"
+    && status.reason.startsWith("full-refresh-deep:")
+    && (status.status === "queued" || status.status === "running" || status.status === "partial");
+}
+
+function sameHealthSummary(
+  left: WorkspaceIndexHealthSummary | null,
+  right: WorkspaceIndexHealthSummary | null,
+) {
+  return left?.retryBackoffCount === right?.retryBackoffCount
+    && left?.latestRetryBackoff === right?.latestRetryBackoff;
+}
+
+function sameStatusTasks(left: WorkspaceIndexTaskStatus[], right: WorkspaceIndexTaskStatus[]) {
+  return left.length === right.length && left.every((status, index) => sameStatusTask(status, right[index]));
+}
+
+function sameStatusTask(left: WorkspaceIndexTaskStatus, right: WorkspaceIndexTaskStatus | undefined) {
+  return right != null
+    && left.taskId === right.taskId
+    && left.rootPath === right.rootPath
+    && left.kind === right.kind
+    && left.status === right.status
+    && left.reason === right.reason
+    && left.generation === right.generation
+    && left.progressCurrent === right.progressCurrent
+    && left.progressTotal === right.progressTotal
+    && left.stalled === right.stalled
+    && left.symbolCount === right.symbolCount
+    && left.message === right.message
+    && left.error === right.error;
 }
 
 function healthSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexHealthSummary | undefined {

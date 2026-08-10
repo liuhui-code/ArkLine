@@ -31,7 +31,6 @@ use publication::publish_artifact;
 const PUBLICATION_QUEUE_CAPACITY: usize = 64;
 const FOREGROUND_BURST_LIMIT: usize = 4;
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
-const IDLE_PUBLICATION_GRACE: Duration = Duration::from_secs(5);
 
 pub(crate) struct WorkspaceIndexPublicationRequest {
     pub(crate) root_path: String,
@@ -100,22 +99,13 @@ struct PublicationEnvelope {
 
 impl WorkspaceIndexWriterActor {
     pub(crate) fn new() -> Self {
-        Self::new_with_idle_grace(IDLE_PUBLICATION_GRACE)
-    }
-
-    fn new_with_idle_grace(idle_publication_grace: Duration) -> Self {
         let (sender, receiver) = mpsc::sync_channel(PUBLICATION_QUEUE_CAPACITY);
         let metrics = Arc::new(Mutex::new(WriterActorMetricState::default()));
         let worker_metrics = Arc::clone(&metrics);
         let foreground_reads = WorkspaceIndexForegroundReadGate::default();
         let worker_foreground_reads = foreground_reads.clone();
         std::thread::spawn(move || {
-            run_writer_actor(
-                receiver,
-                worker_metrics,
-                worker_foreground_reads,
-                idle_publication_grace,
-            )
+            run_writer_actor(receiver, worker_metrics, worker_foreground_reads)
         });
         Self {
             sender,
@@ -291,34 +281,18 @@ fn run_writer_actor(
     receiver: Receiver<PublicationEnvelope>,
     metrics: Arc<Mutex<WriterActorMetricState>>,
     foreground_reads: WorkspaceIndexForegroundReadGate,
-    idle_publication_grace: Duration,
 ) {
     let mut queue = WorkspaceIndexPublicationQueue::with_capacity(
         FOREGROUND_BURST_LIMIT,
         PUBLICATION_QUEUE_CAPACITY,
     );
-    let mut idle_grace_pending = true;
     while let Ok(envelope) = receiver.recv() {
         queue.push(envelope.request.priority, envelope);
         drain_ingress(&receiver, &mut queue);
         while let Some(envelope) = queue.pop() {
-            if envelope.request.priority == PublicationPriority::IdleMaintenance
-                && idle_grace_pending
-            {
-                match receiver.recv_timeout(idle_publication_grace) {
-                    Ok(next) => {
-                        queue.push(envelope.request.priority, envelope);
-                        queue.push(next.request.priority, next);
-                        drain_ingress(&receiver, &mut queue);
-                        continue;
-                    }
-                    Err(RecvTimeoutError::Timeout) => idle_grace_pending = false,
-                    Err(RecvTimeoutError::Disconnected) => {}
-                }
-            }
-            if envelope.request.priority != PublicationPriority::IdleMaintenance {
-                idle_grace_pending = true;
-            }
+            // An idle task is selected only after higher-priority work already in the queue.
+            // Do not sleep here waiting for hypothetical work: that blocks the sole SQLite writer
+            // and turns every subsequent background publication into a multi-second queue wait.
             foreground_reads.yield_background(envelope.request.priority, &envelope.cancelled);
             process_envelope(envelope, &metrics);
             drain_ingress(&receiver, &mut queue);

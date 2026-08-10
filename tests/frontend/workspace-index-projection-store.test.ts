@@ -49,6 +49,40 @@ describe("workspace index projection store", () => {
     });
   });
 
+  it("does not publish deep index heartbeat churn to status subscribers", () => {
+    vi.useFakeTimers();
+    const store = createWorkspaceIndexProjectionStore(1);
+    const listener = vi.fn();
+    store.subscribeStatus(listener);
+
+    store.recordTaskStatus(taskStatus({
+      taskId: "deep",
+      kind: "changed-paths",
+      reason: "full-refresh-deep:refresh-workspace",
+      status: "running",
+      generation: 4,
+    }));
+    vi.runOnlyPendingTimers();
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.statusSnapshot().taskStatuses[0]).toMatchObject({
+      status: "running",
+      message: "Background deep index running",
+    });
+
+    store.recordTaskStatus(taskStatus({
+      taskId: "deep",
+      kind: "changed-paths",
+      reason: "full-refresh-deep:refresh-workspace",
+      status: "partial",
+      generation: 4,
+    }));
+    vi.runOnlyPendingTimers();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.snapshot().taskStatuses[0].status).toBe("partial");
+    vi.useRealTimers();
+  });
+
   it("derives retry backoff health from backend scheduler events", () => {
     const store = createWorkspaceIndexProjectionStore(1);
 

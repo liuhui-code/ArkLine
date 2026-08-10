@@ -91,7 +91,7 @@ fn content_core_returns_before_detached_substring_publication() {
     };
     let descriptor = write_workspace_publication_artifact(&root_path, &artifact).unwrap();
     let substring_descriptor = descriptor.clone();
-    let actor = WorkspaceIndexWriterActor::new_with_idle_grace(Duration::from_millis(20));
+    let actor = WorkspaceIndexWriterActor::new();
 
     let core = actor.publish(
         WorkspaceIndexPublicationRequest::content(
