@@ -122,47 +122,52 @@ fn schedules_continuation_tasks_from_worker_results() {
 }
 
 #[test]
-fn schedules_deep_refresh_after_foreground_file_layer() {
-    let result = WorkspaceIndexTaskResult {
-        root_path: "/workspace".to_string(),
-        kind: "refresh-workspace".to_string(),
-        status: "ready".to_string(),
-        reason: "foreground-navigation".to_string(),
-        generation: 7,
-        started_at: Some(100),
-        finished_at: Some(200),
-        message: None,
-        error: None,
-        refresh_result: Some(crate::models::workspace::WorkspaceIndexRefreshResult {
-            state: crate::models::workspace::WorkspaceIndexState {
-                status: crate::models::workspace::WorkspaceIndexStatus::Ready,
-                root_path: Some("/workspace".to_string()),
-                file_paths: vec!["A.ets".to_string()],
-                symbols: Vec::new(),
-                indexed_at: Some(200),
-                partial_reason: None,
-            },
-            changed: true,
-            added_paths: vec!["A.ets".to_string()],
-            removed_paths: Vec::new(),
-        }),
-        refresh_continuation: None,
-        sdk_path: None,
-        sdk_version: None,
-        sdk_remaining_files: Vec::new(),
-        sdk_symbol_count: None,
-        progress_current: 1,
-        progress_total: 1,
-    };
-    let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
+fn foreground_file_readiness_does_not_fan_out_deep_refresh_work() {
+    for reason in [
+        "foreground-navigation",
+        "foreground-completion",
+        "visible-files",
+    ] {
+        let result = WorkspaceIndexTaskResult {
+            root_path: "/workspace".to_string(),
+            kind: "refresh-workspace".to_string(),
+            status: "ready".to_string(),
+            reason: reason.to_string(),
+            generation: 7,
+            started_at: Some(100),
+            finished_at: Some(200),
+            message: None,
+            error: None,
+            refresh_result: Some(crate::models::workspace::WorkspaceIndexRefreshResult {
+                state: crate::models::workspace::WorkspaceIndexState {
+                    status: crate::models::workspace::WorkspaceIndexStatus::Ready,
+                    root_path: Some("/workspace".to_string()),
+                    file_paths: vec!["A.ets".to_string()],
+                    symbols: Vec::new(),
+                    indexed_at: Some(200),
+                    partial_reason: None,
+                },
+                changed: true,
+                added_paths: vec!["A.ets".to_string()],
+                removed_paths: Vec::new(),
+            }),
+            refresh_continuation: None,
+            sdk_path: None,
+            sdk_version: None,
+            sdk_remaining_files: Vec::new(),
+            sdk_symbol_count: None,
+            progress_current: 1,
+            progress_total: 1,
+        };
+        let scheduler = Arc::new(Mutex::new(WorkspaceIndexScheduler::default()));
 
-    schedule_refresh_continuations(&scheduler, &[result]).unwrap();
-    let tasks = scheduler.lock().unwrap().pending_tasks();
+        schedule_refresh_continuations(&scheduler, &[result]).unwrap();
 
-    assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].priority, WorkspaceIndexTaskPriority::Background);
-    assert_eq!(tasks[0].reason, "full-refresh-deep:foreground-navigation");
-    assert_eq!(tasks[0].changed_paths, vec!["A.ets"]);
+        assert!(
+            scheduler.lock().unwrap().pending_tasks().is_empty(),
+            "{reason}"
+        );
+    }
 }
 
 #[test]

@@ -193,11 +193,12 @@ fn should_schedule_deep_refresh(result: &WorkspaceIndexTaskResult) -> bool {
     result.error.is_none()
         && result.refresh_result.is_some()
         && (result.reason == "refresh-workspace"
-            || matches!(
-                result.reason.as_str(),
-                "foreground-navigation" | "foreground-completion" | "visible-files"
-            )
-            || continuation_phase(&result.reason) == WorkspaceIndexContinuationPhase::FileLayer)
+            || is_file_layer_continuation_reason(&result.reason))
+}
+
+fn is_file_layer_continuation_reason(reason: &str) -> bool {
+    reason.starts_with(FILE_LAYER_FULL_REFRESH_PREFIX)
+        || reason.starts_with(LEGACY_FULL_REFRESH_PREFIX)
 }
 
 fn deep_continuation_reason(reason: &str) -> String {
