@@ -245,4 +245,5 @@ fn schedules_catalog_deep_refresh_without_readding_path_arrays() {
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].reason, "full-refresh-deep:refresh-workspace");
     assert!(tasks[0].changed_paths.is_empty());
+    assert!(scheduler.lock().unwrap().drain_ready().is_empty());
 }

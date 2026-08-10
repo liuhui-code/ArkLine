@@ -14,6 +14,7 @@ pub(crate) struct WorkspaceIndexPublicationQueue<T> {
     background: VecDeque<QueuedPublication<T>>,
     idle_maintenance: VecDeque<QueuedPublication<T>>,
     foreground_burst_limit: usize,
+    capacity: usize,
     foreground_burst: usize,
     next_sequence: u64,
 }
@@ -25,12 +26,17 @@ struct QueuedPublication<T> {
 
 impl<T> WorkspaceIndexPublicationQueue<T> {
     pub(crate) fn new(foreground_burst_limit: usize) -> Self {
+        Self::with_capacity(foreground_burst_limit, usize::MAX)
+    }
+
+    pub(crate) fn with_capacity(foreground_burst_limit: usize, capacity: usize) -> Self {
         Self {
             maintenance: VecDeque::new(),
             foreground: VecDeque::new(),
             background: VecDeque::new(),
             idle_maintenance: VecDeque::new(),
             foreground_burst_limit: foreground_burst_limit.max(1),
+            capacity: capacity.max(1),
             foreground_burst: 0,
             next_sequence: 0,
         }
@@ -48,6 +54,17 @@ impl<T> WorkspaceIndexPublicationQueue<T> {
             PublicationPriority::Background => self.background.push_back(publication),
             PublicationPriority::IdleMaintenance => self.idle_maintenance.push_back(publication),
         }
+    }
+
+    pub(crate) fn is_full(&self) -> bool {
+        self.len() >= self.capacity
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.maintenance.len()
+            + self.foreground.len()
+            + self.background.len()
+            + self.idle_maintenance.len()
     }
 
     pub(crate) fn pop(&mut self) -> Option<T> {
@@ -151,5 +168,17 @@ mod tests {
         assert_eq!(queue.pop(), Some("older-idle"));
         assert_eq!(queue.pop(), Some("reset"));
         assert_eq!(queue.pop(), Some("newer-idle"));
+    }
+
+    #[test]
+    fn bounded_queue_stops_accepting_ingress_at_its_capacity() {
+        let mut queue = WorkspaceIndexPublicationQueue::with_capacity(2, 2);
+        queue.push(PublicationPriority::Background, "first");
+        queue.push(PublicationPriority::Foreground, "second");
+
+        assert!(queue.is_full());
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue.pop(), Some("second"));
+        assert!(!queue.is_full());
     }
 }

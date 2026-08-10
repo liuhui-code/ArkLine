@@ -105,6 +105,7 @@ describe("search text runner", () => {
       second.matches[0]!.line = 2;
       onEvent({ event: "batch", generation: 9, sequence: 1, result: second });
       onEvent({ event: "finished", generation: 9, sequence: 2, status: "complete" });
+      return { generation: 9, sequence: 2, status: "complete" as const };
     });
     const trackQuery = vi.fn(async ({ request, apply }) => apply(await request, 9));
 
@@ -154,6 +155,7 @@ describe("search text runner", () => {
         streamWorkspaceText: async (_request, onEvent) => {
           onEvent({ event: "started", generation: 3 });
           onEvent({ event: "batch", generation: 3, sequence: 1, result: textResult("gap") });
+          return { generation: 3, sequence: 1, status: "failed" as const };
         },
       },
       runFallback: vi.fn(),
@@ -178,7 +180,7 @@ describe("search text runner", () => {
       readiness: readinessState("ready"),
     }));
     const runFallback = vi.fn(async () => textResult("fallback"));
-    const streamWorkspaceText = vi.fn(async () => undefined);
+    const streamWorkspaceText = vi.fn(async () => ({ generation: 12, sequence: 0, status: "cancelled" as const }));
     const patchSearchSession = vi.fn();
     const trackQuery = vi.fn(async ({ request, apply }) => {
       apply(await request, 12);
@@ -211,6 +213,40 @@ describe("search text runner", () => {
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
     expect(streamWorkspaceText).not.toHaveBeenCalled();
     expect(runFallback).toHaveBeenCalledWith("width", true, 12);
+  });
+
+  it("uses the command terminal when the channel terminal arrives late", async () => {
+    const patchSearchSession = vi.fn();
+    const trackQuery = vi.fn(async ({ request, apply }) => apply(await request, 14));
+
+    runSearchTextQuery({
+      requestId: 14,
+      mode: "find",
+      query: "width",
+      rootPath: "/workspace",
+      minimumQueryLength: 2,
+      options: { caseSensitive: false, wholeWord: false },
+      dirty: false,
+      workspaceApi: {
+        streamWorkspaceText: async (_request, onEvent) => {
+          onEvent({ event: "started", generation: 14 });
+          onEvent({ event: "batch", generation: 14, sequence: 0, result: textResult("first") });
+          return { generation: 14, sequence: 1, status: "complete" };
+        },
+      },
+      runFallback: vi.fn(),
+      replaceQueryReadiness: vi.fn(),
+      trackQuery,
+      isCurrentQuery: (generation) => generation === 14,
+      clearSearchResults: vi.fn(),
+      patchSearchSession,
+      scheduleSelectedPreview: vi.fn(),
+      reportMiss: vi.fn(),
+    });
+
+    await vi.waitFor(() => {
+      expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({ textPageLoading: false }));
+    });
   });
 
   it("does not run without a workspace root", () => {

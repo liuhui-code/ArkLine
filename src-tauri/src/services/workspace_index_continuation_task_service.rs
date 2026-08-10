@@ -118,7 +118,12 @@ pub fn schedule_refresh_continuations(
         }
         if let Some(task) = next_catalog_deep_refresh_task(result) {
             root_paths.push(task.root_path.clone());
-            superseded_tasks.extend(schedule_and_save(&mut scheduler, task)?);
+            if catalog_refresh_made_progress(result) {
+                scheduler.clear_background_retry(&task.root_path, &task.reason);
+                superseded_tasks.extend(schedule_and_save(&mut scheduler, task)?);
+            } else {
+                superseded_tasks.extend(schedule_background_retry_and_save(&mut scheduler, task)?);
+            }
         }
     }
     root_paths.sort();
@@ -126,6 +131,12 @@ pub fn schedule_refresh_continuations(
     Ok(WorkspaceIndexContinuationScheduleSummary {
         root_paths,
         superseded_tasks,
+    })
+}
+
+fn catalog_refresh_made_progress(result: &WorkspaceIndexTaskResult) -> bool {
+    result.refresh_result.as_ref().is_some_and(|refresh| {
+        refresh.changed || !refresh.added_paths.is_empty() || !refresh.removed_paths.is_empty()
     })
 }
 
@@ -155,6 +166,27 @@ fn schedule_and_save(
     let reason = task.reason.clone();
     let kind = task.kind.clone();
     let schedule_result = scheduler.schedule_with_result(task);
+    if !schedule_result.scheduled {
+        return Ok(Vec::new());
+    }
+    if let Some(pending) = scheduler
+        .pending_tasks_for_root(&root_path)
+        .into_iter()
+        .find(|pending| pending.kind == kind && pending.reason == reason)
+    {
+        save_resume_task(&pending.root_path, &pending)?;
+    }
+    Ok(schedule_result.superseded_tasks)
+}
+
+fn schedule_background_retry_and_save(
+    scheduler: &mut WorkspaceIndexScheduler,
+    task: WorkspaceIndexTask,
+) -> Result<Vec<WorkspaceIndexTask>, String> {
+    let root_path = task.root_path.clone();
+    let reason = task.reason.clone();
+    let kind = task.kind.clone();
+    let schedule_result = scheduler.schedule_background_retry(task);
     if !schedule_result.scheduled {
         return Ok(Vec::new());
     }

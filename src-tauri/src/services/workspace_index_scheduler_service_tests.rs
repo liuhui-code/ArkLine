@@ -414,3 +414,18 @@ fn replaces_queued_sdk_task_for_the_same_root() {
     assert_eq!(tasks[0].sdk_path.as_deref(), Some("/sdk/new"));
     assert!(tasks[0].generation > second_cancelled[0].generation);
 }
+
+#[test]
+fn delays_background_retry_until_its_backoff_window_elapses() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    let result = scheduler.schedule_background_retry(changed_paths_task(
+        "/workspace",
+        WorkspaceIndexTaskPriority::Background,
+        "full-refresh-deep:refresh-workspace",
+    ));
+
+    assert!(result.scheduled);
+    assert!(scheduler.drain_ready().is_empty());
+    assert!(scheduler.has_pending_tasks());
+    assert!(scheduler.next_ready_delay().is_some_and(|delay| !delay.is_zero()));
+}

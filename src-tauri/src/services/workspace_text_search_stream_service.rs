@@ -44,6 +44,16 @@ pub(crate) enum WorkspaceTextSearchStreamEvent {
     },
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WorkspaceTextSearchStreamTerminal {
+    pub generation: u64,
+    pub sequence: usize,
+    pub status: WorkspaceTextSearchStreamStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
 pub(crate) async fn stream_workspace_text_blocking<E>(
     index_runtime: WorkspaceIndexRuntime,
     text_search_cancellation: WorkspaceTextSearchCancellationRuntime,
@@ -51,7 +61,7 @@ pub(crate) async fn stream_workspace_text_blocking<E>(
     ui_activity: WorkspaceIndexUiActivityRuntime,
     request: WorkspaceTextSearchRequest,
     emit: E,
-) -> Result<(), String>
+) -> Result<WorkspaceTextSearchStreamTerminal, String>
 where
     E: FnMut(WorkspaceTextSearchStreamEvent) -> Result<(), String> + Send + 'static,
 {
@@ -118,7 +128,7 @@ pub(crate) fn drive_text_search_stream<P, E, S>(
     mut search_page: P,
     mut emit: E,
     mut stop_status: S,
-) -> Result<(), String>
+) -> Result<WorkspaceTextSearchStreamTerminal, String>
 where
     P: FnMut(&WorkspaceTextSearchRequest) -> Result<WorkspaceTextSearchResult, String>,
     E: FnMut(WorkspaceTextSearchStreamEvent) -> Result<(), String>,
@@ -182,16 +192,23 @@ fn finish<E>(
     sequence: usize,
     status: WorkspaceTextSearchStreamStatus,
     message: Option<String>,
-) -> Result<(), String>
+) -> Result<WorkspaceTextSearchStreamTerminal, String>
 where
     E: FnMut(WorkspaceTextSearchStreamEvent) -> Result<(), String>,
 {
-    emit(WorkspaceTextSearchStreamEvent::Finished {
+    let terminal = WorkspaceTextSearchStreamTerminal {
         generation,
         sequence,
         status,
         message,
-    })
+    };
+    emit(WorkspaceTextSearchStreamEvent::Finished {
+        generation: terminal.generation,
+        sequence: terminal.sequence,
+        status: terminal.status.clone(),
+        message: terminal.message.clone(),
+    })?;
+    Ok(terminal)
 }
 
 #[cfg(test)]
@@ -209,7 +226,7 @@ mod tests {
         let mut requested_cursors = Vec::new();
         let mut events = Vec::new();
 
-        drive_text_search_stream(
+        let terminal = drive_text_search_stream(
             request(),
             |request| {
                 requested_cursors.push(request.cursor.clone());
@@ -223,6 +240,7 @@ mod tests {
         )
         .unwrap();
 
+        assert_eq!(terminal.status, WorkspaceTextSearchStreamStatus::Complete);
         assert_eq!(
             requested_cursors,
             vec![

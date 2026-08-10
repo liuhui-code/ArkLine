@@ -6,6 +6,7 @@ import {
   parseSearchQuery,
   type WorkspaceTextSearchResult,
   type WorkspaceTextSearchStreamEvent,
+  type WorkspaceTextSearchStreamTerminal,
 } from "@/features/search/workspace-text-search";
 import type { SearchQueryTrackOptions } from "@/features/search/search-interaction-runtime";
 import type { SearchSessionSnapshot } from "@/features/search/search-session-store";
@@ -21,7 +22,7 @@ export type StreamingTextSearchRunnerInput = {
   stream: (
     request: WorkspaceTextSearchRequest,
     onEvent: (event: WorkspaceTextSearchStreamEvent) => void,
-  ) => Promise<void>;
+  ) => Promise<WorkspaceTextSearchStreamTerminal>;
   isCurrentQuery: (generation: number) => boolean;
   trackQuery: TrackQuery;
   patchSearchSession: (patch: Partial<SearchSessionSnapshot>) => void;
@@ -61,32 +62,8 @@ export function runStreamingTextSearch({
     onStreamError?.(message);
   }
 
-  const requestPromise = stream(request, (event) => {
-    if (event.generation !== requestId || !isCurrentQuery(requestId) || terminal) return;
-    if (event.event === "started") return;
-    if (event.event === "batch") {
-      if (event.sequence < nextSequence) return;
-      if (event.sequence > nextSequence) {
-        failProtocol("Workspace text search stream sequence gap");
-        return;
-      }
-      nextSequence += 1;
-      aggregate = mergeTextSearchResults(aggregate, event.result);
-      patchSearchSession({
-        result: aggregate,
-        textNextCursor: aggregate.nextCursor ?? null,
-        textPageLoading: true,
-        ...(firstBatch ? { previewContent: null, selectedIndex: 0 } : {}),
-      });
-      if (firstBatch && aggregate.matches.length > 0) scheduleSelectedPreview(0);
-      firstBatch = false;
-      if (!interactionRecorded) {
-        recordUiInteraction?.(interactionKind(mode), query.trim(), startedAt, now());
-        interactionRecorded = true;
-      }
-      return;
-    }
-    if (event.sequence < nextSequence) return;
+  function finish(event: WorkspaceTextSearchStreamTerminal) {
+    if (terminal || event.sequence < nextSequence) return;
     if (event.sequence > nextSequence) {
       failProtocol("Workspace text search stream sequence gap");
       return;
@@ -117,10 +94,39 @@ export function runStreamingTextSearch({
         suppressMissExplain: event.status !== "complete",
       });
     }
-  }).then(() => {
-    if (isCurrentQuery(requestId) && !terminal) {
-      failProtocol("Workspace text search stream ended without a terminal event");
+  }
+
+  const requestPromise = stream(request, (event) => {
+    if (event.generation !== requestId || !isCurrentQuery(requestId) || terminal) return;
+    if (event.event === "started") return;
+    if (event.event === "batch") {
+      if (event.sequence < nextSequence) return;
+      if (event.sequence > nextSequence) {
+        failProtocol("Workspace text search stream sequence gap");
+        return;
+      }
+      nextSequence += 1;
+      aggregate = mergeTextSearchResults(aggregate, event.result);
+      patchSearchSession({
+        result: aggregate,
+        textNextCursor: aggregate.nextCursor ?? null,
+        textPageLoading: true,
+        ...(firstBatch ? { previewContent: null, selectedIndex: 0 } : {}),
+      });
+      if (firstBatch && aggregate.matches.length > 0) scheduleSelectedPreview(0);
+      firstBatch = false;
+      if (!interactionRecorded) {
+        recordUiInteraction?.(interactionKind(mode), query.trim(), startedAt, now());
+        interactionRecorded = true;
+      }
+      return;
     }
+    finish(event);
+  }).then((terminalFromCommand) => {
+    if (!isCurrentQuery(requestId) || terminal) return;
+    window.setTimeout(() => {
+      if (isCurrentQuery(requestId) && !terminal) finish(terminalFromCommand);
+    }, 0);
   }).catch((error) => {
     if (isCurrentQuery(requestId)) patchSearchSession({ textPageLoading: false });
     throw error;

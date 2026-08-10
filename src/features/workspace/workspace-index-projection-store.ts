@@ -41,6 +41,11 @@ export type WorkspaceIndexProjectionSnapshot = {
 
 type Listener = () => void;
 
+export type WorkspaceIndexStatusProjection = Pick<
+  WorkspaceIndexProjectionSnapshot,
+  "rootPath" | "healthSummary" | "taskStatuses" | "updatedAt"
+>;
+
 function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
   return {
     rootPath: null,
@@ -60,8 +65,11 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
 
 export function createWorkspaceIndexProjectionStore(flushMs = 500) {
   let snapshot = createInitialSnapshot();
+  let statusProjection: WorkspaceIndexStatusProjection = statusProjectionFrom(snapshot);
   const listeners = new Set<Listener>();
+  const statusListeners = new Set<Listener>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let statusFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scheduleFlush() {
     if (flushTimer) return;
@@ -71,9 +79,24 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
     }, flushMs);
   }
 
-  function commit(next: WorkspaceIndexProjectionSnapshot) {
+  function scheduleStatusFlush() {
+    if (statusFlushTimer) return;
+    statusFlushTimer = setTimeout(() => {
+      statusFlushTimer = null;
+      statusListeners.forEach((listener) => listener());
+    }, flushMs);
+  }
+
+  function commit(next: WorkspaceIndexProjectionSnapshot, includeStatus = false) {
     snapshot = next;
     scheduleFlush();
+    if (includeStatus) {
+      const nextStatusProjection = statusProjectionFrom(next);
+      if (!sameStatusProjection(statusProjection, nextStatusProjection)) {
+        statusProjection = nextStatusProjection;
+        scheduleStatusFlush();
+      }
+    }
   }
 
   return {
@@ -83,11 +106,20 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         listeners.delete(listener);
       };
     },
+    subscribeStatus(listener: Listener) {
+      statusListeners.add(listener);
+      return () => {
+        statusListeners.delete(listener);
+      };
+    },
     snapshot() {
       return snapshot;
     },
+    statusSnapshot() {
+      return statusProjection;
+    },
     reset() {
-      commit(createInitialSnapshot());
+      commit(createInitialSnapshot(), true);
     },
     replaceTaskStatuses(rootPath: string, statuses: WorkspaceIndexTaskStatus[]) {
       commit({
@@ -96,7 +128,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         taskStatuses: [...statuses],
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
-      });
+      }, true);
     },
     recordTaskStatus(status: WorkspaceIndexTaskStatus) {
       const current = snapshot.rootPath === status.rootPath ? snapshot.taskStatuses : [];
@@ -109,7 +141,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         taskStatuses,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
-      });
+      }, true);
     },
     recordHealthSummary(rootPath: string, healthSummary: WorkspaceIndexHealthSummary | null) {
       commit({
@@ -118,7 +150,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         healthSummary,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
-      });
+      }, true);
     },
     recordRecentEvents(rootPath: string, events: WorkspaceIndexEvent[]) {
       const current = snapshot.rootPath === rootPath ? snapshot.recentEvents : [];
@@ -173,6 +205,24 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       });
     },
   };
+}
+
+function statusProjectionFrom(snapshot: WorkspaceIndexProjectionSnapshot): WorkspaceIndexStatusProjection {
+  return {
+    rootPath: snapshot.rootPath,
+    healthSummary: snapshot.healthSummary,
+    taskStatuses: snapshot.taskStatuses,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+function sameStatusProjection(
+  current: WorkspaceIndexStatusProjection,
+  next: WorkspaceIndexStatusProjection,
+) {
+  return current.rootPath === next.rootPath
+    && current.healthSummary === next.healthSummary
+    && current.taskStatuses === next.taskStatuses;
 }
 
 function healthSummaryFromEvents(events: WorkspaceIndexEvent[]): WorkspaceIndexHealthSummary | undefined {

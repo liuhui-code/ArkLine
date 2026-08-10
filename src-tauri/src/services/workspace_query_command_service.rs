@@ -32,6 +32,7 @@ use crate::services::workspace_text_search_cancellation_service::WorkspaceTextSe
 mod text_search_stream;
 pub(crate) use text_search_stream::{
     stream_workspace_text_blocking, WorkspaceTextSearchStreamEvent,
+    WorkspaceTextSearchStreamTerminal,
 };
 
 pub async fn query_workspace_candidates_facade_blocking(

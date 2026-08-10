@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef } from "react";
 import { WORKSPACE_INDEX_WATCH_INTERVAL_MS } from "@/components/layout/app-shell-constants";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type {
@@ -25,21 +25,29 @@ export function useWorkspaceIndexWatchers({
   recordWorkspaceIndexTaskStatus,
   onStatusChange,
 }: UseWorkspaceIndexWatchersOptions) {
-  const indexProjection = useSyncExternalStore(
-    workspaceIndexProjectionStore.subscribe,
-    workspaceIndexProjectionStore.snapshot,
-    workspaceIndexProjectionStore.snapshot,
-  );
+  const appliedRefreshEventRef = useRef(0);
 
   useEffect(() => {
-    const result = indexProjection.refreshResult;
-    if (!rootPath || indexProjection.rootPath !== rootPath || !result?.changed) {
-      return;
+    function applyLatestRefreshResult() {
+      const indexProjection = workspaceIndexProjectionStore.snapshot();
+      const result = indexProjection.refreshResult;
+      if (
+        !rootPath
+        || indexProjection.rootPath !== rootPath
+        || !result?.changed
+        || appliedRefreshEventRef.current === indexProjection.refreshEventCount
+      ) {
+        return;
+      }
+      appliedRefreshEventRef.current = indexProjection.refreshEventCount;
+      applyWorkspaceIndexRefreshResult(result);
+      onStatusChange(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
     }
 
-    applyWorkspaceIndexRefreshResult(result);
-    onStatusChange(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
-  }, [rootPath, indexProjection.refreshEventCount]);
+    appliedRefreshEventRef.current = 0;
+    applyLatestRefreshResult();
+    return workspaceIndexProjectionStore.subscribe(applyLatestRefreshResult);
+  }, [applyWorkspaceIndexRefreshResult, onStatusChange, rootPath]);
 
   useEffect(() => {
     if (!rootPath) {

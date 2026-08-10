@@ -293,7 +293,10 @@ fn run_writer_actor(
     foreground_reads: WorkspaceIndexForegroundReadGate,
     idle_publication_grace: Duration,
 ) {
-    let mut queue = WorkspaceIndexPublicationQueue::new(FOREGROUND_BURST_LIMIT);
+    let mut queue = WorkspaceIndexPublicationQueue::with_capacity(
+        FOREGROUND_BURST_LIMIT,
+        PUBLICATION_QUEUE_CAPACITY,
+    );
     let mut idle_grace_pending = true;
     while let Ok(envelope) = receiver.recv() {
         queue.push(envelope.request.priority, envelope);
@@ -327,7 +330,7 @@ fn drain_ingress(
     receiver: &Receiver<PublicationEnvelope>,
     queue: &mut WorkspaceIndexPublicationQueue<PublicationEnvelope>,
 ) {
-    loop {
+    while !queue.is_full() {
         match receiver.try_recv() {
             Ok(envelope) => queue.push(envelope.request.priority, envelope),
             Err(TryRecvError::Empty | TryRecvError::Disconnected) => return,

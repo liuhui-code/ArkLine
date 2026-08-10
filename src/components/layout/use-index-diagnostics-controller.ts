@@ -6,7 +6,6 @@ import {
 import {
   isTerminalIndexTaskStatus,
   isTerminalProjectIndexTaskStatus,
-  mergeIndexDiagnosticsProjection,
   workspaceIndexStatusSummary as buildWorkspaceIndexStatusSummary,
 } from "@/components/layout/index-diagnostics-controller-model";
 import type { IndexExplainContext } from "@/components/layout/app-shell-types";
@@ -62,9 +61,9 @@ export function useIndexDiagnosticsController({
   const fileReadinessRequestIdRef = useRef(0);
   const diagnosticsRebuildPollRef = useRef<number | null>(null);
   const indexProjection = useSyncExternalStore(
-    workspaceIndexProjectionStore.subscribe,
-    workspaceIndexProjectionStore.snapshot,
-    workspaceIndexProjectionStore.snapshot,
+    workspaceIndexProjectionStore.subscribeStatus,
+    workspaceIndexProjectionStore.statusSnapshot,
+    workspaceIndexProjectionStore.statusSnapshot,
   );
   const workspaceIndexTaskStatuses = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.taskStatuses
@@ -72,10 +71,7 @@ export function useIndexDiagnosticsController({
   const indexHealthSummary = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.healthSummary
     : null;
-  const effectiveIndexDiagnostics = mergeIndexDiagnosticsProjection(
-    indexDiagnostics,
-    indexProjection.rootPath === workspace?.rootPath ? indexProjection : null,
-  );
+  const effectiveIndexDiagnostics = indexDiagnostics;
   const workspaceIndexStatusSummary = buildWorkspaceIndexStatusSummary({
     diagnostics: effectiveIndexDiagnostics,
     healthSummary: indexHealthSummary,

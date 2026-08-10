@@ -5,6 +5,7 @@ import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fau
 import type {
   WorkspaceTextSearchResult,
   WorkspaceTextSearchStreamEvent,
+  WorkspaceTextSearchStreamTerminal,
 } from "@/features/search/workspace-text-search";
 import type { AppSettings, TerminalSettings } from "@/features/settings/settings-store";
 import type {
@@ -432,7 +433,10 @@ type WorkspaceCoreApi = {
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
   searchWorkspaceText?(request: WorkspaceTextSearchRequest): Promise<WorkspaceTextSearchResult>;
-  streamWorkspaceText?(request: WorkspaceTextSearchRequest, onEvent: (event: WorkspaceTextSearchStreamEvent) => void): Promise<void>;
+  streamWorkspaceText?(
+    request: WorkspaceTextSearchRequest,
+    onEvent: (event: WorkspaceTextSearchStreamEvent) => void,
+  ): Promise<WorkspaceTextSearchStreamTerminal>;
   cancelWorkspaceSearch?(rootPath: string, kind: string, generation: number): Promise<void>;
   openWorkspaceInNewWindow?(rootPath: string): Promise<void>;
   getLaunchWorkspacePath?(): Promise<string | null>;

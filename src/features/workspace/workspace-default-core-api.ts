@@ -2,6 +2,7 @@ import type { CodeAction } from "@/features/code-actions/code-action-model";
 import {
   searchWorkspaceText as searchWorkspaceTextInMemory,
   type WorkspaceTextSearchStreamEvent,
+  type WorkspaceTextSearchStreamTerminal,
   type WorkspaceTextSearchResult,
 } from "@/features/search/workspace-text-search";
 import {
@@ -96,8 +97,7 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       if (hasTauriRuntime()) {
         const channel = createChannel<WorkspaceTextSearchStreamEvent>();
         channel.onmessage = onEvent;
-        await invoke<void>("stream_workspace_text", { request, onEvent: channel });
-        return;
+        return invoke<WorkspaceTextSearchStreamTerminal>("stream_workspace_text", { request, onEvent: channel });
       }
 
       onEvent({ event: "started", generation });
@@ -113,12 +113,13 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         readFile: loadMockDocumentContent,
       });
       onEvent({ event: "batch", generation, sequence: 0, result });
-      onEvent({
-        event: "finished",
+      const terminal = {
         generation,
         sequence: 1,
         status: result.nextCursor ? "partial" : "complete",
-      });
+      } as const;
+      onEvent({ event: "finished", ...terminal });
+      return terminal;
     },
     async cancelWorkspaceSearch(rootPath, kind, generation) {
       if (hasTauriRuntime()) {

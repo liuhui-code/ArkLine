@@ -32,6 +32,7 @@ use crate::services::workspace_open_command_service::open_workspace_through_mana
 use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
 use crate::services::workspace_query_command_service::{
     search_workspace_text_blocking, stream_workspace_text_blocking, WorkspaceTextSearchStreamEvent,
+    WorkspaceTextSearchStreamTerminal,
 };
 use crate::services::workspace_sdk_index_service::WorkspaceSdkIndexSummary;
 use crate::services::workspace_service::list_workspace_directory as list_workspace_directory_service;
@@ -290,7 +291,7 @@ pub async fn stream_workspace_text(
     text_search_cancellation: State<'_, WorkspaceTextSearchCancellationRuntime>,
     query_broker: State<'_, WorkspaceQueryBrokerRuntime>,
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
-) -> Result<(), String> {
+) -> Result<WorkspaceTextSearchStreamTerminal, String> {
     stream_workspace_text_blocking(
         index_runtime.inner().clone(),
         text_search_cancellation.inner().clone(),

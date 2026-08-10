@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
+use std::time::{Duration, Instant};
 
 use crate::services::workspace_discovery_task_service::is_workspace_discovery_task_reason;
 use crate::services::workspace_index_task_lifecycle_service::task_kind_replaces_pending;
@@ -44,6 +45,14 @@ pub struct WorkspaceIndexTask {
 pub struct WorkspaceIndexScheduler {
     generation: u64,
     tasks: VecDeque<WorkspaceIndexTask>,
+    delayed_tasks: Vec<DelayedWorkspaceIndexTask>,
+    delayed_attempts: BTreeMap<(String, String), usize>,
+}
+
+#[derive(Debug, Clone)]
+struct DelayedWorkspaceIndexTask {
+    ready_at: Instant,
+    task: WorkspaceIndexTask,
 }
 
 #[derive(Debug, Default)]
@@ -107,12 +116,64 @@ impl WorkspaceIndexScheduler {
         }
     }
 
+    pub fn schedule_background_retry(
+        &mut self,
+        mut task: WorkspaceIndexTask,
+    ) -> WorkspaceIndexScheduleResult {
+        task.changed_paths.sort();
+        task.changed_paths.dedup();
+        let key = (task.root_path.clone(), task.reason.clone());
+        let attempt = self.delayed_attempts.entry(key).or_default();
+        *attempt = attempt.saturating_add(1);
+        let delay = background_retry_delay(*attempt);
+
+        if let Some(existing) = self.delayed_tasks.iter_mut().find(|existing| {
+            existing.task.kind == task.kind
+                && existing.task.root_path == task.root_path
+                && existing.task.reason == task.reason
+        }) {
+            if changed_path_task_is_noop(&existing.task, &task) {
+                return WorkspaceIndexScheduleResult::default();
+            }
+            self.generation += 1;
+            task.generation = self.generation;
+            let superseded = existing.task.clone();
+            existing.task.changed_paths.extend(task.changed_paths);
+            existing.task.changed_paths.sort();
+            existing.task.changed_paths.dedup();
+            existing.task.generation = task.generation;
+            existing.task.priority = existing.task.priority.max(task.priority);
+            existing.ready_at = Instant::now() + delay;
+            return WorkspaceIndexScheduleResult {
+                superseded_tasks: vec![superseded],
+                scheduled: true,
+            };
+        }
+
+        self.generation += 1;
+        task.generation = self.generation;
+        self.delayed_tasks.push(DelayedWorkspaceIndexTask {
+            ready_at: Instant::now() + delay,
+            task,
+        });
+        WorkspaceIndexScheduleResult {
+            superseded_tasks: Vec::new(),
+            scheduled: true,
+        }
+    }
+
+    pub fn clear_background_retry(&mut self, root_path: &str, reason: &str) {
+        self.delayed_attempts
+            .remove(&(root_path.to_string(), reason.to_string()));
+    }
+
     #[allow(dead_code)]
     pub fn drain_ready(&mut self) -> Vec<WorkspaceIndexTask> {
         self.drain_ready_batch(usize::MAX)
     }
 
     pub fn drain_ready_batch(&mut self, max_tasks: usize) -> Vec<WorkspaceIndexTask> {
+        self.promote_ready_delayed_tasks();
         let mut tasks = self.tasks.drain(..).collect::<Vec<_>>();
         tasks.sort_by(|left, right| {
             right
@@ -143,21 +204,78 @@ impl WorkspaceIndexScheduler {
             .iter()
             .filter(|task| task.root_path == root_path)
             .cloned()
+            .chain(
+                self.delayed_tasks
+                    .iter()
+                    .filter(|pending| pending.task.root_path == root_path)
+                    .map(|pending| pending.task.clone()),
+            )
             .collect()
     }
 
     pub fn drain_tasks_for_root(&mut self, root_path: &str) -> Vec<WorkspaceIndexTask> {
-        drain_matching_tasks(&mut self.tasks, |task| task.root_path == root_path)
+        let mut removed = drain_matching_tasks(&mut self.tasks, |task| task.root_path == root_path);
+        let mut retained = Vec::new();
+        for delayed in self.delayed_tasks.drain(..) {
+            if delayed.task.root_path == root_path {
+                removed.push(delayed.task);
+            } else {
+                retained.push(delayed);
+            }
+        }
+        self.delayed_tasks = retained;
+        self.delayed_attempts
+            .retain(|(task_root, _), _| task_root != root_path);
+        removed
     }
 
     #[allow(dead_code)]
     pub fn pending_tasks(&self) -> Vec<WorkspaceIndexTask> {
-        self.tasks.iter().cloned().collect()
+        self.tasks
+            .iter()
+            .cloned()
+            .chain(
+                self.delayed_tasks
+                    .iter()
+                    .map(|pending| pending.task.clone()),
+            )
+            .collect()
     }
 
     pub fn has_pending_tasks(&self) -> bool {
-        !self.tasks.is_empty()
+        !self.tasks.is_empty() || !self.delayed_tasks.is_empty()
     }
+
+    pub fn next_ready_delay(&self) -> Option<Duration> {
+        if !self.tasks.is_empty() {
+            return Some(Duration::ZERO);
+        }
+        let now = Instant::now();
+        self.delayed_tasks
+            .iter()
+            .map(|pending| pending.ready_at.saturating_duration_since(now))
+            .min()
+    }
+
+    fn promote_ready_delayed_tasks(&mut self) {
+        let now = Instant::now();
+        let mut pending = Vec::new();
+        self.delayed_tasks.retain(|delayed| {
+            if delayed.ready_at > now {
+                return true;
+            }
+            pending.push(delayed.task.clone());
+            false
+        });
+        self.tasks.extend(pending);
+    }
+}
+
+fn background_retry_delay(attempt: usize) -> Duration {
+    const BASE_DELAY: Duration = Duration::from_millis(250);
+    const MAX_DELAY: Duration = Duration::from_secs(5);
+    let multiplier = 1u32 << attempt.saturating_sub(1).min(4);
+    BASE_DELAY.saturating_mul(multiplier).min(MAX_DELAY)
 }
 
 fn preserves_discovery_generation(task: &WorkspaceIndexTask) -> bool {

@@ -10,20 +10,28 @@ pub(crate) fn wait_for_sidecar_retry_if_only_background_is_pending(
     indexer: &IndexerHostRuntime,
     worker_signal: &Arc<(Mutex<u64>, Condvar)>,
 ) {
-    let Some(delay) = indexer.backoff_remaining() else {
-        return;
-    };
-    let only_background = scheduler
+    let (only_background, scheduler_delay) = scheduler
         .lock()
         .map(|scheduler| {
             let tasks = scheduler.pending_tasks();
-            !tasks.is_empty()
-                && tasks
-                    .iter()
-                    .all(|task| task.priority == WorkspaceIndexTaskPriority::Background)
+            (
+                !tasks.is_empty()
+                    && tasks
+                        .iter()
+                        .all(|task| task.priority == WorkspaceIndexTaskPriority::Background),
+                scheduler.next_ready_delay(),
+            )
         })
-        .unwrap_or(false);
+        .unwrap_or((false, None));
     if !only_background {
+        return;
+    }
+    let delay = match (indexer.backoff_remaining(), scheduler_delay) {
+        (Some(indexer_delay), Some(scheduler_delay)) => indexer_delay.min(scheduler_delay),
+        (Some(delay), None) | (None, Some(delay)) => delay,
+        (None, None) => return,
+    };
+    if delay.is_zero() {
         return;
     }
 

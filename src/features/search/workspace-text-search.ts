@@ -47,6 +47,13 @@ export type WorkspaceTextSearchStreamEvent =
     message?: string;
   };
 
+export type WorkspaceTextSearchStreamTerminal = {
+  generation: number;
+  sequence: number;
+  status: WorkspaceTextSearchStreamStatus;
+  message?: string;
+};
+
 export type WorkspaceTextSearchCursor = {
   pathIndex: number;
   lineIndex: number;
