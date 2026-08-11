@@ -217,8 +217,9 @@ describe("search text runner", () => {
     expect(runFallback).toHaveBeenCalledWith("width", true, 12);
   });
 
-  it("uses the command terminal when the channel terminal arrives late", async () => {
+  it("waits for delayed channel batches before the command terminal fallback", async () => {
     const patchSearchSession = vi.fn();
+    const onStreamError = vi.fn();
     const trackQuery = vi.fn(async ({ request, apply }) => apply(await request, 14));
 
     runSearchTextQuery({
@@ -232,7 +233,10 @@ describe("search text runner", () => {
       workspaceApi: {
         streamWorkspaceText: async (_request, onEvent) => {
           onEvent({ event: "started", generation: 14 });
-          onEvent({ event: "batch", generation: 14, sequence: 0, result: textResult("first") });
+          window.setTimeout(() => {
+            onEvent({ event: "batch", generation: 14, sequence: 0, result: textResult("first") });
+            onEvent({ event: "finished", generation: 14, sequence: 1, status: "complete" });
+          }, 10);
           return { generation: 14, sequence: 1, status: "complete" };
         },
       },
@@ -244,11 +248,53 @@ describe("search text runner", () => {
       patchSearchSession,
       scheduleSelectedPreview: vi.fn(),
       reportMiss: vi.fn(),
+      onStreamError,
     });
 
     await vi.waitFor(() => {
-      expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({ textPageLoading: false }));
+      expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
+        result: expect.objectContaining({ matches: [expect.objectContaining({ summary: "first" })] }),
+        textPageLoading: true,
+      }));
     });
+    expect(onStreamError).not.toHaveBeenCalled();
+  });
+
+  it("uses the command terminal when the channel terminal never arrives", async () => {
+    const patchSearchSession = vi.fn();
+    const trackQuery = vi.fn(async ({ request, apply }) => apply(await request, 15));
+
+    runSearchTextQuery({
+      requestId: 15,
+      mode: "find",
+      query: "width",
+      rootPath: "/workspace",
+      minimumQueryLength: 2,
+      options: { caseSensitive: false, wholeWord: false },
+      dirty: false,
+      workspaceApi: {
+        streamWorkspaceText: async (_request, onEvent) => {
+          onEvent({ event: "started", generation: 15 });
+          onEvent({ event: "batch", generation: 15, sequence: 0, result: textResult("first") });
+          return { generation: 15, sequence: 1, status: "complete" };
+        },
+      },
+      runFallback: vi.fn(),
+      replaceQueryReadiness: vi.fn(),
+      trackQuery,
+      isCurrentQuery: (generation) => generation === 15,
+      clearSearchResults: vi.fn(),
+      patchSearchSession,
+      scheduleSelectedPreview: vi.fn(),
+      reportMiss: vi.fn(),
+    });
+
+    await vi.waitFor(
+      () => expect(patchSearchSession).toHaveBeenCalledWith(
+        expect.objectContaining({ textPageLoading: false }),
+      ),
+      { timeout: 1_500 },
+    );
   });
 
   it("does not run without a workspace root", () => {

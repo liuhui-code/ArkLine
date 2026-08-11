@@ -42,7 +42,7 @@ export function useBuildControllerState({
   );
   const [inspectedBuildProject, setInspectedBuildProject] = useState<HarmonyBuildProject | null>(null);
   const [profileModules, setProfileModules] = useState<string[]>([]);
-  const buildInspectionPath = selectedProjectPath ?? activePath ?? workspace?.rootPath ?? null;
+  const buildInspectionPath = selectedProjectPath ?? workspace?.rootPath ?? null;
   const baseBuildProject = inspectedBuildProject && isBuildProjectInWorkspace(inspectedBuildProject, workspace)
     ? inspectedBuildProject
     : visibleBuildProject;
@@ -264,8 +264,9 @@ export function useBuildControllerState({
       return;
     }
 
+    const projectInspectionPath = selectedProjectPath ?? activePath ?? workspace.rootPath;
     const project = workspaceApi.inspectHarmonyBuildProject
-      ? await resolveBuildProject(buildInspectionPath ?? workspace.rootPath)
+      ? await resolveBuildProject(projectInspectionPath)
       : buildProject;
     if (project) {
       const selection = projectBuildSelection(

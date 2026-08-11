@@ -309,7 +309,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     focusEditorSoon,
     onStatusChange,
     documentLoadCoordinator: documentLoadCoordinatorRef.current,
-    semanticDocumentSync: semanticDocumentSyncRef.current,
   });
   editorActionsRef.current.openFile = openFile;
   editorActionsRef.current.cancelPendingOpen = cancelPendingOpen;

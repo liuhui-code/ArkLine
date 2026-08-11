@@ -167,7 +167,7 @@ Current implementation note: `query_language_definition` now accepts the same op
 ### Phase D: Bounded Background Convergence
 
 1. Retain catalog-generation and file-identity checkpoints as the only deep-work cursor.
-2. Bound each catalog dispatch to the adaptive first-chunk budget while preserving byte/path caps as safety rails. The current worker limits a normal background turn to `16` paths / `8 MB` and an interaction-active turn to `2` paths / `512 KB`; the sidecar records each publication duration. A wall-clock mid-publication deadline remains a future refinement because it requires a transactional sidecar cancellation acknowledgement.
+2. Bound each catalog dispatch to the adaptive first-chunk budget while preserving byte/path caps as safety rails. The current worker limits every background turn to `16` paths / `8 MB`; foreground requests stay isolated by latest-wins admission and the scheduler's bounded foreground burst. The sidecar records each publication duration. A wall-clock mid-publication deadline remains a future refinement because it requires a transactional sidecar cancellation acknowledgement.
 3. Reserve one worker for foreground tasks and apply weighted fair turns across discovery, content, stubs, and SDK work. The scheduler now grants one background turn after at most three foreground completion/navigation dispatches. This starts with background/deep/SDK priorities and keeps current-file work latest-wins.
 4. Keep writer transactions bounded, measure lock hold/wait time, and defer maintenance behind active reads and foreground publication.
 

@@ -56,7 +56,7 @@ export function useGitAndDiffController({
     activePath,
     activeText: gitTraceEnabled ? getActiveText() : "",
     baseText: gitTraceEnabled ? getBaseText() : "",
-    enabled: Boolean(activePath),
+    enabled: gitTraceEnabled && Boolean(activePath),
     mappingEnabled: gitTraceEnabled,
     traceVisible,
     refreshToken: gitBlameRefreshToken,

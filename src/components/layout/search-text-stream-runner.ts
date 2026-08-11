@@ -14,6 +14,8 @@ import type { WorkspaceTextSearchRequest } from "@/features/workspace/workspace-
 
 type TrackQuery = <T>(options: SearchQueryTrackOptions<T>) => Promise<void>;
 
+const COMMAND_TERMINAL_FALLBACK_DELAY_MS = 1_000;
+
 export type StreamingTextSearchRunnerInput = {
   requestId: number;
   mode: SearchEverywhereMode;
@@ -126,7 +128,7 @@ export function runStreamingTextSearch({
     if (!isCurrentQuery(requestId) || terminal) return;
     window.setTimeout(() => {
       if (isCurrentQuery(requestId) && !terminal) finish(terminalFromCommand);
-    }, 0);
+    }, COMMAND_TERMINAL_FALLBACK_DELAY_MS);
   }).catch((error) => {
     if (isCurrentQuery(requestId)) patchSearchSession({ textPageLoading: false });
     throw error;

@@ -14,10 +14,6 @@ import { createNavigationTransactionRuntime } from "@/features/navigation/naviga
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 import type { Text } from "@codemirror/state";
-import {
-  createSemanticDocumentSyncQueue,
-  type SemanticDocumentSyncQueue,
-} from "@/features/semantic/semantic-document-sync";
 import { beginInteractionTrace } from "@/features/performance/interaction-trace-store";
 
 type DocumentStoreRef = MutableRefObject<{
@@ -57,7 +53,6 @@ export type UseEditorSurfaceControllerOptions = {
   documentLoadCoordinator?: DocumentLoadCoordinator;
   scheduleActivation?: (request: DocumentActivationRequest) => Promise<void>;
   prepareDocumentText?: (content: string) => Promise<Text>;
-  semanticDocumentSync?: SemanticDocumentSyncQueue;
 };
 
 export type RestoreFileResult = {
@@ -92,20 +87,12 @@ export function useEditorSurfaceController({
   documentLoadCoordinator,
   scheduleActivation = scheduleDocumentActivation,
   prepareDocumentText = buildDocumentText,
-  semanticDocumentSync,
 }: UseEditorSurfaceControllerOptions) {
   const fallbackDocumentLoadRef = useRef(createDocumentLoadCoordinator());
   const runtimeRef = useRef({
     navigation: createNavigationTransactionRuntime(),
   });
   const documentLoad = documentLoadCoordinator ?? fallbackDocumentLoadRef.current;
-  const semanticSyncRef = useRef(semanticDocumentSync ?? createSemanticDocumentSyncQueue(workspaceApi));
-
-  function syncLoadedDocument(path: string, content: string | Text, method: "didOpen" | "didChange" = "didOpen") {
-    if (method === "didOpen") semanticSyncRef.current.open(path, content);
-    else semanticSyncRef.current.change(path, content);
-  }
-
   async function openFile(
     path: string,
     interaction: OpenFileInteractionContext = {},
@@ -136,10 +123,6 @@ export function useEditorSurfaceController({
       if (runtimeRef.current.navigation.isCurrent(transaction.id)) {
         const activationPhase = trace.startPhase("activateCachedDocument");
         activateLoadedDocument(path, disposition);
-        const snapshot = documentsRef.current.getDocumentText?.(path)
-          ?? documentsRef.current.getDocument(path)?.currentContent
-          ?? "";
-        syncLoadedDocument(path, snapshot);
         activationPhase.finish();
         runtimeRef.current.navigation.finish(transaction.id);
         onStatusChange(`Opened ${title}`);
@@ -208,9 +191,6 @@ export function useEditorSurfaceController({
     const activationPhase = trace.startPhase("activateEditor");
     activateLoadedDocument(path, disposition);
     activationPhase.finish();
-    const semanticPhase = trace.startPhase("enqueueSemanticSync");
-    syncLoadedDocument(path, content);
-    semanticPhase.finish();
     runtimeRef.current.navigation.finish(transaction.id);
     onStatusChange(`Opened ${title}`);
     trace.finish();
@@ -258,7 +238,6 @@ export function useEditorSurfaceController({
       return;
     }
     const result = documentsRef.current.updateDocument(activePath, content);
-    syncLoadedDocument(activePath, content, "didChange");
     if (result.dirtyChanged) {
       tabsRef.current.pinTab?.(activePath);
       syncTabs();
@@ -272,7 +251,6 @@ export function useEditorSurfaceController({
     }
     const result = documentsRef.current.applyEditorDocument?.(activePath, document)
       ?? documentsRef.current.updateDocument(activePath, document.toString());
-    syncLoadedDocument(activePath, document, "didChange");
     if (result.dirtyChanged) {
       tabsRef.current.pinTab?.(activePath);
       syncTabs();

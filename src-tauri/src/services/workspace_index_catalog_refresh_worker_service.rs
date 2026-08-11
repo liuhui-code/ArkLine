@@ -126,17 +126,17 @@ fn catalog_page_limit(
 
 fn catalog_path_budget(
     priority: crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority,
-    ui_latency_sensitive: bool,
+    _ui_latency_sensitive: bool,
 ) -> usize {
-    let (initial_path_budget, _) = initial_refresh_limits(ui_latency_sensitive);
-    effective_deep_layer_path_budget(priority, ui_latency_sensitive).min(initial_path_budget)
+    let (initial_path_budget, _) = initial_refresh_limits(false);
+    effective_deep_layer_path_budget(priority, false).min(initial_path_budget)
 }
 
 fn select_atomic_catalog_slice(
     root_path: &str,
     files: &[crate::services::workspace_index_deep_refresh_catalog_service::WorkspaceIndexDeepRefreshCatalogFile],
     phase: WorkspaceIndexDeepRefreshPhase,
-    ui_latency_sensitive: bool,
+    _ui_latency_sensitive: bool,
 ) -> (Vec<String>, i64) {
     let paths = files
         .iter()
@@ -148,7 +148,7 @@ fn select_atomic_catalog_slice(
             files.last().map(|file| file.file_id).unwrap_or_default(),
         );
     }
-    let (path_limit, byte_limit) = initial_refresh_limits(ui_latency_sensitive);
+    let (path_limit, byte_limit) = initial_refresh_limits(false);
     let chunk = take_refresh_chunk(root_path, &paths, &[], 0, 0, path_limit, byte_limit)
         .expect("non-empty catalog page must produce a refresh chunk");
     let last_file_id = files[chunk.next_changed_offset.saturating_sub(1)].file_id;
@@ -218,10 +218,10 @@ mod tests {
     }
 
     #[test]
-    fn catalog_slice_shrinks_before_starting_during_ui_activity() {
+    fn catalog_slice_keeps_one_bounded_publication_unit_during_ui_activity() {
         assert_eq!(
             catalog_path_budget(WorkspaceIndexTaskPriority::Background, true),
-            2
+            16
         );
     }
 

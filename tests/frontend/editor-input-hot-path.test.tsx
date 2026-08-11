@@ -4,20 +4,12 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useEditorSurfaceController } from "@/components/layout/use-editor-surface-controller";
 import { createCodeMirrorSignatureHelpExtension } from "@/editor/codemirror-signature-help";
-import type { SemanticDocumentSyncQueue } from "@/features/semantic/semantic-document-sync";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
 describe("editor input hot path", () => {
-  it("keeps CodeMirror Text snapshots out of full string materialization while typing", () => {
+  it("keeps CodeMirror Text snapshots out of string materialization and semantic IPC while typing", () => {
     const document = Text.of(["const value = 1;"]);
     const applyEditorDocument = vi.fn(() => ({ dirtyChanged: false }));
-    const semanticDocumentSync = {
-      open: vi.fn(),
-      change: vi.fn(),
-      ensure: vi.fn(async () => 1),
-      close: vi.fn(),
-      dispose: vi.fn(),
-    } satisfies SemanticDocumentSyncQueue;
     const toString = vi.spyOn(Text.prototype, "toString");
     const { result } = renderHook(() => useEditorSurfaceController({
       workspaceApi: { openFile: vi.fn(async () => "") } as unknown as WorkspaceApi,
@@ -46,13 +38,11 @@ describe("editor input hot path", () => {
       rememberCurrentLocation: vi.fn(),
       focusEditorSoon: vi.fn(),
       onStatusChange: vi.fn(),
-      semanticDocumentSync,
     }));
 
     act(() => result.current.handleEditorDocumentChange(document));
 
     expect(applyEditorDocument).toHaveBeenCalledWith("/workspace/Main.ets", document);
-    expect(semanticDocumentSync.change).toHaveBeenCalledWith("/workspace/Main.ets", document);
     expect(toString).not.toHaveBeenCalled();
     toString.mockRestore();
   });
