@@ -116,7 +116,7 @@ Diagnostics must report enough evidence to separate a real stall from intentiona
 ## Implementation Stages
 
 1. Complete query correctness: retain the current streaming cursor protocol and add 20k-fixture coverage for a match beyond the first interactive pages.
-2. Create and supersede immutable DeepRefreshCatalog generations from full-refresh snapshots. Persist file-identity checkpoints and prove that stub work replays exactly the preceding content range. Completed in the current foundation.
+2. Create and supersede immutable DeepRefreshCatalog generations from full-refresh snapshots. Persist file-identity checkpoints and prove that content-core completes the catalog before stub and substring auxiliary stages begin. The ordered pipeline is specified in `2026-08-11-core-first-index-pipeline.md`.
 3. Add a catalog-backed full-refresh continuation worker: construct a catalog once, read one page per scheduling turn, invoke one sidecar layer, checkpoint only after publication, and clear the checkpoint only when the catalog is exhausted. Implemented; awaiting packaged Windows convergence evidence.
 4. Add supersede and recovery rules: a newer full refresh marks the old catalog superseded; startup resumes only active catalogs; maintenance removes completed/superseded catalogs after a retention window. Implemented; awaiting packaged Windows recovery evidence.
 5. Add time-sliced fair scheduling only after Stage 3. Keep file-count caps as safety limits.
@@ -189,7 +189,7 @@ Acceptance: the gate supplies an auditable pass/fail record for the shipped pack
 - a cancelled query emits no later batch;
 - an empty bounded probe continues using a cursor;
 - a deep-index task resumes from the exact catalog generation and file-identity checkpoint;
-- a stub page replays only the exact preceding content page;
+- a complete content-core catalog pass precedes the stub and substring catalog passes;
 - a superseded catalog is never resumed;
 - a foreground navigation task is not blocked behind background work;
 - a rebuilt index reaches full layer coverage on the 20k fixture;
