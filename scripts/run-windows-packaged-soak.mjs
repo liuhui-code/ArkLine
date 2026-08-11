@@ -56,6 +56,10 @@ import {
   exerciseDefinitionNavigation,
   exerciseMemberCompletion,
 } from "./packaged-soak-semantic-workload.mjs";
+import {
+  isPackagedSoakDeadlineExceeded,
+  runWithinDeadline,
+} from "./packaged-soak-deadline.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -174,69 +178,46 @@ async function runSoak(driver, options, scenario) {
   ) {
     counters.attempts += 1;
     if (Date.now() >= nextEvidenceAt) {
-      diagnostics.push(await inspectDiagnostics(driver, options.fixturePath));
-      processSamples.push(
-        await inspectArkLineProcesses(options.applicationPath),
-      );
-      heapSamples.push(await inspectHeap(driver));
+      try {
+        await runWithinDeadline(
+          () => collectPeriodicEvidence(
+            driver,
+            options,
+            diagnostics,
+            processSamples,
+            heapSamples,
+          ),
+          deadline,
+          "periodic evidence",
+        );
+      } catch (error) {
+        if (isPackagedSoakDeadlineExceeded(error)) break;
+        throw error;
+      }
       nextEvidenceAt = Date.now() + 30_000;
     }
     try {
-      await exerciseFindInFiles(
-        driver,
-        counters.cycles,
-        automationDispatchSamples,
-        searchReadySamples,
-        counters,
-        searchEvidence,
-        scenario,
-      );
-      const fileOpened = await exerciseQuickOpen(
-        driver,
-        counters.cycles,
-        jumpSamples,
-        counters,
-        searchEvidence,
-        scenario,
-      );
-      if (fileOpened) {
-        try {
-          const editor = await exerciseEditorInteraction(driver);
-          editorInputSamples.push(
-            editor.inputVisibleMs,
-            editor.deleteVisibleMs,
-          );
-          if (editor.scrollMoved) editorScrollSamples.push(editor.scrollFrameMs);
-          else counters.editorScrollSkipCount += 1;
-        } catch (error) {
-          counters.editorInteractionFailureCount += 1;
-          counters.lastEditorError = String(error);
-          throw error;
-        }
-      }
-      const definitionTarget = definitionTargetForCycle(scenario, counters.cycles);
-      if (definitionTarget) {
-        await exerciseDefinitionNavigation(
+      await runWithinDeadline(
+        () => exerciseMixedInteractionCycle(
           driver,
-          definitionTarget,
+          counters,
+          automationDispatchSamples,
+          searchReadySamples,
+          jumpSamples,
+          editorInputSamples,
+          editorScrollSamples,
           definitionSamples,
-          counters,
-          semanticEvidence,
-        );
-      }
-      const completionTarget = completionTargetForCycle(scenario, counters.cycles);
-      if (completionTarget) {
-        await exerciseMemberCompletion(
-          driver,
-          completionTarget,
           completionSamples,
-          counters,
+          searchEvidence,
           semanticEvidence,
-        );
-      }
-      await detectCrashSurface(driver, counters);
+          scenario,
+        ),
+        deadline,
+        "mixed interaction cycle",
+      );
       counters.cycles += 1;
     } catch (error) {
+      if (isPackagedSoakDeadlineExceeded(error)) break;
       counters.unresponsiveCount += 1;
       counters.lastInteractionError = String(error);
       await driver.keyChord([WEBDRIVER_KEYS.escape]).catch(() => undefined);
@@ -285,6 +266,84 @@ async function runSoak(driver, options, scenario) {
     scenario,
     telemetry,
   });
+}
+
+async function collectPeriodicEvidence(
+  driver,
+  options,
+  diagnostics,
+  processSamples,
+  heapSamples,
+) {
+  diagnostics.push(await inspectDiagnostics(driver, options.fixturePath));
+  processSamples.push(await inspectArkLineProcesses(options.applicationPath));
+  heapSamples.push(await inspectHeap(driver));
+}
+
+async function exerciseMixedInteractionCycle(
+  driver,
+  counters,
+  automationDispatchSamples,
+  searchReadySamples,
+  jumpSamples,
+  editorInputSamples,
+  editorScrollSamples,
+  definitionSamples,
+  completionSamples,
+  searchEvidence,
+  semanticEvidence,
+  scenario,
+) {
+  await exerciseFindInFiles(
+    driver,
+    counters.cycles,
+    automationDispatchSamples,
+    searchReadySamples,
+    counters,
+    searchEvidence,
+    scenario,
+  );
+  const fileOpened = await exerciseQuickOpen(
+    driver,
+    counters.cycles,
+    jumpSamples,
+    counters,
+    searchEvidence,
+    scenario,
+  );
+  if (fileOpened) {
+    try {
+      const editor = await exerciseEditorInteraction(driver);
+      editorInputSamples.push(editor.inputVisibleMs, editor.deleteVisibleMs);
+      if (editor.scrollMoved) editorScrollSamples.push(editor.scrollFrameMs);
+      else counters.editorScrollSkipCount += 1;
+    } catch (error) {
+      counters.editorInteractionFailureCount += 1;
+      counters.lastEditorError = String(error);
+      throw error;
+    }
+  }
+  const definitionTarget = definitionTargetForCycle(scenario, counters.cycles);
+  if (definitionTarget) {
+    await exerciseDefinitionNavigation(
+      driver,
+      definitionTarget,
+      definitionSamples,
+      counters,
+      semanticEvidence,
+    );
+  }
+  const completionTarget = completionTargetForCycle(scenario, counters.cycles);
+  if (completionTarget) {
+    await exerciseMemberCompletion(
+      driver,
+      completionTarget,
+      completionSamples,
+      counters,
+      semanticEvidence,
+    );
+  }
+  await detectCrashSurface(driver, counters);
 }
 
 async function inspectDiagnostics(driver, rootPath) {
