@@ -336,7 +336,7 @@ fn refresh_stub_chunks<G: Fn() -> bool + Sync>(
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
-    let mut budget = AdaptiveRefreshBudget::new_for_latency(
+    let mut budget = AdaptiveRefreshBudget::new_for_background_deep_refresh(
         INDEXER_STUB_REFRESH_PATH_LIMIT,
         WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
         ui_latency_sensitive_at_start,
@@ -413,7 +413,7 @@ fn refresh_content_chunks<G: Fn() -> bool + Sync>(
     if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
         return LayerChunkOutcome::Unavailable;
     }
-    let mut budget = AdaptiveRefreshBudget::new_for_latency(
+    let mut budget = AdaptiveRefreshBudget::new_for_background_deep_refresh(
         INDEXER_CONTENT_REFRESH_PATH_LIMIT,
         WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
         ui_latency_sensitive_at_start,
