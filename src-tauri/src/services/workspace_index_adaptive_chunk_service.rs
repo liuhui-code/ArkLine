@@ -1,9 +1,9 @@
 const DEFAULT_PUBLICATION_TARGET_US: u64 = 200_000;
-const BACKGROUND_DEEP_PUBLICATION_TARGET_US: u64 = 300_000;
+const BACKGROUND_DEEP_PUBLICATION_TARGET_US: u64 = 500_000;
 const INTERACTIVE_PUBLICATION_TARGET_US: u64 = 50_000;
 const INTERACTIVE_MINIMUM_PATH_COUNT: usize = 1;
 const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 2;
-const INTERACTIVE_BACKGROUND_MAXIMUM_PATH_COUNT: usize = 4;
+const INTERACTIVE_BACKGROUND_MAXIMUM_PATH_COUNT: usize = 8;
 const INITIAL_PATH_COUNT: usize = 16;
 const INITIAL_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 const INTERACTIVE_INITIAL_SOURCE_BYTES: usize = 512 * 1024;
@@ -207,15 +207,15 @@ mod tests {
     }
 
     #[test]
-    fn isolated_background_deep_refresh_does_not_shrink_after_one_normal_commit() {
+    fn active_background_deep_refresh_keeps_a_measured_eight_path_budget() {
         let mut budget =
             AdaptiveRefreshBudget::new_for_background_deep_refresh(64, 32 * 1024 * 1024, true);
 
-        assert_eq!(budget.path_count(), 4);
+        assert_eq!(budget.path_count(), 8);
         assert_eq!(budget.source_bytes(), 512 * 1024);
-        budget.observe(140_000, 4, 512 * 1024);
-        assert_eq!(budget.path_count(), 4);
-        budget.observe(400_000, 4, 512 * 1024);
-        assert_eq!(budget.path_count(), 3);
+        budget.observe(240_000, 8, 512 * 1024);
+        assert_eq!(budget.path_count(), 8);
+        budget.observe(600_000, 8, 512 * 1024);
+        assert_eq!(budget.path_count(), 6);
     }
 }

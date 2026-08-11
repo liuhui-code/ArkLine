@@ -116,7 +116,7 @@ describe("useWorkspaceSession", () => {
     expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/A.ets"]);
   });
 
-  it("deduplicates rapid visible-file indexing while preserving newly visible files", () => {
+  it("coalesces rapid visible-file indexing for one workspace", () => {
     const scheduleVisibleFilesIndex = vi.fn(async () => undefined);
     const { result } = renderHook(() => useWorkspaceSession(options({
       workspaceApi: workspaceApi({ scheduleVisibleFilesIndex }),
@@ -131,12 +131,10 @@ describe("useWorkspaceSession", () => {
       "/workspace/src/C.ets",
     ]));
 
-    expect(scheduleVisibleFilesIndex).toHaveBeenNthCalledWith(1, "/workspace", [
+    expect(scheduleVisibleFilesIndex).toHaveBeenCalledTimes(1);
+    expect(scheduleVisibleFilesIndex).toHaveBeenCalledWith("/workspace", [
       "/workspace/src/A.ets",
       "/workspace/src/B.ets",
-    ]);
-    expect(scheduleVisibleFilesIndex).toHaveBeenNthCalledWith(2, "/workspace", [
-      "/workspace/src/C.ets",
     ]);
   });
 });

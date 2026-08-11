@@ -37,9 +37,11 @@ export function useWorkspaceSession({
     if (!workspaceApi.scheduleVisibleFilesIndex || visibleFiles.length === 0) {
       return;
     }
-    const scheduledFiles = uniqueNormalizedPaths(visibleFiles)
-      .filter((path) => shouldScheduleForegroundIndex("visible", rootPath, path));
+    const scheduledFiles = uniqueNormalizedPaths(visibleFiles);
     if (scheduledFiles.length === 0) {
+      return;
+    }
+    if (!shouldScheduleForegroundIndex("visible", rootPath, scheduledFiles[0])) {
       return;
     }
     void workspaceApi.scheduleVisibleFilesIndex(rootPath, scheduledFiles).catch((error) => {
