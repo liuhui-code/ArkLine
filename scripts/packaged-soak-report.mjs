@@ -9,6 +9,7 @@ import {
   summarizeSamples,
 } from "./packaged-soak-model.mjs";
 import { telemetryDurations } from "./packaged-soak-telemetry.mjs";
+import { summarizeProcessAttribution } from "./packaged-soak-process-attribution.mjs";
 
 const MEMORY_WARMUP_SAMPLE_COUNT = 4;
 
@@ -48,6 +49,7 @@ export function buildPackagedSoakReport(input) {
   const indexCoverage = summarizeIndexCoverage(input.diagnostics);
   const rendererResources = summarizeRendererResources(input.rendererSamples ?? []);
   const semanticRuntime = summarizeSemanticRuntime(input.diagnostics);
+  const processAttribution = summarizeProcessAttribution(input.processSamples);
   const verdictMetrics = {
     rendererSearchP95Ms: searchReady.p95Ms,
     rendererJumpP95Ms: jumps.p95Ms,
@@ -108,6 +110,8 @@ export function buildPackagedSoakReport(input) {
     rendererRenderGrowth: rendererResources.renderGrowth,
     semanticWorkerRssGrowthBytes: semanticRuntime.rssGrowthBytes,
     semanticWorkerHeapGrowthBytes: semanticRuntime.heapGrowthBytes,
+    rendererProcessPrivateGrowthBytes: processAttribution.renderer?.privateGrowthBytes ?? 0,
+    semanticWorkerProcessPrivateGrowthBytes: processAttribution.semanticWorker?.privateGrowthBytes ?? 0,
     processTreeSampleCount: validProcessSamples.length,
     steadyProcessSampleCount: Math.min(
       steadyRssSamples.length,
@@ -153,6 +157,7 @@ export function buildPackagedSoakReport(input) {
     diagnostics: input.diagnostics,
     indexCoverage,
     processSamples: input.processSamples,
+    processAttribution,
     heapSamples: input.heapSamples,
     rendererSamples: input.rendererSamples ?? [],
     rendererResources,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeProcessEvidence } from "../../scripts/packaged-soak-process-evidence.mjs";
+import { summarizeProcessAttribution } from "../../scripts/packaged-soak-process-attribution.mjs";
 import { buildPackagedSoakReport } from "../../scripts/packaged-soak-report.mjs";
 
 describe("packaged Windows soak report", () => {
@@ -25,6 +26,20 @@ describe("packaged Windows soak report", () => {
       privateBytes: 240,
       handleCount: 30,
       threadCount: 12,
+    });
+  });
+
+  it("attributes stable memory growth to renderer and semantic worker roles", () => {
+    const samples = Array.from({ length: 9 }, (_, index) => ({
+      capturedAt: index,
+      processes: [
+        { ProcessName: "msedgewebview2", CommandLine: "--type=renderer", WorkingSet64: 100 + index, PrivateMemorySize64: 200 + index * 2 },
+        { ProcessName: "arkline-semantic", CommandLine: "", WorkingSet64: 50 + index, PrivateMemorySize64: 80 + index * 3 },
+      ],
+    }));
+    expect(summarizeProcessAttribution(samples)).toMatchObject({
+      renderer: { sampleCount: 9, privateGrowthBytes: 8 },
+      semanticWorker: { sampleCount: 9, privateGrowthBytes: 12 },
     });
   });
 
