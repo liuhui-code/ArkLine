@@ -24,8 +24,10 @@ pub(super) struct WriterActorMetricState {
     sdk_publication_max_us: u64,
     content_core_publication_count: u64,
     content_core_publication_max_us: u64,
+    content_core_publication_samples_us: VecDeque<u64>,
     content_substring_publication_count: u64,
     content_substring_publication_max_us: u64,
+    content_substring_publication_samples_us: VecDeque<u64>,
     maintenance_publication_count: u64,
     maintenance_publication_max_us: u64,
     maintenance_optimize_count: u64,
@@ -33,6 +35,7 @@ pub(super) struct WriterActorMetricState {
     maintenance_incremental_vacuum_count: u64,
     maintenance_copy_swap_count: u64,
     maintenance_copy_swap_deferred_count: u64,
+    default_publication_samples_us: VecDeque<u64>,
     wait_us: VecDeque<u64>,
     hold_us: VecDeque<u64>,
 }
@@ -49,12 +52,18 @@ impl WriterActorMetricState {
             orphan_artifact_removed_count: self.orphan_artifact_removed_count,
             orphan_artifact_retained_count: self.orphan_artifact_retained_count,
             recovery_failure_count: self.recovery_failure_count,
+            default_publication_p95_us: percentile(&self.default_publication_samples_us, 95),
             sdk_publication_count: self.sdk_publication_count,
             sdk_publication_max_us: self.sdk_publication_max_us,
             content_core_publication_count: self.content_core_publication_count,
             content_core_publication_max_us: self.content_core_publication_max_us,
+            content_core_publication_p95_us: percentile(&self.content_core_publication_samples_us, 95),
             content_substring_publication_count: self.content_substring_publication_count,
             content_substring_publication_max_us: self.content_substring_publication_max_us,
+            content_substring_publication_p95_us: percentile(
+                &self.content_substring_publication_samples_us,
+                95,
+            ),
             maintenance_publication_count: self.maintenance_publication_count,
             maintenance_publication_max_us: self.maintenance_publication_max_us,
             maintenance_optimize_count: self.maintenance_optimize_count,
@@ -114,14 +123,18 @@ fn record_content_metric(
             metrics.content_core_publication_count += 1;
             metrics.content_core_publication_max_us =
                 metrics.content_core_publication_max_us.max(duration_us);
+            push_sample(&mut metrics.content_core_publication_samples_us, hold);
         }
         WorkspaceIndexPublicationKind::ContentSubstring => {
             metrics.content_substring_publication_count += 1;
             metrics.content_substring_publication_max_us = metrics
                 .content_substring_publication_max_us
                 .max(duration_us);
+            push_sample(&mut metrics.content_substring_publication_samples_us, hold);
         }
-        WorkspaceIndexPublicationKind::Default => {}
+        WorkspaceIndexPublicationKind::Default => {
+            push_sample(&mut metrics.default_publication_samples_us, hold);
+        }
     }
 }
 

@@ -87,6 +87,8 @@ pub struct WorkspaceIndexWriterMetrics {
     #[serde(default)]
     pub recovery_failure_count: u64,
     #[serde(default)]
+    pub default_publication_p95_us: u64,
+    #[serde(default)]
     pub sdk_publication_count: u64,
     #[serde(default)]
     pub sdk_publication_max_us: u64,
@@ -95,9 +97,13 @@ pub struct WorkspaceIndexWriterMetrics {
     #[serde(default)]
     pub content_core_publication_max_us: u64,
     #[serde(default)]
+    pub content_core_publication_p95_us: u64,
+    #[serde(default)]
     pub content_substring_publication_count: u64,
     #[serde(default)]
     pub content_substring_publication_max_us: u64,
+    #[serde(default)]
+    pub content_substring_publication_p95_us: u64,
     #[serde(default)]
     pub maintenance_publication_count: u64,
     #[serde(default)]

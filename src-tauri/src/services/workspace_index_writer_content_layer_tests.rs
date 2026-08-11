@@ -63,6 +63,7 @@ fn writer_actor_publishes_a_prepared_content_artifact() {
     assert_eq!(metrics.sample_count, 1);
     assert_eq!(metrics.active_writer_count, 0);
     assert_eq!(metrics.queued_writer_count, 0);
+    assert!(metrics.default_publication_p95_us > 0);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -146,4 +147,6 @@ fn wait_for_substring(actor: &WorkspaceIndexWriterActor, root_path: &str, artifa
     assert_eq!(metrics.content_substring_publication_count, 1);
     assert!(metrics.content_core_publication_max_us > 0);
     assert!(metrics.content_substring_publication_max_us > 0);
+    assert!(metrics.content_core_publication_p95_us > 0);
+    assert!(metrics.content_substring_publication_p95_us > 0);
 }
