@@ -19,6 +19,7 @@ import {
 import {
   DIAGNOSTICS_SCRIPT,
   HEAP_SNAPSHOT_SCRIPT,
+  RENDERER_RESOURCE_SAMPLE_SCRIPT,
   RETAINED_HEAP_SNAPSHOT_SCRIPT,
   TELEMETRY_INSTALL_SCRIPT,
   TELEMETRY_SNAPSHOT_SCRIPT,
@@ -155,6 +156,7 @@ async function runSoak(driver, options, scenario) {
   const diagnostics = [];
   const processSamples = [];
   const heapSamples = [];
+  const rendererSamples = [];
   const searchEvidence = [];
   const semanticEvidence = [];
   const counters = {
@@ -186,6 +188,7 @@ async function runSoak(driver, options, scenario) {
             diagnostics,
             processSamples,
             heapSamples,
+            rendererSamples,
           ),
           deadline,
           "periodic evidence",
@@ -227,6 +230,7 @@ async function runSoak(driver, options, scenario) {
   diagnostics.push(await inspectDiagnostics(driver, options.fixturePath));
   processSamples.push(await inspectArkLineProcesses(options.applicationPath));
   heapSamples.push(await inspectHeap(driver));
+  rendererSamples.push(await inspectRendererResources(driver));
   const retainedHeapSample = await inspectRetainedHeap(driver);
   const retainedProcessSample = await inspectArkLineProcesses(
     options.applicationPath,
@@ -257,6 +261,7 @@ async function runSoak(driver, options, scenario) {
     diagnostics,
     processSamples,
     heapSamples,
+    rendererSamples,
     retentionEvidence: {
       heap: retainedHeapSample,
       process: retainedProcessSample,
@@ -274,10 +279,12 @@ async function collectPeriodicEvidence(
   diagnostics,
   processSamples,
   heapSamples,
+  rendererSamples,
 ) {
   diagnostics.push(await inspectDiagnostics(driver, options.fixturePath));
   processSamples.push(await inspectArkLineProcesses(options.applicationPath));
   heapSamples.push(await inspectHeap(driver));
+  rendererSamples.push(await inspectRendererResources(driver));
 }
 
 async function exerciseMixedInteractionCycle(
@@ -385,6 +392,12 @@ async function inspectDiagnostics(driver, rootPath) {
     workerRestartCount: value.indexerHost?.restartCount ?? 0,
     indexerLastError: value.indexerHost?.lastError ?? null,
     publicationWriterMetrics: value.indexerHost?.publicationWriterMetrics ?? null,
+    semanticRuntime: value.languageService?.supervisor?.runtime ?? null,
+    semanticSupervisor: value.languageService?.supervisor ? {
+      status: value.languageService.supervisor.status,
+      restartCount: value.languageService.supervisor.restartCount,
+      memoryBudgetBytes: value.languageService.supervisor.memoryBudgetBytes,
+    } : null,
     taskStatuses: (value.taskStatuses ?? []).slice(-16).map((status) => ({
       kind: status.kind,
       status: status.status,
@@ -438,6 +451,14 @@ async function inspectArkLineProcesses(applicationPath) {
 
 async function inspectHeap(driver) {
   return driver.execute(HEAP_SNAPSHOT_SCRIPT).catch((error) => ({
+    supported: false,
+    capturedAt: Date.now(),
+    error: String(error),
+  }));
+}
+
+async function inspectRendererResources(driver) {
+  return driver.execute(RENDERER_RESOURCE_SAMPLE_SCRIPT).catch((error) => ({
     supported: false,
     capturedAt: Date.now(),
     error: String(error),

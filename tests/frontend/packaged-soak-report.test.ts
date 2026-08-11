@@ -41,7 +41,10 @@ describe("packaged Windows soak report", () => {
       jumpSamples: [90],
       editorInputSamples: [5_000],
       editorScrollSamples: [16],
-      diagnostics: [diagnostic(64, 36), diagnostic(100, 0)],
+      diagnostics: [
+        diagnostic(64, 36, { rssBytes: 128, heapUsedBytes: 80 }),
+        diagnostic(100, 0, { rssBytes: 256, heapUsedBytes: 160 }),
+      ],
       processSamples: Array.from({ length: 9 }, (_, index) => ({
         processCount: 4,
         rssBytes: 100 + index * 10,
@@ -52,6 +55,12 @@ describe("packaged Windows soak report", () => {
       heapSamples: Array.from({ length: 9 }, (_, index) => ({
         supported: true,
         usedBytes: 40 + index * 5,
+      })),
+      rendererSamples: Array.from({ length: 9 }, (_, index) => ({
+        supported: true,
+        usedBytes: 20 + index * 4,
+        domNodeCount: 100 + index,
+        renderPressure: [{ label: "AppShell", count: 10 + index * 2 }],
       })),
       telemetry: telemetry(),
     });
@@ -70,16 +79,23 @@ describe("packaged Windows soak report", () => {
       rssGrowthBytes: 40,
       privateGrowthBytes: 20,
       jsHeapGrowthBytes: 20,
+      rendererJsHeapGrowthBytes: 16,
+      rendererDomNodeGrowth: 8,
+      rendererRenderGrowth: 16,
       coldRssGrowthBytes: 80,
       editorAutomationP95Ms: 5_000,
       steadyProcessSampleCount: 5,
       pendingLoads: 0,
     });
     expect(report.verdict.passed).toBe(true);
+    expect(report.semanticRuntime).toMatchObject({
+      sampleCount: 2,
+      last: { rssBytes: 256, heapUsedBytes: 160 },
+    });
   });
 });
 
-function diagnostic(contentFileCount: number, missingCount: number) {
+function diagnostic(contentFileCount: number, missingCount: number, semanticRuntime = null) {
   return {
     fileCount: 100,
     discoveredFileCount: 100,
@@ -94,6 +110,7 @@ function diagnostic(contentFileCount: number, missingCount: number) {
     walSizeBytes: contentFileCount,
     sharedSdkWalSizeBytes: contentFileCount,
     workerRestartCount: 0,
+    semanticRuntime,
   };
 }
 

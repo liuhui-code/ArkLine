@@ -46,6 +46,8 @@ export function buildPackagedSoakReport(input) {
   const steadyPrivateSamples = steadySamples(privateSamples);
   const steadyHeapSamples = steadySamples(usedHeapSamples);
   const indexCoverage = summarizeIndexCoverage(input.diagnostics);
+  const rendererResources = summarizeRendererResources(input.rendererSamples ?? []);
+  const semanticRuntime = summarizeSemanticRuntime(input.diagnostics);
   const verdictMetrics = {
     rendererSearchP95Ms: searchReady.p95Ms,
     rendererJumpP95Ms: jumps.p95Ms,
@@ -101,6 +103,11 @@ export function buildPackagedSoakReport(input) {
     longTaskMaxMs: maximum(input.telemetry.longTasks ?? []),
     ...causalTraces,
     jsHeapGrowthBytes: growth(steadyHeapSamples),
+    rendererJsHeapGrowthBytes: rendererResources.usedHeapGrowthBytes,
+    rendererDomNodeGrowth: rendererResources.domNodeGrowth,
+    rendererRenderGrowth: rendererResources.renderGrowth,
+    semanticWorkerRssGrowthBytes: semanticRuntime.rssGrowthBytes,
+    semanticWorkerHeapGrowthBytes: semanticRuntime.heapGrowthBytes,
     processTreeSampleCount: validProcessSamples.length,
     steadyProcessSampleCount: Math.min(
       steadyRssSamples.length,
@@ -147,6 +154,9 @@ export function buildPackagedSoakReport(input) {
     indexCoverage,
     processSamples: input.processSamples,
     heapSamples: input.heapSamples,
+    rendererSamples: input.rendererSamples ?? [],
+    rendererResources,
+    semanticRuntime,
     retentionEvidence: input.retentionEvidence ?? null,
     searchEvidence: input.searchEvidence ?? [],
     semanticEvidence: input.semanticEvidence ?? [],
@@ -164,6 +174,36 @@ export function buildPackagedSoakReport(input) {
       editorAutomationP95Ms: editorAutomation.p95Ms,
     },
     verdict,
+  };
+}
+
+function summarizeRendererResources(samples) {
+  const valid = samples.filter((sample) => !sample.error);
+  const usedBytes = numericSamples(valid, "usedBytes");
+  const domNodes = numericSamples(valid, "domNodeCount");
+  const appShellRenders = valid
+    .map((sample) => sample.renderPressure?.find((item) => item.label === "AppShell")?.count)
+    .filter(Number.isFinite);
+  return {
+    sampleCount: valid.length,
+    first: valid.at(0) ?? null,
+    last: valid.at(-1) ?? null,
+    usedHeapGrowthBytes: growth(steadySamples(usedBytes)),
+    domNodeGrowth: growth(domNodes),
+    renderGrowth: growth(appShellRenders),
+  };
+}
+
+function summarizeSemanticRuntime(diagnostics) {
+  const samples = diagnostics
+    .filter((item) => !item.error && item.semanticRuntime)
+    .map((item) => ({ capturedAt: item.capturedAt, ...item.semanticRuntime }));
+  return {
+    sampleCount: samples.length,
+    first: samples.at(0) ?? null,
+    last: samples.at(-1) ?? null,
+    rssGrowthBytes: growth(steadySamples(numericSamples(samples, "rssBytes"))),
+    heapGrowthBytes: growth(steadySamples(numericSamples(samples, "heapUsedBytes"))),
   };
 }
 

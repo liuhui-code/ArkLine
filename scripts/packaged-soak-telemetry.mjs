@@ -164,6 +164,23 @@ export const HEAP_SNAPSHOT_SCRIPT = `
   };
 `;
 
+export const RENDERER_RESOURCE_SAMPLE_SCRIPT = `
+  const memory = performance.memory;
+  const shell = document.querySelector(".app-shell");
+  const editor = document.querySelector(".editor-codemirror");
+  return {
+    supported: Boolean(memory),
+    capturedAt: Date.now(),
+    usedBytes: memory?.usedJSHeapSize ?? null,
+    totalBytes: memory?.totalJSHeapSize ?? null,
+    domNodeCount: document.getElementsByTagName("*").length,
+    openTabCount: Number(shell?.dataset.openTabCount ?? 0),
+    openDocumentCount: Number(shell?.dataset.openDocumentCount ?? 0),
+    hotEditorSessionCount: Number(editor?.dataset.hotSessionCount ?? 0),
+    renderPressure: window.__arklineRenderPressure || null
+  };
+`;
+
 export const RETAINED_HEAP_SNAPSHOT_SCRIPT = `
   const done = arguments[arguments.length - 1];
   const collect = typeof globalThis.gc === "function";
@@ -240,11 +257,12 @@ export const DIAGNOSTICS_SCRIPT = `
     invoke("get_workspace_index_layer_readiness", {
       rootPath,
       currentFilePath
-    })
+    }),
+    invoke("inspect_language_service").catch(() => null)
   ])
-    .then(([value, taskStatuses, layerReadiness]) => done({
+    .then(([value, taskStatuses, layerReadiness, languageService]) => done({
       ok: true,
-      value: { ...value, taskStatuses, layerReadiness }
+      value: { ...value, taskStatuses, layerReadiness, languageService }
     }))
     .catch((error) => done({ ok: false, error: String(error) }));
 `;
