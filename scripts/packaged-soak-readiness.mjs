@@ -80,6 +80,8 @@ export function isCoreWorkspaceIndexReady(value) {
     && contentFreshness?.missingCount === 0
     && contentFreshness?.staleCount === 0
     && contentFreshness?.readyCount >= value.fileCount
+    && (contentFreshness?.eligibleCount ?? value.fileCount)
+      + (contentFreshness?.skippedCount ?? 0) >= value.fileCount
     && contentReadiness?.indexedCount >= value.fileCount;
 }
 

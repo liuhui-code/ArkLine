@@ -16,6 +16,7 @@ use crate::services::workspace_index_cancellation_service::{
     finish_cancellable_tasks, start_cancellable_tasks, WorkspaceIndexCancellationRegistry,
 };
 use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
+use crate::services::workspace_index_foreground_admission_service::WorkspaceIndexForegroundAdmission;
 use crate::services::workspace_index_maintenance_runtime_service::WorkspaceIndexMaintenanceRuntime;
 use crate::services::workspace_index_manager_retry_wait_service::wait_for_sidecar_retry_if_only_background_is_pending;
 use crate::services::workspace_index_manager_status_service::{
@@ -49,6 +50,7 @@ pub const WORKSPACE_INDEX_WORKER_TASK_BATCH_SIZE: usize = 8;
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndexManagerRuntime {
     scheduler: Arc<Mutex<WorkspaceIndexScheduler>>,
+    foreground_admission: Arc<Mutex<WorkspaceIndexForegroundAdmission>>,
     cancellations: Arc<Mutex<WorkspaceIndexCancellationRegistry>>,
     recent_statuses: Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
     worker_running: Arc<AtomicBool>,
@@ -118,6 +120,7 @@ impl WorkspaceIndexManagerRuntime {
             WorkspaceIndexTaskPriority::ChangedFiles,
             "watcher",
         )
+        .map(|_| ())
     }
 
     pub(crate) fn schedule_changed_path_task(
@@ -126,9 +129,9 @@ impl WorkspaceIndexManagerRuntime {
         changed_paths: &[String],
         priority: WorkspaceIndexTaskPriority,
         reason: &str,
-    ) -> Result<(), String> {
+    ) -> Result<bool, String> {
         if changed_paths.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
 
         let task = WorkspaceIndexTask {
@@ -141,6 +144,14 @@ impl WorkspaceIndexManagerRuntime {
             generation: 0,
             reason: reason.to_string(),
         };
+        if !self
+            .foreground_admission
+            .lock()
+            .map_err(|_| "Workspace foreground index admission lock poisoned".to_string())?
+            .admit(root_path, priority, current_time_millis() as u64)
+        {
+            return Ok(false);
+        }
         let schedule_result = {
             self.scheduler
                 .lock()
@@ -148,7 +159,7 @@ impl WorkspaceIndexManagerRuntime {
                 .schedule_with_result(task.clone())
         };
         if !schedule_result.scheduled {
-            return Ok(());
+            return Ok(false);
         }
         cancel_active_tasks_superseded_by_matching_admission(
             &self.cancellations,
@@ -158,7 +169,7 @@ impl WorkspaceIndexManagerRuntime {
         store_superseded_statuses(&self.recent_statuses, schedule_result.superseded_tasks)?;
         store_pending_statuses_for_root(&self.scheduler, root_path)?;
         self.wake_background_worker()?;
-        Ok(())
+        Ok(true)
     }
 
     #[allow(dead_code)]

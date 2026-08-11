@@ -144,6 +144,8 @@ export type WorkspaceIndexSchemaVersionAction = {
 
 export type WorkspaceIndexFreshnessLayerSummary = {
   layer: string;
+  eligibleCount?: number;
+  skippedCount?: number;
   readyCount: number;
   staleCount: number;
   missingCount: number;

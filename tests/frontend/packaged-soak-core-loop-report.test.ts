@@ -105,6 +105,7 @@ function passingMetrics(overrides: Record<string, number | boolean> = {}) {
     steadyProcessSampleCount: 5,
     indexedFileCount: 1,
     indexedContentFileCount: 1,
+    eligibleContentFileCount: 1,
     stalledIndexTaskCount: 0,
     ...overrides,
   };

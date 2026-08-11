@@ -61,6 +61,10 @@
   grid-template-columns: minmax(128px, 1.1fr) 78px 96px 104px minmax(150px, 1.2fr) minmax(150px, 1.2fr);
 }
 
+.index-diagnostics__row--freshness {
+  grid-template-columns: minmax(110px, 1fr) 82px 82px 82px 82px 82px;
+}
+
 .index-diagnostics__row--layers small {
   display: block;
   margin-top: 3px;

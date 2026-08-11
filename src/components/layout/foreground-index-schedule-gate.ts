@@ -1,19 +1,18 @@
-const FOREGROUND_INDEX_SCHEDULE_TTL_MS = 5_000;
-const MAX_TRACKED_FOREGROUND_SCHEDULES = 32;
+const FOREGROUND_INDEX_SCHEDULE_TTL_MS = 750;
+const MAX_TRACKED_FOREGROUND_SCHEDULES = 128;
 
 const recentForegroundSchedules = new Map<string, number>();
 
 export function shouldScheduleForegroundIndex(
-  _kind: "completion" | "navigation" | "visible",
+  kind: "completion" | "navigation" | "visible",
   rootPath: string,
-  _path: string,
+  path: string,
   now = Date.now(),
 ) {
-  // Foreground indexing is a best-effort readiness hint. A fast file switch or
-  // completion burst must not turn every distinct path into a new worker task.
-  // Semantic requests carry the current document separately, so they remain
-  // responsive while the shared workspace cooldown absorbs the burst.
-  const key = rootPath;
+  // The client only deduplicates duplicate dispatches. Priority lanes and
+  // workspace-wide admission live in the index manager so callers cannot
+  // suppress a higher-priority navigation request by accident.
+  const key = `${kind}\0${rootPath}\0${path}`;
   const previous = recentForegroundSchedules.get(key);
   if (previous !== undefined && now - previous < FOREGROUND_INDEX_SCHEDULE_TTL_MS) {
     return false;

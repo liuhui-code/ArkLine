@@ -63,6 +63,10 @@ pub struct WorkspaceIndexSchemaVersionAction {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexFreshnessLayerSummary {
     pub layer: String,
+    /// Files for which this layer is expected to produce an artifact.
+    pub eligible_count: i64,
+    /// Files intentionally excluded by the persisted layer policy.
+    pub skipped_count: i64,
     pub ready_count: i64,
     pub stale_count: i64,
     pub missing_count: i64,

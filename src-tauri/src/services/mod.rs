@@ -259,6 +259,7 @@ mod workspace_index_manager_priority_tests;
 mod workspace_index_manager_resume_tests;
 pub(crate) mod workspace_index_manager_retry_wait_service;
 pub mod workspace_index_manager_service;
+mod workspace_index_foreground_admission_service;
 #[cfg(test)]
 mod workspace_index_manager_service_tests;
 pub(crate) mod workspace_index_manager_status_service;

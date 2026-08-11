@@ -17,6 +17,8 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
         }],
         freshness_layers: vec![WorkspaceIndexFreshnessLayerSummary {
             layer: "content".to_string(),
+            eligible_count: 1,
+            skipped_count: 0,
             ready_count: 1,
             stale_count: 0,
             missing_count: 0,
@@ -123,6 +125,7 @@ fn workspace_index_diagnostics_models_serialize_with_camel_case_contract() {
     assert!(json.contains("\"freshnessLayers\""));
     assert!(json.contains("\"retryBackoffCount\""));
     assert!(json.contains("\"expectedVersion\""));
+    assert!(json.contains("\"eligibleCount\":1"));
     assert!(json.contains("\"indexerHost\""));
     assert!(json.contains("\"completedDiscoveryChunks\""));
     assert!(json.contains("\"deepRefreshActiveGeneration\""));

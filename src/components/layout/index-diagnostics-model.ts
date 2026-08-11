@@ -342,7 +342,8 @@ function formatFreshnessLayerEvidence(diagnostics: WorkspaceIndexDiagnostics | n
     return ["freshness: unavailable"];
   }
   return layers.map((layer) => (
-    `freshness: ${layer.layer} ready=${layer.readyCount} stale=${layer.staleCount} `
+    `freshness: ${layer.layer} eligible=${layer.eligibleCount ?? layer.readyCount} `
+    + `skipped=${layer.skippedCount ?? 0} ready=${layer.readyCount} stale=${layer.staleCount} `
     + `missing=${layer.missingCount} expectedVersion=${layer.expectedVersion}`
   ));
 }

@@ -15,6 +15,28 @@ for a writer with one-write-at-a-time semantics. The result is measurable
 progress, but it cannot meet the 20k core-content coverage gate while the user
 continues to search, switch files, and navigate.
 
+## Implementation Status (2026-08-11)
+
+The following prerequisite work is implemented and covered by unit tests:
+
+1. Content coverage carries persisted eligibility and policy-skip counts. A
+   packaged-soak report now distinguishes eligible source files from binary,
+   generated, and oversized files that reached an intentional terminal state.
+   Missing or stale files still fail the coverage gate.
+2. Foreground completion, navigation, and visible-file hints pass through
+   backend admission lanes before they create UI activity or wake the worker.
+   The lanes have short burst windows (400ms, 250ms, and 750ms respectively),
+   while the scheduler remains the authority for pending-task coalescing and
+   latest-wins replacement.
+3. The diagnostics freshness table and exported diagnostic text expose
+   eligible and skipped counts, so a partial index can be explained without
+   treating a deliberate policy exclusion as an indexing failure.
+
+The ordered core-first pipeline below is implemented. The remaining work is
+runtime acceptance: Windows strict-soak must establish that it reaches coverage
+within the deadline without regressing interaction latency, then the pinned
+Harmony semantic smoke must pass on the same packaged workflow.
+
 ## Decision
 
 Replace paired deep refresh with an ordered, resumable pipeline:

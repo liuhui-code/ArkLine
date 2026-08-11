@@ -455,6 +455,7 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
     steadyProcessSampleCount: 5,
     indexedFileCount: 1_000,
     indexedContentFileCount: 1_000,
+    eligibleContentFileCount: 1_000,
     stalledIndexTaskCount: 0,
     ...overrides,
   };

@@ -357,6 +357,8 @@ async function inspectDiagnostics(driver, rootPath) {
     symbolCount: value.symbolCount,
     contentLineCount: value.contentLineCount,
     contentFileCount: indexedLayerCount(value, "content"),
+    contentEligibleFileCount: freshnessLayerCount(value, "content", "eligibleCount"),
+    contentPolicySkippedFileCount: freshnessLayerCount(value, "content", "skippedCount"),
     stubFileCount: indexedLayerCount(value, "stub"),
     parserErrorCount: value.parserErrorCount,
     discoveredFileCount: value.discoveredFileCount,
@@ -395,6 +397,11 @@ async function inspectDiagnostics(driver, rootPath) {
       error: status.error,
     })),
   };
+}
+
+function freshnessLayerCount(value, layerName, field) {
+  const layer = value.freshnessLayers?.find((item) => item.layer === layerName);
+  return layer?.[field] ?? 0;
 }
 
 function indexedLayerCount(value, layerName) {

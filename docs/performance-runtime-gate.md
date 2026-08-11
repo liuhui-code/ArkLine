@@ -109,8 +109,9 @@ fixture and 30 minutes. Before that release workload, it launches a separate 1k
 fixture for one interaction cycle. This smoke gate verifies the executable,
 fixture marker and boundary files, Tauri/Edge/PowerShell tools, WebDriver
 session, WebView timing capabilities, process-tree evidence, one real search,
-and one real navigation. Core readiness is based on current-workspace discovery
-and generation-aware content freshness; optional SDK and semantic layers may
+and one real navigation. Core readiness is based on current-workspace discovery,
+generation-aware content freshness, and explicit eligible-versus-policy-skipped
+file counts; optional SDK and semantic layers may
 remain partial in this rollback lane. It does not evaluate long-run latency,
 queue drain, or memory/WAL growth.
 

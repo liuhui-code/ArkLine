@@ -5,8 +5,8 @@ import { summarizeIndexCoverage } from "../../scripts/packaged-soak-report.mjs";
 describe("packaged soak coverage report", () => {
   it("preserves layer coverage progress instead of only the final row count", () => {
     expect(summarizeIndexCoverage([
-      { capturedAt: 1, fileCount: 10, contentFileCount: 1, stubFileCount: 2, freshnessLayers: [] },
-      { capturedAt: 2, fileCount: 10, discoveredFileCount: 10, discoveryStatus: "ready", contentFileCount: 4, stubFileCount: 2, freshnessLayers: [{ layer: "content", readyCount: 4, staleCount: 0, missingCount: 6 }] },
+      { capturedAt: 1, fileCount: 10, contentFileCount: 1, contentEligibleFileCount: 10, stubFileCount: 2, freshnessLayers: [] },
+      { capturedAt: 2, fileCount: 10, discoveredFileCount: 10, discoveryStatus: "ready", contentFileCount: 4, contentEligibleFileCount: 10, stubFileCount: 2, freshnessLayers: [{ layer: "content", readyCount: 4, staleCount: 0, missingCount: 6, eligibleCount: 10, skippedCount: 0 }] },
     ])).toMatchObject({ sampleCount: 2, contentAdvanced: true, stubAdvanced: false, coreReady: false });
   });
 
@@ -21,6 +21,7 @@ describe("packaged soak coverage report", () => {
       workerRestartGrowth: 0,
       indexedContentFileCount: 10,
       indexedFileCount: 10,
+      eligibleContentFileCount: 10,
       coreIndexCoverageVerified: false,
       backgroundIndexProgressObserved: false,
       stalledIndexTaskCount: 0,
@@ -37,8 +38,10 @@ describe("packaged soak coverage report", () => {
       discoveredFileCount: 10,
       discoveryStatus: "ready",
       contentFileCount: 10,
+      contentEligibleFileCount: 8,
+      contentPolicySkippedFileCount: 2,
       stubFileCount: 2,
-      freshnessLayers: [{ layer: "content", readyCount: 10, staleCount: 0, missingCount: 0 }],
+      freshnessLayers: [{ layer: "content", readyCount: 10, staleCount: 0, missingCount: 0, eligibleCount: 8, skippedCount: 2 }],
     }]).coreReady).toBe(true);
   });
 

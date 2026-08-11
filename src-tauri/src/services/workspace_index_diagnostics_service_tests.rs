@@ -80,6 +80,32 @@ fn reports_workspace_index_schema_versions_and_table_counts() {
 }
 
 #[test]
+fn reports_content_eligibility_separately_from_policy_skipped_files() {
+    let root = unique_temp_dir("workspace-index-diagnostics-content-policy");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("Eligible.ets"), "export class Eligible {}\n").unwrap();
+    fs::write(root.join("Asset.bin"), [0_u8, 1, 2, 3]).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let content = inspect_workspace_index(&root_path)
+        .unwrap()
+        .freshness_layers
+        .into_iter()
+        .find(|layer| layer.layer == "content")
+        .unwrap();
+
+    assert_eq!(content.eligible_count, 1);
+    assert_eq!(content.skipped_count, 1);
+    assert_eq!(content.ready_count, 2);
+    assert_eq!(content.missing_count, 0);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_freshness_layers_for_stale_index_versions() {
     let root = unique_temp_dir("workspace-index-diagnostics-freshness");
     let source_dir = root.join("entry").join("src").join("main").join("ets");

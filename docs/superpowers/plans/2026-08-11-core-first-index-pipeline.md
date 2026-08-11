@@ -313,7 +313,7 @@ git commit -m "feat(index): report auxiliary search readiness"
 - Modify: `docs/superpowers/plans/2026-08-09-large-workspace-query-and-index-convergence.md`
 - Test: `.github/workflows/windows-packaged-soak.yml`
 
-- [ ] **Step 1: Run local regression gates**
+- [x] **Step 1: Run local regression gates**
 
 Run:
 
@@ -326,6 +326,11 @@ cd .. && pnpm build && pnpm check:line-count && git diff --check
 Expected: all workspace-index tests pass, production bundle builds, all source
 files remain at or below 500 lines, and no whitespace errors exist.
 
+Completed on 2026-08-11 for the foreground-admission and coverage-contract
+change set. Focused workspace-index, diagnostics, core-first ordering, and
+packaged-soak contract tests passed together with `pnpm build`, the line-count
+gate, and `git diff --check`.
+
 - [ ] **Step 2: Run Windows 20k packaged gate**
 
 Run:
@@ -335,7 +340,7 @@ gh workflow run windows-packaged-soak.yml --ref main \
   -f fixture_profile=medium -f duration_minutes=30 -f run_full_soak=true
 ```
 
-Expected: `indexedContentFileCount` reaches the fixture file count;
+Expected: `indexedContentFileCount` reaches the eligible content-file count;
 `coreIndexCoverageVerified` is true; crash, unresponsive, stale apply, and
 search miss counts are zero; the workflow reaches the real Harmony semantic
 smoke stage.

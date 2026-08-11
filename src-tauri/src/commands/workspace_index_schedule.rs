@@ -23,16 +23,19 @@ pub async fn schedule_foreground_completion_index(
     let index_manager = index_manager.inner().clone();
     let ui_activity = ui_activity.inner().clone();
     spawn_blocking(move || {
-        ui_activity.record_ui_activity(
-            WorkspaceIndexUiActivityKind::Completion,
-            current_time_millis() as u64,
-        )?;
-        schedule_foreground_completion_index_through_manager(
+        let scheduled = schedule_foreground_completion_index_through_manager(
             &index_manager,
             &root_path,
             &changed_paths,
         )?;
-        start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+        start_admitted_index_worker(
+            scheduled,
+            WorkspaceIndexUiActivityKind::Completion,
+            app_handle,
+            index_runtime,
+            index_manager,
+            ui_activity,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -51,16 +54,19 @@ pub async fn schedule_foreground_navigation_index(
     let index_manager = index_manager.inner().clone();
     let ui_activity = ui_activity.inner().clone();
     spawn_blocking(move || {
-        ui_activity.record_ui_activity(
-            WorkspaceIndexUiActivityKind::Navigation,
-            current_time_millis() as u64,
-        )?;
-        schedule_foreground_navigation_index_through_manager(
+        let scheduled = schedule_foreground_navigation_index_through_manager(
             &index_manager,
             &root_path,
             &changed_paths,
         )?;
-        start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+        start_admitted_index_worker(
+            scheduled,
+            WorkspaceIndexUiActivityKind::Navigation,
+            app_handle,
+            index_runtime,
+            index_manager,
+            ui_activity,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -79,12 +85,19 @@ pub async fn schedule_visible_files_index(
     let index_manager = index_manager.inner().clone();
     let ui_activity = ui_activity.inner().clone();
     spawn_blocking(move || {
-        ui_activity.record_ui_activity(
-            WorkspaceIndexUiActivityKind::FileOpen,
-            current_time_millis() as u64,
+        let scheduled = schedule_visible_files_index_through_manager(
+            &index_manager,
+            &root_path,
+            &changed_paths,
         )?;
-        schedule_visible_files_index_through_manager(&index_manager, &root_path, &changed_paths)?;
-        start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
+        start_admitted_index_worker(
+            scheduled,
+            WorkspaceIndexUiActivityKind::FileOpen,
+            app_handle,
+            index_runtime,
+            index_manager,
+            ui_activity,
+        )
     })
     .await
     .map_err(|error| error.to_string())?
@@ -94,7 +107,7 @@ pub(super) fn schedule_foreground_completion_index_through_manager(
     index_manager: &WorkspaceIndexManagerRuntime,
     root_path: &str,
     changed_paths: &[String],
-) -> Result<(), String> {
+) -> Result<bool, String> {
     index_manager.schedule_changed_path_task(
         root_path,
         changed_paths,
@@ -107,7 +120,7 @@ pub(super) fn schedule_foreground_navigation_index_through_manager(
     index_manager: &WorkspaceIndexManagerRuntime,
     root_path: &str,
     changed_paths: &[String],
-) -> Result<(), String> {
+) -> Result<bool, String> {
     index_manager.schedule_changed_path_task(
         root_path,
         changed_paths,
@@ -120,13 +133,28 @@ pub(super) fn schedule_visible_files_index_through_manager(
     index_manager: &WorkspaceIndexManagerRuntime,
     root_path: &str,
     changed_paths: &[String],
-) -> Result<(), String> {
+) -> Result<bool, String> {
     index_manager.schedule_changed_path_task(
         root_path,
         changed_paths,
         WorkspaceIndexTaskPriority::VisibleFiles,
         "visible-files",
     )
+}
+
+fn start_admitted_index_worker(
+    scheduled: bool,
+    activity_kind: WorkspaceIndexUiActivityKind,
+    app_handle: AppHandle,
+    index_runtime: WorkspaceIndexRuntime,
+    index_manager: WorkspaceIndexManagerRuntime,
+    ui_activity: WorkspaceIndexUiActivityRuntime,
+) -> Result<(), String> {
+    if !scheduled {
+        return Ok(());
+    }
+    ui_activity.record_ui_activity(activity_kind, current_time_millis() as u64)?;
+    start_index_worker(app_handle, index_runtime, index_manager, ui_activity)
 }
 
 fn start_index_worker(

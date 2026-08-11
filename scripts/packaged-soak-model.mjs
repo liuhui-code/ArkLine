@@ -76,7 +76,9 @@ export function evaluateSoakReport(metrics, limits = PACKAGED_SOAK_LIMITS) {
     failures.push("editor-interaction-failure");
   }
   if (metrics.workerRestartGrowth > 0) failures.push("worker-restart");
-  if (metrics.indexedContentFileCount < metrics.indexedFileCount) {
+  const expectedContentFileCount = metrics.eligibleContentFileCount
+    ?? metrics.indexedFileCount;
+  if (metrics.indexedContentFileCount < expectedContentFileCount) {
     failures.push("incomplete-content-index");
   }
   if (metrics.coreIndexCoverageVerified === false) {

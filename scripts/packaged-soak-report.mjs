@@ -108,6 +108,7 @@ export function buildPackagedSoakReport(input) {
     ),
     indexedFileCount: lastDiagnostics.fileCount ?? 0,
     indexedContentFileCount: lastDiagnostics.contentFileCount ?? 0,
+    eligibleContentFileCount: lastDiagnostics.contentEligibleFileCount ?? 0,
     coreIndexCoverageVerified: indexCoverage.coreReady,
     backgroundIndexProgressObserved: indexCoverage.backgroundProgressObserved,
     stalledIndexTaskCount: (lastDiagnostics.taskStatuses ?? []).filter(
@@ -175,12 +176,16 @@ export function summarizeIndexCoverage(diagnostics) {
       discoveredFileCount: item.discoveredFileCount ?? 0,
       discoveryStatus: item.discoveryStatus ?? null,
       contentFileCount: item.contentFileCount ?? 0,
+      contentEligibleFileCount: item.contentEligibleFileCount ?? 0,
+      contentPolicySkippedFileCount: item.contentPolicySkippedFileCount ?? 0,
       stubFileCount: item.stubFileCount ?? 0,
       layers: (item.freshnessLayers ?? []).map((layer) => ({
         layer: layer.layer,
         readyCount: layer.readyCount ?? 0,
         staleCount: layer.staleCount ?? 0,
         missingCount: layer.missingCount ?? 0,
+        eligibleCount: layer.eligibleCount ?? item.fileCount ?? 0,
+        skippedCount: layer.skippedCount ?? 0,
       })),
     }));
   const first = snapshots.at(0) ?? null;
@@ -203,6 +208,7 @@ export function summarizeIndexCoverage(diagnostics) {
       && content?.missingCount === 0
       && content.staleCount === 0
       && content.readyCount >= last.fileCount
+      && content.eligibleCount + content.skippedCount >= last.fileCount
     ),
     contentLayer: content ?? null,
   };

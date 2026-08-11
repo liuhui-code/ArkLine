@@ -278,15 +278,19 @@ export function IndexDiagnosticsHealthSection({
       />
       {diagnostics?.freshnessLayers.length ? (
         <div className="index-diagnostics__table" aria-label="Layer Freshness">
-          <div className="index-diagnostics__row index-diagnostics__row--header">
+          <div className="index-diagnostics__row index-diagnostics__row--header index-diagnostics__row--freshness">
             <span>Layer Freshness</span>
+            <span>Eligible</span>
+            <span>Skipped</span>
             <span>Ready</span>
             <span>Stale</span>
             <span>Missing</span>
           </div>
           {diagnostics.freshnessLayers.map((layer) => (
-            <div className="index-diagnostics__row" key={layer.layer}>
+            <div className="index-diagnostics__row index-diagnostics__row--freshness" key={layer.layer}>
               <span>{layer.layer}</span>
+              <span>{(layer.eligibleCount ?? layer.readyCount).toLocaleString()}</span>
+              <span>{(layer.skippedCount ?? 0).toLocaleString()}</span>
               <span>{layer.readyCount.toLocaleString()}</span>
               <span>{layer.staleCount.toLocaleString()}</span>
               <span>{layer.missingCount.toLocaleString()}</span>
