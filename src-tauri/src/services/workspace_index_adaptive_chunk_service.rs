@@ -1,4 +1,5 @@
 const DEFAULT_PUBLICATION_TARGET_US: u64 = 200_000;
+const BACKGROUND_DEEP_PUBLICATION_TARGET_US: u64 = 300_000;
 const INTERACTIVE_PUBLICATION_TARGET_US: u64 = 50_000;
 const INTERACTIVE_MINIMUM_PATH_COUNT: usize = 1;
 const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 2;
@@ -72,7 +73,7 @@ impl AdaptiveRefreshBudget {
             maximum_source_bytes: maximum_source_bytes.max(1),
             path_count: maximum_path_count,
             source_bytes: maximum_source_bytes.min(INTERACTIVE_INITIAL_SOURCE_BYTES),
-            target_duration_us: DEFAULT_PUBLICATION_TARGET_US,
+            target_duration_us: BACKGROUND_DEEP_PUBLICATION_TARGET_US,
         }
     }
 
@@ -207,17 +208,14 @@ mod tests {
 
     #[test]
     fn isolated_background_deep_refresh_does_not_shrink_after_one_normal_commit() {
-        let mut budget = AdaptiveRefreshBudget::new_for_background_deep_refresh(
-            64,
-            32 * 1024 * 1024,
-            true,
-        );
+        let mut budget =
+            AdaptiveRefreshBudget::new_for_background_deep_refresh(64, 32 * 1024 * 1024, true);
 
         assert_eq!(budget.path_count(), 4);
         assert_eq!(budget.source_bytes(), 512 * 1024);
         budget.observe(140_000, 4, 512 * 1024);
         assert_eq!(budget.path_count(), 4);
         budget.observe(400_000, 4, 512 * 1024);
-        assert_eq!(budget.path_count(), 2);
+        assert_eq!(budget.path_count(), 3);
     }
 }

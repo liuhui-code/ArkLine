@@ -11,6 +11,8 @@ use crate::services::workspace_index_layer_generation_service::{
     publish_layer_generation, CONTENT_LAYER, CONTENT_SUBSTRING_LAYER,
 };
 
+const CONTENT_INDEX_VERSION: i64 = 1;
+
 pub(crate) fn publish_content_core_profiled(
     connection: &Connection,
     root_key: &str,
@@ -34,6 +36,9 @@ pub(crate) fn publish_content_core_profiled(
     })?;
     profiler.measure("contentCoreState", || {
         publish_file_states(connection, root_key, prepared, "workspace_content_files")
+    })?;
+    profiler.measure("contentCoreFingerprint", || {
+        mark_content_fingerprints_ready(connection, root_key, prepared)
     })?;
     profiler.measure("contentSubstringInvalidate", || {
         invalidate_substring_states(connection, root_key, prepared)
@@ -223,6 +228,35 @@ fn invalidate_substring_states(
                     updated_at = excluded.updated_at",
                 params![root_key, path, generation, status, error],
             )
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn mark_content_fingerprints_ready(
+    connection: &Connection,
+    root_key: &str,
+    prepared: &PreparedWorkspaceContentRefresh,
+) -> Result<(), String> {
+    let generation = i64::try_from(prepared.indexed_generation)
+        .map_err(|_| "Content index generation exceeds SQLite integer range".to_string())?;
+    let mut statement = connection
+        .prepare(
+            "update workspace_file_fingerprints
+             set content_index_version = ?3, indexed_generation = ?4
+             where root_path = ?1 and path = ?2
+               and exists(
+                   select 1 from workspace_content_files content
+                   where content.root_path = workspace_file_fingerprints.root_path
+                     and content.path = workspace_file_fingerprints.path
+                     and content.indexed_generation = ?4
+                     and content.status in ('ready', 'skipped')
+               )",
+        )
+        .map_err(|error| error.to_string())?;
+    for path in &prepared.refreshed_paths {
+        statement
+            .execute(params![root_key, path, CONTENT_INDEX_VERSION, generation])
             .map_err(|error| error.to_string())?;
     }
     Ok(())

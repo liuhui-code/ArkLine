@@ -200,8 +200,12 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
         LayerChunkOutcome::Cancelled => Ok(WorkspaceDeepLayerUpdate::Cancelled),
         LayerChunkOutcome::Deferred => Ok(WorkspaceDeepLayerUpdate::Deferred(state)),
         LayerChunkOutcome::Applied => {
-            if phase == WorkspaceIndexDeepRefreshPhase::Stub {
-                publish_deep_fingerprints(task, changed_paths, &[], catalog_generation)?;
+            match phase {
+                WorkspaceIndexDeepRefreshPhase::Content => {}
+                WorkspaceIndexDeepRefreshPhase::Stub => {
+                    publish_deep_fingerprints(task, changed_paths, &[], catalog_generation)?;
+                }
+                WorkspaceIndexDeepRefreshPhase::Substring => {}
             }
             Ok(WorkspaceDeepLayerUpdate::Applied(state))
         }

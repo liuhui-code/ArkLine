@@ -175,7 +175,16 @@ fn core_only_publication_removes_its_artifact_without_building_trigrams() {
             |row| row.get(0),
         )
         .unwrap();
+    let fingerprint_versions: (i64, i64, i64) = connection
+        .query_row(
+            "select content_index_version, symbol_index_version, stub_parser_version
+             from workspace_file_fingerprints limit 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
     assert_eq!(trigram_count, 0);
+    assert_eq!(fingerprint_versions, (1, 0, 0));
     fs::remove_dir_all(root).unwrap();
 }
 
