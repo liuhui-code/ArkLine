@@ -22,14 +22,17 @@ const gitTraceState = vi.hoisted(() => ({
     message: undefined,
   } as GitTraceState,
 }));
+const useGitTraceMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/layout/use-git-trace", () => ({
-  useGitTrace: () => ({ gitTraceState: gitTraceState.current }),
+  useGitTrace: useGitTraceMock,
 }));
 
 describe("useGitAndDiffController", () => {
   beforeEach(() => {
     gitTraceState.current = createDefaultGitTraceState();
+    useGitTraceMock.mockClear();
+    useGitTraceMock.mockImplementation(() => ({ gitTraceState: gitTraceState.current }));
   });
 
   it("loads workspace diff into the git changes view", async () => {
@@ -128,6 +131,10 @@ describe("useGitAndDiffController", () => {
 
     expect(getActiveText).not.toHaveBeenCalled();
     expect(getBaseText).not.toHaveBeenCalled();
+    expect(useGitTraceMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      enabled: false,
+      mappingEnabled: false,
+    }));
   });
 
   it("subscribes to current-line changes only while blame is active", () => {
@@ -149,6 +156,10 @@ describe("useGitAndDiffController", () => {
     act(() => {
       result.current.toggleGitBlame();
     });
+    expect(useGitTraceMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      enabled: true,
+      mappingEnabled: true,
+    }));
     expect(result.current.currentLineBlame).toBe("Blame: Grace, 2 days ago");
 
     act(() => {
