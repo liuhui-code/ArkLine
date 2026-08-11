@@ -326,7 +326,12 @@ fn promote_background_turn(tasks: &mut [WorkspaceIndexTask], foreground_burst: u
 }
 
 fn is_foreground_burst_task(priority: WorkspaceIndexTaskPriority) -> bool {
-    priority >= WorkspaceIndexTaskPriority::ForegroundCompletion
+    matches!(
+        priority,
+        WorkspaceIndexTaskPriority::VisibleFiles
+            | WorkspaceIndexTaskPriority::ForegroundCompletion
+            | WorkspaceIndexTaskPriority::ForegroundNavigation
+    )
 }
 
 fn is_background_fairness_task(priority: WorkspaceIndexTaskPriority) -> bool {
@@ -366,6 +371,7 @@ fn changed_path_task_is_noop(existing: &WorkspaceIndexTask, task: &WorkspaceInde
 fn is_single_unit_batch_priority(priority: WorkspaceIndexTaskPriority) -> bool {
     priority == WorkspaceIndexTaskPriority::FullRefresh
         || priority == WorkspaceIndexTaskPriority::Background
+        || priority == WorkspaceIndexTaskPriority::VisibleFiles
         || priority >= WorkspaceIndexTaskPriority::ForegroundCompletion
 }
 
