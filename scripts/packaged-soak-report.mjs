@@ -187,7 +187,7 @@ function summarizeRendererResources(samples) {
   const usedBytes = numericSamples(valid, "usedBytes");
   const domNodes = numericSamples(valid, "domNodeCount");
   const appShellRenders = valid
-    .map((sample) => sample.renderPressure?.find((item) => item.label === "AppShell")?.count)
+    .map((sample) => renderPressureCount(sample.renderPressure, "AppShell"))
     .filter(Number.isFinite);
   return {
     sampleCount: valid.length,
@@ -197,6 +197,13 @@ function summarizeRendererResources(samples) {
     domNodeGrowth: growth(domNodes),
     renderGrowth: growth(appShellRenders),
   };
+}
+
+function renderPressureCount(value, label) {
+  if (Array.isArray(value)) {
+    return value.find((item) => item.label === label)?.count;
+  }
+  return value?.counts?.[label];
 }
 
 function summarizeSemanticRuntime(diagnostics) {

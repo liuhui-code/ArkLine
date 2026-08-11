@@ -75,7 +75,7 @@ describe("packaged Windows soak report", () => {
         supported: true,
         usedBytes: 20 + index * 4,
         domNodeCount: 100 + index,
-        renderPressure: [{ label: "AppShell", count: 10 + index * 2 }],
+        renderPressure: { counts: { AppShell: 10 + index * 2 } },
       })),
       telemetry: telemetry(),
     });
