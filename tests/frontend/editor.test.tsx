@@ -41,6 +41,7 @@ describe("ArkTsEditor", () => {
 
   it("renders editable text before enabling structural language enhancements", () => {
     let idleCallback: (() => void) | null = null;
+    let releaseDwell: (() => void) | null = null;
     const requestIdleCallback = vi.fn((callback: () => void) => {
       idleCallback = callback;
       return 1;
@@ -49,6 +50,10 @@ describe("ArkTsEditor", () => {
     Object.defineProperty(window, "requestIdleCallback", {
       value: requestIdleCallback,
       configurable: true,
+    });
+    const setTimeout = vi.spyOn(window, "setTimeout").mockImplementation((callback, delay) => {
+      if (delay === 1_500) releaseDwell = callback as () => void;
+      return 1;
     });
     Object.defineProperty(window, "cancelIdleCallback", {
       value: cancelIdleCallback,
@@ -66,10 +71,13 @@ describe("ArkTsEditor", () => {
 
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("build() {}");
     expect(container.querySelector(".cm-foldGutter")).toBeNull();
+    expect(setTimeout).toHaveBeenCalledWith(expect.any(Function), 1_500);
+    act(() => releaseDwell?.());
     act(() => idleCallback?.());
     expect(container.querySelector(".cm-foldGutter")).not.toBeNull();
 
     unmount();
+    setTimeout.mockRestore();
     Reflect.deleteProperty(window, "requestIdleCallback");
     Reflect.deleteProperty(window, "cancelIdleCallback");
   });
@@ -77,6 +85,8 @@ describe("ArkTsEditor", () => {
   it("cancels stale enhancement work when navigation switches files", () => {
     const callbacks = new Map<number, () => void>();
     let nextHandle = 0;
+    const dwellCallbacks: Array<{ handle: number; callback: () => void }> = [];
+    let nextDwellHandle = 0;
     const requestIdleCallback = vi.fn((callback: () => void) => {
       nextHandle += 1;
       callbacks.set(nextHandle, callback);
@@ -87,6 +97,14 @@ describe("ArkTsEditor", () => {
       value: requestIdleCallback,
       configurable: true,
     });
+    const setTimeout = vi.spyOn(window, "setTimeout").mockImplementation((callback, delay) => {
+      nextDwellHandle += 1;
+      if (delay === 1_500) {
+        dwellCallbacks.push({ handle: nextDwellHandle, callback: callback as () => void });
+      }
+      return nextDwellHandle;
+    });
+    const clearTimeout = vi.spyOn(window, "clearTimeout");
     Object.defineProperty(window, "cancelIdleCallback", {
       value: cancelIdleCallback,
       configurable: true,
@@ -99,14 +117,17 @@ describe("ArkTsEditor", () => {
     rerender(
       <ArkTsEditor appearance={appearance} path="C:/demo/B.ets" value="struct B {}" onChange={() => undefined} />,
     );
-    expect(cancelIdleCallback).toHaveBeenCalledWith(1);
-    act(() => callbacks.get(1)?.());
+    expect(clearTimeout).toHaveBeenCalledWith(dwellCallbacks[0]?.handle);
+    act(() => dwellCallbacks[0]?.callback());
     expect(container.querySelector(".cm-foldGutter")).toBeNull();
-    act(() => callbacks.get(2)?.());
+    act(() => dwellCallbacks[1]?.callback());
+    act(() => callbacks.get(1)?.());
     expect(container.querySelector(".cm-foldGutter")).not.toBeNull();
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("struct B {}");
 
     unmount();
+    setTimeout.mockRestore();
+    clearTimeout.mockRestore();
     Reflect.deleteProperty(window, "requestIdleCallback");
     Reflect.deleteProperty(window, "cancelIdleCallback");
   });

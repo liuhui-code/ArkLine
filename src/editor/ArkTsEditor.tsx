@@ -64,6 +64,8 @@ type ArkTsEditorProps = {
   transientPreview?: boolean;
 };
 
+const FULL_EDITOR_ENHANCEMENT_DWELL_MS = 1_500;
+
 export function ArkTsEditor({
   focusToken = 0,
   completionTarget = null,
@@ -359,7 +361,7 @@ export function ArkTsEditor({
         ],
       });
       activeEnhancedRef.current = true;
-    }, undefined, transientPreview ? 2_500 : 0);
+    }, undefined, transientPreview ? 2_500 : FULL_EDITOR_ENHANCEMENT_DWELL_MS);
   }, [path, reducedPerformanceMode, transientPreview]);
 
   useEffect(() => {
