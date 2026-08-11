@@ -1,7 +1,9 @@
 const DEFAULT_PUBLICATION_TARGET_US: u64 = 200_000;
 const INTERACTIVE_PUBLICATION_TARGET_US: u64 = 50_000;
 const INTERACTIVE_MINIMUM_PATH_COUNT: usize = 1;
-const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 2;
+// Sidecar publication is process-isolated. Four paths amortize IPC and SQLite
+// transaction overhead without allowing an interactive batch to become a long task.
+const INTERACTIVE_MAXIMUM_PATH_COUNT: usize = 4;
 const INITIAL_PATH_COUNT: usize = 16;
 const INITIAL_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 const INTERACTIVE_INITIAL_SOURCE_BYTES: usize = 512 * 1024;
@@ -173,9 +175,9 @@ mod tests {
     fn interactive_budget_caps_non_preemptible_publication_work() {
         let mut budget = AdaptiveRefreshBudget::new_for_latency(64, 32 * 1024 * 1024, true);
 
-        assert_eq!(budget.path_count(), 2);
+        assert_eq!(budget.path_count(), 4);
         assert_eq!(budget.source_bytes(), 512 * 1024);
-        budget.observe(400_000, 2, 512 * 1024);
+        budget.observe(400_000, 4, 512 * 1024);
         assert_eq!(budget.path_count(), 1);
         budget.observe(400_000, 1, 64 * 1024);
         assert_eq!(budget.path_count(), 1);
