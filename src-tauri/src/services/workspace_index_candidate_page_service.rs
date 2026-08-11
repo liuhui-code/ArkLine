@@ -1,4 +1,6 @@
-use crate::models::workspace::{WorkspaceIndexQueryEnvelope, WorkspaceSearchCandidate};
+use crate::models::workspace::{
+    WorkspaceIndexQueryCapability, WorkspaceIndexQueryEnvelope, WorkspaceSearchCandidate,
+};
 use crate::services::workspace_index_entity_query_service::query_workspace_file_symbols;
 use crate::services::workspace_index_query_service::{
     query_workspace_candidates, readiness_for_index_runtime, WorkspaceIndexQueryScope,
@@ -23,12 +25,13 @@ pub(crate) fn query_workspace_candidate_page(
     let has_more = candidates.len() > offset.saturating_add(limit);
     let items = candidates.into_iter().skip(offset).take(limit).collect();
     let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
-    Ok(WorkspaceIndexQueryEnvelope {
+    Ok(WorkspaceIndexQueryEnvelope::v1(
+        WorkspaceIndexQueryCapability::SearchEverywhere,
         items,
         readiness,
-        explain: Vec::new(),
-        next_cursor: has_more.then_some(offset.saturating_add(limit)),
-    })
+        Vec::new(),
+        has_more.then_some(offset.saturating_add(limit)),
+    ))
 }
 
 pub(crate) fn query_workspace_file_symbol_page(
@@ -46,12 +49,13 @@ pub(crate) fn query_workspace_file_symbol_page(
     let has_more = candidates.len() > offset.saturating_add(limit);
     let items = candidates.into_iter().skip(offset).take(limit).collect();
     let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
-    Ok(WorkspaceIndexQueryEnvelope {
+    Ok(WorkspaceIndexQueryEnvelope::v1(
+        WorkspaceIndexQueryCapability::FileSymbols,
         items,
         readiness,
-        explain: Vec::new(),
-        next_cursor: has_more.then_some(offset.saturating_add(limit)),
-    })
+        Vec::new(),
+        has_more.then_some(offset.saturating_add(limit)),
+    ))
 }
 
 pub(crate) fn normalize_candidate_page_limit(limit: usize) -> usize {

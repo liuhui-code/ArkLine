@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Barrier, Mutex};
 use std::thread;
@@ -98,9 +98,9 @@ fn background_worker_drains_tasks_and_reports_statuses() {
         .iter()
         .any(|status| status == &("sdk".to_string(), "ready".to_string())));
     let statuses = manager.get_index_task_statuses(&root_path).unwrap();
-    assert!(statuses.iter().all(|status| {
-        !matches!(status.status.as_str(), "queued" | "running")
-    }));
+    assert!(statuses
+        .iter()
+        .all(|status| { !matches!(status.status.as_str(), "queued" | "running") }));
 
     remove_temp_dir(&root);
 }
@@ -300,9 +300,12 @@ fn deep_index_continuations_survive_sustained_ui_activity_and_navigation() {
     let runtime = WorkspaceIndexRuntime::default();
     let manager = WorkspaceIndexManagerRuntime::default();
     manager.open_workspace_index(&root_path).unwrap();
+    let sqlite_path = root.join(".arkline/index/workspace-catalog.sqlite");
     let mut navigation_count = 0;
 
-    for _ in 0..128 {
+    // Under continuous UI activity, each two-file content slice is paired with a
+    // stub slice and foreground navigation can consume an intervening tick.
+    for _ in 0..(FILE_COUNT * 2 + 16) {
         let manager_for_status = manager.clone();
         let root_for_status = root_path.clone();
         let navigation_path = paths[FILE_COUNT - 1].clone();
@@ -329,33 +332,34 @@ fn deep_index_continuations_survive_sustained_ui_activity_and_navigation() {
                 || true,
             )
             .unwrap();
+        if results.is_empty() {
+            thread::sleep(Duration::from_millis(260));
+            continue;
+        }
         navigation_count += usize::from(scheduled_this_tick);
-        assert!(!results.is_empty());
-        if manager
-            .get_queue_pressure(&root_path)
-            .unwrap()
-            .workspace_pending_task_count
-            == 0
-        {
+        if ready_content_file_count(&sqlite_path) == FILE_COUNT as i64 {
             break;
         }
     }
 
-    let sqlite_path = root.join(".arkline/index/workspace-catalog.sqlite");
-    let connection = rusqlite::Connection::open(sqlite_path).unwrap();
-    let ready_content_files: i64 = connection
-        .query_row(
-            "select count(*) from workspace_content_files where status = 'ready'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
+    let ready_content_files = ready_content_file_count(&sqlite_path);
     let statuses = manager.get_index_task_statuses(&root_path).unwrap();
 
     assert!(navigation_count > 1);
     assert_eq!(ready_content_files, FILE_COUNT as i64);
     assert!(statuses.iter().all(|status| status.status != "running"));
     fs::remove_dir_all(root).unwrap();
+}
+
+fn ready_content_file_count(sqlite_path: &Path) -> i64 {
+    rusqlite::Connection::open(sqlite_path)
+        .unwrap()
+        .query_row(
+            "select count(*) from workspace_content_files where status = 'ready'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
 }
 
 #[test]

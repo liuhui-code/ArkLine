@@ -251,7 +251,7 @@ fn schedules_catalog_deep_refresh_without_readding_path_arrays() {
 }
 
 #[test]
-fn keeps_catalog_progress_in_one_delayed_task_generation() {
+fn keeps_catalog_progress_in_one_ready_task_generation() {
     let result = WorkspaceIndexTaskResult {
         root_path: "/workspace".to_string(),
         kind: "changed-paths".to_string(),
@@ -279,5 +279,5 @@ fn keeps_catalog_progress_in_one_delayed_task_generation() {
 
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].generation, 9);
-    assert!(scheduler.drain_ready().is_empty());
+    assert_eq!(scheduler.drain_ready().len(), 1);
 }

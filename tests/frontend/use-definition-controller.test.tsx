@@ -77,6 +77,7 @@ describe("useDefinitionController", () => {
       "/workspace",
       expect.objectContaining({ path: "/workspace/A.ets", line: 4, column: 2 }),
       expect.any(Number),
+      null,
     );
     expect(queryDefinitionCandidatesWithReadiness).not.toHaveBeenCalled();
     expect(gotoDefinition).not.toHaveBeenCalled();
@@ -114,6 +115,48 @@ describe("useDefinitionController", () => {
 
     expect(navigateToLocation).not.toHaveBeenCalled();
     expect(onStatusChange).toHaveBeenLastCalledWith("Stale definition response ignored");
+  });
+
+  it("uses the current semantic document generation and rejects a stale document reply", async () => {
+    const navigateToLocation = vi.fn(async () => undefined);
+    const ensureSemanticDocument = vi.fn(async () => 7);
+    const queryLanguageDefinition = vi.fn(async (
+      _rootPath: string,
+      _request: unknown,
+      requestGeneration: number,
+    ) => ({
+      items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
+      readiness: readiness("ready"),
+      requestGeneration,
+      documentGeneration: 6,
+      targetGeneration: 6,
+      provider: "semantic" as const,
+      confidence: "semantic" as const,
+      fallbackUsed: false,
+      missReason: null,
+      explain: ["provider:semantic"],
+    }));
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({ queryLanguageDefinition }),
+      ensureSemanticDocument,
+      navigateToLocation,
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(ensureSemanticDocument).toHaveBeenCalledWith("/workspace/A.ets", "class A {}");
+    expect(queryLanguageDefinition).toHaveBeenCalledWith(
+      "/workspace",
+      expect.anything(),
+      expect.any(Number),
+      7,
+    );
+    expect(navigateToLocation).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenLastCalledWith("Stale definition document response ignored");
   });
 
   it("shows indexed definition candidates in the shared query panel", async () => {

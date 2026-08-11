@@ -6,6 +6,8 @@ import type { SearchCandidate } from "@/features/workspace/workspace-index-store
 describe("search entity runner", () => {
   it("runs readiness-first entity search through tracked requests", async () => {
     const envelope: WorkspaceIndexQueryEnvelope<SearchCandidate> = {
+      contractVersion: 1,
+      capability: "searchEverywhere",
       items: [candidate("file", "Entry.ets")],
       readiness: readinessState(),
       explain: ["query:ready"],

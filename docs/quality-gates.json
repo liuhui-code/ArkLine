@@ -35,6 +35,7 @@
     "tests/frontend/indexing-roadmap-status.test.ts",
     "tests/frontend/ci-workflow-gates.test.ts",
     "tests/frontend/packaged-soak-foundation.test.ts",
+    "tests/frontend/packaged-soak-report.test.ts",
     "tests/frontend/packaged-soak-webdriver.test.ts",
     "tests/frontend/readme-quality-gates.test.ts",
     "tests/frontend/check-line-count.test.mjs",

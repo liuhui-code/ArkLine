@@ -45,6 +45,7 @@ export function buildPackagedSoakReport(input) {
   const steadyRssSamples = steadySamples(rssSamples);
   const steadyPrivateSamples = steadySamples(privateSamples);
   const steadyHeapSamples = steadySamples(usedHeapSamples);
+  const indexCoverage = summarizeIndexCoverage(input.diagnostics);
   const verdictMetrics = {
     rendererSearchP95Ms: searchReady.p95Ms,
     rendererJumpP95Ms: jumps.p95Ms,
@@ -107,6 +108,8 @@ export function buildPackagedSoakReport(input) {
     ),
     indexedFileCount: lastDiagnostics.fileCount ?? 0,
     indexedContentFileCount: lastDiagnostics.contentFileCount ?? 0,
+    coreIndexCoverageVerified: indexCoverage.coreReady,
+    backgroundIndexProgressObserved: indexCoverage.backgroundProgressObserved,
     stalledIndexTaskCount: (lastDiagnostics.taskStatuses ?? []).filter(
       (status) => status.status === "running" && status.stalled,
     ).length,
@@ -140,6 +143,7 @@ export function buildPackagedSoakReport(input) {
       interactionTimings,
     ),
     diagnostics: input.diagnostics,
+    indexCoverage,
     processSamples: input.processSamples,
     heapSamples: input.heapSamples,
     retentionEvidence: input.retentionEvidence ?? null,
@@ -160,6 +164,52 @@ export function buildPackagedSoakReport(input) {
     },
     verdict,
   };
+}
+
+export function summarizeIndexCoverage(diagnostics) {
+  const snapshots = diagnostics
+    .filter((item) => !item.error)
+    .map((item) => ({
+      capturedAt: item.capturedAt,
+      fileCount: item.fileCount ?? 0,
+      discoveredFileCount: item.discoveredFileCount ?? 0,
+      discoveryStatus: item.discoveryStatus ?? null,
+      contentFileCount: item.contentFileCount ?? 0,
+      stubFileCount: item.stubFileCount ?? 0,
+      layers: (item.freshnessLayers ?? []).map((layer) => ({
+        layer: layer.layer,
+        readyCount: layer.readyCount ?? 0,
+        staleCount: layer.staleCount ?? 0,
+        missingCount: layer.missingCount ?? 0,
+      })),
+    }));
+  const first = snapshots.at(0) ?? null;
+  const last = snapshots.at(-1) ?? null;
+  const content = layer(last, "content");
+  return {
+    sampleCount: snapshots.length,
+    first,
+    last,
+    contentAdvanced: (last?.contentFileCount ?? 0) > (first?.contentFileCount ?? 0),
+    stubAdvanced: (last?.stubFileCount ?? 0) > (first?.stubFileCount ?? 0),
+    backgroundProgressObserved:
+      (last?.contentFileCount ?? 0) > (first?.contentFileCount ?? 0)
+      || (last?.stubFileCount ?? 0) > (first?.stubFileCount ?? 0),
+    coreReady: Boolean(
+      last
+      && last.discoveryStatus === "ready"
+      && last.discoveredFileCount > 0
+      && last.fileCount >= last.discoveredFileCount
+      && content?.missingCount === 0
+      && content.staleCount === 0
+      && content.readyCount >= last.fileCount
+    ),
+    contentLayer: content ?? null,
+  };
+}
+
+function layer(snapshot, name) {
+  return snapshot?.layers.find((item) => item.layer === name) ?? null;
 }
 
 export function buildPackagedSoakFailureReport(input) {

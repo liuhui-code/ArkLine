@@ -55,12 +55,14 @@ describe("workspace api indexing actions", () => {
       "C:/samples/DemoWorkspace",
       request,
       42,
+      9,
     )).resolves.toBe(envelope);
 
     expect(invoke).toHaveBeenCalledWith("query_language_definition", {
       rootPath: "C:/samples/DemoWorkspace",
       request,
       requestGeneration: 42,
+      documentVersion: 9,
     });
   });
 

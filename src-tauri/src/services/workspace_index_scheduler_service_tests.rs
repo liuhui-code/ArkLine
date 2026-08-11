@@ -72,6 +72,40 @@ fn coalesces_and_deduplicates_changed_paths_for_the_same_root() {
 }
 
 #[test]
+fn foreground_readiness_keeps_only_the_latest_user_target() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    let mut first = changed_task("/workspace", &["First.ets"]);
+    first.priority = WorkspaceIndexTaskPriority::VisibleFiles;
+    first.reason = "visible-files".to_string();
+    let mut second = changed_task("/workspace", &["Second.ets"]);
+    second.priority = WorkspaceIndexTaskPriority::VisibleFiles;
+    second.reason = "visible-files".to_string();
+    scheduler.schedule_with_result(first);
+    scheduler.schedule_with_result(second);
+
+    let tasks = scheduler.pending_tasks();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].changed_paths, vec!["Second.ets"]);
+}
+
+#[test]
+fn delayed_foreground_readiness_keeps_only_the_latest_user_target() {
+    let mut scheduler = WorkspaceIndexScheduler::default();
+    let mut first = changed_task("/workspace", &["First.ets"]);
+    first.priority = WorkspaceIndexTaskPriority::ForegroundCompletion;
+    first.reason = "foreground-completion".to_string();
+    let mut second = changed_task("/workspace", &["Second.ets"]);
+    second.priority = WorkspaceIndexTaskPriority::ForegroundCompletion;
+    second.reason = "foreground-completion".to_string();
+    scheduler.schedule_background_retry(first);
+    scheduler.schedule_background_retry(second);
+
+    let tasks = scheduler.pending_tasks();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].changed_paths, vec!["Second.ets"]);
+}
+
+#[test]
 fn ignores_duplicate_changed_path_subsets_without_generation_churn() {
     let mut scheduler = WorkspaceIndexScheduler::default();
 

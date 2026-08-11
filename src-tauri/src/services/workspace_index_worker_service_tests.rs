@@ -159,6 +159,39 @@ fn worker_changed_paths_processes_all_chunks_without_dropping_added_files() {
 }
 
 #[test]
+fn worker_visible_file_readiness_does_not_publish_a_workspace_snapshot() {
+    let root = create_empty_workspace("worker-visible-file-readiness");
+    let source = root
+        .join("entry")
+        .join("src")
+        .join("main")
+        .join("ets")
+        .join("Entry.ets");
+    fs::write(&source, "export class Entry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    fs::write(&source, "export class Entry { ready() {} }\n").unwrap();
+    let task = WorkspaceIndexTask {
+        root_path,
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::VisibleFiles,
+        changed_paths: vec![source.to_string_lossy().to_string()],
+        sdk_path: None,
+        sdk_version: None,
+        generation: 9,
+        reason: "visible-files".to_string(),
+    };
+
+    let results = run_index_tasks(&runtime, vec![task], |_| Ok(())).unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, "partial");
+    assert!(results[0].refresh_result.is_none());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn worker_config_change_runs_config_change_refresh() {
     let root = create_empty_workspace("worker-config-change");
     let config_path = root.join("oh-package.json5");

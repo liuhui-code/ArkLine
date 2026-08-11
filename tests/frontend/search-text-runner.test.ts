@@ -7,6 +7,8 @@ import type { SearchCandidate } from "@/features/workspace/workspace-index-store
 describe("search text runner", () => {
   it("uses indexed candidate search for Search Everywhere text scope", async () => {
     const envelope: WorkspaceIndexQueryEnvelope<SearchCandidate> = {
+      contractVersion: 1,
+      capability: "searchEverywhere",
       items: [textCandidate()],
       readiness: readinessState("ready"),
     };

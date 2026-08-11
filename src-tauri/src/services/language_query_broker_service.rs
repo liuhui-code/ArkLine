@@ -1,7 +1,10 @@
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, LanguageQueryBrokerEnvelope, LanguageQueryRequest,
 };
-use crate::models::workspace::WorkspaceIndexReadinessState;
+use crate::models::workspace::{
+    WorkspaceIndexQueryCapability, WorkspaceIndexReadinessState,
+    WORKSPACE_INDEX_QUERY_CONTRACT_VERSION,
+};
 use crate::services::workspace_completion_item_service::dedupe_completion_items;
 use crate::services::workspace_completion_parser_service::is_member_access_context;
 use crate::services::workspace_index_facade_service::{
@@ -14,6 +17,7 @@ const COMPLETION_LIMIT: usize = 100;
 
 pub fn assemble_language_definition(
     request_generation: u64,
+    document_generation: Option<u64>,
     semantic_candidates: Vec<DefinitionCandidate>,
     semantic_error: Option<String>,
     mut facade: WorkspaceIndexFacadeEnvelope,
@@ -32,7 +36,13 @@ pub fn assemble_language_definition(
     } else {
         "index"
     };
-    definition_envelope(facade, request_generation, provider, semantic_error)
+    definition_envelope(
+        facade,
+        request_generation,
+        document_generation,
+        provider,
+        semantic_error,
+    )
 }
 
 pub fn assemble_language_completion(
@@ -68,6 +78,7 @@ pub fn assemble_language_completion(
 fn definition_envelope(
     facade: WorkspaceIndexFacadeEnvelope,
     request_generation: u64,
+    document_generation: Option<u64>,
     provider: &str,
     semantic_error: Option<String>,
 ) -> LanguageQueryBrokerEnvelope<DefinitionCandidate> {
@@ -80,10 +91,11 @@ fn definition_envelope(
         })
         .collect::<Vec<_>>();
     broker_envelope(
+        WorkspaceIndexQueryCapability::Definition,
         items,
         facade.readiness,
         request_generation,
-        None,
+        document_generation,
         provider,
         facade.confidence,
         semantic_error,
@@ -100,6 +112,7 @@ fn completion_envelope(
     semantic_error: Option<String>,
 ) -> LanguageQueryBrokerEnvelope<CompletionItem> {
     broker_envelope(
+        WorkspaceIndexQueryCapability::Completion,
         items,
         facade.readiness,
         request_generation,
@@ -113,8 +126,9 @@ fn completion_envelope(
 
 #[allow(clippy::too_many_arguments)]
 fn broker_envelope<T>(
+    capability: WorkspaceIndexQueryCapability,
     items: Vec<T>,
-    readiness: crate::models::workspace::WorkspaceIndexReadiness,
+    mut readiness: crate::models::workspace::WorkspaceIndexReadiness,
     request_generation: u64,
     document_generation: Option<u64>,
     provider: &str,
@@ -122,6 +136,7 @@ fn broker_envelope<T>(
     semantic_error: Option<String>,
     mut explain: Vec<String>,
 ) -> LanguageQueryBrokerEnvelope<T> {
+    apply_provider_provenance(&mut readiness, provider);
     let target_generation = if provider.starts_with("semantic") {
         document_generation
     } else {
@@ -144,6 +159,8 @@ fn broker_envelope<T>(
             .unwrap_or_else(|| "No authoritative language target was found".to_string())
     });
     LanguageQueryBrokerEnvelope {
+        contract_version: WORKSPACE_INDEX_QUERY_CONTRACT_VERSION,
+        capability,
         items,
         readiness,
         request_generation,
@@ -154,6 +171,30 @@ fn broker_envelope<T>(
         fallback_used,
         miss_reason,
         explain,
+    }
+}
+
+fn apply_provider_provenance(
+    readiness: &mut crate::models::workspace::WorkspaceIndexReadiness,
+    provider: &str,
+) {
+    match provider {
+        "semantic" => {
+            readiness.sources = vec!["semantic".to_string()];
+            readiness.coverage = Some("currentFile".to_string());
+            readiness.fallback_used = false;
+        }
+        "semantic+index" => {
+            readiness.sources = vec!["semantic".to_string(), "workspaceIndex".to_string()];
+            readiness.coverage = Some("currentFile+project".to_string());
+            readiness.fallback_used = false;
+        }
+        "index" => {
+            readiness.sources = vec!["workspaceIndex".to_string()];
+            readiness.coverage = Some("project".to_string());
+            readiness.fallback_used = true;
+        }
+        _ => {}
     }
 }
 
@@ -213,7 +254,10 @@ fn confidence(
 mod tests {
     use super::{broker_envelope, merge_completion_sources};
     use crate::models::language::{CompletionItem, LanguageQueryRequest};
-    use crate::models::workspace::{WorkspaceIndexReadiness, WorkspaceIndexReadinessState};
+    use crate::models::workspace::{
+        WorkspaceIndexQueryCapability, WorkspaceIndexReadiness, WorkspaceIndexReadinessState,
+        WORKSPACE_INDEX_QUERY_CONTRACT_VERSION,
+    };
 
     #[test]
     fn member_access_rejects_declaration_keywords_and_snippets() {
@@ -243,6 +287,7 @@ mod tests {
     #[test]
     fn semantic_generation_does_not_claim_the_index_generation() {
         let semantic = broker_envelope(
+            WorkspaceIndexQueryCapability::Completion,
             vec!["item"],
             readiness(12),
             21,
@@ -253,9 +298,26 @@ mod tests {
             Vec::new(),
         );
         assert_eq!(semantic.target_generation, Some(9));
+        assert_eq!(
+            semantic.contract_version,
+            WORKSPACE_INDEX_QUERY_CONTRACT_VERSION
+        );
+        assert_eq!(
+            semantic.capability,
+            WorkspaceIndexQueryCapability::Completion
+        );
+        assert_eq!(
+            semantic.readiness.sources,
+            vec!["semantic", "workspaceIndex"]
+        );
+        assert_eq!(
+            semantic.readiness.coverage.as_deref(),
+            Some("currentFile+project")
+        );
         assert!(!semantic.fallback_used);
 
         let indexed = broker_envelope(
+            WorkspaceIndexQueryCapability::Definition,
             vec!["item"],
             readiness(12),
             22,
@@ -266,6 +328,12 @@ mod tests {
             Vec::new(),
         );
         assert_eq!(indexed.target_generation, Some(12));
+        assert_eq!(
+            indexed.capability,
+            WorkspaceIndexQueryCapability::Definition
+        );
+        assert_eq!(indexed.readiness.sources, vec!["workspaceIndex"]);
+        assert!(indexed.readiness.fallback_used);
         assert!(indexed.fallback_used);
         assert!(indexed
             .explain
@@ -297,6 +365,9 @@ mod tests {
             requested_generation: generation,
             served_generation: Some(generation),
             state: WorkspaceIndexReadinessState::Ready,
+            sources: vec!["semantic".to_string()],
+            coverage: Some("currentFile".to_string()),
+            fallback_used: false,
             reason: None,
             retryable: false,
         }

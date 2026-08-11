@@ -79,6 +79,12 @@ export function evaluateSoakReport(metrics, limits = PACKAGED_SOAK_LIMITS) {
   if (metrics.indexedContentFileCount < metrics.indexedFileCount) {
     failures.push("incomplete-content-index");
   }
+  if (metrics.coreIndexCoverageVerified === false) {
+    failures.push("unverified-content-index-coverage");
+  }
+  if (metrics.backgroundIndexProgressObserved === false) {
+    failures.push("no-background-index-progress");
+  }
   if (metrics.stalledIndexTaskCount > 0) failures.push("stalled-index-task");
   if (metrics.rendererSearchP95Ms > limits.rendererSearchP95Ms) {
     failures.push("renderer-search-p95");

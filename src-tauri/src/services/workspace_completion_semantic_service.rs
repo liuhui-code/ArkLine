@@ -3,7 +3,7 @@
 use rusqlite::{params, Connection};
 
 use crate::models::language::{CompletionItem, LanguageQueryRequest};
-use crate::models::workspace::WorkspaceIndexQueryEnvelope;
+use crate::models::workspace::{WorkspaceIndexQueryCapability, WorkspaceIndexQueryEnvelope};
 use crate::services::workspace_completion_expected_type_service::expected_completion_type;
 use crate::services::workspace_completion_item_service::{
     completion_item, dedupe_completion_items, snippet_completion_item, symbol_completion_from_row,
@@ -95,12 +95,13 @@ pub fn query_semantic_completions_with_readiness(
 ) -> Result<WorkspaceIndexQueryEnvelope<CompletionItem>, String> {
     let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     let items = query_semantic_completions(root_path, request, limit)?;
-    Ok(WorkspaceIndexQueryEnvelope {
+    Ok(WorkspaceIndexQueryEnvelope::v1(
+        WorkspaceIndexQueryCapability::Completion,
         items,
         readiness,
-        explain: Vec::new(),
-        next_cursor: None,
-    })
+        Vec::new(),
+        None,
+    ))
 }
 
 fn keyword_items(prefix: &str) -> Vec<CompletionItem> {

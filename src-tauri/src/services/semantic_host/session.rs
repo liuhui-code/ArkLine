@@ -20,6 +20,7 @@ use crate::models::language::{
 };
 
 mod completion_resolution;
+mod definition;
 mod document_sync;
 
 #[cfg(not(test))]
@@ -137,53 +138,6 @@ impl SemanticWorkerSession {
             Ok(_) => IdleHealthProbe::Healthy,
             Err(error) => IdleHealthProbe::Failed(error),
         }
-    }
-
-    pub fn goto_definition(
-        &self,
-        request: &LanguageQueryRequest,
-    ) -> Result<Option<DefinitionTarget>, String> {
-        let response = self.send_request("gotoDefinition", Some(request))?;
-        let payload = extract_payload(&response.payload, "definition");
-
-        if payload.is_null() {
-            return Ok(None);
-        }
-
-        if let Some(definition) = payload.get("definition") {
-            if definition.is_null() {
-                return Ok(None);
-            }
-
-            return parse_definition_target(definition).map(Some);
-        }
-
-        parse_definition_target(payload).map(Some)
-    }
-
-    pub fn goto_definition_candidates(
-        &self,
-        request: &LanguageQueryRequest,
-    ) -> Result<Vec<DefinitionCandidate>, String> {
-        let response = self.send_request("gotoDefinition", Some(request))?;
-        let payload = extract_payload(&response.payload, "definition");
-
-        if payload.is_null() {
-            return Ok(Vec::new());
-        }
-
-        if let Some(candidates) = payload.get("definitionCandidates") {
-            let items = candidates.as_array().ok_or_else(|| {
-                "Semantic worker definitionCandidates response was not an array".to_string()
-            })?;
-
-            return items
-                .iter()
-                .map(parse_definition_candidate)
-                .collect::<Result<Vec<_>, _>>();
-        }
-
-        parse_definition_candidate(payload).map(|candidate| vec![candidate])
     }
 
     pub fn completion(
@@ -405,7 +359,7 @@ fn parse_health_response(response: &RawSemanticResponse) -> Result<String, Strin
     Ok(status)
 }
 
-fn parse_definition_target(payload: &Value) -> Result<DefinitionTarget, String> {
+pub(super) fn parse_definition_target(payload: &Value) -> Result<DefinitionTarget, String> {
     let path = payload
         .get("path")
         .and_then(Value::as_str)
@@ -428,7 +382,7 @@ fn parse_definition_target(payload: &Value) -> Result<DefinitionTarget, String> 
     })
 }
 
-fn parse_definition_candidate(payload: &Value) -> Result<DefinitionCandidate, String> {
+pub(super) fn parse_definition_candidate(payload: &Value) -> Result<DefinitionCandidate, String> {
     let target = parse_definition_target(payload)?;
 
     Ok(DefinitionCandidate {
@@ -493,6 +447,6 @@ fn parse_text_range(payload: &Value) -> Option<crate::models::language::TextRang
     })
 }
 
-fn extract_payload<'a>(payload: &'a Value, key: &str) -> &'a Value {
+pub(super) fn extract_payload<'a>(payload: &'a Value, key: &str) -> &'a Value {
     payload.get(key).unwrap_or(payload)
 }

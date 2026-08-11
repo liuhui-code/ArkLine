@@ -200,20 +200,59 @@ pub struct WorkspaceIndexReadiness {
     pub requested_generation: u64,
     pub served_generation: Option<u64>,
     pub state: WorkspaceIndexReadinessState,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<String>,
+    #[serde(default)]
+    pub fallback_used: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     pub retryable: bool,
 }
 
+pub const WORKSPACE_INDEX_QUERY_CONTRACT_VERSION: u16 = 1;
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkspaceIndexQueryCapability {
+    SearchEverywhere,
+    FileSymbols,
+    Definition,
+    Usages,
+    Completion,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexQueryEnvelope<T> {
+    pub contract_version: u16,
+    pub capability: WorkspaceIndexQueryCapability,
     pub items: Vec<T>,
     pub readiness: WorkspaceIndexReadiness,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub explain: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<usize>,
+}
+
+impl<T> WorkspaceIndexQueryEnvelope<T> {
+    pub fn v1(
+        capability: WorkspaceIndexQueryCapability,
+        items: Vec<T>,
+        readiness: WorkspaceIndexReadiness,
+        explain: Vec<String>,
+        next_cursor: Option<usize>,
+    ) -> Self {
+        Self {
+            contract_version: WORKSPACE_INDEX_QUERY_CONTRACT_VERSION,
+            capability,
+            items,
+            readiness,
+            explain,
+            next_cursor,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]

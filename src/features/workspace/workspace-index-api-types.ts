@@ -317,17 +317,24 @@ export type WorkspaceTextSearchRequest = {
 export type WorkspaceIndexTaskStatusWatcher = (status: WorkspaceIndexTaskStatus) => void;
 
 export type WorkspaceIndexReadinessState = "ready" | "partial" | "stale" | "blocked" | "missing";
+export type WorkspaceIndexQueryCapability = "searchEverywhere" | "fileSymbols" | "definition" | "usages" | "completion";
+export const WORKSPACE_INDEX_QUERY_CONTRACT_VERSION = 1;
 
 export type WorkspaceIndexReadiness = {
   rootPath: string;
   requestedGeneration: number;
   servedGeneration: number | null;
   state: WorkspaceIndexReadinessState;
+  sources?: string[];
+  coverage?: string;
+  fallbackUsed?: boolean;
   reason?: string;
   retryable: boolean;
 };
 
 export type WorkspaceIndexQueryEnvelope<T> = {
+  contractVersion: number;
+  capability: WorkspaceIndexQueryCapability;
   items: T[];
   readiness: WorkspaceIndexReadiness;
   explain?: string[];

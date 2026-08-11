@@ -2,7 +2,10 @@ use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::services::workspace_discovery_task_service::is_workspace_discovery_task_reason;
+use crate::services::workspace_index_task_admission_service::{latest_wins, tasks_can_coalesce};
 use crate::services::workspace_index_task_lifecycle_service::task_kind_replaces_pending;
+
+const FOREGROUND_BURST_LIMIT: usize = 3;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +50,7 @@ pub struct WorkspaceIndexScheduler {
     tasks: VecDeque<WorkspaceIndexTask>,
     delayed_tasks: Vec<DelayedWorkspaceIndexTask>,
     delayed_attempts: BTreeMap<(String, String), usize>,
+    foreground_burst: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -78,17 +82,24 @@ impl WorkspaceIndexScheduler {
         }
 
         if task.kind == WorkspaceIndexTaskKind::ChangedPaths {
-            if let Some(existing) = self.tasks.iter_mut().find(|existing| {
-                existing.kind == WorkspaceIndexTaskKind::ChangedPaths
-                    && existing.root_path == task.root_path
-                    && existing.reason == task.reason
-            }) {
+            if let Some(existing) = self
+                .tasks
+                .iter_mut()
+                .find(|existing| tasks_can_coalesce(existing, &task))
+            {
                 if changed_path_task_is_noop(existing, &task) {
                     return WorkspaceIndexScheduleResult::default();
                 }
                 self.generation += 1;
                 task.generation = self.generation;
                 let superseded = existing.clone();
+                if latest_wins(&task) {
+                    *existing = task;
+                    return WorkspaceIndexScheduleResult {
+                        superseded_tasks: vec![superseded],
+                        scheduled: true,
+                    };
+                }
                 existing.changed_paths.extend(task.changed_paths);
                 existing.changed_paths.sort();
                 existing.changed_paths.dedup();
@@ -127,17 +138,25 @@ impl WorkspaceIndexScheduler {
         *attempt = attempt.saturating_add(1);
         let delay = background_retry_delay(*attempt);
 
-        if let Some(existing) = self.delayed_tasks.iter_mut().find(|existing| {
-            existing.task.kind == task.kind
-                && existing.task.root_path == task.root_path
-                && existing.task.reason == task.reason
-        }) {
+        if let Some(existing) = self
+            .delayed_tasks
+            .iter_mut()
+            .find(|existing| tasks_can_coalesce(&existing.task, &task))
+        {
             if changed_path_task_is_noop(&existing.task, &task) {
                 return WorkspaceIndexScheduleResult::default();
             }
             self.generation += 1;
             task.generation = self.generation;
             let superseded = existing.task.clone();
+            if latest_wins(&task) {
+                existing.task = task;
+                existing.ready_at = Instant::now() + delay;
+                return WorkspaceIndexScheduleResult {
+                    superseded_tasks: vec![superseded],
+                    scheduled: true,
+                };
+            }
             existing.task.changed_paths.extend(task.changed_paths);
             existing.task.changed_paths.sort();
             existing.task.changed_paths.dedup();
@@ -185,6 +204,7 @@ impl WorkspaceIndexScheduler {
                 .cmp(&left.priority)
                 .then_with(|| left.generation.cmp(&right.generation))
         });
+        promote_background_turn(&mut tasks, self.foreground_burst);
         let limit = if max_tasks != usize::MAX
             && tasks
                 .first()
@@ -196,10 +216,12 @@ impl WorkspaceIndexScheduler {
             max_tasks
         };
         if limit >= tasks.len() {
+            self.record_dispatch(&tasks);
             return tasks;
         }
         let remaining = tasks.split_off(limit);
         self.tasks = remaining.into_iter().collect();
+        self.record_dispatch(&tasks);
         tasks
     }
 
@@ -273,6 +295,42 @@ impl WorkspaceIndexScheduler {
         });
         self.tasks.extend(pending);
     }
+
+    fn record_dispatch(&mut self, tasks: &[WorkspaceIndexTask]) {
+        let Some(first) = tasks.first() else {
+            return;
+        };
+        if is_foreground_burst_task(first.priority) {
+            self.foreground_burst = self.foreground_burst.saturating_add(1);
+        } else if is_background_fairness_task(first.priority) {
+            self.foreground_burst = 0;
+        }
+    }
+}
+
+fn promote_background_turn(tasks: &mut [WorkspaceIndexTask], foreground_burst: usize) {
+    if foreground_burst < FOREGROUND_BURST_LIMIT
+        || !tasks
+            .first()
+            .is_some_and(|task| is_foreground_burst_task(task.priority))
+    {
+        return;
+    }
+    let Some(index) = tasks
+        .iter()
+        .position(|task| is_background_fairness_task(task.priority))
+    else {
+        return;
+    };
+    tasks.swap(0, index);
+}
+
+fn is_foreground_burst_task(priority: WorkspaceIndexTaskPriority) -> bool {
+    priority >= WorkspaceIndexTaskPriority::ForegroundCompletion
+}
+
+fn is_background_fairness_task(priority: WorkspaceIndexTaskPriority) -> bool {
+    priority <= WorkspaceIndexTaskPriority::FullRefresh
 }
 
 fn background_retry_delay(attempt: usize) -> Duration {

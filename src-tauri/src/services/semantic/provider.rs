@@ -12,6 +12,13 @@ pub trait SemanticProvider: Send + Sync {
     fn hover(&self, request: &LanguageQueryRequest) -> Option<HoverResponse>;
     fn definition(&self, request: &LanguageQueryRequest) -> Option<DefinitionTarget>;
     fn definition_candidates(&self, request: &LanguageQueryRequest) -> Vec<DefinitionCandidate>;
+    fn definition_candidates_with_document_version(
+        &self,
+        request: &LanguageQueryRequest,
+        _document_version: Option<u64>,
+    ) -> Vec<DefinitionCandidate> {
+        self.definition_candidates(request)
+    }
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem>;
     fn resolve_completion(
         &self,

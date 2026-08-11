@@ -34,7 +34,8 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
     is_ui_latency_sensitive: &G,
 ) -> Result<Option<WorkspaceIndexTaskResult>, String> {
     let cursor = load_or_create_cursor(task)?;
-    let budget = effective_deep_layer_path_budget(task.priority, is_ui_latency_sensitive());
+    let ui_latency_sensitive_before_page = is_ui_latency_sensitive();
+    let budget = catalog_path_budget(task.priority, ui_latency_sensitive_before_page);
     let batch = plan_deep_refresh_batch(Some(&cursor), budget);
     let page_limit = catalog_page_limit(&batch);
     let Some(page) = load_deep_refresh_catalog_batch(
@@ -61,7 +62,11 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
         )));
     }
     let ui_latency_sensitive_at_start = is_ui_latency_sensitive();
-    if batch.phase == WorkspaceIndexDeepRefreshPhase::Stub && ui_latency_sensitive_at_start {
+    // A newly active UI preempts before starting another sidecar operation. When the
+    // UI was already active, keep the paired content/stub range moving with its
+    // reduced budget so continuous typing cannot strand the cursor after content.
+    let yield_before_sidecar = !ui_latency_sensitive_before_page && ui_latency_sensitive_at_start;
+    if yield_before_sidecar {
         let state = index_runtime.get_index_state(&task.root_path)?;
         return Ok(Some(yielded_result(task, state, started_at)));
     }
@@ -119,6 +124,14 @@ fn catalog_page_limit(
     }
 }
 
+fn catalog_path_budget(
+    priority: crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority,
+    ui_latency_sensitive: bool,
+) -> usize {
+    let (initial_path_budget, _) = initial_refresh_limits(ui_latency_sensitive);
+    effective_deep_layer_path_budget(priority, ui_latency_sensitive).min(initial_path_budget)
+}
+
 fn select_atomic_catalog_slice(
     root_path: &str,
     files: &[crate::services::workspace_index_deep_refresh_catalog_service::WorkspaceIndexDeepRefreshCatalogFile],
@@ -156,13 +169,15 @@ fn load_or_create_cursor(
         return Err("Catalog deep refresh continuation is missing its initial catalog".to_string());
     }
     create_deep_refresh_catalog(&task.root_path, task.generation, &task.changed_paths)?;
-    Ok(WorkspaceIndexDeepRefreshCursor {
+    let cursor = WorkspaceIndexDeepRefreshCursor {
         task_key: task.reason.clone(),
         catalog_generation: task.generation,
         phase: WorkspaceIndexDeepRefreshPhase::Content,
         last_file_id: 0,
         batch_last_file_id: None,
-    })
+    };
+    save_deep_refresh_cursor(&task.root_path, &cursor)?;
+    Ok(cursor)
 }
 
 fn yielded_result(
@@ -187,4 +202,34 @@ fn yielded_result(
     result.status = "partial".to_string();
     result.message = Some(CATALOG_DEEP_REFRESH_MESSAGE.to_string());
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::catalog_path_budget;
+    use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
+
+    #[test]
+    fn catalog_slice_uses_the_initial_background_publication_budget() {
+        assert_eq!(
+            catalog_path_budget(WorkspaceIndexTaskPriority::Background, false),
+            16
+        );
+    }
+
+    #[test]
+    fn catalog_slice_shrinks_before_starting_during_ui_activity() {
+        assert_eq!(
+            catalog_path_budget(WorkspaceIndexTaskPriority::Background, true),
+            2
+        );
+    }
+
+    #[test]
+    fn foreground_catalog_work_remains_bounded_by_the_initial_slice() {
+        assert_eq!(
+            catalog_path_budget(WorkspaceIndexTaskPriority::ForegroundNavigation, false),
+            16
+        );
+    }
 }

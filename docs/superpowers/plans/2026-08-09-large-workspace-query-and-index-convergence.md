@@ -85,7 +85,7 @@ DeepRefreshCheckpoint {
 
 The content phase loads a bounded page after `last_file_id`, publishes it, and records that page's terminal `file_id` as `batch_last_file_id`. The stub phase reloads the same bounded identity range, then advances `last_file_id`. This makes restart and preemption safe without retaining workspace-sized path arrays in memory.
 
-The current foundation persists `workspace_index_deep_refresh_catalogs`, `workspace_index_deep_refresh_catalog_files`, and `workspace_index_deep_refresh_checkpoints`. Catalog reads reject superseded generations. The worker is deliberately not switched until it consumes these pages directly; partial use alongside the existing path-list continuation would allow duplicated or skipped sidecar work.
+The current implementation persists `workspace_index_deep_refresh_catalogs`, `workspace_index_deep_refresh_catalog_files`, and `workspace_index_deep_refresh_checkpoints`. The deep continuation worker consumes catalog pages directly, applies one bounded layer phase, then advances the cursor only after publication. Catalog reads reject superseded generations. The remaining work is end-to-end proof that this path converges on a 20k Windows fixture without starving foreground requests.
 
 ### 4. Scheduler Policy
 
@@ -117,11 +117,71 @@ Diagnostics must report enough evidence to separate a real stall from intentiona
 
 1. Complete query correctness: retain the current streaming cursor protocol and add 20k-fixture coverage for a match beyond the first interactive pages.
 2. Create and supersede immutable DeepRefreshCatalog generations from full-refresh snapshots. Persist file-identity checkpoints and prove that stub work replays exactly the preceding content range. Completed in the current foundation.
-3. Add a catalog-backed full-refresh continuation worker: construct a catalog once, read one page per scheduling turn, invoke one sidecar layer, checkpoint only after publication, and clear the checkpoint only when the catalog is exhausted.
-4. Add supersede and recovery rules: a newer full refresh marks the old catalog superseded; startup resumes only active catalogs; maintenance removes completed/superseded catalogs after a retention window.
+3. Add a catalog-backed full-refresh continuation worker: construct a catalog once, read one page per scheduling turn, invoke one sidecar layer, checkpoint only after publication, and clear the checkpoint only when the catalog is exhausted. Implemented; awaiting packaged Windows convergence evidence.
+4. Add supersede and recovery rules: a newer full refresh marks the old catalog superseded; startup resumes only active catalogs; maintenance removes completed/superseded catalogs after a retention window. Implemented; awaiting packaged Windows recovery evidence.
 5. Add time-sliced fair scheduling only after Stage 3. Keep file-count caps as safety limits.
 6. Add queue/throughput/memory attribution to Index Diagnostics and the packaged soak report.
 7. Gate releases on a Windows 20k mixed workspace: zero false negative search results, no crash/unresponsive event, complete coverage, and explicit latency/memory budgets.
+
+## Current Progress
+
+The current implementation establishes the admission and evidence foundation before changing the deep worker:
+
+- All indexed and semantic query envelopes now publish contract version `1` plus an explicit capability. `WorkspaceIndexReadiness` carries source, coverage, and fallback provenance. Query Explain exposes those fields so a result can distinguish project index, semantic current-file data, and an unavailable source.
+- Packaged soak reports preserve discovery and per-layer freshness snapshots. The gate rejects a run whose final diagnostics cannot prove complete content coverage or whose sampling period does not observe content/stub progress; a row count alone is no longer accepted as proof.
+- Scheduler admission derives `capability + affected scope` from every existing task without changing command payloads. Current-file completion, navigation, and visible-file work are latest-wins in both ready and delayed queues. Active changed-path cancellation now selects the same admission stream, so a newer navigation request cannot prevent cancellation of stale completion work. Reason remains an additional merge discriminator for compatibility with the existing lifecycle journal.
+- Opening a workspace no longer submits the entire workspace file list as a visible-file foreground task. User-driven current-file work remains scheduled on demand.
+
+Local validation completed: the full workspace-index Rust suite passes (`410` tests), the semantic-host suite passes (`45` tests), and the focused frontend quality gate passes (`43` tests). The production build type-checks app sources and completes successfully; formatting, whitespace, and source-file limit checks also pass (`911` files at or below `500` lines). The remaining release evidence is the packaged Windows 20k scenario, including `indexCoverage.coreReady`, latency, queue pressure, and memory measurements.
+
+## Execution Plan And Acceptance
+
+### Phase A: Trust The Observable State
+
+1. Keep every query envelope on contract version `1` with an explicit capability.
+2. Report source, coverage, fallback, requested generation, and served generation together.
+3. Make the packaged report sample discovery and content/stub layers during the run, not only at exit.
+
+Acceptance: a result, miss, or disabled action can identify its serving source and the exact missing or stale layer. A soak run fails when it cannot prove final content coverage or any deep-layer forward progress.
+
+### Phase B: Protect The Interactive Lane
+
+1. Classify index tasks by capability and affected scope before queue insertion.
+2. Replace only same-capability current-file tasks; preserve unrelated navigation, completion, discovery, and SDK work.
+3. Keep a single-file foreground result bounded. Suppress the workspace snapshot only for `VisibleFiles` batch work.
+4. Keep cancellation selection on the same admission key used for queue coalescing.
+
+Acceptance: rapid typing and navigation retain only their newest request, while foreground navigation still publishes its one-file readiness result and never triggers a workspace-sized React state update.
+
+### Phase C: Merge Open-Document Truth
+
+1. Reuse the existing semantic document queue and document-generation acknowledgement as the authoritative current-buffer layer. Completed for completion and definition.
+2. Define per-capability source order: current buffer semantic facts, durable workspace facts, SDK facts, then explicit partial or fallback state. Completion and definition now preserve this provenance in their broker envelopes.
+3. Reject a semantic response whose document version is older than the requested buffer version; do not overwrite a newer editor result with a durable index result. Completed for completion and definition.
+4. Add query fixtures for an unsaved declaration, member completion, and definition resolution before the file index catches up. Definition has a stale-document-generation regression fixture; unsaved declaration and usage fixtures remain release-gate work.
+
+Acceptance: completion and navigation act on the current editor buffer immediately, while project-wide queries still preserve durable-index provenance and never claim complete coverage from a single document.
+
+Current implementation note: `query_language_definition` now accepts the same optional document version as completion. The editor synchronizes the active document before a definition request, the semantic worker receives that version in `gotoDefinition`, and the UI discards a reply whose `documentGeneration` does not match. The fallback index remains project evidence rather than a claim that an unsaved document is durable.
+
+### Phase D: Bounded Background Convergence
+
+1. Retain catalog-generation and file-identity checkpoints as the only deep-work cursor.
+2. Bound each catalog dispatch to the adaptive first-chunk budget while preserving byte/path caps as safety rails. The current worker limits a normal background turn to `16` paths / `8 MB` and an interaction-active turn to `2` paths / `512 KB`; the sidecar records each publication duration. A wall-clock mid-publication deadline remains a future refinement because it requires a transactional sidecar cancellation acknowledgement.
+3. Reserve one worker for foreground tasks and apply weighted fair turns across discovery, content, stubs, and SDK work. The scheduler now grants one background turn after at most three foreground completion/navigation dispatches. This starts with background/deep/SDK priorities and keeps current-file work latest-wins.
+4. Keep writer transactions bounded, measure lock hold/wait time, and defer maintenance behind active reads and foreground publication.
+
+Acceptance: continuous foreground activity leaves a measurable background heartbeat and eventual content/stub progress; no task remains running without a heartbeat beyond its stall threshold.
+
+Current implementation note: the foreground burst limit is intentionally a task-turn limit, rather than a wall-clock sleep. Each background task is catalog-checkpointed and bounded to one adaptive initial publication unit, so the fairness turn can be cancelled, resumed, and observed without rebuilding a workspace-sized state. A future wall-clock deadline can refine that unit only when sidecar cancellation confirms that no partial publication was committed.
+
+### Phase E: Release Evidence
+
+1. Run the Windows packaged 20k mixed-workspace scenario from a clean cache.
+2. Gate on first editor usability, first result, navigation latency, no renderer crash/unresponsive event, bounded memory growth, complete content coverage, and observed deep-layer progress.
+3. Archive the machine-readable report with the release candidate and fail the release on any missing evidence.
+
+Acceptance: the gate supplies an auditable pass/fail record for the shipped package, rather than relying on local subjective responsiveness.
 
 ## Non-Negotiable Tests
 

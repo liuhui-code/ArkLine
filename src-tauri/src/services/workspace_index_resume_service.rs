@@ -109,6 +109,11 @@ fn resume_task_has_active_catalog(task: &WorkspaceIndexTask) -> Result<bool, Str
     if !task.reason.starts_with("full-refresh-deep:") {
         return Ok(true);
     }
+    // The first deep task owns the path list needed to create its durable catalog.
+    // It is recoverable even though no cursor exists yet.
+    if !task.changed_paths.is_empty() {
+        return Ok(true);
+    }
     let Some(cursor) = load_deep_refresh_cursor(&task.root_path, &task.reason)? else {
         return Ok(false);
     };

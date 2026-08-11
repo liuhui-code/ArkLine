@@ -2,9 +2,7 @@ use std::fs;
 
 use crate::services::workspace_index_adaptive_chunk_service::initial_refresh_limits;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
-use crate::services::workspace_index_catalog_refresh_worker_service::{
-    CATALOG_DEEP_REFRESH_MESSAGE, CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE,
-};
+use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE;
 use crate::services::workspace_index_deep_refresh_cursor_service::{
     load_deep_refresh_cursor, WorkspaceIndexDeepRefreshPhase,
 };
@@ -83,7 +81,7 @@ fn worker_background_deep_continuation_uses_ui_active_budget() {
 }
 
 #[test]
-fn stub_waits_for_idle_without_losing_the_paired_content_range() {
+fn stub_progresses_at_reduced_budget_without_losing_the_paired_content_range() {
     let root = create_empty_workspace("worker-deep-stub-yield");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     let root_path = root.to_string_lossy().to_string();
@@ -108,7 +106,7 @@ fn stub_waits_for_idle_without_losing_the_paired_content_range() {
 
     let waiting = deep_task(&root_path, Vec::new());
     let token = WorkspaceIndexCancellationToken::new(waiting.generation);
-    let yielded = run_index_tasks_with_cancellation_and_ui_activity(
+    let progressed = run_index_tasks_with_cancellation_and_ui_activity(
         &runtime,
         vec![(waiting, token)],
         |_| Ok(()),
@@ -120,11 +118,12 @@ fn stub_waits_for_idle_without_losing_the_paired_content_range() {
         .unwrap();
 
     assert_eq!(
-        yielded[0].message.as_deref(),
-        Some(CATALOG_DEEP_REFRESH_MESSAGE)
+        progressed[0].message.as_deref(),
+        Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
     );
-    assert!(yielded[0].refresh_result.is_none());
-    assert_eq!(after, before);
+    assert!(progressed[0].refresh_result.is_none());
+    assert_eq!(after.phase, WorkspaceIndexDeepRefreshPhase::Content);
+    assert!(after.last_file_id >= before.batch_last_file_id.unwrap_or_default());
     fs::remove_dir_all(root).unwrap();
 }
 

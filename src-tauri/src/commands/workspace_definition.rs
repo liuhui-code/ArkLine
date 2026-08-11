@@ -8,7 +8,8 @@ use crate::models::language::{
 };
 use crate::models::workspace::WorkspaceIndexQueryEnvelope;
 use crate::services::language_command_service::{
-    complete_symbol_with_document_version_blocking, goto_definition_candidates_blocking,
+    complete_symbol_with_document_version_blocking,
+    goto_definition_candidates_with_document_version_blocking,
 };
 use crate::services::language_query_broker_service::deadline::{
     await_semantic_until, completion_semantic_budget, elapsed_millis, SemanticDeadlineOutcome,
@@ -109,6 +110,7 @@ pub async fn query_language_definition(
     root_path: String,
     request: LanguageQueryRequest,
     request_generation: u64,
+    document_version: Option<u64>,
     language_runtime: State<'_, LanguageRuntime>,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<LanguageQueryBrokerEnvelope<DefinitionCandidate>, String> {
@@ -116,7 +118,13 @@ pub async fn query_language_definition(
     let semantic_runtime = language_runtime.inner().clone();
     let semantic_request = request.clone();
     let semantic_task = tauri::async_runtime::spawn(async move {
-        goto_definition_candidates_blocking(app, semantic_runtime, semantic_request).await
+        goto_definition_candidates_with_document_version_blocking(
+            app,
+            semantic_runtime,
+            semantic_request,
+            document_version,
+        )
+        .await
     });
     let index_runtime_snapshot = index_runtime.inner().clone();
     let index_root_path = root_path.clone();
@@ -155,6 +163,7 @@ pub async fn query_language_definition(
     append_broker_timing(&mut facade.explain, index_ms, semantic_state, started_at);
     Ok(assemble_language_definition(
         request_generation,
+        document_version,
         semantic_candidates,
         semantic_error,
         facade,

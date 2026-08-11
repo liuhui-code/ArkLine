@@ -111,6 +111,21 @@ impl SemanticProvider for CompositeSemanticProvider {
         }
     }
 
+    fn definition_candidates_with_document_version(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+        document_version: Option<u64>,
+    ) -> Vec<crate::models::language::DefinitionCandidate> {
+        let items = self
+            .semantic
+            .definition_candidates_with_document_version(request, document_version);
+        if items.is_empty() {
+            self.fallback.definition_candidates(request)
+        } else {
+            items
+        }
+    }
+
     fn completion(
         &self,
         request: &crate::models::language::LanguageQueryRequest,

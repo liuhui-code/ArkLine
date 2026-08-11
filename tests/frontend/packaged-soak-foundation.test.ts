@@ -26,12 +26,7 @@ import {
   telemetryDurations,
 } from "../../scripts/packaged-soak-telemetry.mjs";
 import {
-  summarizeProcessEvidence,
-  WINDOWS_PROCESS_TREE_SCRIPT,
-} from "../../scripts/packaged-soak-process-evidence.mjs";
-import {
   buildPackagedSoakFailureReport,
-  buildPackagedSoakReport,
 } from "../../scripts/packaged-soak-report.mjs";
 import {
   SEARCH_UI_EVIDENCE_SCRIPT,
@@ -387,138 +382,6 @@ describe("packaged Windows soak foundation", () => {
     });
   });
 
-  it("accounts for the complete ArkLine and WebView2 process tree", () => {
-    expect(WINDOWS_PROCESS_TREE_SCRIPT).toContain("ParentProcessId");
-    expect(WINDOWS_PROCESS_TREE_SCRIPT).toContain(
-      "ARKLINE_SOAK_APPLICATION_PATH",
-    );
-    expect(summarizeProcessEvidence([
-      {
-        ProcessName: "ArkLine",
-        WorkingSet64: 100,
-        PrivateMemorySize64: 80,
-        HandleCount: 10,
-        ThreadCount: 4,
-      },
-      {
-        ProcessName: "msedgewebview2",
-        WorkingSet64: 200,
-        PrivateMemorySize64: 160,
-        HandleCount: 20,
-        ThreadCount: 8,
-      },
-    ])).toEqual({
-      processCount: 2,
-      rssBytes: 300,
-      privateBytes: 240,
-      handleCount: 30,
-      threadCount: 12,
-    });
-  });
-
-  it("builds a versioned report from renderer, storage, and process evidence", () => {
-    const report = buildPackagedSoakReport({
-      options: {
-        applicationPath: "C:\\ArkLine.exe",
-        fixturePath: "C:\\fixture",
-      },
-      startedAt: Date.now() - 1_000,
-      counters: {
-        crashCount: 0,
-        unresponsiveCount: 0,
-        staleApplyCount: 0,
-      },
-      automationDispatchSamples: [5_000],
-      searchReadySamples: [80],
-      jumpSamples: [90],
-      editorInputSamples: [5_000],
-      editorScrollSamples: [16],
-      diagnostics: [
-        { walSizeBytes: 100, sharedSdkWalSizeBytes: 20, workerRestartCount: 0 },
-        {
-          walSizeBytes: 120,
-          sharedSdkWalSizeBytes: 30,
-          workerRestartCount: 0,
-          queuePending: 3,
-        },
-      ],
-      processSamples: Array.from({ length: 9 }, (_, index) => ({
-        processCount: 4,
-        rssBytes: 100 + index * 10,
-        privateBytes: 80 + index * 5,
-        handleCount: 10 + index,
-        threadCount: 5,
-      })),
-      heapSamples: Array.from({ length: 9 }, (_, index) => ({
-        supported: true,
-        usedBytes: 40 + index * 5,
-      })),
-      telemetry: {
-        capabilities: { eventTiming: true, longAnimationFrame: true },
-        errors: [],
-        eventTimings: [{
-          duration: 20,
-          interactionId: 1,
-          targetLabel: "Find in Files Query",
-        }],
-        frameGaps: [],
-        longAnimationFrames: [],
-        longTasks: [],
-        scriptAttributions: [{
-          sourceUrl: "http://tauri.localhost/assets/index.js",
-          sourceFunctionName: "runSearch",
-          sourceCharPosition: 42,
-          invokerType: "event-listener",
-          count: 3,
-          totalDuration: 120,
-          maxDuration: 50,
-        }],
-        renderPressure: {
-          counts: { AppShell: 4 },
-          lastRenderedAt: { AppShell: 100 },
-        },
-        interactionTraces: [
-          traceEvidence("editorInput", "input:1", 20),
-          traceEvidence("text", "search:1", 80),
-          traceEvidence("navigation", "navigation:1", 210),
-        ],
-        eventTimingCount: 1,
-        frames: 60,
-      },
-    });
-
-    expect(report.schemaVersion).toBe(7);
-    expect(report.telemetry.scriptAttributions).toEqual([
-      expect.objectContaining({ sourceFunctionName: "runSearch", totalDuration: 120 }),
-    ]);
-    expect(report.telemetry.renderPressure).toEqual({
-      counts: { AppShell: 4 },
-      lastRenderedAt: { AppShell: 100 },
-    });
-    expect(report.telemetry.interactionTraces).toMatchObject({
-      count: 3,
-      statusCounts: { ok: 3 },
-      slowest: expect.arrayContaining([
-        expect.objectContaining({ id: "navigation:1", durationMs: 210 }),
-      ]),
-    });
-    expect(report.automationDispatch).toMatchObject({ p95Ms: 5_000 });
-    expect(report.searchReady).toMatchObject({ count: 1, p95Ms: 80 });
-    expect(report.editorInput).toMatchObject({ count: 1, p95Ms: 20 });
-    expect(report.editorAutomation).toMatchObject({ count: 1, p95Ms: 5_000 });
-    expect(report.summary).toMatchObject({
-      maxProcessCount: 4,
-      rssGrowthBytes: 40,
-      privateGrowthBytes: 20,
-      jsHeapGrowthBytes: 20,
-      coldRssGrowthBytes: 80,
-      editorAutomationP95Ms: 5_000,
-      steadyProcessSampleCount: 5,
-      pendingLoads: 0,
-    });
-    expect(report.verdict.passed).toBe(true);
-  });
-
   it("keeps the packaged gate Windows-only, serial, and uploads evidence", async () => {
     const workflow = await readFile(
       path.join(process.cwd(), ".github", "workflows", "windows-packaged-soak.yml"),
@@ -594,17 +457,5 @@ function passingSoakMetrics(overrides: Record<string, number | boolean> = {}) {
     indexedContentFileCount: 1_000,
     stalledIndexTaskCount: 0,
     ...overrides,
-  };
-}
-
-function traceEvidence(kind: string, id: string, durationMs: number) {
-  return {
-    id,
-    kind,
-    label: id,
-    startedAt: 100,
-    durationMs,
-    status: "ok",
-    phases: [],
   };
 }

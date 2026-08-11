@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use crate::models::workspace::{
     WorkspaceIndexReadinessState, WorkspaceTextSearchOptions, WorkspaceTextSearchRequest,
 };
+use crate::services::workspace_content_refresh_service::index_workspace_content;
 use crate::services::workspace_discovery_service::WorkspaceDiscoveredFile;
 use crate::services::workspace_discovery_store_service::{
     replace_discovered_file_chunk, update_discovery_state, WorkspaceDiscoveryState,
@@ -72,20 +73,29 @@ fn facade_routes_text_search_scope_queries() {
 fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
     let root = create_empty_workspace("facade-global-text-search");
     let source_dir = create_workspace_source_dir(&root);
+    let index_path = source_dir.join("Index.ets");
+    let noise_path = source_dir.join("Noise.ets");
     fs::write(
-        source_dir.join("Index.ets"),
-        "struct Index {\n  build() { Text(\"GlobalFacadeTarget\") }\n}\n",
+        &index_path,
+        "struct Index {\n  build() { Text(\"GlobalFacadeTarget\").width(100) }\n}\n",
     )
     .unwrap();
     fs::write(
-        source_dir.join("Noise.ets"),
+        &noise_path,
         "struct Noise {\n  build() { Button(\"Other\") }\n}\n",
     )
     .unwrap();
     let root_path = root.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
     runtime.refresh_workspace_index(&root_path).unwrap();
-    fs::remove_file(source_dir.join("Noise.ets")).unwrap();
+    index_workspace_content(
+        &root_path,
+        &[
+            index_path.to_string_lossy().to_string(),
+            noise_path.to_string_lossy().to_string(),
+        ],
+    )
+    .unwrap();
 
     let plain = query_facade_text_search_result(
         &runtime,
@@ -107,7 +117,7 @@ fn facade_routes_global_text_search_result_and_preserves_regex_fallback() {
         &runtime,
         WorkspaceTextSearchRequest {
             root_path: root_path.clone(),
-            query: "/Text\\(\".+\"\\)/".to_string(),
+            query: "/Text\\(\"GlobalFacadeTarget\"\\)\\.width/".to_string(),
             generation: None,
             cursor: None,
             options: WorkspaceTextSearchOptions {

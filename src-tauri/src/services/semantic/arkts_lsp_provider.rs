@@ -153,6 +153,18 @@ impl SemanticProvider for ArkTsLspProvider {
             .unwrap_or_default()
     }
 
+    fn definition_candidates_with_document_version(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+    ) -> Vec<DefinitionCandidate> {
+        self.manager
+            .request_interactive(|session| {
+                session.goto_definition_candidates_with_document_version(request, document_version)
+            })
+            .unwrap_or_default()
+    }
+
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem> {
         self.manager
             .request_interactive(|session| session.completion(request))

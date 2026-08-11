@@ -12,8 +12,8 @@ use crate::models::workspace::{
     WorkspaceIndexTaskStatus,
 };
 use crate::services::workspace_index_cancellation_service::{
-    cancel_active_tasks_superseded_by_latest, finish_cancellable_tasks, start_cancellable_tasks,
-    WorkspaceIndexCancellationRegistry,
+    cancel_active_tasks_superseded_by_latest, cancel_active_tasks_superseded_by_matching_admission,
+    finish_cancellable_tasks, start_cancellable_tasks, WorkspaceIndexCancellationRegistry,
 };
 use crate::services::workspace_index_follow_up_task_service::schedule_index_follow_up_tasks;
 use crate::services::workspace_index_maintenance_runtime_service::WorkspaceIndexMaintenanceRuntime;
@@ -131,29 +131,29 @@ impl WorkspaceIndexManagerRuntime {
             return Ok(());
         }
 
+        let task = WorkspaceIndexTask {
+            root_path: root_path.to_string(),
+            kind: WorkspaceIndexTaskKind::ChangedPaths,
+            priority,
+            changed_paths: changed_paths.to_vec(),
+            sdk_path: None,
+            sdk_version: None,
+            generation: 0,
+            reason: reason.to_string(),
+        };
         let schedule_result = {
             self.scheduler
                 .lock()
                 .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
-                .schedule_with_result(WorkspaceIndexTask {
-                    root_path: root_path.to_string(),
-                    kind: WorkspaceIndexTaskKind::ChangedPaths,
-                    priority,
-                    changed_paths: changed_paths.to_vec(),
-                    sdk_path: None,
-                    sdk_version: None,
-                    generation: 0,
-                    reason: reason.to_string(),
-                })
+                .schedule_with_result(task.clone())
         };
         if !schedule_result.scheduled {
             return Ok(());
         }
-        cancel_active_tasks_superseded_by_latest(
+        cancel_active_tasks_superseded_by_matching_admission(
             &self.cancellations,
             &self.scheduler,
-            root_path,
-            WorkspaceIndexTaskKind::ChangedPaths,
+            &task,
         )?;
         store_superseded_statuses(&self.recent_statuses, schedule_result.superseded_tasks)?;
         store_pending_statuses_for_root(&self.scheduler, root_path)?;

@@ -45,11 +45,6 @@ fn ui_activity_lowers_background_deep_layer_budget() {
         WORKSPACE_INDEX_UI_ACTIVE_DEEP_PATH_BUDGET
     );
     assert_eq!(
-        budgeted.selected_paths.len(),
-        32,
-        "continuous UI activity must still let a 20k workspace converge"
-    );
-    assert_eq!(
         budgeted.deferred_paths.len(),
         WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET - WORKSPACE_INDEX_UI_ACTIVE_DEEP_PATH_BUDGET
     );

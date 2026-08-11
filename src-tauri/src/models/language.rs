@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::models::workspace::WorkspaceIndexReadiness;
+use crate::models::workspace::{WorkspaceIndexQueryCapability, WorkspaceIndexReadiness};
 use crate::models::workspace_edit::WorkspaceEditPlan;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -81,6 +81,8 @@ pub struct LanguageQueryRequest {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageQueryBrokerEnvelope<T> {
+    pub contract_version: u16,
+    pub capability: WorkspaceIndexQueryCapability,
     pub items: Vec<T>,
     pub readiness: WorkspaceIndexReadiness,
     pub request_generation: u64,

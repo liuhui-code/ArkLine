@@ -422,7 +422,7 @@ type WorkspaceCoreApi = {
   queryCallHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
   queryTypeHierarchy?(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
   semanticCompleteSymbol?(rootPath: string, request: LanguageQueryRequest, requestGeneration?: number): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
-  queryLanguageDefinition?(rootPath: string, request: LanguageQueryRequest, requestGeneration: number): Promise<LanguageQueryBrokerEnvelope<DefinitionCandidate>>;
+  queryLanguageDefinition?(rootPath: string, request: LanguageQueryRequest, requestGeneration: number, documentVersion?: number | null): Promise<LanguageQueryBrokerEnvelope<DefinitionCandidate>>;
   queryLanguageCompletion?(rootPath: string, request: LanguageQueryRequest, requestGeneration: number, documentVersion?: number | null): Promise<LanguageQueryBrokerEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery?(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
   updateWorkspaceIndexFiles?(rootPath: string, addedPaths: string[], removedPaths: string[]): Promise<WorkspaceIndexState>;

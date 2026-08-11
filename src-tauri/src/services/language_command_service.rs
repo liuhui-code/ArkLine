@@ -8,8 +8,8 @@ use crate::models::language::{
 };
 use crate::services::language_service::{
     complete_symbol, complete_symbol_with_document_version, find_usages, goto_definition,
-    goto_definition_candidates, hover_symbol, inspect_runtime, list_document_symbols,
-    LanguageRuntime,
+    goto_definition_candidates, goto_definition_candidates_with_document_version, hover_symbol,
+    inspect_runtime, list_document_symbols, LanguageRuntime,
 };
 use crate::services::settings_store::load_settings_for_app;
 
@@ -59,6 +59,25 @@ pub async fn goto_definition_candidates_blocking(
     spawn_blocking(move || {
         let settings = load_settings_for_app(&app)?;
         Ok(goto_definition_candidates(&runtime, &settings, &request))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+pub async fn goto_definition_candidates_with_document_version_blocking(
+    app: AppHandle,
+    runtime: LanguageRuntime,
+    request: LanguageQueryRequest,
+    document_version: Option<u64>,
+) -> Result<Vec<DefinitionCandidate>, String> {
+    spawn_blocking(move || {
+        let settings = load_settings_for_app(&app)?;
+        Ok(goto_definition_candidates_with_document_version(
+            &runtime,
+            &settings,
+            &request,
+            document_version,
+        ))
     })
     .await
     .map_err(|error| error.to_string())?

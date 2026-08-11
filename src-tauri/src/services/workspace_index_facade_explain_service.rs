@@ -11,6 +11,12 @@ pub(crate) fn explain_facade_query(
         format!("used:{}", used_indexes(kind).join(",")),
         format!("resultCount:{item_count}"),
         format!("readiness:{:?}", readiness.state),
+        format!("sources:{}", readiness.sources.join(",")),
+        format!(
+            "coverage:{}",
+            readiness.coverage.as_deref().unwrap_or("unknown")
+        ),
+        format!("fallbackUsed:{}", readiness.fallback_used),
         format!("requestedGeneration:{}", readiness.requested_generation),
         format!(
             "servedGeneration:{}",
@@ -97,6 +103,9 @@ mod tests {
                 requested_generation: 9,
                 served_generation: Some(9),
                 state: WorkspaceIndexReadinessState::Ready,
+                sources: vec!["workspaceIndex".to_string()],
+                coverage: Some("project".to_string()),
+                fallback_used: false,
                 reason: None,
                 retryable: false,
             },
@@ -108,6 +117,9 @@ mod tests {
         assert!(explain.iter().any(|line| line == "requestedGeneration:9"));
         assert!(explain.iter().any(|line| line == "servedGeneration:9"));
         assert!(explain.iter().any(|line| line == "retryable:false"));
+        assert!(explain.iter().any(|line| line == "sources:workspaceIndex"));
+        assert!(explain.iter().any(|line| line == "coverage:project"));
+        assert!(explain.iter().any(|line| line == "fallbackUsed:false"));
         assert!(explain.iter().any(|line| line == "action:useResults"));
     }
 
@@ -120,6 +132,9 @@ mod tests {
                 requested_generation: 10,
                 served_generation: Some(7),
                 state: WorkspaceIndexReadinessState::Stale,
+                sources: vec!["workspaceIndex".to_string()],
+                coverage: Some("project".to_string()),
+                fallback_used: false,
                 reason: Some("Served generation 7 is stale".to_string()),
                 retryable: true,
             },

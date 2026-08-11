@@ -314,6 +314,7 @@ mod workspace_index_running_lifecycle_service_tests;
 pub mod workspace_index_scheduler_service;
 #[cfg(test)]
 mod workspace_index_scheduler_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_scheduler_fairness_tests;
 pub mod workspace_index_schema_service;
 #[cfg(test)]
 mod workspace_index_schema_service_tests;
@@ -338,8 +339,8 @@ pub(crate) mod workspace_index_structured_restore_service;
 #[cfg(test)]
 mod workspace_index_structured_restore_service_tests;
 pub mod workspace_index_task_journal_service;
-#[cfg(test)]
-mod workspace_index_task_journal_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_index_task_journal_service_tests;
+pub(crate) mod workspace_index_task_admission_service;
 pub mod workspace_index_task_lifecycle_service;
 pub mod workspace_index_task_status_service;
 #[cfg(test)]
@@ -485,11 +486,9 @@ pub(crate) mod workspace_symbol_resolution_unresolved_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_symbol_resolution_unresolved_service_tests;
 #[allow(dead_code)]
 pub(crate) mod workspace_text_search_cancellation_service;
-#[cfg(test)]
-mod workspace_text_search_cancellation_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_text_search_cancellation_service_tests;
 pub(crate) mod workspace_text_search_prefilter_service;
-#[cfg(test)]
-mod workspace_text_search_prefilter_service_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_text_search_prefilter_service_tests;
 pub mod workspace_text_search_service;
 #[cfg(test)]
 mod workspace_text_search_service_tests;

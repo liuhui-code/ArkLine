@@ -9,6 +9,9 @@ fn current_generation_is_ready() {
     assert_eq!(readiness.root_path, "/workspace");
     assert_eq!(readiness.requested_generation, 7);
     assert_eq!(readiness.served_generation, Some(7));
+    assert_eq!(readiness.sources, vec!["workspaceIndex"]);
+    assert_eq!(readiness.coverage.as_deref(), Some("project"));
+    assert!(!readiness.fallback_used);
     assert_eq!(readiness.reason, None);
     assert!(!readiness.retryable);
 }

@@ -180,6 +180,19 @@ pub fn complete_symbol_with_document_version(
     })
 }
 
+pub fn goto_definition_candidates_with_document_version(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+    document_version: Option<u64>,
+) -> Vec<DefinitionCandidate> {
+    runtime.with_router(settings, |router| {
+        router
+            .active()
+            .definition_candidates_with_document_version(request, document_version)
+    })
+}
+
 pub fn resolve_completion(
     runtime: &LanguageRuntime,
     settings: &AppSettings,

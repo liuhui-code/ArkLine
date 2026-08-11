@@ -1,5 +1,7 @@
 use crate::models::language::{CompletionItem, DefinitionCandidate, UsageResult};
-use crate::models::workspace::{WorkspaceIndexQueryEnvelope, WorkspaceSearchCandidate};
+use crate::models::workspace::{
+    WorkspaceIndexQueryCapability, WorkspaceIndexQueryEnvelope, WorkspaceSearchCandidate,
+};
 use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
@@ -7,29 +9,42 @@ use crate::services::workspace_index_facade_service::{
 pub(crate) fn search_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<WorkspaceSearchCandidate> {
-    typed_query_envelope(envelope, search_item)
+    typed_query_envelope(
+        envelope,
+        WorkspaceIndexQueryCapability::SearchEverywhere,
+        search_item,
+    )
 }
 
 pub(crate) fn definition_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<DefinitionCandidate> {
-    typed_query_envelope(envelope, definition_item)
+    typed_query_envelope(
+        envelope,
+        WorkspaceIndexQueryCapability::Definition,
+        definition_item,
+    )
 }
 
 pub(crate) fn usage_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<UsageResult> {
-    typed_query_envelope(envelope, usage_item)
+    typed_query_envelope(envelope, WorkspaceIndexQueryCapability::Usages, usage_item)
 }
 
 pub(crate) fn completion_query_envelope(
     envelope: WorkspaceIndexFacadeEnvelope,
 ) -> WorkspaceIndexQueryEnvelope<CompletionItem> {
-    typed_query_envelope(envelope, completion_item)
+    typed_query_envelope(
+        envelope,
+        WorkspaceIndexQueryCapability::Completion,
+        completion_item,
+    )
 }
 
 fn typed_query_envelope<T>(
     envelope: WorkspaceIndexFacadeEnvelope,
+    capability: WorkspaceIndexQueryCapability,
     map_item: fn(WorkspaceIndexFacadeItem) -> Option<T>,
 ) -> WorkspaceIndexQueryEnvelope<T> {
     let WorkspaceIndexFacadeEnvelope {
@@ -39,12 +54,13 @@ fn typed_query_envelope<T>(
         next_cursor,
         ..
     } = envelope;
-    WorkspaceIndexQueryEnvelope {
-        items: items.into_iter().filter_map(map_item).collect(),
+    WorkspaceIndexQueryEnvelope::v1(
+        capability,
+        items.into_iter().filter_map(map_item).collect(),
         readiness,
         explain,
         next_cursor,
-    }
+    )
 }
 
 fn search_item(item: WorkspaceIndexFacadeItem) -> Option<WorkspaceSearchCandidate> {

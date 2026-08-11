@@ -1,5 +1,5 @@
 use crate::models::language::{LanguageQueryRequest, UsageResult};
-use crate::models::workspace::WorkspaceIndexQueryEnvelope;
+use crate::models::workspace::{WorkspaceIndexQueryCapability, WorkspaceIndexQueryEnvelope};
 use crate::services::workspace_index_query_service::readiness_for_index_runtime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_reference_index_service::{
@@ -19,12 +19,13 @@ pub fn query_usages_with_readiness(
 ) -> Result<WorkspaceIndexQueryEnvelope<UsageResult>, String> {
     let readiness = readiness_for_index_runtime(index_runtime, root_path)?;
     let Some(symbol_id) = target_symbol_id_at_position(root_path, request)? else {
-        return Ok(WorkspaceIndexQueryEnvelope {
-            items: Vec::new(),
+        return Ok(WorkspaceIndexQueryEnvelope::v1(
+            WorkspaceIndexQueryCapability::Usages,
+            Vec::new(),
             readiness,
-            explain: Vec::new(),
-            next_cursor: None,
-        });
+            Vec::new(),
+            None,
+        ));
     };
     let references = query_references_for_merged_symbols(root_path, &symbol_id, limit)?;
     let contexts = resolve_usage_reference_contexts(root_path, &references)?;
@@ -44,12 +45,13 @@ pub fn query_usages_with_readiness(
             }
         })
         .collect();
-    Ok(WorkspaceIndexQueryEnvelope {
+    Ok(WorkspaceIndexQueryEnvelope::v1(
+        WorkspaceIndexQueryCapability::Usages,
         items,
         readiness,
-        explain: Vec::new(),
-        next_cursor: None,
-    })
+        Vec::new(),
+        None,
+    ))
 }
 
 fn query_references_for_merged_symbols(

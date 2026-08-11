@@ -122,8 +122,10 @@ pub fn schedule_refresh_continuations(
             root_paths.push(task.root_path.clone());
             if catalog_refresh_made_progress(result) {
                 scheduler.clear_background_retry(&task.root_path, &task.reason);
+                superseded_tasks.extend(schedule_and_save(&mut scheduler, task)?);
+            } else {
+                superseded_tasks.extend(schedule_background_retry_and_save(&mut scheduler, task)?);
             }
-            superseded_tasks.extend(schedule_background_retry_and_save(&mut scheduler, task)?);
         }
     }
     root_paths.sort();

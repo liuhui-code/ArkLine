@@ -29,6 +29,7 @@ import {
 } from "@/features/workspace/definition-query-model";
 import { findWorkspaceDefinition, findWorkspaceDefinitionCandidates } from "@/features/workspace/local-definition";
 import { createLanguageSessionStore, languageRequestTimeout } from "@/features/language/language-session-store";
+import type { SemanticDocumentSnapshot } from "@/features/semantic/semantic-document-sync";
 import type { UsageSearchState } from "@/features/workspace/usage-search";
 import type { WorkspaceApi, WorkspaceViewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
@@ -42,6 +43,7 @@ export type UseDefinitionControllerOptions = {
   activePath: string | null;
   editorSelection: { line: number; column: number };
   getActiveContent: () => string;
+  getActiveText?: () => SemanticDocumentSnapshot | undefined;
   getActiveContentLength?: () => number;
   getActiveContentSlice?: (start: number, end: number) => string;
   getActiveContentWindow?: (selection: { line: number; column: number }, budget: number) => string;
@@ -67,6 +69,7 @@ export type UseDefinitionControllerOptions = {
     explain?: string[];
   }) => void;
   onStatusChange: (message: string) => void;
+  ensureSemanticDocument?: (path: string, snapshot: SemanticDocumentSnapshot) => Promise<number | null>;
 };
 
 export function useDefinitionController({
@@ -75,6 +78,7 @@ export function useDefinitionController({
   activePath,
   editorSelection,
   getActiveContent,
+  getActiveText,
   getActiveContentLength,
   getActiveContentSlice,
   getActiveContentWindow,
@@ -86,6 +90,7 @@ export function useDefinitionController({
   explainIndexMiss,
   recordRecentQueryExplain,
   onStatusChange,
+  ensureSemanticDocument,
 }: UseDefinitionControllerOptions) {
   const [definitionDebugText, setDefinitionDebugText] = useState("");
   const languageSessionStore = useMemo(() => createLanguageSessionStore(), []);
@@ -212,10 +217,19 @@ export function useDefinitionController({
       void scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       if (isStaleRequest()) return;
       let envelope;
+      let documentVersion: number | null = null;
       try {
+        documentVersion = usesLanguageBroker && ensureSemanticDocument
+          ? await ensureSemanticDocument(activePath, getActiveText?.() ?? getActiveContent())
+          : null;
         envelope = await languageRequestTimeout(
           workspaceApi.queryLanguageDefinition
-            ? workspaceApi.queryLanguageDefinition(workspace.rootPath, request, requestId)
+            ? workspaceApi.queryLanguageDefinition(
+              workspace.rootPath,
+              request,
+              requestId,
+              documentVersion,
+            )
             : workspaceApi.queryDefinitionCandidatesWithReadiness!(workspace.rootPath, request),
           languageSession.timeoutMs,
         );
@@ -241,6 +255,18 @@ export function useDefinitionController({
       ) {
         setDefinitionDebug("Stale definition response ignored");
         onStatusChange("Stale definition response ignored");
+        completeDefinitionRequest();
+        return;
+      }
+      if (
+        usesLanguageBroker
+        && documentVersion !== null
+        && "documentGeneration" in envelope
+        && envelope.documentGeneration !== documentVersion
+        && !brokerUnavailable
+      ) {
+        setDefinitionDebug("Stale definition document response ignored");
+        onStatusChange("Stale definition document response ignored");
         completeDefinitionRequest();
         return;
       }

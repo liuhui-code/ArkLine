@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use crate::indexer_host::{IndexerDiscoveryAttempt, IndexerHostRuntime};
 use crate::indexer_sidecar::IndexerTaskKey;
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
@@ -26,7 +24,7 @@ use crate::services::workspace_index_discovery_result_service::{
 };
 use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
-    WorkspaceIndexTask, WorkspaceIndexTaskKind,
+    WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_state_machine_service::WorkspaceIndexTaskState;
@@ -40,7 +38,7 @@ use crate::services::workspace_index_worker_budget_service::{
 };
 use crate::services::workspace_sdk_index_task_service::run_sdk_index_task;
 use crate::services::workspace_service::scan_workspace;
-
+use std::path::Path;
 pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
 pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 1024;
 pub const WORKSPACE_DISCOVERY_CHUNK_SIZE: usize = 1024;
@@ -77,7 +75,6 @@ where
         false
     })
 }
-
 pub fn run_index_tasks_with_cancellation_and_ui_activity<F, G>(
     index_runtime: &WorkspaceIndexRuntime,
     tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
@@ -96,7 +93,6 @@ where
         None,
     )
 }
-
 pub fn run_index_tasks_with_cancellation_and_ui_activity_and_indexer<F, G>(
     index_runtime: &WorkspaceIndexRuntime,
     tasks: Vec<(WorkspaceIndexTask, WorkspaceIndexCancellationToken)>,
@@ -281,12 +277,12 @@ fn run_index_task_inner<G: Fn() -> bool + Sync>(
             if let Some(refresh_result) =
                 refresh_user_visible_file_layer(index_runtime, task, &changed_paths)?
             {
-                return Ok(Some(refresh_task_result(
-                    task,
-                    "changed-paths",
-                    refresh_result,
-                    started_at,
-                )));
+                let mut result =
+                    refresh_task_result(task, "changed-paths", refresh_result, started_at);
+                if task.priority == WorkspaceIndexTaskPriority::VisibleFiles {
+                    result.refresh_result = None;
+                }
+                return Ok(Some(result));
             }
             if let Some(refresh_result) =
                 refresh_graph_config_change(index_runtime, indexer, task, &changed_paths)?

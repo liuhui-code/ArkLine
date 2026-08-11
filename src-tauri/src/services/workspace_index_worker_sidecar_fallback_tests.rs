@@ -8,6 +8,8 @@ use crate::services::workspace_content_refresh_service::update_workspace_content
 use crate::services::workspace_discovery_store_service::load_ready_discovered_files;
 use crate::services::workspace_discovery_task_service::workspace_discovery_task;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
+use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEEP_REFRESH_MESSAGE;
+use crate::services::workspace_index_deep_refresh_cursor_service::load_deep_refresh_cursor;
 use crate::services::workspace_index_deep_sidecar_service::{
     update_background_deep_layer, WorkspaceDeepLayerUpdate,
 };
@@ -449,8 +451,13 @@ fn background_deep_refresh_yields_when_ui_becomes_active_after_task_start() {
     assert!(results[0]
         .message
         .as_deref()
-        .is_some_and(|message| message.contains("yielded after 0 file(s)")));
-    assert!(results[0].refresh_continuation.is_some());
+        .is_some_and(|message| message == CATALOG_DEEP_REFRESH_MESSAGE));
+    assert!(results[0].refresh_continuation.is_none());
+    assert!(
+        load_deep_refresh_cursor(&root_path, "full-refresh-deep:dynamic-ui-activity")
+            .unwrap()
+            .is_some()
+    );
     assert!(activity_checks.load(Ordering::SeqCst) >= 2);
     assert_eq!(indexer.snapshot().degraded_count, 0);
     fs::remove_dir_all(root).unwrap();

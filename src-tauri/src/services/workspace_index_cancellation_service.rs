@@ -6,6 +6,7 @@ use std::sync::{
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind,
 };
+use crate::services::workspace_index_task_admission_service::tasks_can_coalesce;
 use crate::services::workspace_index_task_lifecycle_service::task_supersedes_active;
 
 #[derive(Debug, Clone)]
@@ -156,11 +157,37 @@ pub fn cancel_active_tasks_superseded_by_latest(
     Ok(())
 }
 
+pub fn cancel_active_tasks_superseded_by_matching_admission(
+    cancellations: &Mutex<WorkspaceIndexCancellationRegistry>,
+    scheduler: &Mutex<WorkspaceIndexScheduler>,
+    task: &WorkspaceIndexTask,
+) -> Result<(), String> {
+    let latest = scheduler
+        .lock()
+        .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
+        .pending_tasks_for_root(&task.root_path)
+        .into_iter()
+        .filter(|pending| tasks_can_coalesce(pending, task))
+        .max_by(|left, right| left.generation.cmp(&right.generation));
+    if let Some(latest) = latest {
+        cancellations
+            .lock()
+            .map_err(|_| "Workspace index cancellation lock poisoned".to_string())?
+            .cancel_superseded_by(&latest);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::WorkspaceIndexCancellationRegistry;
+    use std::sync::Mutex;
+
+    use super::{
+        cancel_active_tasks_superseded_by_matching_admission, WorkspaceIndexCancellationRegistry,
+    };
     use crate::services::workspace_index_scheduler_service::{
-        WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
+        WorkspaceIndexScheduler, WorkspaceIndexTask, WorkspaceIndexTaskKind,
+        WorkspaceIndexTaskPriority,
     };
 
     fn changed_path_task(generation: u64, reason: &str) -> WorkspaceIndexTask {
@@ -199,6 +226,28 @@ mod tests {
             registry.cancel_superseded_by(&changed_path_task(2, "foreground-navigation"));
 
         assert_eq!(cancelled.len(), 1);
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn admission_specific_cancellation_is_not_hidden_by_newer_navigation_work() {
+        let mut active = changed_path_task(0, "foreground-completion");
+        active.priority = WorkspaceIndexTaskPriority::ForegroundCompletion;
+        let mut registry = WorkspaceIndexCancellationRegistry::default();
+        let token = registry.start_task(&active);
+        let mut scheduler = WorkspaceIndexScheduler::default();
+        let mut completion = changed_path_task(0, "foreground-completion");
+        completion.priority = WorkspaceIndexTaskPriority::ForegroundCompletion;
+        scheduler.schedule(completion);
+        scheduler.schedule(changed_path_task(0, "foreground-navigation"));
+
+        cancel_active_tasks_superseded_by_matching_admission(
+            &Mutex::new(registry),
+            &Mutex::new(scheduler),
+            &active,
+        )
+        .unwrap();
+
         assert!(token.is_cancelled());
     }
 }

@@ -331,6 +331,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     activePath,
     editorSelection,
     ...activeContentReader,
+    ensureSemanticDocument: (path, document) => semanticDocumentSyncRef.current.ensure(path, document),
     settingsApplying,
     openEditorQueryPanel,
     setUsageSearch,

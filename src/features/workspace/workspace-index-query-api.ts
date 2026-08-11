@@ -1,11 +1,13 @@
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import type { UsageResult } from "@/features/workspace/usage-search";
+import { WORKSPACE_INDEX_QUERY_CONTRACT_VERSION } from "@/features/workspace/workspace-index-api-types";
 import type {
   WorkspaceIndexExplainRequest,
   WorkspaceIndexQueryLane,
   WorkspaceIndexExplainResult,
   LanguageQueryBrokerEnvelope,
   WorkspaceIndexQueryEnvelope,
+  WorkspaceIndexQueryCapability,
   WorkspaceIndexQueryScope,
   WorkspaceSearchRankingContext,
 } from "@/features/workspace/workspace-index-api-types";
@@ -35,7 +37,7 @@ export type WorkspaceIndexQueryApi = {
   queryCallHierarchy(rootPath: string, request: LanguageQueryRequest): Promise<CallHierarchyResult | null>;
   queryTypeHierarchy(rootPath: string, request: LanguageQueryRequest): Promise<TypeHierarchyResult | null>;
   semanticCompleteSymbol(rootPath: string, request: LanguageQueryRequest, requestGeneration?: number): Promise<WorkspaceIndexQueryEnvelope<LanguageCompletionItem>>;
-  queryLanguageDefinition(rootPath: string, request: LanguageQueryRequest, requestGeneration: number): Promise<LanguageQueryBrokerEnvelope<DefinitionCandidate>>;
+  queryLanguageDefinition(rootPath: string, request: LanguageQueryRequest, requestGeneration: number, documentVersion?: number | null): Promise<LanguageQueryBrokerEnvelope<DefinitionCandidate>>;
   queryLanguageCompletion(rootPath: string, request: LanguageQueryRequest, requestGeneration: number, documentVersion?: number | null): Promise<LanguageQueryBrokerEnvelope<LanguageCompletionItem>>;
   explainWorkspaceIndexQuery(request: WorkspaceIndexExplainRequest): Promise<WorkspaceIndexExplainResult>;
 };
@@ -77,7 +79,7 @@ export function createWorkspaceIndexQueryApi({
       void scope;
       void limit;
       void context;
-      return emptyIndexQueryEnvelope(rootPath);
+      return emptyIndexQueryEnvelope(rootPath, "searchEverywhere");
     },
     async queryWorkspaceFileSymbolsWithReadiness(rootPath, filePath, query, limit, cursor = null) {
       if (hasTauriRuntime()) {
@@ -90,7 +92,7 @@ export function createWorkspaceIndexQueryApi({
       void filePath;
       void query;
       void limit;
-      return emptyIndexQueryEnvelope(rootPath);
+      return emptyIndexQueryEnvelope(rootPath, "fileSymbols");
     },
     async queryDefinitionCandidatesWithReadiness(rootPath, request) {
       if (hasTauriRuntime()) {
@@ -101,7 +103,7 @@ export function createWorkspaceIndexQueryApi({
       }
 
       void request;
-      return emptyIndexQueryEnvelope(rootPath);
+      return emptyIndexQueryEnvelope(rootPath, "definition");
     },
     async queryUsagesWithReadiness(rootPath, request) {
       if (hasTauriRuntime()) {
@@ -109,7 +111,7 @@ export function createWorkspaceIndexQueryApi({
       }
 
       void request;
-      return emptyIndexQueryEnvelope(rootPath);
+      return emptyIndexQueryEnvelope(rootPath, "usages");
     },
     async queryRenameImpact(rootPath, request) {
       if (hasTauriRuntime()) {
@@ -148,16 +150,16 @@ export function createWorkspaceIndexQueryApi({
 
       void request;
       void requestGeneration;
-      return emptyIndexQueryEnvelope(rootPath);
+      return emptyIndexQueryEnvelope(rootPath, "completion");
     },
-    async queryLanguageDefinition(rootPath, request, requestGeneration) {
+    async queryLanguageDefinition(rootPath, request, requestGeneration, documentVersion) {
       if (hasTauriRuntime()) {
         return invoke<LanguageQueryBrokerEnvelope<DefinitionCandidate>>(
           "query_language_definition",
-          { rootPath, request, requestGeneration },
+          { rootPath, request, requestGeneration, documentVersion },
         );
       }
-      return emptyLanguageBrokerEnvelope(rootPath, requestGeneration);
+      return emptyLanguageBrokerEnvelope(rootPath, "definition", requestGeneration, documentVersion);
     },
     async queryLanguageCompletion(rootPath, request, requestGeneration, documentVersion) {
       if (hasTauriRuntime()) {
@@ -166,7 +168,7 @@ export function createWorkspaceIndexQueryApi({
           { rootPath, request, requestGeneration, documentVersion },
         );
       }
-      return emptyLanguageBrokerEnvelope(rootPath, requestGeneration, documentVersion);
+      return emptyLanguageBrokerEnvelope(rootPath, "completion", requestGeneration, documentVersion);
     },
     async explainWorkspaceIndexQuery(request) {
       if (hasTauriRuntime()) {
@@ -185,11 +187,12 @@ export function createWorkspaceIndexQueryApi({
 
 function emptyLanguageBrokerEnvelope<T>(
   rootPath: string,
+  capability: WorkspaceIndexQueryCapability,
   requestGeneration: number,
   documentGeneration: number | null = null,
 ): LanguageQueryBrokerEnvelope<T> {
   return {
-    ...emptyIndexQueryEnvelope<T>(rootPath),
+    ...emptyIndexQueryEnvelope<T>(rootPath, capability),
     requestGeneration,
     documentGeneration,
     targetGeneration: null,
@@ -201,14 +204,22 @@ function emptyLanguageBrokerEnvelope<T>(
   };
 }
 
-function emptyIndexQueryEnvelope<T>(rootPath: string): WorkspaceIndexQueryEnvelope<T> {
+function emptyIndexQueryEnvelope<T>(
+  rootPath: string,
+  capability: WorkspaceIndexQueryCapability,
+): WorkspaceIndexQueryEnvelope<T> {
   return {
     items: [],
+    contractVersion: WORKSPACE_INDEX_QUERY_CONTRACT_VERSION,
+    capability,
     readiness: {
       rootPath,
       requestedGeneration: 0,
       servedGeneration: null,
       state: "missing",
+      sources: ["workspaceIndex"],
+      coverage: "none",
+      fallbackUsed: false,
       reason: "No indexed generation is available",
       retryable: true,
     },

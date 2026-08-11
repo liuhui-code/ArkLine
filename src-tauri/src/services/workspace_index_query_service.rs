@@ -1,8 +1,8 @@
 use crate::models::language::{DefinitionCandidate, DefinitionTarget, LanguageQueryRequest};
 use crate::models::workspace::{
-    WorkspaceIndexQueryEnvelope, WorkspaceIndexReadiness, WorkspaceIndexState,
-    WorkspaceIndexStatus, WorkspaceSearchCandidate, WorkspaceTextSearchRequest,
-    WorkspaceTextSearchResult,
+    WorkspaceIndexQueryCapability, WorkspaceIndexQueryEnvelope, WorkspaceIndexReadiness,
+    WorkspaceIndexState, WorkspaceIndexStatus, WorkspaceSearchCandidate,
+    WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::workspace_content_index_service::search_indexed_workspace_content;
 use crate::services::workspace_definition_candidate_query_service::query_index_definition_candidates;
@@ -112,12 +112,13 @@ pub fn query_definition_candidates_with_readiness(
     if items.is_empty() {
         items.extend(query_index_definition_candidates(root_path, request)?);
     }
-    Ok(WorkspaceIndexQueryEnvelope {
+    Ok(WorkspaceIndexQueryEnvelope::v1(
+        WorkspaceIndexQueryCapability::Definition,
         items,
         readiness,
-        explain: Vec::new(),
-        next_cursor: None,
-    })
+        Vec::new(),
+        None,
+    ))
 }
 
 pub fn search_workspace_text(

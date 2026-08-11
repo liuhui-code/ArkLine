@@ -66,7 +66,6 @@ export function useWorkspaceSession({
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     setWorkspace(snapshot);
     syncWorkspaceIndex(snapshot);
-    scheduleVisibleFilesIndex(snapshot.rootPath, snapshot.visibleFiles);
     setRecentProjects((items) => {
       const next = [snapshot.rootPath, ...items.filter((item) => item !== snapshot.rootPath)].slice(0, 8);
       onPersistRecentProjects(next);

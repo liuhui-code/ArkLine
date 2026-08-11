@@ -13,6 +13,29 @@ describe("workspace index query api", () => {
     expect(api.queryWorkspaceFileSymbols).toBeUndefined();
   });
 
+  it("keeps capability metadata accurate in non-desktop fallbacks", async () => {
+    const api = createWorkspaceIndexQueryApi({
+      invoke: vi.fn(),
+      hasTauriRuntime: () => false,
+    });
+    const request = { path: "/workspace/Entry.ets", line: 1, column: 1, content: "Entry" };
+
+    await expect(api.queryWorkspaceCandidatesWithReadiness("/workspace", "Entry", "all", 20))
+      .resolves.toMatchObject({ contractVersion: 1, capability: "searchEverywhere" });
+    await expect(api.queryWorkspaceFileSymbolsWithReadiness("/workspace", request.path, "Entry", 20))
+      .resolves.toMatchObject({ capability: "fileSymbols" });
+    await expect(api.queryDefinitionCandidatesWithReadiness("/workspace", request))
+      .resolves.toMatchObject({ capability: "definition" });
+    await expect(api.queryUsagesWithReadiness("/workspace", request))
+      .resolves.toMatchObject({ capability: "usages" });
+    await expect(api.semanticCompleteSymbol("/workspace", request, 4))
+      .resolves.toMatchObject({ capability: "completion" });
+    await expect(api.queryLanguageDefinition("/workspace", request, 5))
+      .resolves.toMatchObject({ capability: "definition" });
+    await expect(api.queryLanguageCompletion("/workspace", request, 6, 3))
+      .resolves.toMatchObject({ capability: "completion" });
+  });
+
   it("passes search ranking context to indexed candidate readiness queries", async () => {
     const envelope = {
       items: [],
