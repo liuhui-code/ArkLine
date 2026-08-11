@@ -83,6 +83,36 @@ describe("workspace index projection store", () => {
     vi.useRealTimers();
   });
 
+  it("keeps completed foreground file tasks out of the shell status projection", () => {
+    vi.useFakeTimers();
+    const store = createWorkspaceIndexProjectionStore(1);
+    const listener = vi.fn();
+    store.subscribeStatus(listener);
+
+    store.recordTaskStatus(taskStatus({
+      taskId: "visible-file",
+      kind: "changed-paths",
+      reason: "visible-files",
+      status: "partial",
+    }));
+    vi.runOnlyPendingTimers();
+
+    expect(store.statusSnapshot().taskStatuses).toEqual([]);
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    store.recordTaskStatus(taskStatus({
+      taskId: "next-visible-file",
+      kind: "changed-paths",
+      reason: "visible-files",
+      status: "partial",
+      generation: 2,
+    }));
+    vi.runOnlyPendingTimers();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("derives retry backoff health from backend scheduler events", () => {
     const store = createWorkspaceIndexProjectionStore(1);
 

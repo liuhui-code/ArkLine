@@ -213,9 +213,18 @@ function statusProjectionFrom(snapshot: WorkspaceIndexProjectionSnapshot): Works
   return {
     rootPath: snapshot.rootPath,
     healthSummary: snapshot.healthSummary,
-    taskStatuses: snapshot.taskStatuses.map(projectStatusTask),
+    taskStatuses: snapshot.taskStatuses
+      .filter(isShellStatusTask)
+      .map(projectStatusTask),
     updatedAt: snapshot.updatedAt,
   };
+}
+
+function isShellStatusTask(status: WorkspaceIndexTaskStatus) {
+  return status.kind !== "changed-paths"
+    || isActiveDeepRefresh(status)
+    || status.stalled === true
+    || status.status === "failed";
 }
 
 function sameStatusProjection(
