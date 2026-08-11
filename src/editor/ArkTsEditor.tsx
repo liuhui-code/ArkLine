@@ -281,24 +281,34 @@ export function ArkTsEditor({
     if (activeTransientPreviewRef.current) {
       sessionsRef.current.delete(activePathRef.current);
     } else {
+      const selection = view.state.selection.main;
       sessionsRef.current.save(activePathRef.current, {
-        state: view.state,
+        selectionAnchor: selection.anchor,
+        selectionHead: selection.head,
         scrollTop: view.scrollDOM.scrollTop,
         scrollLeft: view.scrollDOM.scrollLeft,
         enhanced: activeEnhancedRef.current,
       });
     }
     const cached = sessionsRef.current.restore(path);
-    const cachedMatchesDocument = cached && documentMatches(cached.state.doc, documentSource);
+    const cachedMatchesDocument = cached != null;
 
     activePathRef.current = path;
     activeTransientPreviewRef.current = transientPreview;
     activeEnhancedRef.current = cachedMatchesDocument ? cached.enhanced : false;
-    if (cachedMatchesDocument) {
-      view.setState(cached.state);
-    } else {
-      view.setState(createState(path, documentSource, reducedPerformanceMode));
-    }
+    const targetLength = documentSource.length;
+    const selectionAnchor = Math.min(cached?.selectionAnchor ?? 0, targetLength);
+    const selectionHead = Math.min(cached?.selectionHead ?? 0, targetLength);
+    const deferEnhancements = reducedPerformanceMode || !activeEnhancedRef.current;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: documentSource },
+      selection: EditorSelection.range(selectionAnchor, selectionHead),
+      annotations: editorDocumentReplacement.of(true),
+      effects: [
+        editorStructureCompartment.reconfigure(structureExtensionForDocument(deferEnhancements)),
+        languageCompartment.reconfigure(languageExtensionForPath(path, deferEnhancements)),
+      ],
+    });
     publishSessionStats();
     publishInputStats();
     publishCurrentSelectionStats();

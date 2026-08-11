@@ -1,52 +1,36 @@
-import { EditorState } from "@codemirror/state";
 import {
   createEditorDocumentSessionRegistry,
   DEFAULT_HOT_EDITOR_SESSION_CAPACITY,
 } from "@/editor/editor-document-session-registry";
 
 describe("editor document session registry", () => {
-  it("keeps recently used sessions within a bounded capacity", () => {
+  it("keeps recently used editor metadata within a bounded capacity", () => {
     const registry = createEditorDocumentSessionRegistry(2);
-    const session = (content: string) => ({
-      state: EditorState.create({ doc: content }),
+    const session = (position: number) => ({
+      selectionAnchor: position,
+      selectionHead: position,
       scrollTop: 0,
       scrollLeft: 0,
       enhanced: true,
     });
 
-    registry.save("A", session("A"));
-    registry.save("B", session("B"));
-    expect(registry.restore("A")?.state.doc.toString()).toBe("A");
-    registry.save("C", session("C"));
+    registry.save("A", session(1));
+    registry.save("B", session(2));
+    expect(registry.restore("A")?.selectionHead).toBe(1);
+    registry.save("C", session(3));
 
     expect(registry.restore("B")).toBeUndefined();
-    expect(registry.restore("A")?.state.doc.toString()).toBe("A");
-    expect(registry.restore("C")?.state.doc.toString()).toBe("C");
+    expect(registry.restore("A")?.selectionHead).toBe(1);
+    expect(registry.restore("C")?.selectionHead).toBe(3);
     expect(registry.size()).toBe(2);
   });
 
-  it("evicts old editor states when their documents exceed the character budget", () => {
-    const registry = createEditorDocumentSessionRegistry(10, 6);
-    const session = (content: string) => ({
-      state: EditorState.create({ doc: content }),
-      scrollTop: 0,
-      scrollLeft: 0,
-      enhanced: true,
-    });
-
-    registry.save("A", session("1234"));
-    registry.save("B", session("5678"));
-
-    expect(registry.restore("A")).toBeUndefined();
-    expect(registry.restore("B")?.state.doc.toString()).toBe("5678");
-    expect(registry.retainedDocumentCharacters()).toBe(4);
-  });
-
-  it("keeps the default full-state cache smaller than the editor tab limit", () => {
+  it("does not retain inactive document text or full editor states", () => {
     const registry = createEditorDocumentSessionRegistry();
     for (let index = 0; index <= DEFAULT_HOT_EDITOR_SESSION_CAPACITY; index += 1) {
       registry.save(String(index), {
-        state: EditorState.create({ doc: String(index) }),
+        selectionAnchor: index,
+        selectionHead: index,
         scrollTop: index,
         scrollLeft: 0,
         enhanced: true,
@@ -55,5 +39,6 @@ describe("editor document session registry", () => {
 
     expect(registry.size()).toBe(DEFAULT_HOT_EDITOR_SESSION_CAPACITY);
     expect(registry.restore("0")).toBeUndefined();
+    expect(registry.retainedDocumentCharacters()).toBe(0);
   });
 });
