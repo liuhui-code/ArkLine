@@ -315,7 +315,7 @@ describe("useIndexDiagnosticsController", () => {
 
     expect(getWorkspaceIndexLayerReadiness).not.toHaveBeenCalled();
     expect(getWorkspaceIndexHealth).not.toHaveBeenCalled();
-    expect(result.current.workspaceIndexTaskStatuses.at(-1)?.status).toBe("partial");
+    expect(result.current.workspaceIndexTaskStatuses).toEqual([]);
   });
 
   it("refreshes current file readiness when diagnostics is open and active file changes", async () => {

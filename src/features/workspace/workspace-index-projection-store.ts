@@ -87,6 +87,17 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
     }, flushMs);
   }
 
+  function clearScheduledFlushes() {
+    if (flushTimer != null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (statusFlushTimer != null) {
+      clearTimeout(statusFlushTimer);
+      statusFlushTimer = null;
+    }
+  }
+
   function commit(next: WorkspaceIndexProjectionSnapshot, includeStatus = false) {
     snapshot = next;
     scheduleFlush();
@@ -119,6 +130,7 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       return statusProjection;
     },
     reset() {
+      clearScheduledFlushes();
       commit(createInitialSnapshot(), true);
     },
     replaceTaskStatuses(rootPath: string, statuses: WorkspaceIndexTaskStatus[]) {

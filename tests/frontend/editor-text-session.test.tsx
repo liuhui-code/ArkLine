@@ -5,7 +5,7 @@ import { ArkTsEditor } from "@/editor/ArkTsEditor";
 import { defaultSettings } from "@/features/settings/settings-store";
 
 describe("editor Text sessions", () => {
-  it("restores files without materializing full document strings", () => {
+  it("avoids duplicate native document synchronization when restoring a file", () => {
     const appearance = defaultSettings().editor;
     const documentA = Text.of(["struct A {}"]);
     const documentB = Text.of(["struct B {}"]);
@@ -23,7 +23,7 @@ describe("editor Text sessions", () => {
         <ArkTsEditor appearance={appearance} path="C:/demo/A.ets" document={documentA} onChange={() => undefined} />,
       );
 
-      expect(toString).not.toHaveBeenCalled();
+      expect(toString).toHaveBeenCalledTimes(1);
       expect(screen.getByLabelText("Editor Content")).toHaveTextContent("struct A {}");
     } finally {
       toString.mockRestore();

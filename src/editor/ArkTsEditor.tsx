@@ -35,7 +35,6 @@ import { scheduleEditorEnhancement } from "@/editor/editor-enhancement-scheduler
 import { beginInteractionTrace, type InteractionTraceHandle } from "@/features/performance/interaction-trace-store";
 import { createEditorInputTraceRuntime } from "@/features/performance/editor-input-trace-runtime";
 import { getPathBasename } from "@/features/workspace/workspace-store";
-
 type ArkTsEditorProps = {
   focusToken?: number;
   completionTarget?: EditorCompletionTarget | null;
@@ -97,6 +96,7 @@ export function ArkTsEditor({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activePathRef = useRef(path);
+  const activeDocumentSourceRef = useRef<string | Text>(document ?? value);
   const activeTransientPreviewRef = useRef(transientPreview);
   const sessionsRef = useRef(createEditorDocumentSessionRegistry());
   const stateCreationCountRef = useRef(0);
@@ -227,6 +227,7 @@ export function ArkTsEditor({
       state,
       parent: hostRef.current,
     });
+    activeDocumentSourceRef.current = documentSource;
     publishSessionStats();
     const contentDom = viewRef.current.contentDOM;
     contentDom.dataset.documentLength = String(viewRef.current.state.doc.length);
@@ -294,6 +295,7 @@ export function ArkTsEditor({
     const cachedMatchesDocument = cached != null;
 
     activePathRef.current = path;
+    activeDocumentSourceRef.current = documentSource;
     activeTransientPreviewRef.current = transientPreview;
     activeEnhancedRef.current = cachedMatchesDocument ? cached.enhanced : false;
     const targetLength = documentSource.length;
@@ -340,7 +342,8 @@ export function ArkTsEditor({
 
     const isStaleLocalSnapshot = typeof documentSource !== "string"
       && localDocumentsRef.current.has(documentSource);
-    if (!isStaleLocalSnapshot && !documentMatches(view.state.doc, documentSource)) {
+    const sourceWasAlreadyApplied = activeDocumentSourceRef.current === documentSource;
+    if (!isStaleLocalSnapshot && !sourceWasAlreadyApplied && !documentMatches(view.state.doc, documentSource)) {
       inputStatsRef.current.externalReplacement += 1;
       const selection = view.state.selection.main;
       const anchor = Math.min(selection.anchor, documentSource.length);
@@ -351,6 +354,7 @@ export function ArkTsEditor({
         selection: EditorSelection.range(anchor, head),
         annotations: editorDocumentReplacement.of(true),
       });
+      activeDocumentSourceRef.current = documentSource;
       publishInputStats();
     }
   }, [documentSource, path]);
