@@ -43,6 +43,7 @@ pub(crate) struct WorkspaceIndexPublicationRequest {
 pub(crate) enum WorkspaceIndexPublicationKind {
     Default,
     ContentCore,
+    ContentCoreOnly,
     ContentSubstring,
 }
 

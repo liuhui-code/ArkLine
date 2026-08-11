@@ -336,7 +336,7 @@ fn content_substring_layer(
     } else {
         status_with_expected_count(ready, failed, ready + failed)
     };
-    Ok(layer_with_current(
+    let mut layer = layer_with_current(
         "contentSubstring",
         status,
         current,
@@ -344,7 +344,11 @@ fn content_substring_layer(
         failed,
         stale,
         (stale > 0).then_some("wait"),
-    ))
+    );
+    if stale > 0 {
+        layer.reason = Some("auxiliaryIndexing".to_string());
+    }
+    Ok(layer)
 }
 
 fn stub_layer(

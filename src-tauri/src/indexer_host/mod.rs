@@ -16,6 +16,7 @@ mod session;
 pub use crate::models::workspace_index_diagnostics::WorkspaceIndexerHostSnapshot as IndexerHostSnapshot;
 pub use process::{discover_indexer_executable, IndexerHostDiscovery, ARKLINE_INDEXER_PATH_ENV};
 pub use runtime::{IndexerHostRuntime, ARKLINE_INDEXER_ENABLED_ENV};
+pub(crate) use runtime_content::IndexerContentPublicationMode;
 pub use runtime_content::IndexerContentRefreshAttempt;
 pub use runtime_discovery::IndexerDiscoveryAttempt;
 pub use runtime_stub::IndexerStubRefreshAttempt;

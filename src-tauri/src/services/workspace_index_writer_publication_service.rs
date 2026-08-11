@@ -39,7 +39,8 @@ pub(super) fn publish_artifact(
             WorkspaceIndexPublicationKind::Default => {
                 publish_prepared_workspace_content_refresh_chunk(&root_path, &prepared)
             }
-            WorkspaceIndexPublicationKind::ContentCore => {
+            WorkspaceIndexPublicationKind::ContentCore
+            | WorkspaceIndexPublicationKind::ContentCoreOnly => {
                 publish_prepared_workspace_content_core_chunk(&root_path, &prepared)
             }
             WorkspaceIndexPublicationKind::ContentSubstring => {

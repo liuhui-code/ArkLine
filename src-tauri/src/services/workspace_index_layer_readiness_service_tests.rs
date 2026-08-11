@@ -209,6 +209,37 @@ fn reports_deep_layers_partial_until_every_catalog_file_is_indexed() {
 }
 
 #[test]
+fn reports_auxiliary_indexing_when_content_core_is_ready() {
+    let root = create_empty_workspace("layer-readiness-auxiliary-indexing");
+    let source_dir = create_workspace_source_dir(&root);
+    let source = source_dir.join("Entry.ets");
+    fs::write(&source, "export class Entry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let connection =
+        rusqlite::Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
+    connection
+        .execute(
+            "update workspace_content_substring_files set status = 'pending'",
+            [],
+        )
+        .unwrap();
+
+    let report = get_workspace_index_layer_readiness(&root_path, Some(&source_path)).unwrap();
+    let substring = report.layer("contentSubstring").unwrap();
+
+    assert_eq!(
+        substring.workspace_status,
+        WorkspaceIndexLayerStatus::Partial
+    );
+    assert_eq!(substring.reason.as_deref(), Some("auxiliaryIndexing"));
+    assert_eq!(substring.recommended_action.as_deref(), Some("wait"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_partial_discovery_layer() {
     let root = create_empty_workspace("layer-readiness-discovery-partial");
     let root_path = root.to_string_lossy().to_string();

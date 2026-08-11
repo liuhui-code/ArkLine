@@ -9,8 +9,8 @@ use crate::services::workspace_index_deep_refresh_catalog_service::{
 };
 use crate::services::workspace_index_deep_refresh_cursor_service::{
     advance_deep_refresh_cursor, clear_deep_refresh_cursor, load_deep_refresh_cursor,
-    plan_deep_refresh_batch, save_deep_refresh_cursor, WorkspaceIndexDeepRefreshCursor,
-    WorkspaceIndexDeepRefreshPhase,
+    plan_deep_refresh_batch, save_deep_refresh_cursor, start_next_deep_refresh_phase,
+    WorkspaceIndexDeepRefreshCursor, WorkspaceIndexDeepRefreshPhase,
 };
 use crate::services::workspace_index_deep_sidecar_service::{
     update_background_deep_layer_phase, WorkspaceDeepLayerUpdate,
@@ -54,6 +54,13 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
         )));
     };
     if page.files.is_empty() {
+        if let Some(next) = start_next_deep_refresh_phase(&cursor) {
+            save_deep_refresh_cursor(&task.root_path, &next)?;
+            let state = index_runtime.get_index_state(&task.root_path)?;
+            let mut result = yielded_result(task, state, started_at);
+            result.message = Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE.to_string());
+            return Ok(Some(result));
+        }
         complete_deep_refresh_catalog(&task.root_path, cursor.catalog_generation)?;
         clear_deep_refresh_cursor(&task.root_path, &task.reason)?;
         return Ok(Some(skipped_task_result(
@@ -117,12 +124,7 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
 fn catalog_page_limit(
     batch: &crate::services::workspace_index_deep_refresh_cursor_service::WorkspaceIndexDeepRefreshBatch,
 ) -> usize {
-    if batch.up_to_file_id.is_some() {
-        // A stub run must load the full content range even if UI activity changed since content.
-        crate::services::workspace_index_worker_budget_service::WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET
-    } else {
-        batch.path_budget
-    }
+    batch.path_budget
 }
 
 fn catalog_path_budget(
@@ -142,7 +144,7 @@ fn select_atomic_catalog_slice(
         .iter()
         .map(|file| file.path.clone())
         .collect::<Vec<_>>();
-    if phase == WorkspaceIndexDeepRefreshPhase::Stub {
+    if phase != WorkspaceIndexDeepRefreshPhase::Content {
         return (
             paths,
             files.last().map(|file| file.file_id).unwrap_or_default(),

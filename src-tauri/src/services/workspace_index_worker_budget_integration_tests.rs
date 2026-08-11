@@ -81,7 +81,7 @@ fn worker_background_deep_continuation_uses_ui_active_budget() {
 }
 
 #[test]
-fn stub_progresses_at_reduced_budget_without_losing_the_paired_content_range() {
+fn content_exhausts_its_catalog_before_the_stub_phase_starts() {
     let root = create_empty_workspace("worker-deep-stub-yield");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     let root_path = root.to_string_lossy().to_string();
@@ -102,7 +102,7 @@ fn stub_progresses_at_reduced_budget_without_losing_the_paired_content_range() {
     let before = load_deep_refresh_cursor(&root_path, "full-refresh-deep:refresh-workspace")
         .unwrap()
         .unwrap();
-    assert_eq!(before.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+    assert_eq!(before.phase, WorkspaceIndexDeepRefreshPhase::Content);
 
     let waiting = deep_task(&root_path, Vec::new());
     let token = WorkspaceIndexCancellationToken::new(waiting.generation);
@@ -122,13 +122,13 @@ fn stub_progresses_at_reduced_budget_without_losing_the_paired_content_range() {
         Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
     );
     assert!(progressed[0].refresh_result.is_none());
-    assert_eq!(after.phase, WorkspaceIndexDeepRefreshPhase::Content);
-    assert!(after.last_file_id >= before.batch_last_file_id.unwrap_or_default());
+    assert_eq!(after.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+    assert_eq!(after.last_file_id, 0);
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn catalog_continuation_replays_content_batch_for_stub_before_advancing() {
+fn catalog_transitions_to_stub_only_after_content_is_exhausted() {
     let root = create_empty_workspace("worker-deep-catalog-pair");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     let root_path = root.to_string_lossy().to_string();
@@ -160,19 +160,50 @@ fn catalog_continuation_replays_content_batch_for_stub_before_advancing() {
     let cursor = load_deep_refresh_cursor(&root_path, "full-refresh-deep:refresh-workspace")
         .unwrap()
         .unwrap();
-    assert_eq!(cursor.phase, WorkspaceIndexDeepRefreshPhase::Content);
-    assert!(cursor.last_file_id > 0);
-    let connection =
-        rusqlite::Connection::open(root.join(".arkline/index/workspace-catalog.sqlite")).unwrap();
-    let stub_count: i64 = connection
-        .query_row(
-            "select count(*) from workspace_stub_declarations",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(stub_count, 2);
-    drop(connection);
+    assert_eq!(cursor.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+    assert_eq!(cursor.last_file_id, 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn catalog_runs_full_content_stub_and_substring_stages_in_order() {
+    let root = create_empty_workspace("worker-deep-stage-order");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    let root_path = root.to_string_lossy().to_string();
+    let source = source_dir.join("Entry.ets");
+    fs::write(&source, "export class EntryController {}\n").unwrap();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    run_index_tasks(
+        &runtime,
+        vec![deep_task(
+            &root_path,
+            vec![source.to_string_lossy().to_string()],
+        )],
+        |_| Ok(()),
+    )
+    .unwrap();
+    let mut continuation = deep_task(&root_path, Vec::new());
+    for expected in [
+        WorkspaceIndexDeepRefreshPhase::Stub,
+        WorkspaceIndexDeepRefreshPhase::Stub,
+        WorkspaceIndexDeepRefreshPhase::Substring,
+        WorkspaceIndexDeepRefreshPhase::Substring,
+    ] {
+        run_index_tasks(&runtime, vec![continuation.clone()], |_| Ok(())).unwrap();
+        let cursor = load_deep_refresh_cursor(&root_path, "full-refresh-deep:refresh-workspace")
+            .unwrap()
+            .unwrap();
+        assert_eq!(cursor.phase, expected);
+        continuation.generation = continuation.generation.saturating_add(1);
+    }
+    run_index_tasks(&runtime, vec![continuation], |_| Ok(())).unwrap();
+    assert!(
+        load_deep_refresh_cursor(&root_path, "full-refresh-deep:refresh-workspace")
+            .unwrap()
+            .is_none()
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

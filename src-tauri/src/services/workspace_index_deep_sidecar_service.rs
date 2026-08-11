@@ -1,9 +1,7 @@
 use crate::indexer_host::{
-    IndexerContentRefreshAttempt, IndexerHostRuntime, IndexerStubRefreshAttempt,
+    IndexerContentPublicationMode, IndexerHostRuntime, IndexerStubRefreshAttempt,
 };
-use crate::indexer_sidecar::{
-    IndexerTaskKey, INDEXER_CONTENT_REFRESH_PATH_LIMIT, INDEXER_STUB_REFRESH_PATH_LIMIT,
-};
+use crate::indexer_sidecar::{IndexerTaskKey, INDEXER_STUB_REFRESH_PATH_LIMIT};
 use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
 use crate::services::workspace_content_chunk_plan_service::take_refresh_chunk;
 use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
@@ -24,6 +22,11 @@ use crate::services::workspace_index_scheduler_service::{
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_stub_refresh_chunk_service::workspace_file_catalog_contains_paths;
+
+#[path = "workspace_index_deep_content_service.rs"]
+mod content;
+
+use content::refresh_content_chunks;
 
 pub(crate) enum WorkspaceDeepLayerUpdate {
     Applied(WorkspaceIndexState),
@@ -146,7 +149,9 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
     let indexed_generation = latest_layer_generation(
         &task.root_path,
         match phase {
-            WorkspaceIndexDeepRefreshPhase::Content => CONTENT_LAYER,
+            WorkspaceIndexDeepRefreshPhase::Content | WorkspaceIndexDeepRefreshPhase::Substring => {
+                CONTENT_LAYER
+            }
             WorkspaceIndexDeepRefreshPhase::Stub => STUB_LAYER,
         },
     )?
@@ -162,6 +167,7 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
                 indexed_generation,
                 changed_paths,
                 &[],
+                IndexerContentPublicationMode::CoreOnly,
                 ui_latency_sensitive_at_start,
                 is_ui_latency_sensitive,
             ),
@@ -172,6 +178,17 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
                 indexed_generation,
                 changed_paths,
                 &[],
+                ui_latency_sensitive_at_start,
+                is_ui_latency_sensitive,
+            ),
+            WorkspaceIndexDeepRefreshPhase::Substring => refresh_content_chunks(
+                indexer,
+                task,
+                token,
+                indexed_generation,
+                changed_paths,
+                &[],
+                IndexerContentPublicationMode::SubstringOnly,
                 ui_latency_sensitive_at_start,
                 is_ui_latency_sensitive,
             ),
@@ -220,6 +237,14 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
                     )?;
                     publish_deep_fingerprints(task, changed_paths, &[], catalog_generation)?;
                 }
+                WorkspaceIndexDeepRefreshPhase::Substring => {
+                    update_workspace_content_at_generation(
+                        &task.root_path,
+                        changed_paths,
+                        &[],
+                        indexed_generation,
+                    )?
+                }
             }
             Ok(WorkspaceDeepLayerUpdate::Applied(state))
         }
@@ -237,7 +262,7 @@ fn publish_deep_fingerprints(
 }
 
 #[derive(Clone, Copy)]
-enum LayerChunkOutcome {
+pub(super) enum LayerChunkOutcome {
     Applied,
     Deferred,
     Unavailable,
@@ -271,6 +296,7 @@ fn refresh_sidecar_layers<G: Fn() -> bool + Sync>(
                     content_generation,
                     changed_paths,
                     removed_paths,
+                    IndexerContentPublicationMode::CoreAndSubstring,
                     ui_latency_sensitive_at_start,
                     is_ui_latency_sensitive,
                 )
@@ -300,6 +326,7 @@ fn refresh_sidecar_layers<G: Fn() -> bool + Sync>(
         content_generation,
         changed_paths,
         removed_paths,
+        IndexerContentPublicationMode::CoreAndSubstring,
         ui_latency_sensitive_at_start,
         is_ui_latency_sensitive,
     );
@@ -397,82 +424,6 @@ fn refresh_stub_chunks<G: Fn() -> bool + Sync>(
     LayerChunkOutcome::Applied
 }
 
-fn refresh_content_chunks<G: Fn() -> bool + Sync>(
-    indexer: Option<&IndexerHostRuntime>,
-    task: &WorkspaceIndexTask,
-    token: &WorkspaceIndexCancellationToken,
-    indexed_generation: u64,
-    changed_paths: &[String],
-    removed_paths: &[String],
-    ui_latency_sensitive_at_start: bool,
-    is_ui_latency_sensitive: &G,
-) -> LayerChunkOutcome {
-    let Some(indexer) = indexer else {
-        return LayerChunkOutcome::Unavailable;
-    };
-    if indexed_generation == 0 || changed_paths.is_empty() && removed_paths.is_empty() {
-        return LayerChunkOutcome::Unavailable;
-    }
-    let mut budget = AdaptiveRefreshBudget::new_for_background_deep_refresh(
-        INDEXER_CONTENT_REFRESH_PATH_LIMIT,
-        WORKSPACE_CONTENT_MAX_CHUNK_BYTES,
-        ui_latency_sensitive_at_start,
-    );
-    let mut changed_offset = 0usize;
-    let mut removed_offset = 0usize;
-    while let Some(chunk) = take_refresh_chunk(
-        &task.root_path,
-        changed_paths,
-        removed_paths,
-        changed_offset,
-        removed_offset,
-        budget.path_count(),
-        budget.source_bytes(),
-    ) {
-        if should_defer_background(task, ui_latency_sensitive_at_start, is_ui_latency_sensitive) {
-            return LayerChunkOutcome::Deferred;
-        }
-        let path_count = chunk.changed_paths.len() + chunk.removed_paths.len();
-        let next_changed_offset = chunk.next_changed_offset;
-        let next_removed_offset = chunk.next_removed_offset;
-        let mut yielded_for_ui = false;
-        match indexer.refresh_content_chunk_with_priority(
-            IndexerTaskKey {
-                root_path: task.root_path.clone(),
-                kind: "content-refresh".to_string(),
-                generation: task.generation,
-                reason: task.reason.clone(),
-            },
-            indexed_generation,
-            chunk.changed_paths,
-            chunk.removed_paths,
-            publication_priority(task.priority),
-            || {
-                yielded_for_ui |= should_defer_background(
-                    task,
-                    ui_latency_sensitive_at_start,
-                    is_ui_latency_sensitive,
-                );
-                token.is_cancelled() || yielded_for_ui
-            },
-        ) {
-            IndexerContentRefreshAttempt::Applied(result) => budget.observe(
-                result.publication_profile.total_duration_us,
-                path_count,
-                result.processed_source_bytes,
-            ),
-            IndexerContentRefreshAttempt::Unavailable => return LayerChunkOutcome::Unavailable,
-            IndexerContentRefreshAttempt::Cancelled if yielded_for_ui && !token.is_cancelled() => {
-                return LayerChunkOutcome::Deferred;
-            }
-            IndexerContentRefreshAttempt::Cancelled => return LayerChunkOutcome::Cancelled,
-        }
-        changed_offset = next_changed_offset;
-        removed_offset = next_removed_offset;
-    }
-    LayerChunkOutcome::Applied
-}
-
 fn sidecar_priority(priority: WorkspaceIndexTaskPriority) -> bool {
     matches!(
         priority,
@@ -480,7 +431,7 @@ fn sidecar_priority(priority: WorkspaceIndexTaskPriority) -> bool {
     )
 }
 
-fn should_defer_background<G: Fn() -> bool>(
+pub(super) fn should_defer_background<G: Fn() -> bool>(
     task: &WorkspaceIndexTask,
     ui_latency_sensitive_at_start: bool,
     is_ui_latency_sensitive: &G,
@@ -490,7 +441,7 @@ fn should_defer_background<G: Fn() -> bool>(
         && is_ui_latency_sensitive()
 }
 
-fn publication_priority(priority: WorkspaceIndexTaskPriority) -> PublicationPriority {
+pub(super) fn publication_priority(priority: WorkspaceIndexTaskPriority) -> PublicationPriority {
     if matches!(priority, WorkspaceIndexTaskPriority::ChangedFiles) {
         PublicationPriority::Foreground
     } else {

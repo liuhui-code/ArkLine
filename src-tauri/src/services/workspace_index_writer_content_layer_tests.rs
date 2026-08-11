@@ -123,6 +123,62 @@ fn content_core_returns_before_detached_substring_publication() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn core_only_publication_removes_its_artifact_without_building_trigrams() {
+    let root =
+        std::env::temp_dir().join(format!("arkline-writer-core-only-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let source = root.join("Entry.ets");
+    fs::write(&source, "class CoreOnlyEntry {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let source_path = source.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .update_workspace_file_symbol_layer(&root_path, std::slice::from_ref(&source_path), &[])
+        .unwrap();
+    let descriptor = write_workspace_publication_artifact(
+        &root_path,
+        &WorkspaceIndexPublicationArtifact::Content {
+            root_path: root_path.clone(),
+            prepared: prepare_workspace_content_refresh(
+                &root_path,
+                std::slice::from_ref(&source_path),
+                &[],
+                10,
+            ),
+        },
+    )
+    .unwrap();
+    let actor = WorkspaceIndexWriterActor::new();
+
+    let result = actor.publish(
+        WorkspaceIndexPublicationRequest::content(
+            root_path.clone(),
+            descriptor.clone(),
+            PublicationPriority::Background,
+            WorkspaceIndexPublicationKind::ContentCoreOnly,
+        ),
+        || false,
+    );
+
+    assert!(matches!(
+        result,
+        WorkspaceIndexPublicationAttempt::Applied(_)
+    ));
+    assert!(!std::path::Path::new(&descriptor.path).exists());
+    let connection = open_existing_workspace_index_reader(&root_path)
+        .unwrap()
+        .unwrap();
+    let trigram_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_content_trigram_fts",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(trigram_count, 0);
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn wait_for_substring(actor: &WorkspaceIndexWriterActor, root_path: &str, artifact_path: &str) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {

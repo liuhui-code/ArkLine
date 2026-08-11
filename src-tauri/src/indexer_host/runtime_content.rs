@@ -16,6 +16,13 @@ pub enum IndexerContentRefreshAttempt {
     Cancelled,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IndexerContentPublicationMode {
+    CoreAndSubstring,
+    CoreOnly,
+    SubstringOnly,
+}
+
 impl IndexerHostRuntime {
     pub fn refresh_content_chunk<F>(
         &self,
@@ -34,6 +41,7 @@ impl IndexerHostRuntime {
             changed_paths,
             removed_paths,
             PublicationPriority::Background,
+            IndexerContentPublicationMode::CoreAndSubstring,
             is_cancelled,
         )
     }
@@ -45,6 +53,7 @@ impl IndexerHostRuntime {
         changed_paths: Vec<String>,
         removed_paths: Vec<String>,
         priority: PublicationPriority,
+        mode: IndexerContentPublicationMode,
         mut is_cancelled: F,
     ) -> IndexerContentRefreshAttempt
     where
@@ -81,29 +90,44 @@ impl IndexerHostRuntime {
                     );
                     return IndexerContentRefreshAttempt::Unavailable;
                 };
-                let substring_descriptor = descriptor.clone();
                 let root_path = result.task.root_path.clone();
+                let kind = match mode {
+                    IndexerContentPublicationMode::CoreAndSubstring => {
+                        WorkspaceIndexPublicationKind::ContentCore
+                    }
+                    IndexerContentPublicationMode::CoreOnly => {
+                        WorkspaceIndexPublicationKind::ContentCoreOnly
+                    }
+                    IndexerContentPublicationMode::SubstringOnly => {
+                        WorkspaceIndexPublicationKind::ContentSubstring
+                    }
+                };
+                let substring_descriptor = (mode
+                    == IndexerContentPublicationMode::CoreAndSubstring)
+                    .then(|| descriptor.clone());
                 match self.writer.publish(
                     WorkspaceIndexPublicationRequest::content(
                         root_path.clone(),
                         descriptor,
                         priority,
-                        WorkspaceIndexPublicationKind::ContentCore,
+                        kind,
                     ),
                     || is_cancelled(),
                 ) {
                     WorkspaceIndexPublicationAttempt::Applied(profile) => {
                         result.publication_profile = profile;
                         session.record_publication_profile(&result.publication_profile);
-                        let substring = WorkspaceIndexPublicationRequest::content(
-                            root_path,
-                            substring_descriptor,
-                            PublicationPriority::IdleMaintenance,
-                            WorkspaceIndexPublicationKind::ContentSubstring,
-                        );
-                        if let Err(error) = self.writer.publish_detached(substring) {
-                            self.finish_failure(IndexerRequestKind::ContentRefresh, error);
-                            return IndexerContentRefreshAttempt::Applied(result);
+                        if let Some(substring_descriptor) = substring_descriptor {
+                            let substring = WorkspaceIndexPublicationRequest::content(
+                                root_path,
+                                substring_descriptor,
+                                PublicationPriority::IdleMaintenance,
+                                WorkspaceIndexPublicationKind::ContentSubstring,
+                            );
+                            if let Err(error) = self.writer.publish_detached(substring) {
+                                self.finish_failure(IndexerRequestKind::ContentRefresh, error);
+                                return IndexerContentRefreshAttempt::Applied(result);
+                            }
                         }
                         self.finish_success(session, IndexerRequestKind::ContentRefresh);
                         IndexerContentRefreshAttempt::Applied(result)

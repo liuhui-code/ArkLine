@@ -57,7 +57,10 @@ impl WriterActorMetricState {
             sdk_publication_max_us: self.sdk_publication_max_us,
             content_core_publication_count: self.content_core_publication_count,
             content_core_publication_max_us: self.content_core_publication_max_us,
-            content_core_publication_p95_us: percentile(&self.content_core_publication_samples_us, 95),
+            content_core_publication_p95_us: percentile(
+                &self.content_core_publication_samples_us,
+                95,
+            ),
             content_substring_publication_count: self.content_substring_publication_count,
             content_substring_publication_max_us: self.content_substring_publication_max_us,
             content_substring_publication_p95_us: percentile(
@@ -119,7 +122,8 @@ fn record_content_metric(
 ) {
     let duration_us = duration_us(hold);
     match kind {
-        WorkspaceIndexPublicationKind::ContentCore => {
+        WorkspaceIndexPublicationKind::ContentCore
+        | WorkspaceIndexPublicationKind::ContentCoreOnly => {
             metrics.content_core_publication_count += 1;
             metrics.content_core_publication_max_us =
                 metrics.content_core_publication_max_us.max(duration_us);

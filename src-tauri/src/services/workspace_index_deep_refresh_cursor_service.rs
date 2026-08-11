@@ -11,6 +11,7 @@ use crate::services::workspace_index_schema_service::ensure_workspace_index_sche
 pub(crate) enum WorkspaceIndexDeepRefreshPhase {
     Content,
     Stub,
+    Substring,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -51,27 +52,30 @@ pub(crate) fn plan_deep_refresh_batch(
 
 pub(crate) fn advance_deep_refresh_cursor(
     cursor: &WorkspaceIndexDeepRefreshCursor,
-    batch: &WorkspaceIndexDeepRefreshBatch,
+    _batch: &WorkspaceIndexDeepRefreshBatch,
     batch_last_file_id: i64,
 ) -> WorkspaceIndexDeepRefreshCursor {
-    let (phase, last_file_id, batch_last_file_id) = match batch.phase {
-        WorkspaceIndexDeepRefreshPhase::Content => (
-            WorkspaceIndexDeepRefreshPhase::Stub,
-            cursor.last_file_id,
-            Some(batch_last_file_id),
-        ),
-        WorkspaceIndexDeepRefreshPhase::Stub => (
-            WorkspaceIndexDeepRefreshPhase::Content,
-            batch_last_file_id,
-            None,
-        ),
-    };
     WorkspaceIndexDeepRefreshCursor {
-        phase,
-        last_file_id,
-        batch_last_file_id,
+        last_file_id: batch_last_file_id,
+        batch_last_file_id: None,
         ..cursor.clone()
     }
+}
+
+pub(crate) fn start_next_deep_refresh_phase(
+    cursor: &WorkspaceIndexDeepRefreshCursor,
+) -> Option<WorkspaceIndexDeepRefreshCursor> {
+    let phase = match cursor.phase {
+        WorkspaceIndexDeepRefreshPhase::Content => WorkspaceIndexDeepRefreshPhase::Stub,
+        WorkspaceIndexDeepRefreshPhase::Stub => WorkspaceIndexDeepRefreshPhase::Substring,
+        WorkspaceIndexDeepRefreshPhase::Substring => return None,
+    };
+    Some(WorkspaceIndexDeepRefreshCursor {
+        phase,
+        last_file_id: 0,
+        batch_last_file_id: None,
+        ..cursor.clone()
+    })
 }
 
 pub(crate) fn save_deep_refresh_cursor(
@@ -163,12 +167,14 @@ fn phase_label(phase: WorkspaceIndexDeepRefreshPhase) -> &'static str {
     match phase {
         WorkspaceIndexDeepRefreshPhase::Content => "content",
         WorkspaceIndexDeepRefreshPhase::Stub => "stub",
+        WorkspaceIndexDeepRefreshPhase::Substring => "substring",
     }
 }
 
 fn parse_phase(value: &str) -> WorkspaceIndexDeepRefreshPhase {
     match value {
         "stub" => WorkspaceIndexDeepRefreshPhase::Stub,
+        "substring" => WorkspaceIndexDeepRefreshPhase::Substring,
         _ => WorkspaceIndexDeepRefreshPhase::Content,
     }
 }
@@ -184,8 +190,8 @@ mod tests {
 
     use super::{
         advance_deep_refresh_cursor, clear_deep_refresh_cursor, load_deep_refresh_cursor,
-        plan_deep_refresh_batch, save_deep_refresh_cursor, WorkspaceIndexDeepRefreshCursor,
-        WorkspaceIndexDeepRefreshPhase,
+        plan_deep_refresh_batch, save_deep_refresh_cursor, start_next_deep_refresh_phase,
+        WorkspaceIndexDeepRefreshCursor, WorkspaceIndexDeepRefreshPhase,
     };
 
     #[test]
@@ -209,18 +215,28 @@ mod tests {
     }
 
     #[test]
-    fn repeats_the_same_file_identity_range_for_stub_work() {
+    fn advances_within_content_before_starting_stub() {
         let cursor = cursor("phase", 12);
         let content = plan_deep_refresh_batch(Some(&cursor), 7);
-        let stub_cursor = advance_deep_refresh_cursor(&cursor, &content, 19);
-        let stub = plan_deep_refresh_batch(Some(&stub_cursor), 7);
+        let next = advance_deep_refresh_cursor(&cursor, &content, 19);
 
-        assert_eq!(content.after_file_id, stub.after_file_id);
-        assert_eq!(stub.up_to_file_id, Some(19));
-        assert_eq!(
-            advance_deep_refresh_cursor(&stub_cursor, &stub, 19).last_file_id,
-            19
-        );
+        assert_eq!(next.phase, WorkspaceIndexDeepRefreshPhase::Content);
+        assert_eq!(next.last_file_id, 19);
+        assert_eq!(next.batch_last_file_id, None);
+    }
+
+    #[test]
+    fn starts_the_next_full_catalog_phase_at_the_beginning() {
+        let mut content = cursor("phase", 12);
+        content.last_file_id = 19;
+
+        let stub = start_next_deep_refresh_phase(&content).unwrap();
+        let substring = start_next_deep_refresh_phase(&stub).unwrap();
+
+        assert_eq!(stub.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+        assert_eq!(stub.last_file_id, 0);
+        assert_eq!(substring.phase, WorkspaceIndexDeepRefreshPhase::Substring);
+        assert!(start_next_deep_refresh_phase(&substring).is_none());
     }
 
     #[test]
