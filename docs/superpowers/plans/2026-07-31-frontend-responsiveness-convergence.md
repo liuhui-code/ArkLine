@@ -50,7 +50,7 @@ Interaction trace
 4. At most one running and one latest pending request exists per interactive query family.
 5. Stale file reads, query results, and editor activations cannot mutate current UI state.
 6. Tree reveal is a navigation enhancement; it cannot block editor activation.
-7. Editor session retention is bounded by both entry count and document characters.
+7. Editor session retention is bounded metadata only; inactive CodeMirror states and document text are not retained.
 8. Full-document serialization is forbidden on the ordinary typing path.
 9. Automatic completion has one production owner. CodeMirror owns popup, focus, keyboard,
    mouse, and editor transactions; the completion Broker owns candidates, filtering, ranking,
@@ -69,7 +69,7 @@ Interaction trace
 | editor state application p95 | <= 50 ms |
 | automatic completion request executions per 100-event burst | <= 2 |
 | retained inactive editor sessions | <= 32 |
-| retained inactive editor document characters | <= 2,000,000 |
+| retained inactive editor document characters | 0 |
 | retained interaction traces | <= 40 |
 
 Packaged Windows p95/p99 evidence is authoritative for release. Local Vitest and Node soak
@@ -109,8 +109,8 @@ results protect scheduling contracts but cannot close the packaged gate.
 
 ### Phase 5: Editor Session And Document Hot Path
 
-- [x] Reuse CodeMirror `EditorState` for recently used files.
-- [x] Bound session retention by count and total document characters.
+- [x] Keep one stable CodeMirror `EditorView` while switching documents through annotated transactions.
+- [x] Bound retained per-document metadata by the 32-tab limit without retaining inactive editor states or document text.
 - [x] Publish CodeMirror `Text` snapshots without immediate full-string conversion.
 - [x] Coalesce semantic changes outside the input transaction.
 - [x] Keep completion and signature context to the current line or bounded window.

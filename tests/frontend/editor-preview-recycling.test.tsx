@@ -34,7 +34,7 @@ describe("editor preview recycling", () => {
       );
     }
 
-    expect(createState).toHaveBeenCalledTimes(101);
+    expect(createState).toHaveBeenCalledTimes(1);
     const editor = screen.getByLabelText("Editor Content");
     expect(editor).toHaveTextContent("file 100");
     await user.click(editor);
