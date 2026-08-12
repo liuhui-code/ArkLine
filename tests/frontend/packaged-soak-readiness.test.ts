@@ -37,6 +37,25 @@ describe("packaged soak index readiness", () => {
     })).toBe(true);
   });
 
+  it("accepts policy-skipped files when indexed content covers all eligible files", () => {
+    expect(isCoreWorkspaceIndexReady({
+      discoveryStatus: "ready",
+      discoveredFileCount: 870,
+      fileCount: 870,
+      contentLineCount: 55_802,
+      freshnessLayers: [{
+        layer: "content",
+        readyCount: 870,
+        missingCount: 0,
+        staleCount: 0,
+        skippedCount: 18,
+      }],
+      layerReadiness: {
+        layers: [{ layer: "content", indexedCount: 852 }],
+      },
+    })).toBe(true);
+  });
+
   it("rejects incomplete or stale content freshness", () => {
     const base = {
       status: "partial",

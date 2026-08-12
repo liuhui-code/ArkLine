@@ -82,7 +82,8 @@ export function isCoreWorkspaceIndexReady(value) {
     && contentFreshness?.readyCount >= value.fileCount
     && (contentFreshness?.eligibleCount ?? value.fileCount)
       + (contentFreshness?.skippedCount ?? 0) >= value.fileCount
-    && contentReadiness?.indexedCount >= value.fileCount;
+    && (contentReadiness?.indexedCount ?? 0)
+      + (contentFreshness?.skippedCount ?? 0) >= value.fileCount;
 }
 
 export async function waitForSearchResult(
