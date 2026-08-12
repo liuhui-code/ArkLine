@@ -305,10 +305,7 @@ export function ArkTsEditor({
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: documentSource },
       selection: EditorSelection.range(selectionAnchor, selectionHead),
-      annotations: [
-        editorDocumentReplacement.of(true),
-        Transaction.addToHistory.of(false),
-      ],
+      annotations: [editorDocumentReplacement.of(true), Transaction.addToHistory.of(false)],
       effects: [
         editorStructureCompartment.reconfigure(structureExtensionForDocument(deferEnhancements)),
         languageCompartment.reconfigure(languageExtensionForPath(path, deferEnhancements)),
@@ -355,10 +352,7 @@ export function ArkTsEditor({
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: documentSource },
         selection: EditorSelection.range(anchor, head),
-        annotations: [
-          editorDocumentReplacement.of(true),
-          Transaction.addToHistory.of(false),
-        ],
+        annotations: [editorDocumentReplacement.of(true), Transaction.addToHistory.of(false)],
       });
       activeDocumentSourceRef.current = documentSource;
       publishInputStats();
