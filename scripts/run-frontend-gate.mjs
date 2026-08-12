@@ -78,12 +78,20 @@ async function runHeavyBatches() {
     while (!failed && !timedOut) {
       const index = nextBatch++;
       if (index >= batches.length) return;
-      const result = await runVitestStage(`app-shell-${index + 1}/${batches.length}`, [
+      const batchName = `app-shell-${index + 1}/${batches.length}`;
+      const batchSize = Math.min(HEAVY_BATCH_SIZE, testNames.length - index * HEAVY_BATCH_SIZE);
+      const result = await runVitestStage(batchName, [
         HEAVY_FILE,
         "--testNamePattern",
         batches[index],
-      ], Math.min(HEAVY_BATCH_SIZE, testNames.length - index * HEAVY_BATCH_SIZE));
-      if (!result.passed) failed = true;
+      ], batchSize, { allowFailure: true });
+      if (!result.rawPassed && result.timedOut) {
+        const names = testNames.slice(index * HEAVY_BATCH_SIZE, index * HEAVY_BATCH_SIZE + batchSize);
+        const retryPassed = await runHeavyBatchIndividually(batchName, names);
+        if (!retryPassed) failed = true;
+        continue;
+      }
+      if (!result.rawPassed) failed = true;
     }
   }
 
@@ -91,6 +99,19 @@ async function runHeavyBatches() {
     { length: Math.min(HEAVY_CONCURRENCY, batches.length) },
     () => worker(),
   ));
+}
+
+async function runHeavyBatchIndividually(batchName, testNames) {
+  console.warn(`[frontend-gate] RETRY ${batchName} individually after batch timeout`);
+  for (let index = 0; index < testNames.length && !timedOut; index += 1) {
+    const result = await runVitestStage(`${batchName}-retry-${index + 1}/${testNames.length}`, [
+      HEAVY_FILE,
+      "--testNamePattern",
+      createTestNameBatches(HEAVY_SUITE, [testNames[index]], 1)[0],
+    ], 1);
+    if (!result.passed) return false;
+  }
+  return !timedOut;
 }
 
 async function runBaseShards() {
@@ -117,7 +138,7 @@ async function runBaseShards() {
   return !failed && nextShard > BASE_SHARDS;
 }
 
-async function runVitestStage(name, extraArgs, expectedTestCount) {
+async function runVitestStage(name, extraArgs, expectedTestCount, { allowFailure = false } = {}) {
   if (timedOut) return { name, passed: false, exitCode: 1, durationMs: 0 };
   const stepStarted = Date.now();
   const resultPath = path.join("artifacts", "frontend-gate-stages", `${stageSlug(name)}.json`);
@@ -153,10 +174,11 @@ async function runVitestStage(name, extraArgs, expectedTestCount) {
     timedOut: result.timedOut,
     testCount: testResult.passedTests,
     expectedTestCount: expectedTestCount ?? null,
-    passed: !timedOut && result.exitCode === 0 && testCountMatches,
+    rawPassed: result.exitCode === 0 && testCountMatches,
+    passed: !timedOut && (result.exitCode === 0 && testCountMatches || allowFailure && result.timedOut),
   };
   steps.push(step);
-  console.log(`[frontend-gate] ${step.passed ? "PASS" : "FAIL"} ${name}`);
+  console.log(`[frontend-gate] ${step.rawPassed ? "PASS" : allowFailure ? "RETRY" : "FAIL"} ${name}`);
   return step;
 }
 
