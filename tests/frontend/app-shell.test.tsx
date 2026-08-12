@@ -65,6 +65,17 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     runValidation: async () => [],
     loadDiff: async () => "",
     inspectEnvironment: async () => ({ tools: [] }),
+    inspectLanguageService: async () => ({
+      provider: "mock-fallback",
+      mode: "fallback",
+      running: true,
+      hover: true,
+      definition: true,
+      completion: true,
+      documentSymbols: true,
+      findUsages: true,
+      detail: "ready",
+    }),
     getFileBlame: async () => ({
       kind: "unavailable",
       reason: "notTracked",
