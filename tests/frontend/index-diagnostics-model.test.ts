@@ -323,7 +323,7 @@ describe("index diagnostics model", () => {
     expect(report).toContain("discoveryExcluded: 1");
     expect(report).toContain("discoveryHasMore: yes");
     expect(report).toContain("repairActions: rebuildProjectIndex (Rebuild Project Index)");
-    expect(report).toContain("freshness: symbols ready=9 stale=2 missing=1 expectedVersion=3");
+    expect(report).toContain("freshness: symbols eligible=9 skipped=0 ready=9 stale=2 missing=1 expectedVersion=3");
     expect(report).toContain("readiness=Ready generation=4 / 6 retryable=yes used=TextIndex skipped=SDKIndex");
     expect(report).toContain("metrics=searched 7 file(s), skipped 3 prefiltered file(s), limit reached: no");
     expect(report).toContain("task: changed-paths running 1/2 (50%)");
