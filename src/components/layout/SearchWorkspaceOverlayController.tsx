@@ -80,7 +80,7 @@ export function SearchWorkspaceOverlayController(props: SearchWorkspaceOverlayCo
     indexVersionKey: props.indexVersionKey,
     setQuickOpenQuery: setQuery,
     setActiveOverlay: props.onSetActiveOverlay,
-    queryIndexCandidates: props.workspaceIndex.queryCandidates,
+    queryIndexCandidates: (query, scope, limit) => props.workspaceIndex.queryCandidates(query, scope, limit),
     getTextSearchPaths: props.workspaceIndex.getTextSearchPaths,
     getDirtyDocumentPaths: () => props.documentsRef.current.getDocuments()
       .filter((document) => document.isDirty)
