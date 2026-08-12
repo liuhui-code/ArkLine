@@ -126,4 +126,25 @@ mod tests {
             1_250,
         ));
     }
+
+    #[test]
+    fn drops_repeated_completion_hints_within_the_completion_cooldown() {
+        let mut admission = WorkspaceIndexForegroundAdmission::default();
+
+        assert!(admission.admit(
+            "/workspace",
+            WorkspaceIndexTaskPriority::ForegroundCompletion,
+            1_000,
+        ));
+        assert!(!admission.admit(
+            "/workspace",
+            WorkspaceIndexTaskPriority::ForegroundCompletion,
+            1_399,
+        ));
+        assert!(admission.admit(
+            "/workspace",
+            WorkspaceIndexTaskPriority::ForegroundCompletion,
+            1_400,
+        ));
+    }
 }

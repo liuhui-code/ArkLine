@@ -34,6 +34,12 @@ export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
   if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
     throw new Error("duration-minutes must be a positive number");
   }
+  const coreIndexTimeoutMinutes = Number(
+    argumentValue(argv, "--core-index-timeout-minutes") ?? 5,
+  );
+  if (!Number.isFinite(coreIndexTimeoutMinutes) || coreIndexTimeoutMinutes <= 0) {
+    throw new Error("core-index-timeout-minutes must be a positive number");
+  }
   return {
     mode,
     applicationPath: path.resolve(applicationPath),
@@ -41,6 +47,7 @@ export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
     scenarioPath: optionalResolvedPath(argumentValue(argv, "--scenario")),
     sdkPath: optionalResolvedPath(argumentValue(argv, "--sdk")),
     durationMs: durationMinutes * 60_000,
+    coreIndexTimeoutMs: coreIndexTimeoutMinutes * 60_000,
     maxCycles: mode === "smoke" ? 1 : Number.POSITIVE_INFINITY,
     reportPath: path.resolve(
       argumentValue(argv, "--report") ?? "artifacts/packaged-soak.json",

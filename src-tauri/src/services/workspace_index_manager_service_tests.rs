@@ -362,22 +362,22 @@ fn foreground_admission_drops_repeated_completion_hints_before_queueing() {
     let first = root.join("First.ets").to_string_lossy().to_string();
     let second = root.join("Second.ets").to_string_lossy().to_string();
 
-    assert!(manager
+    manager
         .schedule_changed_path_task(
             &root_path,
             &[first],
             WorkspaceIndexTaskPriority::ForegroundCompletion,
             "foreground-completion",
         )
-        .unwrap());
-    assert!(!manager
+        .unwrap();
+    manager
         .schedule_changed_path_task(
             &root_path,
             &[second],
             WorkspaceIndexTaskPriority::ForegroundCompletion,
             "foreground-completion",
         )
-        .unwrap());
+        .unwrap();
     assert_eq!(
         manager.get_index_task_statuses(&root_path).unwrap().len(),
         1

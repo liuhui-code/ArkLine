@@ -5,6 +5,7 @@ import {
   EDITOR_TEXT_TARGET_SCRIPT,
   exerciseDefinitionNavigation,
   exerciseMemberCompletion,
+  warmSemanticInteractions,
 } from "../../scripts/packaged-soak-semantic-workload.mjs";
 
 describe("packaged semantic workload", () => {
@@ -90,6 +91,20 @@ describe("packaged semantic workload", () => {
     );
     expect(samples).toEqual([35]);
     expect(counters.completionMissCount).toBe(0);
+  });
+
+  it("warms semantic definition and completion without adding performance samples", async () => {
+    const driver = createDriver();
+    const counters = semanticCounters();
+
+    await warmSemanticInteractions(driver, {
+      definitionTargets: [definitionTarget()],
+      completionTargets: [completionTarget()],
+    }, counters, []);
+
+    expect(driver.modifierClickAt).toHaveBeenCalledTimes(1);
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", " "]);
+    expect(counters).toMatchObject({ definitionMissCount: 0, completionMissCount: 0 });
   });
 });
 

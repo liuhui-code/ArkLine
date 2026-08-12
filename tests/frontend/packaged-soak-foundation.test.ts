@@ -82,8 +82,14 @@ describe("packaged Windows soak foundation", () => {
     ])).toMatchObject({
       mode: "smoke",
       durationMs: 2 * 60_000,
+      coreIndexTimeoutMs: 5 * 60_000,
       maxCycles: 1,
     });
+    expect(() => parsePackagedSoakArguments([
+      "--application=arkline.exe",
+      "--fixture=fixture",
+      "--core-index-timeout-minutes=0",
+    ])).toThrow("core-index-timeout-minutes");
     expect(() => parsePackagedSoakArguments([
       "--application=arkline.exe",
       "--fixture=fixture",

@@ -4,7 +4,6 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { parsePackagedSoakArguments } from "./packaged-soak-model.mjs";
-import { buildFixtureRelativePath } from "./generate-performance-fixture.mjs";
 import {
   inspectPackagedSoakPreflight,
   resolveWindowsPowerShell,
@@ -24,11 +23,8 @@ import {
   TELEMETRY_INSTALL_SCRIPT,
   TELEMETRY_SNAPSHOT_SCRIPT,
 } from "./packaged-soak-telemetry.mjs";
-import {
-  waitForDiscoveryReady,
-  waitForInteractiveIndexReady,
-  waitForWorkspace,
-} from "./packaged-soak-readiness.mjs";
+import { waitForWorkspace } from "./packaged-soak-readiness.mjs";
+import { preparePackagedSoakRun } from "./packaged-soak-preparation.mjs";
 import {
   parsePowerShellProcessPayload,
   summarizeProcessEvidence,
@@ -97,7 +93,9 @@ async function main() {
     phase = "session-create";
     await driver.createAttachedSession(automation.debuggerAddress());
     phase = "mixed-workload";
-    report = await runSoak(driver, options, scenario);
+    report = await runSoak(driver, options, scenario, (nextPhase) => {
+      phase = nextPhase;
+    });
     report.scenario = scenario;
     report.driverCapabilities = driver.capabilities;
     report.preflight = preflight;
@@ -130,19 +128,11 @@ async function main() {
   if (options.strict && !report.verdict.passed) process.exitCode = 1;
 }
 
-async function runSoak(driver, options, scenario) {
+async function runSoak(driver, options, scenario, onPhase) {
   await driver.waitForSelectorPresent('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
-  if (options.mode === "smoke" && scenario.kind === "generated") {
-    await waitForInteractiveIndexReady(
-      driver,
-      options.fixturePath,
-      path.join(options.fixturePath, buildFixtureRelativePath(0)),
-      90_000,
-    );
-  } else {
-    await waitForDiscoveryReady(driver, options.fixturePath, 180_000);
-  }
+  await preparePackagedSoakRun(driver, options, scenario, onPhase);
+  onPhase("mixed-workload");
   const telemetryCapabilities = await driver.execute(TELEMETRY_INSTALL_SCRIPT);
   const startedAt = Date.now();
   const deadline = startedAt + options.durationMs;

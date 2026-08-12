@@ -98,6 +98,18 @@ export async function exerciseMemberCompletion(
   await driver.keyChord([WEBDRIVER_KEYS.escape]);
 }
 
+export async function warmSemanticInteractions(driver, scenario, counters, evidence) {
+  const samples = [];
+  const [definitionTarget] = scenario?.definitionTargets ?? [];
+  if (definitionTarget) {
+    await exerciseDefinitionNavigation(driver, definitionTarget, samples, counters, evidence);
+  }
+  const [completionTarget] = scenario?.completionTargets ?? [];
+  if (completionTarget) {
+    await exerciseMemberCompletion(driver, completionTarget, samples, counters, evidence);
+  }
+}
+
 async function openSource(driver, target, counters) {
   const opened = await openQuickOpenTarget(driver, target, [], counters, []);
   if (!opened) throw new Error(`Semantic source did not open: ${target.title}`);
