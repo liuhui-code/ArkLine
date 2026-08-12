@@ -115,11 +115,21 @@ function runAsyncBrowserScript<T>(script: string, args: unknown[]): Promise<T> {
 }
 
 function createDriver() {
-  const modifierClickAt = vi.fn(async () => undefined);
+  let quickOpenQuery = "";
+  let activeTabTitle = "EntryPage.ets";
+  const modifierClickAt = vi.fn(async () => {
+    activeTabTitle = "EntryViewModel.ets";
+  });
   const driver = {
-    keyChord: vi.fn(async () => undefined),
+    keyChord: vi.fn(async (keys: string[]) => {
+      if (keys.length === 1 && keys[0] === "\uE007" && quickOpenQuery) {
+        activeTabTitle = `${quickOpenQuery}.ets`;
+      }
+    }),
     waitForSelectorPresent: vi.fn(async () => undefined),
-    typeText: vi.fn(async () => undefined),
+    typeText: vi.fn(async (value: string) => {
+      quickOpenQuery = value;
+    }),
     clickAt: vi.fn(async () => undefined),
     modifierClickAt,
     execute: vi.fn(async (script: string, args?: unknown[]) => {
@@ -132,10 +142,7 @@ function createDriver() {
         return script.includes("return starts") ? 100 : true;
       }
       if (script.includes('label === "activeTab"')) {
-        const title = modifierClickAt.mock.calls.length > 0
-          ? "EntryViewModel.ets"
-          : "EntryPage.ets";
-        return { title, at: 125 };
+        return { title: activeTabTitle, at: 125 };
       }
       return { phase: args?.[0], resultCount: 1 };
     }),
