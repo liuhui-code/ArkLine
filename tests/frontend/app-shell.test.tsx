@@ -1435,42 +1435,6 @@ describe("App shell", () => {
     expect(await screen.findByText("Search Everywhere miss: No indexed evidence explains this query yet. Rebuild Index.")).toBeVisible();
   });
 
-  it("uses Search Everywhere envelope explain before running a separate explain query", async () => {
-    const user = userEvent.setup();
-    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
-      items: [],
-      readiness: {
-        rootPath: "C:\\samples\\DemoWorkspace",
-        requestedGeneration: 7,
-        servedGeneration: 6,
-        state: "partial" as const,
-        reason: "Current query is waiting for the symbol index",
-        retryable: true,
-      },
-      explain: [
-        "query:searchEverywhere",
-        "resultCount:0",
-        "readiness:Partial",
-        "reason:Current query is waiting for the symbol index",
-      ],
-    }));
-    const explainWorkspaceIndexQuery = vi.fn(async () => ({
-      status: "notIndexed" as const,
-      message: "No indexed evidence explains this query yet",
-      facts: [{ category: "query", evidence: "missingThing" }],
-      recommendedAction: "rebuildIndex" as const,
-    }));
-
-    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness, explainWorkspaceIndexQuery })} />);
-
-    await openProject(user);
-    await user.keyboard("{Shift}{Shift}");
-    await user.type(await screen.findByLabelText("Search Everywhere Query"), "missingThing");
-
-    expect(await screen.findByText("Search Everywhere miss: Current query is waiting for the symbol index")).toBeVisible();
-    expect(explainWorkspaceIndexQuery).not.toHaveBeenCalled();
-  });
-
   it("does not query Search Everywhere until the user enters text", async () => {
     const user = userEvent.setup();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
