@@ -151,7 +151,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspaceApi,
     onStatusChange,
   });
-  const { workspace, setWorkspace, recentProjects, setRecentProjects, syncWorkspaceIndex, applyWorkspaceIndexRefreshResult, applyWorkspaceSnapshot: applyWorkspaceSessionSnapshot, includeVisibleWorkspaceFile } = useWorkspaceSession({
+  const { workspace, setWorkspace, recentProjects, setRecentProjects, syncWorkspaceIndex, applyWorkspaceIndexRefreshResult, applyWorkspaceSnapshot: applyWorkspaceSessionSnapshot, includeVisibleWorkspaceFile, scheduleVisibleFilesIndex } = useWorkspaceSession({
     workspaceApi,
     onOpenWorkspaceIndex: (nextWorkspace) => {
       workspaceIndexRef.current.openWorkspace(nextWorkspace);
@@ -381,6 +381,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     recentProjects,
     getWorkspaceSessions: () => settingsRef.current.state.settings.workspaceSessions,
     applyWorkspaceSessionSnapshot,
+    scheduleVisibleFilesIndex,
     restoreFile,
     resetProjectTree,
     loadProjectDirectory,

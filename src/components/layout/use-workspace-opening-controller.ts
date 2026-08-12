@@ -11,6 +11,7 @@ export type UseWorkspaceOpeningControllerOptions = {
   recentProjects: string[];
   getWorkspaceSessions: () => AppSettings["workspaceSessions"];
   applyWorkspaceSessionSnapshot: (snapshot: WorkspaceViewModel) => void;
+  scheduleVisibleFilesIndex: (rootPath: string, visibleFiles: string[]) => void;
   restoreFile: (path: string) => Promise<{ ok: boolean; errorMessage?: string }>;
   resetProjectTree: () => void;
   loadProjectDirectory: (rootPath: string, directoryPath: string) => Promise<void>;
@@ -30,6 +31,7 @@ export function useWorkspaceOpeningController({
   recentProjects,
   getWorkspaceSessions,
   applyWorkspaceSessionSnapshot,
+  scheduleVisibleFilesIndex,
   restoreFile,
   resetProjectTree,
   loadProjectDirectory,
@@ -45,6 +47,7 @@ export function useWorkspaceOpeningController({
 
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     applyWorkspaceSessionSnapshot(snapshot);
+    scheduleVisibleFilesIndex(snapshot.rootPath, snapshot.visibleFiles);
     resetProjectTree();
     if (snapshot.scanSummary.truncated || snapshot.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD) {
       void loadProjectDirectory(snapshot.rootPath, snapshot.rootPath);
