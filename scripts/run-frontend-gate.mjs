@@ -6,7 +6,7 @@ import { createTestNameBatches, collectNamedTests } from "./frontend-gate-plan.m
 
 const HEAVY_FILE = "tests/frontend/app-shell.test.tsx";
 const HEAVY_SUITE = "App shell";
-const HEAVY_BATCH_SIZE = 1;
+const HEAVY_BATCH_SIZE = 14;
 const HEAVY_CONCURRENCY = 1;
 const BASE_SHARDS = 6;
 const BASE_CONCURRENCY = 2;
