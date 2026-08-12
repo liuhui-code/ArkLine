@@ -54,7 +54,7 @@ describe("IndexDiagnosticsCenter copy evidence", () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("# ArkLine Index Diagnostics Evidence"));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("workspace: /workspace"));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("activePath: /workspace/src/Entry.ets"));
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("freshness: content ready=8 stale=1 missing=1 expectedVersion=2"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("freshness: content eligible=8 skipped=0 ready=8 stale=1 missing=1 expectedVersion=2"));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("readiness=Partial generation=4 / 6 retryable=yes used=TextIndex skipped=SDKIndex"));
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("metrics=searched 7 file(s), skipped 3 prefiltered file(s), limit reached: no"));
     expect(await screen.findByText("Evidence copied")).toBeVisible();
