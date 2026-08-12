@@ -4,10 +4,13 @@ import type { SearchEverywhereMode } from "@/components/layout/SearchEverywhereP
 export type DeferredQueryMode = SearchEverywhereMode | "quickOpen";
 
 const INPUT_COMMIT_DEBOUNCE_MS: Record<DeferredQueryMode, number> = {
-  quickOpen: 40,
-  searchEverywhere: 80,
-  find: 80,
-  replace: 80,
+  // Keep the DOM input local while a user is typing. A slightly wider quiet
+  // window prevents slow WebView automation and IME composition from issuing
+  // one root-shell query update for each character.
+  quickOpen: 120,
+  searchEverywhere: 120,
+  find: 120,
+  replace: 120,
 };
 
 export function useSearchSessionInput(

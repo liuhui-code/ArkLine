@@ -14,13 +14,13 @@ describe("useSearchSessionInput", () => {
 
     act(() => {
       result.current.updateDraftQuery("a");
-      vi.advanceTimersByTime(79);
+      vi.advanceTimersByTime(119);
       result.current.updateDraftQuery("ar");
-      vi.advanceTimersByTime(79);
+      vi.advanceTimersByTime(119);
       result.current.updateDraftQuery("ark");
     });
     act(() => {
-      vi.advanceTimersByTime(79);
+      vi.advanceTimersByTime(119);
     });
 
     expect(onCommit).not.toHaveBeenCalled();

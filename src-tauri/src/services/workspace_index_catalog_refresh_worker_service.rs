@@ -24,7 +24,7 @@ use crate::services::workspace_index_worker_budget_service::effective_deep_layer
 
 pub(crate) const CATALOG_DEEP_REFRESH_MESSAGE: &str = "Catalog deep refresh yielded";
 pub(crate) const CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE: &str = "Catalog deep refresh progressed";
-const CATALOG_BACKGROUND_PATH_BUDGET: usize = 32;
+const CATALOG_FOREGROUND_PATH_BUDGET: usize = 32;
 
 pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
     index_runtime: &WorkspaceIndexRuntime,
@@ -129,16 +129,19 @@ fn catalog_page_limit(
 
 fn catalog_path_budget(
     priority: crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority,
-    _ui_latency_sensitive: bool,
+    ui_latency_sensitive: bool,
 ) -> usize {
-    effective_deep_layer_path_budget(priority, false).min(CATALOG_BACKGROUND_PATH_BUDGET)
+    if priority == crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority::Background {
+        return effective_deep_layer_path_budget(priority, ui_latency_sensitive);
+    }
+    CATALOG_FOREGROUND_PATH_BUDGET
 }
 
 fn select_atomic_catalog_slice(
     root_path: &str,
     files: &[crate::services::workspace_index_deep_refresh_catalog_service::WorkspaceIndexDeepRefreshCatalogFile],
     phase: WorkspaceIndexDeepRefreshPhase,
-    _ui_latency_sensitive: bool,
+    ui_latency_sensitive: bool,
 ) -> (Vec<String>, i64) {
     let paths = files
         .iter()
@@ -150,7 +153,7 @@ fn select_atomic_catalog_slice(
             files.last().map(|file| file.file_id).unwrap_or_default(),
         );
     }
-    let (_, byte_limit) = initial_refresh_limits(false);
+    let (_, byte_limit) = initial_refresh_limits(ui_latency_sensitive);
     let chunk = take_refresh_chunk(root_path, &paths, &[], 0, 0, paths.len(), byte_limit)
         .expect("non-empty catalog page must produce a refresh chunk");
     let last_file_id = files[chunk.next_changed_offset.saturating_sub(1)].file_id;
@@ -208,14 +211,14 @@ fn yielded_result(
 
 #[cfg(test)]
 mod tests {
-    use super::catalog_path_budget;
+    use super::{catalog_path_budget, CATALOG_FOREGROUND_PATH_BUDGET};
     use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 
     #[test]
-    fn catalog_slice_uses_the_initial_background_publication_budget() {
+    fn catalog_slice_uses_the_idle_background_publication_budget() {
         assert_eq!(
             catalog_path_budget(WorkspaceIndexTaskPriority::Background, false),
-            32
+            64
         );
     }
 
@@ -223,7 +226,7 @@ mod tests {
     fn catalog_slice_keeps_one_bounded_publication_unit_during_ui_activity() {
         assert_eq!(
             catalog_path_budget(WorkspaceIndexTaskPriority::Background, true),
-            32
+            16
         );
     }
 
@@ -231,7 +234,7 @@ mod tests {
     fn foreground_catalog_work_remains_bounded_by_the_initial_slice() {
         assert_eq!(
             catalog_path_budget(WorkspaceIndexTaskPriority::ForegroundNavigation, false),
-            32
+            CATALOG_FOREGROUND_PATH_BUDGET
         );
     }
 }
