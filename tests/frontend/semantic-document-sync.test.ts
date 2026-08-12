@@ -137,4 +137,24 @@ describe("semantic document sync queue", () => {
     }))
     queue.dispose()
   })
+
+  it("flushes a pending edit immediately for an explicit language query", async () => {
+    vi.useFakeTimers()
+    const syncSemanticDocument = vi.fn().mockResolvedValue(undefined)
+    const queue = createSemanticDocumentSyncQueue({ syncSemanticDocument })
+
+    queue.open("/workspace/Index.ets", "one")
+    await vi.advanceTimersByTimeAsync(32)
+    queue.change("/workspace/Index.ets", "two")
+
+    const version = await queue.ensure("/workspace/Index.ets", "two")
+
+    expect(version).toBe(2)
+    expect(syncSemanticDocument).toHaveBeenLastCalledWith(expect.objectContaining({
+      method: "didChange",
+      content: "two",
+      documentVersion: 2,
+    }))
+    queue.dispose()
+  })
 })

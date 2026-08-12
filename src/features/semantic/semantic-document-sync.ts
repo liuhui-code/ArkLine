@@ -187,7 +187,16 @@ export function createSemanticDocumentSyncQueue(
     if (!entry) return Promise.resolve(null)
     if (entry.readyVersion >= entry.version) return Promise.resolve(entry.version)
     const version = entry.version
-    return new Promise((resolve) => entry?.waiters.push({ version, resolve }))
+    const waiter = new Promise<number | null>((resolve) => entry?.waiters.push({ version, resolve }))
+    // Explicit language queries must see the current editor snapshot now. Normal
+    // typing still uses the debounce above, but it must not add 180ms to Ctrl+Click
+    // or manual completion.
+    if (!entry.inFlight) {
+      if (entry.timer !== null) clearTimeout(entry.timer)
+      entry.timer = null
+      publish(path, entry, entry.publishedVersion === 0 ? "didOpen" : "didChange")
+    }
+    return waiter
   }
 
   function close(path: string) {

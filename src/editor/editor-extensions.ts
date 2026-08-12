@@ -163,6 +163,9 @@ export function createEditorExtensions(
       ? [
           autocompletion({
             defaultKeymap: false,
+            // Keep the immediate local source visible while the language broker
+            // responds. The default 100ms sync wait is too expensive for Ctrl+Space.
+            updateSyncTime: 0,
             override: createCodeMirrorCompletionSources(
               getActivePath,
               onCodeMirrorCompletionRequest,
