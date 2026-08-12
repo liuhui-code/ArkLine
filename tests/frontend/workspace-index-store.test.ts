@@ -96,6 +96,22 @@ describe("workspace index store", () => {
     expect(store.state.queryReadiness?.servedGeneration).toBe(12);
   });
 
+  it("does not publish readiness updates when only query generations change", () => {
+    const store = createWorkspaceIndexStore();
+    const initial = {
+      rootPath: "C:/samples/ArkDemo",
+      requestedGeneration: 12,
+      servedGeneration: 12,
+      state: "ready" as const,
+      retryable: false,
+      sources: ["WorkspaceIndex"],
+    };
+
+    expect(store.replaceQueryReadiness(initial)).toBe(true);
+    expect(store.replaceQueryReadiness({ ...initial, requestedGeneration: 13, servedGeneration: 13 })).toBe(false);
+    expect(store.state.queryReadiness).toMatchObject({ requestedGeneration: 12, servedGeneration: 12 });
+  });
+
   it("adds a lazy-tree file without resetting indexed symbols or readiness", () => {
     const store = createWorkspaceIndexStore();
     store.replaceState({

@@ -12,15 +12,16 @@ export function useWorkspaceQueryExplains() {
   ]);
 
   function recordRecentQueryExplain(input: QueryExplainRecordInput) {
-    const recorded = storeRef.current.record(input);
-    if (recorded) {
-      setRecentQueryExplains([...storeRef.current.state]);
-    }
-    return recorded;
+    return storeRef.current.record(input);
+  }
+
+  function refreshRecentQueryExplains() {
+    setRecentQueryExplains([...storeRef.current.state]);
   }
 
   return {
     recentQueryExplains,
     recordRecentQueryExplain,
+    refreshRecentQueryExplains,
   };
 }

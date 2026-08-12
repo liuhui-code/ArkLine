@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::models::language::{SemanticSupervisorSnapshot, SemanticWorkerRuntime};
 
 pub const SEMANTIC_MEMORY_LIMIT_MB_ENV: &str = "ARKLINE_SEMANTIC_MEMORY_LIMIT_MB";
-const DEFAULT_MEMORY_LIMIT_MB: u64 = 1024;
+const DEFAULT_MEMORY_LIMIT_MB: u64 = 256;
 const MIN_MEMORY_LIMIT_MB: u64 = 256;
 const MAX_MEMORY_LIMIT_MB: u64 = 8192;
 const BASE_RESTART_BACKOFF_MS: u64 = 250;
@@ -164,12 +164,14 @@ impl SemanticHostSupervisor {
 }
 
 pub fn semantic_memory_budget_bytes() -> u64 {
-    let configured = env::var(SEMANTIC_MEMORY_LIMIT_MB_ENV)
-        .ok()
+    semantic_memory_limit_mb(env::var(SEMANTIC_MEMORY_LIMIT_MB_ENV).ok().as_deref()) * 1024 * 1024
+}
+
+fn semantic_memory_limit_mb(configured: Option<&str>) -> u64 {
+    configured
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(DEFAULT_MEMORY_LIMIT_MB)
-        .clamp(MIN_MEMORY_LIMIT_MB, MAX_MEMORY_LIMIT_MB);
-    configured * 1024 * 1024
+        .clamp(MIN_MEMORY_LIMIT_MB, MAX_MEMORY_LIMIT_MB)
 }
 
 fn restart_backoff(failures: u32) -> Duration {
@@ -202,7 +204,7 @@ fn lock_error<T>(_: std::sync::PoisonError<T>) -> String {
 mod tests {
     use std::time::Duration;
 
-    use super::SemanticHostSupervisor;
+    use super::{semantic_memory_limit_mb, SemanticHostSupervisor};
     use crate::models::language::SemanticWorkerRuntime;
 
     #[test]
@@ -248,5 +250,12 @@ mod tests {
         supervisor.mark_running(None);
 
         assert!(supervisor.should_probe_idle(Duration::ZERO));
+    }
+
+    #[test]
+    fn memory_budget_uses_conservative_default_and_bounds_configuration() {
+        assert_eq!(semantic_memory_limit_mb(None), 256);
+        assert_eq!(semantic_memory_limit_mb(Some("32")), 256);
+        assert_eq!(semantic_memory_limit_mb(Some("99999")), 8192);
     }
 }

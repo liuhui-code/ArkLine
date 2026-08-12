@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { useWorkspaceQueryExplains } from "@/features/workspace/use-workspace-query-explains";
 
 describe("useWorkspaceQueryExplains", () => {
-  it("records explain evidence and updates the rendered snapshot", () => {
+  it("records explain evidence without refreshing the rendered snapshot", () => {
     const { result } = renderHook(() => useWorkspaceQueryExplains());
 
     act(() => {
@@ -13,6 +13,12 @@ describe("useWorkspaceQueryExplains", () => {
         message: "Completion waits for symbols",
         explain: ["query:completion", "reason:Completion waits for symbols"],
       })).toBe(true);
+    });
+
+    expect(result.current.recentQueryExplains).toEqual([]);
+
+    act(() => {
+      result.current.refreshRecentQueryExplains();
     });
 
     expect(result.current.recentQueryExplains).toHaveLength(1);

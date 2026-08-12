@@ -110,10 +110,15 @@ export function createWorkspaceIndexStore() {
       }
     },
     replaceQueryReadiness(readiness: WorkspaceIndexReadiness) {
-      state.queryReadiness = {
+      const next = {
         ...readiness,
         rootPath: normalizePath(readiness.rootPath),
       };
+      if (sameQueryReadiness(state.queryReadiness, next)) {
+        return false;
+      }
+      state.queryReadiness = next;
+      return true;
     },
     reset() {
       Object.assign(state, createInitialState());
@@ -164,6 +169,23 @@ export function createWorkspaceIndexStore() {
       return [...state.filePaths];
     },
   };
+}
+
+function sameQueryReadiness(
+  current: WorkspaceIndexReadiness | null | undefined,
+  next: WorkspaceIndexReadiness,
+) {
+  return current?.rootPath === next.rootPath
+    && current.state === next.state
+    && current.reason === next.reason
+    && current.retryable === next.retryable
+    && current.coverage === next.coverage
+    && current.fallbackUsed === next.fallbackUsed
+    && sameStringLists(current.sources, next.sources);
+}
+
+function sameStringLists(left: string[] | undefined, right: string[] | undefined) {
+  return left === right || (left?.length === right?.length && left?.every((value, index) => value === right?.[index]));
 }
 
 function rankSymbols(
