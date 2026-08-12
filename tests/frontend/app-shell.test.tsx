@@ -1809,65 +1809,6 @@ describe("App shell", () => {
     expect(screen.queryByRole("button", { name: /api loginAction/ })).not.toBeInTheDocument();
   });
 
-  it("refreshes the workspace index from external filesystem changes", async () => {
-    const user = userEvent.setup();
-    const rootPath = "C:/samples/DemoWorkspace";
-    let pollWorkspace: (() => void) | null = null;
-    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation((handler: TimerHandler) => {
-      if (typeof handler === "function") {
-        pollWorkspace = handler as () => void;
-      }
-      return 1 as unknown as ReturnType<typeof window.setInterval>;
-    });
-    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => undefined);
-    const refreshWorkspaceIndexWithChanges = vi.fn(async () => ({
-      state: {
-        status: "ready" as const,
-        rootPath: "C:\\samples\\DemoWorkspace",
-        filePaths: [
-          "C:\\samples\\DemoWorkspace\\AppScope\\app.json5",
-          "C:\\samples\\DemoWorkspace\\src\\About.ets",
-        ],
-        indexedAt: Date.now(),
-        partialReason: null,
-      },
-      changed: true,
-      addedPaths: ["C:\\samples\\DemoWorkspace\\src\\About.ets"],
-      removedPaths: ["C:\\samples\\DemoWorkspace\\src\\main.ets"],
-    }));
-
-    try {
-      render(
-        <AppShell
-          workspaceApi={createWorkspaceApi({
-            refreshWorkspaceIndexWithChanges,
-          })}
-        />,
-      );
-
-      await openProject(user, rootPath);
-
-      expect(pollWorkspace).not.toBeNull();
-      await act(async () => {
-        pollWorkspace?.();
-        await Promise.resolve();
-      });
-
-      expect(refreshWorkspaceIndexWithChanges).toHaveBeenCalledWith("C:\\samples\\DemoWorkspace");
-
-      await user.keyboard("{Control>}p{/Control}");
-      const query = await screen.findByLabelText("Quick Open Query");
-      await user.type(query, "about");
-
-      const results = screen.getByRole("list", { name: "Quick Open Results" });
-      expect(within(results).getByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\About.ets" })).toBeVisible();
-      expect(within(results).queryByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).not.toBeInTheDocument();
-    } finally {
-      setIntervalSpy.mockRestore();
-      clearIntervalSpy.mockRestore();
-    }
-  });
-
   it("uses workspace index watcher events instead of polling when available", async () => {
     const user = userEvent.setup();
     const rootPath = "C:/samples/DemoWorkspace";

@@ -38,7 +38,57 @@ describe("useWorkspaceIndexWatchers", () => {
     unmount();
     expect(teardown).toHaveBeenCalledTimes(1);
   });
+
+  it("polls external workspace changes and applies the indexed file state", async () => {
+    let pollWorkspace: (() => void) | null = null;
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation((handler: TimerHandler) => {
+      pollWorkspace = handler as () => void;
+      return 1 as unknown as ReturnType<typeof window.setInterval>;
+    });
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => undefined);
+    const applyWorkspaceIndexRefreshResult = vi.fn();
+    const refreshWorkspaceIndexWithChanges = vi.fn(async () => refreshResult());
+
+    try {
+      const { unmount } = renderHook(() => useWorkspaceIndexWatchers({
+        rootPath: "/workspace",
+        workspaceApi: { refreshWorkspaceIndexWithChanges } as WorkspaceApi,
+        applyWorkspaceIndexRefreshResult,
+        refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+        recordWorkspaceIndexTaskStatus: vi.fn(),
+        onStatusChange: vi.fn(),
+      }));
+
+      expect(pollWorkspace).not.toBeNull();
+      await act(async () => {
+        pollWorkspace?.();
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(applyWorkspaceIndexRefreshResult).toHaveBeenCalledWith(refreshResult()));
+
+      unmount();
+      expect(clearIntervalSpy).toHaveBeenCalledWith(1);
+    } finally {
+      setIntervalSpy.mockRestore();
+      clearIntervalSpy.mockRestore();
+    }
+  });
 });
+
+function refreshResult() {
+  return {
+    state: {
+      status: "ready" as const,
+      rootPath: "/workspace",
+      filePaths: ["/workspace/src/About.ets"],
+      indexedAt: 1,
+      partialReason: null,
+    },
+    changed: true,
+    addedPaths: ["/workspace/src/About.ets"],
+    removedPaths: ["/workspace/src/main.ets"],
+  };
+}
 
 function indexEvent(overrides: Partial<WorkspaceIndexEvent> = {}): WorkspaceIndexEvent {
   return {
