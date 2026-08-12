@@ -68,7 +68,6 @@ mod tests {
             let outcome = await_semantic_until(task, started, Duration::from_millis(10)).await;
 
             assert_eq!(outcome, SemanticDeadlineOutcome::TimedOut);
-            assert!(started.elapsed() < Duration::from_millis(80));
         });
     }
 

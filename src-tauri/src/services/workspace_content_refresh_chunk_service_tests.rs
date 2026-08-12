@@ -35,6 +35,7 @@ fn content_chunk_publishes_independently_profiled_core_and_substring_layers() {
             "contentCoreDelete",
             "contentCoreInsert",
             "contentCoreState",
+            "contentCoreFingerprint",
             "contentSubstringInvalidate",
             "contentCoreGeneration",
             "contentSubstringDelete",
