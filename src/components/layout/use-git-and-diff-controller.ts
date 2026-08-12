@@ -46,6 +46,7 @@ export function useGitAndDiffController({
   const [selectedBlameAttribution, setSelectedBlameAttribution] = useState<GitBlameAttribution | null>(null);
   const traceVisible = gitToolVisible && gitToolView === "trace";
   const gitTraceEnabled = gitBlameVisible || traceVisible || gitBlameMenuOpen || selectedBlameAttribution !== null;
+  const gitBlameSummaryEnabled = Boolean(activePath);
   const activeLine = useSyncExternalStore(
     gitTraceEnabled ? editorSelectionRuntime.subscribe : subscribeDisabled,
     () => editorSelectionRuntime.getSnapshot().line,
@@ -56,7 +57,7 @@ export function useGitAndDiffController({
     activePath,
     activeText: gitTraceEnabled ? getActiveText() : "",
     baseText: gitTraceEnabled ? getBaseText() : "",
-    enabled: gitTraceEnabled && Boolean(activePath),
+    enabled: gitBlameSummaryEnabled,
     mappingEnabled: gitTraceEnabled,
     traceVisible,
     refreshToken: gitBlameRefreshToken,

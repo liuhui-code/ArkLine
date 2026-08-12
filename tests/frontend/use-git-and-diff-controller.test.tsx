@@ -111,7 +111,7 @@ describe("useGitAndDiffController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Git Blame unavailable: no active file");
   });
 
-  it("does not materialize editor text while blame and trace are closed", () => {
+  it("loads current-line blame without materializing editor text while trace is closed", () => {
     const getActiveText = vi.fn(() => "content");
     const getBaseText = vi.fn(() => "content");
 
@@ -132,7 +132,7 @@ describe("useGitAndDiffController", () => {
     expect(getActiveText).not.toHaveBeenCalled();
     expect(getBaseText).not.toHaveBeenCalled();
     expect(useGitTraceMock).toHaveBeenLastCalledWith(expect.objectContaining({
-      enabled: false,
+      enabled: true,
       mappingEnabled: false,
     }));
   });
