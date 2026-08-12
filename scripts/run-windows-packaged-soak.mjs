@@ -21,6 +21,7 @@ import {
   RENDERER_RESOURCE_SAMPLE_SCRIPT,
   RETAINED_HEAP_SNAPSHOT_SCRIPT,
   TELEMETRY_INSTALL_SCRIPT,
+  TELEMETRY_RESET_SAMPLES_SCRIPT,
   TELEMETRY_SNAPSHOT_SCRIPT,
 } from "./packaged-soak-telemetry.mjs";
 import { waitForWorkspace } from "./packaged-soak-readiness.mjs";
@@ -131,9 +132,10 @@ async function main() {
 async function runSoak(driver, options, scenario, onPhase) {
   await driver.waitForSelectorPresent('[aria-label="Application Header"]', 60_000);
   await waitForWorkspace(driver, options.fixturePath, 90_000);
-  await preparePackagedSoakRun(driver, options, scenario, onPhase);
-  onPhase("mixed-workload");
   const telemetryCapabilities = await driver.execute(TELEMETRY_INSTALL_SCRIPT);
+  await preparePackagedSoakRun(driver, options, scenario, onPhase);
+  await driver.execute(TELEMETRY_RESET_SAMPLES_SCRIPT);
+  onPhase("mixed-workload");
   const startedAt = Date.now();
   const deadline = startedAt + options.durationMs;
   const automationDispatchSamples = [];

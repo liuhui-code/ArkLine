@@ -21,6 +21,7 @@ import {
 import {
   EVENT_TIMING_SAMPLE_LIMIT,
   TELEMETRY_INSTALL_SCRIPT,
+  TELEMETRY_RESET_SAMPLES_SCRIPT,
   RETAINED_HEAP_SNAPSHOT_SCRIPT,
   UI_READINESS_SCRIPT,
   telemetryDurations,
@@ -199,6 +200,8 @@ describe("packaged Windows soak foundation", () => {
     expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("MutationObserver");
     expect(TELEMETRY_INSTALL_SCRIPT).not.toContain("requestAnimationFrame(frame)");
     expect(TELEMETRY_INSTALL_SCRIPT).toContain("entry.scripts || []");
+    expect(TELEMETRY_RESET_SAMPLES_SCRIPT).toContain("state.interactionStarts = {}");
+    expect(TELEMETRY_RESET_SAMPLES_SCRIPT).toContain("state.eventTimings = []");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("globalThis.gc");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openTabCount");
     expect(RETAINED_HEAP_SNAPSHOT_SCRIPT).toContain("openDocumentCount");

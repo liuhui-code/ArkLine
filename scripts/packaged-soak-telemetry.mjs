@@ -150,6 +150,27 @@ export const TELEMETRY_SNAPSHOT_SCRIPT = `
   };
 `;
 
+export const TELEMETRY_RESET_SAMPLES_SCRIPT = `
+  const state = window.__arklinePackagedSoak;
+  if (!state) return false;
+  state.errors = [];
+  state.eventTimings = [];
+  state.frameGaps = [];
+  state.longAnimationFrames = [];
+  state.longTasks = [];
+  state.frames = 0;
+  state.errorCount = 0;
+  state.expectedInterruptionCount = 0;
+  state.eventTimingCount = 0;
+  state.frameGapCount = 0;
+  state.longAnimationFrameCount = 0;
+  state.longTaskCount = 0;
+  state.eventTimingSamplingComplete = false;
+  state.interactionStarts = {};
+  state.scriptAttributions = {};
+  return true;
+`;
+
 export const HEAP_SNAPSHOT_SCRIPT = `
   const memory = performance.memory;
   return memory ? {
