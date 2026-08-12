@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const WINDOWS_TARGET = "x86_64-pc-windows-msvc";
+const DEFAULT_STEP_TIMEOUT_MS = 20 * 60_000;
 
 export function resolvePnpmExecutable(platform = process.platform) {
   return platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -12,6 +13,15 @@ export function packagingSpawnOptions(platform = process.platform) {
     stdio: "inherit",
     shell: platform === "win32",
   };
+}
+
+export function packagingStepTimeoutMs(value = process.env.ARKLINE_PACKAGING_STEP_TIMEOUT_MS) {
+  if (value === undefined || value === "") return DEFAULT_STEP_TIMEOUT_MS;
+  const timeout = Number(value);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new Error("ARKLINE_PACKAGING_STEP_TIMEOUT_MS must be a positive number");
+  }
+  return timeout;
 }
 
 function resolveTarget(target) {
@@ -54,13 +64,14 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
   const steps = [];
 
   if (!skipFrontendBuild) {
-    steps.push({ command: "pnpm", args: ["build"] });
+    steps.push({ name: "frontend-build", command: "pnpm", args: ["build"] });
   }
 
   if (resolvedTarget === "mac") {
-    steps.push({ command: "node", args: ["scripts/build-semantic-sidecar.mjs"] });
-    steps.push({ command: "node", args: ["scripts/build-indexer-sidecar.mjs"] });
+    steps.push({ name: "semantic-sidecar", command: "node", args: ["scripts/build-semantic-sidecar.mjs"] });
+    steps.push({ name: "indexer-sidecar", command: "node", args: ["scripts/build-indexer-sidecar.mjs"] });
     steps.push({
+      name: "tauri-binary",
       command: "pnpm",
       args: ["tauri", "build", "--no-bundle"],
     });
@@ -69,36 +80,42 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
 
   if (resolvedTarget === "windows-portable") {
     steps.push({
+      name: "semantic-sidecar",
       command: "node",
       args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", WINDOWS_TARGET],
     });
     steps.push({
+      name: "indexer-sidecar",
       command: "node",
       args: hostPlatform === "win32"
         ? ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET]
         : ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET, "--runner", "cargo-xwin"],
     });
     steps.push({
+      name: "tauri-binary",
       command: "pnpm",
       args: hostPlatform === "win32"
         ? ["tauri", "build", "--target", WINDOWS_TARGET, "--no-bundle"]
         : ["tauri", "build", "--runner", "cargo-xwin", "--target", WINDOWS_TARGET, "--no-bundle"],
     });
-    steps.push({ command: "node", args: ["scripts/stage-windows-portable.mjs"] });
+    steps.push({ name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] });
     return steps;
   }
 
   steps.push({
+    name: "semantic-sidecar",
     command: "node",
     args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", WINDOWS_TARGET],
   });
   steps.push({
+    name: "indexer-sidecar",
     command: "node",
     args: hostPlatform === "win32"
       ? ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET]
       : ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET, "--runner", "cargo-xwin"],
   });
   steps.push({
+    name: "tauri-binary",
     command: "pnpm",
     args: hostPlatform === "win32"
       ? ["tauri", "build", "--target", WINDOWS_TARGET, "--bundles", "nsis"]
@@ -112,16 +129,30 @@ function printOutputLocation(target) {
   console.log(getOutputSummary({ target }));
 }
 
-function runStep(step) {
+export function formatPackagingStepStart(step, timeoutMs) {
+  return `[package] start ${step.name ?? step.command} (timeout ${Math.round(timeoutMs / 60_000)}m)`;
+}
+
+export function formatPackagingStepEnd(step, durationMs) {
+  return `[package] done ${step.name ?? step.command} (${(durationMs / 1_000).toFixed(1)}s)`;
+}
+
+export function runStep(step, timeoutMs = packagingStepTimeoutMs(), now = Date.now) {
   const command = step.command === "pnpm" ? resolvePnpmExecutable() : step.command;
-  const result = spawnSync(command, step.args, packagingSpawnOptions());
+  const startedAt = now();
+  console.log(formatPackagingStepStart(step, timeoutMs));
+  const result = spawnSync(command, step.args, {
+    ...packagingSpawnOptions(),
+    timeout: timeoutMs,
+  });
+  console.log(formatPackagingStepEnd(step, Math.max(0, now() - startedAt)));
 
   if (typeof result.status === "number") {
     return result.status;
   }
 
   if (result.error) {
-    console.error(result.error.message);
+    console.error(`${step.name ?? command} failed: ${result.error.message}`);
     return 1;
   }
 
@@ -143,8 +174,9 @@ export function main(argv = process.argv.slice(2)) {
   const options = parseCliArgs(argv);
   const steps = buildPackagingSteps(options);
 
+  const timeoutMs = packagingStepTimeoutMs();
   for (const step of steps) {
-    const exitCode = runStep(step);
+    const exitCode = runStep(step, timeoutMs);
     if (exitCode !== 0) {
       process.exit(exitCode);
     }

@@ -5,6 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildPackagingSteps,
   getOutputSummary,
+  formatPackagingStepEnd,
+  formatPackagingStepStart,
+  packagingStepTimeoutMs,
   packagingSpawnOptions,
   resolvePnpmExecutable,
 } from "../../scripts/package-windows.mjs";
@@ -14,44 +17,59 @@ import { portableBundlePaths } from "../../scripts/stage-windows-portable.mjs";
 describe("package windows launcher", () => {
   it("builds the mac packaging flow as a native no-bundle binary", () => {
     expect(buildPackagingSteps({ target: "mac", hostPlatform: "darwin" })).toEqual([
-      { command: "pnpm", args: ["build"] },
-      { command: "node", args: ["scripts/build-semantic-sidecar.mjs"] },
-      { command: "node", args: ["scripts/build-indexer-sidecar.mjs"] },
-      { command: "pnpm", args: ["tauri", "build", "--no-bundle"] },
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
+      { name: "semantic-sidecar", command: "node", args: ["scripts/build-semantic-sidecar.mjs"] },
+      { name: "indexer-sidecar", command: "node", args: ["scripts/build-indexer-sidecar.mjs"] },
+      { name: "tauri-binary", command: "pnpm", args: ["tauri", "build", "--no-bundle"] },
     ]);
+  });
+
+  it("labels and bounds individual packaging steps", () => {
+    const step = { name: "tauri-binary", command: "pnpm", args: ["tauri", "build"] };
+
+    expect(packagingStepTimeoutMs(undefined)).toBe(1_200_000);
+    expect(formatPackagingStepStart(step, 1_200_000)).toContain("tauri-binary");
+    expect(formatPackagingStepEnd(step, 1_250)).toContain("1.3s");
+    expect(() => packagingStepTimeoutMs("0")).toThrow("positive number");
   });
 
   it("builds the Windows portable flow as a cross-compiled exe on macOS", () => {
     expect(buildPackagingSteps({ target: "windows-portable", hostPlatform: "darwin" })).toEqual([
-      { command: "pnpm", args: ["build"] },
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
       {
+        name: "semantic-sidecar",
         command: "node",
         args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
       },
       {
+        name: "indexer-sidecar",
         command: "node",
         args: ["scripts/build-indexer-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc", "--runner", "cargo-xwin"],
       },
       {
+        name: "tauri-binary",
         command: "pnpm",
         args: ["tauri", "build", "--runner", "cargo-xwin", "--target", "x86_64-pc-windows-msvc", "--no-bundle"],
       },
-      { command: "node", args: ["scripts/stage-windows-portable.mjs"] },
+      { name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] },
     ]);
   });
 
   it("cross-compiles the installer packaging flow on macOS", () => {
     expect(buildPackagingSteps({ target: "windows-installer", hostPlatform: "darwin" })).toEqual([
-      { command: "pnpm", args: ["build"] },
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
       {
+        name: "semantic-sidecar",
         command: "node",
         args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
       },
       {
+        name: "indexer-sidecar",
         command: "node",
         args: ["scripts/build-indexer-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc", "--runner", "cargo-xwin"],
       },
       {
+        name: "tauri-binary",
         command: "pnpm",
         args: ["tauri", "build", "--runner", "cargo-xwin", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"],
       },
@@ -60,32 +78,36 @@ describe("package windows launcher", () => {
 
   it("builds the installer packaging flow natively on Windows", () => {
     expect(buildPackagingSteps({ target: "windows-installer", hostPlatform: "win32" })).toEqual([
-      { command: "pnpm", args: ["build"] },
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
       {
+        name: "semantic-sidecar",
         command: "node",
         args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
       },
       {
+        name: "indexer-sidecar",
         command: "node",
         args: ["scripts/build-indexer-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
       },
-      { command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"] },
+      { name: "tauri-binary", command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"] },
     ]);
   });
 
   it("builds the portable Windows flow natively with an explicit MSVC target", () => {
     expect(buildPackagingSteps({ target: "windows-portable", hostPlatform: "win32" })).toEqual([
-      { command: "pnpm", args: ["build"] },
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
       {
+        name: "semantic-sidecar",
         command: "node",
         args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
       },
       {
+        name: "indexer-sidecar",
         command: "node",
         args: ["scripts/build-indexer-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
       },
-      { command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--no-bundle"] },
-      { command: "node", args: ["scripts/stage-windows-portable.mjs"] },
+      { name: "tauri-binary", command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--no-bundle"] },
+      { name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] },
     ]);
   });
 
