@@ -44,6 +44,7 @@ describe("useDefinitionController", () => {
     const navigateToLocation = vi.fn(async () => undefined);
     const queryDefinitionCandidatesWithReadiness = vi.fn();
     const gotoDefinition = vi.fn();
+    const scheduleForegroundNavigationIndex = vi.fn(async () => undefined);
     const queryLanguageDefinition = vi.fn(async (
       _rootPath: string,
       _request: unknown,
@@ -65,6 +66,7 @@ describe("useDefinitionController", () => {
         queryLanguageDefinition,
         queryDefinitionCandidatesWithReadiness,
         gotoDefinition,
+        scheduleForegroundNavigationIndex,
       }),
       navigateToLocation,
     })));
@@ -85,6 +87,7 @@ describe("useDefinitionController", () => {
       { path: "/workspace/B.ets", line: 8, column: 2 },
       "Definition",
     );
+    expect(scheduleForegroundNavigationIndex).not.toHaveBeenCalled();
   });
 
   it("rejects a broker response from a stale request generation", async () => {

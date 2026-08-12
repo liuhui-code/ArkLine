@@ -64,6 +64,46 @@ describe("language query broker completion", () => {
     expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
   });
 
+  it("does not enqueue foreground indexing when the broker completion is ready", async () => {
+    const scheduleForegroundCompletionIndex = vi.fn(async () => undefined);
+    const workspaceApi = {
+      scheduleForegroundCompletionIndex,
+      queryLanguageCompletion: vi.fn(async () => ({
+        items: [{ label: "profile", detail: "UserService property", kind: "property", source: "type" as const }],
+        readiness: {
+          rootPath: "/workspace",
+          requestedGeneration: 7,
+          servedGeneration: 7,
+          state: "ready" as const,
+          retryable: false,
+        },
+        requestGeneration: 19,
+        documentGeneration: 3,
+        targetGeneration: 7,
+        provider: "semantic" as const,
+        confidence: "semantic" as const,
+        fallbackUsed: false,
+        missReason: null,
+      })),
+    } as unknown as WorkspaceApi;
+
+    await collectCompletionCandidates({
+      workspaceApi,
+      rootPath: "/workspace",
+      path: "/workspace/Index.ets",
+      line: 1,
+      column: 11,
+      content: "service.pr",
+      semanticContent: "service.pr",
+      documentVersion: 3,
+      query: "pr",
+      replacePrefix: "pr",
+      requestGeneration: 19,
+    });
+
+    expect(scheduleForegroundCompletionIndex).not.toHaveBeenCalled();
+  });
+
   it("discards a stale broker generation before presenting completion", async () => {
     const workspaceApi = {
       queryLanguageCompletion: vi.fn(async () => ({

@@ -214,7 +214,6 @@ export function useDefinitionController({
       workspaceApi.queryLanguageDefinition
       || workspaceApi.queryDefinitionCandidatesWithReadiness
     )) {
-      void scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       if (isStaleRequest()) return;
       let envelope;
       let documentVersion: number | null = null;
@@ -271,6 +270,9 @@ export function useDefinitionController({
         return;
       }
       indexedDefinitionExplain = envelope.explain;
+      if (envelope.readiness.state !== "ready") {
+        void scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
+      }
       const brokerSource = usesLanguageBroker
         && "provider" in envelope
         && typeof envelope.provider === "string"

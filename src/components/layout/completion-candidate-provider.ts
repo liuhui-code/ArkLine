@@ -99,7 +99,9 @@ export async function collectCompletionCandidateResult({
       };
     }
     if (!unavailable) {
-      scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
+      if (envelope.readiness.state !== "ready") {
+        scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
+      }
       return {
         items: filterCompletionCandidates(memberAccess
           ? envelope.items.filter(isReceiverMemberCompletion)
