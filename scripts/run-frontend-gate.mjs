@@ -6,11 +6,12 @@ import { createTestNameBatches, collectNamedTests } from "./frontend-gate-plan.m
 
 const HEAVY_FILE = "tests/frontend/app-shell.test.tsx";
 const HEAVY_SUITE = "App shell";
-const HEAVY_BATCH_SIZE = 14;
+const HEAVY_BATCH_SIZE = 1;
 const HEAVY_CONCURRENCY = 1;
 const BASE_SHARDS = 6;
 const BASE_CONCURRENCY = 2;
 const TEST_TIMEOUT_MS = 15_000;
+const HEAVY_STAGE_TIMEOUT_MS = 45_000;
 const args = parseArgs(process.argv.slice(2));
 const strict = args.strict === true;
 const timeoutMs = positiveNumber(args["timeout-ms"], 1_800_000);
@@ -134,7 +135,7 @@ async function runVitestStage(name, extraArgs, expectedTestCount) {
     `--testTimeout=${TEST_TIMEOUT_MS}`,
     `--hookTimeout=${TEST_TIMEOUT_MS}`,
     ...extraArgs,
-  ]);
+  ], name.startsWith("app-shell-") ? HEAVY_STAGE_TIMEOUT_MS : undefined);
   const testResult = await readTestResult(resultPath);
   const testCountMatches = expectedTestCount === undefined
     ? testResult.passedTests > 0
@@ -149,6 +150,7 @@ async function runVitestStage(name, extraArgs, expectedTestCount) {
     durationMs: Date.now() - stepStarted,
     exitCode: result.exitCode,
     signal: result.signal ?? null,
+    timedOut: result.timedOut,
     testCount: testResult.passedTests,
     expectedTestCount: expectedTestCount ?? null,
     passed: !timedOut && result.exitCode === 0 && testCountMatches,
@@ -172,7 +174,7 @@ function stageSlug(name) {
   return name.replace(/[^A-Za-z0-9_-]+/gu, "-");
 }
 
-function runProcess(command, commandArgs) {
+function runProcess(command, commandArgs, stageTimeoutMs) {
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, {
       cwd: process.cwd(),
@@ -181,14 +183,23 @@ function runProcess(command, commandArgs) {
       windowsHide: true,
     });
     activeChildren.add(child);
+    let stageTimedOut = false;
+    const stageTimeout = stageTimeoutMs ? setTimeout(() => {
+      stageTimedOut = true;
+      console.error(`[frontend-gate] ${commandArgs.at(-1)} timed out after ${stageTimeoutMs}ms`);
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 2_000).unref();
+    }, stageTimeoutMs) : null;
     child.once("error", (error) => {
+      if (stageTimeout) clearTimeout(stageTimeout);
       activeChildren.delete(child);
       console.error(`[frontend-gate] could not start child: ${error.message}`);
-      resolve({ exitCode: 1 });
+      resolve({ exitCode: 1, timedOut: stageTimedOut });
     });
     child.once("close", (exitCode, signal) => {
+      if (stageTimeout) clearTimeout(stageTimeout);
       activeChildren.delete(child);
-      resolve({ exitCode: exitCode ?? 1, signal });
+      resolve({ exitCode: exitCode ?? 1, signal, timedOut: stageTimedOut });
     });
   });
 }
