@@ -216,7 +216,7 @@ describe("IndexDiagnosticsCenter", () => {
 
     const freshness = screen.getByLabelText("Layer Freshness");
     expect(within(freshness).getByText("content")).toBeVisible();
-    expect(within(freshness).getByText("1,200")).toBeVisible();
+    expect(within(freshness).getAllByText("1,200")).toHaveLength(2);
     expect(within(freshness).getByText("3")).toBeVisible();
     expect(within(freshness).getByText("4")).toBeVisible();
   });
