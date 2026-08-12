@@ -2,7 +2,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useWorkspaceIndexWatchers } from "@/components/layout/use-workspace-index-watchers";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
-import type { WorkspaceApi, WorkspaceIndexEvent } from "@/features/workspace/workspace-api";
+import type {
+  WorkspaceApi,
+  WorkspaceIndexEvent,
+  WorkspaceIndexRefreshResult,
+} from "@/features/workspace/workspace-api";
 
 describe("useWorkspaceIndexWatchers", () => {
   beforeEach(() => {
@@ -38,7 +42,68 @@ describe("useWorkspaceIndexWatchers", () => {
     unmount();
     expect(teardown).toHaveBeenCalledTimes(1);
   });
+
+  it("uses live refresh events instead of polling when a watcher is available", async () => {
+    const rootPath = "/workspace";
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    const applyWorkspaceIndexRefreshResult = vi.fn();
+    const teardown = vi.fn();
+    let onChange: ((result: WorkspaceIndexRefreshResult) => void) | null = null;
+    const watchWorkspaceIndex = vi.fn(async (
+      receivedRootPath: string,
+      next: (result: WorkspaceIndexRefreshResult) => void,
+    ) => {
+      expect(receivedRootPath).toBe(rootPath);
+      onChange = next;
+      return teardown;
+    });
+
+    const { unmount } = renderHook(() => useWorkspaceIndexWatchers({
+      rootPath,
+      workspaceApi: {
+        watchWorkspaceIndex,
+        refreshWorkspaceIndexWithChanges: vi.fn(),
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult,
+      refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    try {
+      await waitFor(() => expect(watchWorkspaceIndex).toHaveBeenCalledTimes(1));
+      expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 5_000);
+
+      act(() => {
+        onChange?.(indexRefreshResult(rootPath));
+      });
+
+      await waitFor(() => expect(applyWorkspaceIndexRefreshResult).toHaveBeenCalledWith(
+        indexRefreshResult(rootPath),
+      ));
+    } finally {
+      unmount();
+      setIntervalSpy.mockRestore();
+    }
+
+    expect(teardown).toHaveBeenCalledTimes(1);
+  });
 });
+
+function indexRefreshResult(rootPath: string): WorkspaceIndexRefreshResult {
+  return {
+    state: {
+      status: "ready",
+      rootPath,
+      filePaths: [`${rootPath}/src/main.ets`],
+      indexedAt: 1,
+      partialReason: null,
+    },
+    changed: true,
+    addedPaths: [`${rootPath}/src/main.ets`],
+    removedPaths: [],
+  };
+}
 
 function indexEvent(overrides: Partial<WorkspaceIndexEvent> = {}): WorkspaceIndexEvent {
   return {
