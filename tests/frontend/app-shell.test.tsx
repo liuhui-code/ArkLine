@@ -196,7 +196,7 @@ describe("App shell", () => {
     expect(screen.getByText("Open a HarmonyOS workspace to start reviewing and editing ArkTS files.")).toHaveClass(
       "workspace-empty__description",
     );
-    expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
+    await waitFor(() => expect(screen.getByLabelText("Semantic Mode")).toHaveTextContent("Fallback"));
   });
 
   it("renders the primary IDE regions", async () => {
@@ -226,7 +226,7 @@ describe("App shell", () => {
     expect(within(screen.getByLabelText("Files")).getByText("Project")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
     expect(within(header).getByRole("button", { name: "Settings" })).toHaveClass("toolbar__button--primary");
-    expect(await screen.findByLabelText("Semantic Mode")).toHaveTextContent("Fallback");
+    await waitFor(() => expect(screen.getByLabelText("Semantic Mode")).toHaveTextContent("Fallback"));
   });
 
   it("maximizes and restores the bottom tool window from the chrome actions", async () => {
