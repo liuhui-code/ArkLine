@@ -48,10 +48,12 @@ export function createSearchSessionStore() {
       };
     },
     patch(patch: Partial<SearchSessionSnapshot>) {
+      if (Object.entries(patch).every(([key, value]) => snapshot[key as keyof SearchSessionSnapshot] === value)) return;
       snapshot = { ...snapshot, ...patch };
       emit();
     },
     clear(query = "") {
+      if (isClearedSearchSession(snapshot, query)) return;
       snapshot = {
         ...snapshot,
         result: { query: { kind: "text", query }, matches: [] },
@@ -66,6 +68,19 @@ export function createSearchSessionStore() {
       emit();
     },
   };
+}
+
+function isClearedSearchSession(snapshot: SearchSessionSnapshot, query: string) {
+  return snapshot.result.query.kind === "text"
+    && snapshot.result.query.query === query
+    && snapshot.result.matches.length === 0
+    && snapshot.candidates.length === 0
+    && snapshot.truncationNotice === null
+    && snapshot.selectedIndex === 0
+    && snapshot.entityNextCursor === null
+    && snapshot.textNextCursor === null
+    && !snapshot.textPageLoading
+    && snapshot.indexReadiness === null;
 }
 
 export function useSearchSessionSnapshot(store: SearchSessionStore) {

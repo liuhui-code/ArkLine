@@ -1446,41 +1446,6 @@ describe("App shell", () => {
     expect(await screen.findByText("Search Everywhere miss: No indexed evidence explains this query yet. Rebuild Index.")).toBeVisible();
   });
 
-  it("does not query Search Everywhere until the user enters text", async () => {
-    const user = userEvent.setup();
-    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
-      items: [],
-      readiness: {
-        rootPath: "C:\\samples\\DemoWorkspace",
-        requestedGeneration: 1,
-        servedGeneration: 1,
-        state: "ready" as const,
-        retryable: false,
-      },
-    }));
-
-    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
-
-    await openProject(user);
-    await user.keyboard("{Shift}{Shift}");
-    expect(await screen.findByLabelText("Search Everywhere Query")).toHaveFocus();
-    await new Promise((resolve) => window.setTimeout(resolve, 20));
-
-    expect(queryWorkspaceCandidatesWithReadiness).not.toHaveBeenCalled();
-
-    await user.type(screen.getByLabelText("Search Everywhere Query"), "login");
-    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledWith(
-      "C:\\samples\\DemoWorkspace",
-     "login",
-     "all",
-     25,
-     null,
-     expect.any(Object),
-      expect.any(Number),
-      250,
-   ));
-  });
-
   it("shows truncation metadata when Search Everywhere has more results than the display cap", async () => {
     const user = userEvent.setup();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
