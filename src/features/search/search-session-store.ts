@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import type { WorkspaceTextSearchCursor, WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
+import type { WorkspaceIndexReadiness } from "@/features/workspace/workspace-index-api-types";
 
 const emptyResult: WorkspaceTextSearchResult = { query: { kind: "text", query: "" }, matches: [] };
 
@@ -13,6 +14,7 @@ export type SearchSessionSnapshot = {
   entityNextCursor: number | null;
   textNextCursor: WorkspaceTextSearchCursor | null;
   textPageLoading: boolean;
+  indexReadiness: WorkspaceIndexReadiness | null;
 };
 
 export type SearchSessionStore = ReturnType<typeof createSearchSessionStore>;
@@ -27,6 +29,7 @@ export function createSearchSessionStore() {
     entityNextCursor: null,
     textNextCursor: null,
     textPageLoading: false,
+    indexReadiness: null,
   };
   const listeners = new Set<() => void>();
 
@@ -58,6 +61,7 @@ export function createSearchSessionStore() {
         entityNextCursor: null,
         textNextCursor: null,
         textPageLoading: false,
+        indexReadiness: null,
       };
       emit();
     },

@@ -212,11 +212,11 @@ export function useEditorSurfaceController({
     bumpEditorFocusToken();
   }
 
-  function submitGoToLine() {
+  function submitGoToLine(query = quickOpenQuery) {
     if (!activePath) {
       return;
     }
-    const nextTarget = parseGoToLineQuery(quickOpenQuery);
+    const nextTarget = parseGoToLineQuery(query);
     if (!nextTarget) {
       onStatusChange("Go to Line requires line or line:column");
       return;

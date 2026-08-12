@@ -4,20 +4,9 @@ import {
   AppShellSearchOverlaySurface,
   type AppShellSearchOverlaySurfaceProps,
 } from "@/components/layout/AppShellSearchOverlaySurface";
-import { createSearchSessionStore } from "@/features/search/search-session-store";
-
-const contentRender = vi.hoisted(() => vi.fn());
-
-vi.mock("@/components/layout/SearchOverlayContent", () => ({
-  SearchOverlayContent: (props: { onCloseOverlay: () => void }) => {
-    contentRender();
-    return <button type="button" onClick={props.onCloseOverlay}>Mock Search Content</button>;
-  },
-}));
 
 describe("search overlay render boundary", () => {
-  it("ignores callback and unrelated result identity changes in search mode", () => {
-    contentRender.mockClear();
+  it("uses the latest close callback without recreating an unrelated search session", () => {
     const firstClose = vi.fn();
     const secondClose = vi.fn();
     const initialProps = createProps(firstClose);
@@ -27,77 +16,41 @@ describe("search overlay render boundary", () => {
       <AppShellSearchOverlaySurface
         {...initialProps}
         onClose={secondClose}
-        commandPaletteItems={[]}
         searchOverlayProps={{
           ...initialProps.searchOverlayProps,
-          quickOpenResults: [],
-          recentFileResults: [],
-          recentProjectResults: [],
-          onOpenFile: vi.fn(),
+          recentFileResults: [{ path: "/workspace/Entry.ets", title: "Entry.ets", relativePath: "src/Entry.ets" }],
         }}
       />,
     );
 
-    expect(contentRender).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "Mock Search Content" }));
+    fireEvent.click(screen.getByRole("button", { name: "Entry.ets src/Entry.ets" }));
+    expect(initialProps.searchOverlayProps.onOpenFile).toHaveBeenCalledWith("/workspace/Entry.ets");
+    fireEvent.click(screen.getByRole("button", { name: "Close Recent Files" }));
     expect(firstClose).not.toHaveBeenCalled();
     expect(secondClose).toHaveBeenCalledTimes(1);
   });
 
-  it("rerenders when active search data changes", () => {
-    contentRender.mockClear();
+  it("renders only non-search overlays after Search Everywhere moved to its own controller", () => {
     const initialProps = createProps(vi.fn());
-    const { rerender } = render(<AppShellSearchOverlaySurface {...initialProps} />);
-
-    rerender(
-      <AppShellSearchOverlaySurface
-        {...initialProps}
-        searchOverlayProps={{
-          ...initialProps.searchOverlayProps,
-          searchEverywhereOptions: { caseSensitive: true, wholeWord: false },
-        }}
-      />,
-    );
-
-    expect(contentRender).toHaveBeenCalledTimes(2);
+    render(<AppShellSearchOverlaySurface {...initialProps} />);
+    expect(screen.getByRole("textbox", { name: "Recent Files Query" })).toBeVisible();
   });
 });
 
 function createProps(onClose: () => void): AppShellSearchOverlaySurfaceProps {
   return {
     visible: true,
-    activeOverlay: "searchEverywhere",
-    label: "Search Everywhere",
+    activeOverlay: "recentFiles",
+    label: "Recent Files",
     onClose,
     commandPaletteItems: [],
     searchOverlayProps: {
-      quickOpenQuery: "width",
-      quickOpenResults: [],
-      quickOpenSelectedIndex: 0,
+      query: "",
       recentFileResults: [],
       recentProjectResults: [],
-      searchEverywhereOptions: { caseSensitive: false, wholeWord: false },
-      searchEverywhereMode: "find",
-      searchEverywhereScope: "all",
-      searchEverywhereReplaceQuery: "",
-      searchSessionStore: createSearchSessionStore(),
-      workspacePartialNotice: null,
       onChangeQuery: vi.fn(),
-      onDraftQueryChange: vi.fn(),
-      onChangeSearchEverywhereScope: vi.fn(),
-      onChangeSearchEverywhereReplaceQuery: vi.fn(),
       onOpenFile: vi.fn(),
-      onMoveQuickOpenSelection: vi.fn(),
-      onSelectQuickOpenResult: vi.fn(),
-      onOpenSearchEverywhereResult: vi.fn(),
-      onOpenSearchEverywhereCandidate: vi.fn(),
-      onLoadNextSearchEverywherePage: vi.fn(),
       onOpenProject: vi.fn(),
-      onMoveSearchEverywhereSelection: vi.fn(),
-      onOpenSelectedSearchEverywhereResult: vi.fn(),
-      onSelectSearchEverywhereResult: vi.fn(),
-      onToggleSearchEverywhereCaseSensitive: vi.fn(),
-      onToggleSearchEverywhereWholeWord: vi.fn(),
       onSubmitGoToLine: vi.fn(),
     },
   };

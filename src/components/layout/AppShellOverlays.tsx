@@ -7,7 +7,7 @@ import { GitBranchPicker } from "@/components/layout/GitBranchPicker";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
 import { ProjectMutationDialog } from "@/components/layout/ProjectMutationDialog";
-import { SearchOverlayContent } from "@/components/layout/SearchOverlayContent";
+import type { NonSearchOverlayContentProps } from "@/components/layout/NonSearchOverlayContent";
 import { AppShellSearchOverlaySurface } from "@/components/layout/AppShellSearchOverlaySurface";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { WorkspaceEditPreview } from "@/components/layout/WorkspaceEditPreview";
@@ -28,10 +28,7 @@ type AppShellOverlaysProps = {
   overlayLabel: string;
   onCloseOverlay: () => void;
   commandPaletteItems: CommandPaletteItem[];
-  searchOverlayProps: Omit<
-    ComponentProps<typeof SearchOverlayContent>,
-    "activeOverlay" | "commandPaletteItems" | "onCloseOverlay"
-  >;
+  searchOverlayProps?: Omit<NonSearchOverlayContentProps, "activeOverlay" | "label" | "commandPaletteItems" | "onClose">;
   projectMutationDialog: ProjectMutationDialogState | null;
   onChangeProjectMutationName: (name: string) => void;
   onCloseProjectMutationDialog: () => void;
@@ -90,7 +87,7 @@ export function AppShellOverlays({
         />
       ) : null}
       <GitBranchPicker {...gitBranchPickerProps} />
-      <AppShellSearchOverlaySurface visible={overlayVisible} activeOverlay={activeOverlay} label={overlayLabel} onClose={onCloseOverlay} commandPaletteItems={commandPaletteItems} searchOverlayProps={searchOverlayProps} />
+      {overlayVisible && searchOverlayProps ? <AppShellSearchOverlaySurface visible activeOverlay={activeOverlay} label={overlayLabel} onClose={onCloseOverlay} commandPaletteItems={commandPaletteItems} searchOverlayProps={searchOverlayProps} /> : null}
       {projectMutationDialog ? (
         <ProjectMutationDialog
           state={projectMutationDialog}

@@ -169,7 +169,7 @@ describe("app shell model", () => {
     expect(searchEverywhereEntityCandidates(candidates).map((candidate) => candidate.id)).toEqual(["file", "class"]);
   });
 
-  it("derives search, overlay, and status bar state from shell inputs", () => {
+  it("keeps Search Everywhere outside the shell overlay projection", () => {
     const workspaceModel = workspace({
       truncated: false,
       visibleFiles: ["/workspace/src/Main.ets", "/workspace/src/Settings.ets"],
@@ -189,8 +189,6 @@ describe("app shell model", () => {
       recentFiles: ["/workspace/src/Main.ets", "/workspace/src/Settings.ets"],
       recentProjects: ["/workspace/settings-project"],
       activeOverlay: "searchEverywhere",
-      searchEverywhereMode: "find",
-      searchEverywhereTruncationNotice: null,
       semanticState: semanticState(),
       settingsApplyState: "idle",
     });
@@ -198,8 +196,8 @@ describe("app shell model", () => {
     expect(derived.quickOpenResults).toEqual([]);
     expect(derived.recentFileResults).toEqual([]);
     expect(derived.recentProjectResults).toEqual([]);
-    expect(derived.overlayVisible).toBe(true);
-    expect(derived.overlayLabel).toBe("Find in Files");
+    expect(derived.overlayVisible).toBe(false);
+    expect(derived.overlayLabel).toBe("Search Everywhere");
     expect(derived.workspaceIndexText).toBe("Index: ready (2 files)");
   });
 
@@ -222,8 +220,6 @@ describe("app shell model", () => {
       recentFiles: [],
       recentProjects: [],
       activeOverlay: "quickOpen",
-      searchEverywhereMode: "searchEverywhere",
-      searchEverywhereTruncationNotice: null,
       semanticState: semanticState(),
       settingsApplyState: "idle",
     });
@@ -245,8 +241,6 @@ describe("app shell model", () => {
       recentFiles: ["/workspace/src/Main.ets", "/workspace/entry/src/Settings.ets"],
       recentProjects: [],
       activeOverlay: "recentFiles",
-      searchEverywhereMode: "searchEverywhere",
-      searchEverywhereTruncationNotice: null,
       semanticState: semanticState(),
       settingsApplyState: "idle",
     });
@@ -271,8 +265,6 @@ describe("app shell model", () => {
       recentFiles: [],
       recentProjects: [],
       activeOverlay: "none",
-      searchEverywhereMode: "searchEverywhere",
-      searchEverywhereTruncationNotice: null,
       semanticState: semanticState(),
       settingsApplyState: "idle",
     });
@@ -280,7 +272,7 @@ describe("app shell model", () => {
     expect(derived.workspaceIndexText).toBe("Index: Degraded, 1 failure");
   });
 
-  it("prioritizes explicit search truncation before stale index readiness notices", () => {
+  it("keeps shell readiness notices independent from search-session truncation", () => {
     const derived = getAppShellDerivedState({
       workspace: workspace({ truncated: true, scannedFiles: 500, skippedEntries: 7 }),
       workspaceIndex: createWorkspaceIndexStore(),
@@ -303,13 +295,11 @@ describe("app shell model", () => {
       recentFiles: [],
       recentProjects: [],
       activeOverlay: "quickOpen",
-      searchEverywhereMode: "find",
-      searchEverywhereTruncationNotice: "Showing first 200 matches",
       semanticState: semanticState(),
       settingsApplyState: "idle",
     });
 
-    expect(derived.workspacePartialNotice).toBe("Showing first 200 matches");
+    expect(derived.workspacePartialNotice).toBe("Index still building");
   });
 });
 

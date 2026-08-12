@@ -3,11 +3,16 @@ import type {
   OpenFileInteractionContext,
   RestoreFileResult,
 } from "@/components/layout/use-editor-surface-controller";
+import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import type { AppSettings } from "@/features/settings/settings-store";
 
 type AppShellActionRefs = {
   searchActionsRef: {
-    current: { resetSearchOverlayState: () => void };
+    current: {
+      resetSearchOverlayState: () => void;
+      openQuickOpen: () => void;
+      openSearchOverlay: (mode: SearchEverywhereMode, initialQuery?: string) => void;
+    };
   };
   settingsActionsRef: {
     current: { indexSdkSymbolsForSettings: (settings: AppSettings) => Promise<void> };
@@ -38,7 +43,11 @@ type AppShellActionRefs = {
 export function useAppShellActionRefs() {
   const refs = useRef<AppShellActionRefs>({
     searchActionsRef: {
-      current: { resetSearchOverlayState: () => undefined },
+      current: {
+        resetSearchOverlayState: () => undefined,
+        openQuickOpen: () => undefined,
+        openSearchOverlay: () => undefined,
+      },
     },
     settingsActionsRef: {
       current: {

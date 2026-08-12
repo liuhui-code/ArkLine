@@ -3,10 +3,8 @@ import {
   getWorkspaceScanText,
 } from "@/components/layout/app-shell-model";
 import { LAZY_PROJECT_TREE_FILE_THRESHOLD } from "@/components/layout/app-shell-constants";
-import { searchOverlayLabel } from "@/components/layout/search-everywhere-controller-model";
 import { filterRecentFileResults, filterRecentProjectResults, getOverlayLabel } from "@/components/layout/search-overlay-model";
 import type { OverlayKey } from "@/components/layout/shell-state";
-import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import { describeSemanticCapabilities } from "@/features/semantic/semantic-capability-state";
 import type { SemanticState } from "@/features/semantic/semantic-store";
 import type { WorkspaceViewModel } from "@/features/workspace/workspace-api";
@@ -30,8 +28,6 @@ export type AppShellDerivedStateOptions = {
   recentFiles: string[];
   recentProjects: string[];
   activeOverlay: OverlayKey;
-  searchEverywhereMode: SearchEverywhereMode;
-  searchEverywhereTruncationNotice: string | null;
   semanticState: SemanticState;
   settingsApplyState: SettingsApplyState;
 };
@@ -46,8 +42,6 @@ export function getAppShellDerivedState({
   recentFiles,
   recentProjects,
   activeOverlay,
-  searchEverywhereMode,
-  searchEverywhereTruncationNotice,
   semanticState,
   settingsApplyState,
 }: AppShellDerivedStateOptions) {
@@ -75,10 +69,11 @@ export function getAppShellDerivedState({
     quickOpenResults,
     recentFileResults,
     recentProjectResults,
-    overlayVisible: activeOverlay !== "none" && activeOverlay !== "completion",
-    overlayLabel: activeOverlay === "searchEverywhere"
-      ? searchOverlayLabel(searchEverywhereMode)
-      : activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay),
+    overlayVisible: activeOverlay !== "none"
+      && activeOverlay !== "completion"
+      && activeOverlay !== "quickOpen"
+      && activeOverlay !== "searchEverywhere",
+    overlayLabel: activeOverlay === "none" ? "Quick Open" : getOverlayLabel(activeOverlay),
     semanticCapability: describeSemanticCapabilities(semanticState, settingsApplyState),
     useLazyProjectTree: Boolean(
       workspace
@@ -87,8 +82,7 @@ export function getAppShellDerivedState({
     workspaceScanText: getWorkspaceScanText(workspace),
     workspaceIndexText: workspaceIndexStatusSummary.workspaceIndexText,
     sdkIndexText: workspaceIndexStatusSummary.sdkIndexText,
-    workspacePartialNotice: searchEverywhereTruncationNotice
-      ?? queryReadinessNotice
+    workspacePartialNotice: queryReadinessNotice
       ?? workspaceIndexState.partialReason
       ?? getWorkspacePartialNotice(workspace),
   };

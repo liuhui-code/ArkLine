@@ -145,6 +145,7 @@ function session(): SearchSessionSnapshot {
     entityNextCursor: null,
     textNextCursor: null,
     textPageLoading: false,
+    indexReadiness: null,
   };
 }
 
