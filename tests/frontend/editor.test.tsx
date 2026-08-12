@@ -250,7 +250,7 @@ describe("ArkTsEditor", () => {
     expect(screen.getByLabelText("Editor Content")).toHaveTextContent("A1");
 
     await user.keyboard("{Control>}z{/Control}");
-    expect(screen.getByLabelText("Editor Content")).toHaveTextContent("A");
+    await waitFor(() => expect(screen.getByLabelText("Editor Content")).toHaveTextContent("A"));
   });
 
   it("survives repeated cross-file switches without replacing the editor view", () => {

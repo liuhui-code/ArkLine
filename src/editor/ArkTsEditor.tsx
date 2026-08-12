@@ -1,7 +1,7 @@
 import type { EditorCompletionTarget, EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
 import { useEffect, useMemo, useRef } from "react";
 import { closeCompletion, startCompletion } from "@codemirror/autocomplete";
-import { EditorSelection, EditorState, type Text } from "@codemirror/state";
+import { EditorSelection, EditorState, Transaction, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import {
   appearanceCompartment,
@@ -305,7 +305,10 @@ export function ArkTsEditor({
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: documentSource },
       selection: EditorSelection.range(selectionAnchor, selectionHead),
-      annotations: editorDocumentReplacement.of(true),
+      annotations: [
+        editorDocumentReplacement.of(true),
+        Transaction.addToHistory.of(false),
+      ],
       effects: [
         editorStructureCompartment.reconfigure(structureExtensionForDocument(deferEnhancements)),
         languageCompartment.reconfigure(languageExtensionForPath(path, deferEnhancements)),
@@ -352,7 +355,10 @@ export function ArkTsEditor({
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: documentSource },
         selection: EditorSelection.range(anchor, head),
-        annotations: editorDocumentReplacement.of(true),
+        annotations: [
+          editorDocumentReplacement.of(true),
+          Transaction.addToHistory.of(false),
+        ],
       });
       activeDocumentSourceRef.current = documentSource;
       publishInputStats();
