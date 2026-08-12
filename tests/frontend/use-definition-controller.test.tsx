@@ -221,12 +221,13 @@ describe("useDefinitionController", () => {
   });
 
   it("does not wait for foreground navigation indexing before querying definition candidates", async () => {
+    vi.useFakeTimers();
     const foregroundIndex = createDeferred<void>();
     const scheduleForegroundNavigationIndex = vi.fn(() => foregroundIndex.promise);
     const queryDefinitionCandidatesWithReadiness = vi.fn(async () => {
       return {
         items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
-        readiness: readiness("ready"),
+        readiness: readiness("partial"),
       };
     });
     const { result } = renderHook(() => useDefinitionController(options({
@@ -241,16 +242,22 @@ describe("useDefinitionController", () => {
       await Promise.resolve();
     });
 
-    expect(scheduleForegroundNavigationIndex).toHaveBeenCalledWith("/workspace", ["/workspace/A.ets"]);
+    expect(scheduleForegroundNavigationIndex).not.toHaveBeenCalled();
     expect(queryDefinitionCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
+    expect(scheduleForegroundNavigationIndex).toHaveBeenCalledWith("/workspace", ["/workspace/A.ets"]);
     foregroundIndex.resolve();
+    vi.useRealTimers();
   });
 
   it("deduplicates rapid foreground navigation indexing for the same file", async () => {
+    vi.useFakeTimers();
     const scheduleForegroundNavigationIndex = vi.fn(async () => undefined);
     const queryDefinitionCandidatesWithReadiness = vi.fn(async () => ({
       items: [{ path: "/workspace/B.ets", line: 8, column: 2, preview: "class B" }],
-      readiness: readiness("ready"),
+      readiness: readiness("partial"),
     }));
     const { result } = renderHook(() => useDefinitionController(options({
       workspaceApi: workspaceApi({
@@ -264,8 +271,13 @@ describe("useDefinitionController", () => {
       await result.current.goToDefinitionFromEditor();
     });
 
+    expect(scheduleForegroundNavigationIndex).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(50);
+    });
     expect(scheduleForegroundNavigationIndex).toHaveBeenCalledTimes(1);
     expect(queryDefinitionCandidatesWithReadiness).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it("cancels a superseded definition before it starts navigation", async () => {

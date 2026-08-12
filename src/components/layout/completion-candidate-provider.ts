@@ -4,7 +4,7 @@ import {
   mergeCompletionItems,
 } from "@/components/layout/indexed-completion-model";
 import { isMemberAccessCompletion, type CompletionPosition } from "@/components/layout/completion-context";
-import { shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
+import { deferForegroundIndexSchedule, shouldScheduleForegroundIndex } from "@/components/layout/foreground-index-schedule-gate";
 import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
@@ -198,9 +198,7 @@ function scheduleForegroundCompletionIndex(
   if (!shouldScheduleForegroundIndex("completion", rootPath, path)) {
     return;
   }
-  void workspaceApi.scheduleForegroundCompletionIndex(rootPath, [path]).catch(() => {
-    // Index scheduling is a background hint, never a completion prerequisite.
-  });
+  deferForegroundIndexSchedule(() => workspaceApi.scheduleForegroundCompletionIndex!(rootPath, [path]));
 }
 
 async function collectSemanticCompletionResult(

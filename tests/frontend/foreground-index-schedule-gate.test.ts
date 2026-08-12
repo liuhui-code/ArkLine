@@ -1,4 +1,5 @@
 import {
+  deferForegroundIndexSchedule,
   resetForegroundIndexScheduleGate,
   shouldScheduleForegroundIndex,
 } from "@/components/layout/foreground-index-schedule-gate";
@@ -6,6 +7,24 @@ import {
 describe("foreground index schedule gate", () => {
   afterEach(() => {
     resetForegroundIndexScheduleGate();
+  });
+
+  it("defers background dispatch until the browser is idle", async () => {
+    let idleCallback: (() => void) | undefined;
+    const dispatch = vi.fn(async () => undefined);
+
+    deferForegroundIndexSchedule(dispatch, {
+      requestIdleCallback: (callback) => {
+        idleCallback = callback;
+        return 1;
+      },
+      setTimeout: vi.fn(),
+    });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    idleCallback?.();
+    await Promise.resolve();
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("deduplicates only an identical readiness hint during a rapid interaction burst", () => {

@@ -374,7 +374,8 @@ describe("completion candidate provider", () => {
     ]));
   });
 
-  it("schedules foreground completion indexing after collecting semantic completions", async () => {
+  it("defers foreground completion indexing until after collecting semantic completions", async () => {
+    vi.useFakeTimers();
     const events: string[] = [];
     const scheduleForegroundCompletionIndex = vi.fn(async () => {
       events.push("schedule-completion-index");
@@ -404,11 +405,15 @@ describe("completion candidate provider", () => {
       replacePrefix: "indexed",
     });
 
+    expect(scheduleForegroundCompletionIndex).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(50);
     expect(scheduleForegroundCompletionIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/main.ets"]);
     expect(events.slice(0, 2)).toEqual(["semantic-completion", "schedule-completion-index"]);
+    vi.useRealTimers();
   });
 
   it("does not wait for foreground indexing before returning completion results", async () => {
+    vi.useFakeTimers();
     const scheduleForegroundCompletionIndex = vi.fn(() => new Promise<void>(() => undefined));
     const completeSymbol = vi.fn(async () => [
       { label: "build()", detail: "Semantic method", kind: "method", source: "arkts" as const },
@@ -421,12 +426,16 @@ describe("completion candidate provider", () => {
       replacePrefix: "build",
     });
 
-    expect(scheduleForegroundCompletionIndex).toHaveBeenCalled();
+    expect(scheduleForegroundCompletionIndex).not.toHaveBeenCalled();
     expect(completeSymbol).toHaveBeenCalled();
     expect(items.map((item) => item.label)).toEqual(["build()"]);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(scheduleForegroundCompletionIndex).toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it("deduplicates rapid foreground completion indexing for the same file", async () => {
+    vi.useFakeTimers();
     const scheduleForegroundCompletionIndex = vi.fn(async () => undefined);
     const semanticCompleteSymbol = vi.fn(async () => ({
       items: [],
@@ -446,7 +455,10 @@ describe("completion candidate provider", () => {
     await collectCompletionCandidates({ ...baseRequest, workspaceApi: api, query: "a", replacePrefix: "a" });
     await collectCompletionCandidates({ ...baseRequest, workspaceApi: api, query: "ab", replacePrefix: "ab" });
 
+    expect(scheduleForegroundCompletionIndex).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(50);
     expect(scheduleForegroundCompletionIndex).toHaveBeenCalledTimes(1);
     expect(semanticCompleteSymbol).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });

@@ -1,5 +1,7 @@
 const FOREGROUND_INDEX_SCHEDULE_TTL_MS = 750;
 const MAX_TRACKED_FOREGROUND_SCHEDULES = 128;
+const FOREGROUND_INDEX_IDLE_TIMEOUT_MS = 250;
+const FOREGROUND_INDEX_FALLBACK_DELAY_MS = 50;
 
 const recentForegroundSchedules = new Map<string, number>();
 
@@ -25,6 +27,27 @@ export function shouldScheduleForegroundIndex(
 export function resetForegroundIndexScheduleGate() {
   recentForegroundSchedules.clear();
 }
+
+export function deferForegroundIndexSchedule(
+  dispatch: () => Promise<void>,
+  host: ForegroundIndexScheduleHost = globalThis,
+) {
+  const run = () => {
+    void dispatch().catch(() => {
+      // Index scheduling is a background hint, never a query prerequisite.
+    });
+  };
+  if (host.requestIdleCallback) {
+    host.requestIdleCallback(run, { timeout: FOREGROUND_INDEX_IDLE_TIMEOUT_MS });
+    return;
+  }
+  host.setTimeout(run, FOREGROUND_INDEX_FALLBACK_DELAY_MS);
+}
+
+type ForegroundIndexScheduleHost = {
+  requestIdleCallback?: (callback: () => void, options: { timeout: number }) => unknown;
+  setTimeout(callback: () => void, delay: number): unknown;
+};
 
 function trimOldForegroundSchedules(now: number) {
   if (recentForegroundSchedules.size <= MAX_TRACKED_FOREGROUND_SCHEDULES) {
