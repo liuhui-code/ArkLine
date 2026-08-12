@@ -145,7 +145,10 @@ function toCompletion(
   if (cached && !resolver) return cached;
 
   const insertText = item.insertText ?? item.label;
-  const resolution = resolver ? createLazyResolution(item, position, resolver) : undefined;
+  // CodeMirror asks for the selected option's info as soon as the list opens.
+  // Keep that first paint local; TypeScript resolution is only required to apply
+  // additional edits such as imports.
+  const resolution = resolvesOnApply ? createLazyResolution(item, position, resolver!) : undefined;
   const completion: Completion = {
     label: item.filterText ?? item.label,
     displayLabel: item.filterText ? item.label : undefined,
@@ -158,7 +161,7 @@ function toCompletion(
         ? createResolvedApply(position, insertText, resolution)
         : insertText,
     commitCharacters: item.commitCharacters,
-    info: resolution?.info ?? createCompletionInfo(item),
+    info: createCompletionInfo(item),
   };
   const result = isSnippetTemplate(insertText)
     ? snippetCompletion(insertText, completion)
@@ -177,17 +180,13 @@ function createLazyResolution(
   resolver: CodeMirrorCompletionResolver,
 ): {
   resolve: () => Promise<LanguageCompletionItem | null>;
-  info: (completion: Completion) => Promise<CompletionInfo>;
 } {
   let resolved: Promise<LanguageCompletionItem | null> | undefined;
   const resolve = () => {
     resolved ??= resolver(item, position).catch(() => item);
     return resolved;
   };
-  return { resolve, info: async () => {
-    const result = await resolve();
-    return result ? renderCompletionInfo(result) : null;
-  } };
+  return { resolve };
 }
 
 function createCompletionInfo(item: LanguageCompletionItem): Completion["info"] {

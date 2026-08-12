@@ -374,7 +374,7 @@ describe("completion candidate provider", () => {
     ]));
   });
 
-  it("schedules foreground completion indexing before collecting semantic completions", async () => {
+  it("schedules foreground completion indexing after collecting semantic completions", async () => {
     const events: string[] = [];
     const scheduleForegroundCompletionIndex = vi.fn(async () => {
       events.push("schedule-completion-index");
@@ -405,7 +405,7 @@ describe("completion candidate provider", () => {
     });
 
     expect(scheduleForegroundCompletionIndex).toHaveBeenCalledWith("/workspace", ["/workspace/src/main.ets"]);
-    expect(events.slice(0, 2)).toEqual(["schedule-completion-index", "semantic-completion"]);
+    expect(events.slice(0, 2)).toEqual(["semantic-completion", "schedule-completion-index"]);
   });
 
   it("does not wait for foreground indexing before returning completion results", async () => {

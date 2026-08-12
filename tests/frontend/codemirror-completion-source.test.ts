@@ -189,7 +189,7 @@ describe("CodeMirror completion sources", () => {
     })).toBeNull();
   });
 
-  it("resolves completion details lazily and only once", async () => {
+  it("does not resolve TypeScript completion details while the list is opening", async () => {
     const resolver = vi.fn(async (item: { label: string }) => ({
       ...item,
       detail: "resolved detail",
@@ -198,7 +198,13 @@ describe("CodeMirror completion sources", () => {
     }));
     const [, source] = createCodeMirrorCompletionSources(
       () => "/workspace/Main.ets",
-      async () => [{ label: "width", detail: "property", kind: "property" }],
+      async () => [{
+        label: "width",
+        detail: "property",
+        kind: "property",
+        documentation: "Indexed documentation",
+        data: { provider: "typescript" },
+      }],
       resolver,
     );
     const state = EditorState.create({ doc: "this.w" });
@@ -207,14 +213,14 @@ describe("CodeMirror completion sources", () => {
 
     expect(resolver).not.toHaveBeenCalled();
     if (!option || typeof option.info !== "function") {
-      throw new Error("expected lazy completion info resolver");
+      throw new Error("expected indexed completion info");
     }
     const firstInfo = await option.info(option);
     const secondInfo = await option.info(option);
 
-    expect(resolver).toHaveBeenCalledTimes(1);
-    expect(firstInfo && "textContent" in firstInfo ? firstInfo.textContent : "").toContain("Resolved documentation");
-    expect(secondInfo && "textContent" in secondInfo ? secondInfo.textContent : "").toContain("Resolved documentation");
+    expect(resolver).not.toHaveBeenCalled();
+    expect(firstInfo && "textContent" in firstInfo ? firstInfo.textContent : "").toContain("Indexed documentation");
+    expect(secondInfo && "textContent" in secondInfo ? secondInfo.textContent : "").toContain("Indexed documentation");
   });
 
   it("applies a resolved same-file import edit with the completion in one transaction", async () => {

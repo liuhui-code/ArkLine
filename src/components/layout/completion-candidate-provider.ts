@@ -68,7 +68,6 @@ export async function collectCompletionCandidateResult({
     ...(documentVersion !== null && documentVersion !== undefined ? { documentVersion } : {}),
   };
   const memberAccess = isMemberAccessCompletion(contextRequest);
-  scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
   if (rootPath && workspaceApi.queryLanguageCompletion) {
     const envelope = await workspaceApi.queryLanguageCompletion(
       rootPath,
@@ -100,6 +99,7 @@ export async function collectCompletionCandidateResult({
       };
     }
     if (!unavailable) {
+      scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
       return {
         items: filterCompletionCandidates(memberAccess
           ? envelope.items.filter(isReceiverMemberCompletion)
@@ -152,6 +152,7 @@ export async function collectCompletionCandidateResult({
       .map((candidate) => candidateToCompletionItem(candidate, "workspace"))
     : [];
 
+  scheduleForegroundCompletionIndex(workspaceApi, rootPath, path);
   return {
     items: filterCompletionCandidates(mergeCompletionItems(
       semanticItems,
