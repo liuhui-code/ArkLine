@@ -44,6 +44,12 @@ describe("package scripts", () => {
     expect(scripts.check).toBe(
       "node scripts/run-quality-gate.mjs --gate=full --strict",
     );
+    expect(scripts["check:release:frontend"]).toBe(
+      "node scripts/run-quality-gate.mjs --gate=release-frontend --strict",
+    );
+    expect(scripts["check:release:rust"]).toBe(
+      "node scripts/run-quality-gate.mjs --gate=release-rust --strict",
+    );
     expect(scripts["test:rust"]).toBe("node scripts/test-rust.mjs");
     expect(scripts["check:whitespace"]).toBe("git diff --check HEAD --");
   });

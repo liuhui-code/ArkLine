@@ -73,7 +73,8 @@ export type BuildArtifactKind = BuildTarget;
 export type BuildArtifact = {
   path: string;
   kind: BuildArtifactKind;
-  source: "output";
+  source: "output" | "filesystem";
+  signature: "signed" | "unsigned" | "not-applicable" | "unknown";
 };
 
 export type BuildFreshnessStatus = "unknown" | "candidate-current" | "stale";
@@ -107,6 +108,8 @@ export type BuildEnvironmentCheck = {
 
 export type BuildEnvironmentResolution = {
   canBuild: boolean;
+  hvigorCommand?: string | null;
+  hvigorSource?: "project-wrapper" | "deveco" | null;
   nodePath: string | null;
   sdkPath: string | null;
   pathEntries: string[];
@@ -165,6 +168,14 @@ export type HarmonyBuildProject = {
   defaultModule: string | null;
   products: string[];
   defaultProduct: string | null;
+  productSigning: HarmonyProductSigning[];
+};
+
+export type HarmonyProductSigning = {
+  product: string;
+  signingConfig: string | null;
+  ready: boolean;
+  issues: string[];
 };
 
 export type BuildPreflightIssueSeverity = "error" | "warning";
@@ -177,6 +188,8 @@ export type BuildPreflightIssueCode =
   | "missing-module"
   | "missing-sdk-path"
   | "missing-node-path"
+  | "missing-signing-config"
+  | "invalid-signing-material"
   | "build-environment-node"
   | "build-environment-sdk"
   | "build-environment-hvigor"

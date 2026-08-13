@@ -18,6 +18,16 @@ type QualityGateManifest = {
       steps: string[];
       stepTimeoutMs: number;
     };
+    "release-frontend": {
+      command: string;
+      steps: string[];
+      stepTimeoutMs: number;
+    };
+    "release-rust": {
+      command: string;
+      steps: string[];
+      stepTimeoutMs: number;
+    };
   };
   frontendQualityTests: string[];
 };
@@ -42,10 +52,18 @@ describe("quality gate manifest", () => {
     expect(manifest.gates.full.command).toBe(
       "node scripts/run-quality-gate.mjs --gate=full --strict",
     );
+    expect(manifest.gates["release-frontend"].steps).not.toContain("pnpm test:rust");
+    expect(manifest.gates["release-rust"].steps).toEqual(["pnpm test:rust"]);
     expect(manifest.gates.fast.stepTimeoutMs).toBe(900000);
     expect(manifest.gates.full.stepTimeoutMs).toBe(2000000);
     expect(scripts["check:fast"]).toBe(manifest.gates.fast.command);
     expect(scripts.check).toBe(manifest.gates.full.command);
+    expect(scripts["check:release:frontend"]).toBe(
+      manifest.gates["release-frontend"].command,
+    );
+    expect(scripts["check:release:rust"]).toBe(
+      manifest.gates["release-rust"].command,
+    );
     expect(scripts["test:frontend:quality"]).toBe(
       `vitest run ${manifest.frontendQualityTests.join(" ")}`,
     );

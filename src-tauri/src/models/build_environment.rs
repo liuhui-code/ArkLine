@@ -23,6 +23,8 @@ pub struct BuildEnvironmentCheck {
 #[serde(rename_all = "camelCase")]
 pub struct BuildEnvironmentResolution {
     pub can_build: bool,
+    pub hvigor_command: Option<String>,
+    pub hvigor_source: Option<String>,
     pub node_path: Option<String>,
     pub sdk_path: Option<String>,
     pub path_entries: Vec<String>,

@@ -18,16 +18,18 @@ function expectPnpmBeforeNodeCache(workflow: string) {
 }
 
 describe("CI quality gates", () => {
-  it("runs the shared fast quality gate before the Windows package job", async () => {
+  it("runs the shared fast quality gate for every branch before the Windows package job", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
 
     expect(workflow).toContain("version: 10.12.1");
     expectPnpmBeforeNodeCache(workflow);
+    expect(workflow).toContain('branches:\n      - "**"');
     expect(workflow).toContain("run: pnpm check:fast");
     expect(workflow).toContain("name: Quality Gate / Fast");
     expect(workflow).toContain("name: Windows / Package");
     expect(workflow).toContain("needs: quality");
-    expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
+    expect(workflow).toContain("github.event.pull_request.head.ref || github.ref_name");
+    expect(workflow).toContain("cancel-in-progress: ${{ github.ref_name != 'main' }}");
     expect(workflow).not.toContain("run: pnpm test\n");
     expect(workflow).not.toContain(
       "run: cargo test --manifest-path src-tauri/Cargo.toml",
@@ -35,19 +37,47 @@ describe("CI quality gates", () => {
     expect(workflow).not.toContain("run: pnpm perf:runtime");
   });
 
-  it("runs the full release quality gate before publishing the portable exe", async () => {
-    const workflow = await readWorkflow("macos-windows-exe.yml");
-    const installIndex = workflow.indexOf("run: pnpm install --frozen-lockfile");
-    const gateIndex = workflow.indexOf("run: pnpm check\n");
-    const packageIndex = workflow.indexOf("run: pnpm package:windows:portable");
+  it("validates and builds a Windows release before creating its tag", async () => {
+    const workflow = await readWorkflow("windows-exe-release.yml");
+    const qualityIndex = workflow.indexOf("  quality:");
+    const rustIndex = workflow.indexOf("  rust:");
+    const packageIndex = workflow.indexOf("  build-windows-exe:");
+    const publishIndex = workflow.indexOf("  publish-release:");
+    const qualityJob = workflow.slice(qualityIndex, rustIndex);
+    const rustJob = workflow.slice(rustIndex, packageIndex);
+    const packageJob = workflow.slice(packageIndex, publishIndex);
+    const publishJob = workflow.slice(publishIndex);
 
+    expect(workflow).toContain("name: windows-exe-release");
     expect(workflow).toContain("version: 10.12.1");
     expectPnpmBeforeNodeCache(workflow);
     expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("required: true");
+    expect(workflow).not.toContain("  push:");
+    expect(workflow).not.toContain("cargo-xwin");
+    expect(workflow).not.toContain("brew install");
+
+    expect(qualityJob).toContain("needs: validate-release");
+    expect(qualityJob).toContain("runs-on: ubuntu-latest");
+    expect(qualityJob).toContain("run: pnpm check:release:frontend");
+    expect(qualityJob).not.toContain("pnpm test:rust");
+    expect(rustJob).toContain("needs: validate-release");
+    expect(rustJob).toContain("runs-on: ubuntu-latest");
+    expect(rustJob).toContain("run: pnpm check:release:rust");
+    expect(packageJob).toContain("needs: validate-release");
+    expect(packageJob).not.toContain("needs: quality");
+    expect(packageJob).toContain("runs-on: windows-latest");
+    expect(packageJob).toContain("uses: Swatinem/rust-cache@v2");
+    expect(packageJob).toContain("run: pnpm package:windows:portable");
+    expect(packageJob).toContain("Run packaged real-project semantic smoke");
+    expect(packageJob).toContain("--application=artifacts/release-verify/ArkLine-windows-x64/ArkLine.exe");
+
     expect(workflow).toContain("name: Release / Publish");
-    expect(workflow).toContain("needs: build-windows-exe");
-    expect(workflow).toContain("permissions:\n      contents: write");
-    expect(gateIndex).toBeGreaterThan(installIndex);
-    expect(packageIndex).toBeGreaterThan(gateIndex);
+    expect(publishJob).toContain("needs:\n      - quality\n      - rust\n      - build-windows-exe");
+    expect(publishJob).toContain("permissions:\n      contents: write");
+    expect(publishJob).toContain("uses: actions/download-artifact@v5");
+    expect(publishJob).toContain('gh release create "$RELEASE_TAG" dist/ArkLine-windows-x64.zip');
+    expect(publishJob).toContain('--target "$GITHUB_SHA"');
+    expect(publishJob).not.toContain("--clobber");
   });
 });

@@ -78,9 +78,10 @@ pub fn failed_task_result(
     error: String,
     started_at: u128,
 ) -> WorkspaceIndexTaskResult {
+    let kind = task_status_kind_label(&task).to_string();
     WorkspaceIndexTaskResult {
         root_path: task.root_path,
-        kind: task_kind_label(&task.kind).to_string(),
+        kind,
         status: "failed".to_string(),
         reason: task.reason,
         generation: task.generation,

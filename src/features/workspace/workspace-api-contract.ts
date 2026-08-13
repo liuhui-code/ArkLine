@@ -1,4 +1,4 @@
-import type { BuildConfiguration, BuildEnvironmentResolution, HarmonyBuildProject } from "@/features/build/build-model";
+import type { BuildConfiguration, BuildEnvironmentResolution, BuildTarget, HarmonyBuildProject } from "@/features/build/build-model";
 import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
@@ -468,6 +468,7 @@ type WorkspaceCoreApi = {
   loadBuildConfigurations?(rootPath: string): Promise<BuildConfiguration[]>;
   saveBuildConfigurations?(rootPath: string, configurations: BuildConfiguration[]): Promise<void>;
   inspectHarmonyBuildProject?(rootPath: string): Promise<HarmonyBuildProject>;
+  findHarmonyBuildArtifacts?(rootPath: string, target: BuildTarget, moduleName: string | null, product: string): Promise<string[]>;
   resolveBuildEnvironment?(request: BuildEnvironmentRequest): Promise<BuildEnvironmentResolution>;
   createTerminalSession(request: CreateTerminalSessionRequest): Promise<TerminalSessionSummary>;
   listTerminalSessions(): Promise<TerminalSessionSummary[]>;

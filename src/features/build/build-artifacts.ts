@@ -14,8 +14,28 @@ export function extractBuildArtifacts(output: string): BuildArtifact[] {
       path,
       kind,
       source: "output",
+      signature: inferArtifactSignature(path, kind),
     });
   }
 
   return Array.from(artifacts.values());
+}
+
+export function inferArtifactSignature(
+  path: string,
+  kind: BuildArtifactKind,
+): BuildArtifact["signature"] {
+  if (kind === "har") {
+    return "not-applicable";
+  }
+  const fileName = path.replaceAll("\\", "/").split("/").at(-1)?.toLowerCase() ?? "";
+  if (/(?:^|[-_])unsigned(?:[-_.]|$)/.test(fileName)) {
+    return "unsigned";
+  }
+  if (/(?:^|[-_])signed(?:[-_.]|$)/.test(fileName)) {
+    return "signed";
+  }
+  // Hvigor appends an unsigned suffix when it skips signing. Custom artifact
+  // names omit a signed suffix, so every other signable output is signed.
+  return "signed";
 }

@@ -135,6 +135,24 @@ pub fn load_recent_task_statuses(
     Ok(statuses)
 }
 
+pub(crate) fn load_latest_task_generation(root_path: &str) -> Result<Option<u64>, String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(None);
+    }
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
+    let root_key = normalize_index_path(root_path);
+    connection
+        .query_row(
+            "select max(generation) from workspace_index_task_journal where root_path = ?1",
+            params![root_key],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .map(|generation| generation.map(|value| value.max(0) as u64))
+        .map_err(|error| error.to_string())
+}
+
 fn store_retry_backoff_event(
     connection: &Connection,
     root_key: &str,

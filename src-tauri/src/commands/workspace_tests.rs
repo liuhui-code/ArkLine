@@ -14,6 +14,9 @@ use crate::commands::workspace_index_schedule::{
     schedule_foreground_navigation_index_through_manager,
     schedule_visible_files_index_through_manager,
 };
+use crate::services::workspace_discovery_store_service::{
+    update_discovery_state, WorkspaceDiscoveryState,
+};
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_open_command_service::open_workspace_through_manager;
@@ -52,6 +55,49 @@ fn open_workspace_command_returns_snapshot_and_queues_background_index() {
     }));
 
     wait_for_workspace_index_idle(&index_manager, &root_path);
+    remove_temp_dir(&root);
+}
+
+#[test]
+fn reopening_a_durable_index_advances_discovery_generation_and_reaches_terminal_status() {
+    let root = unique_temp_dir("open-workspace-durable-generation");
+    let source_dir = root.join("entry/src/main/ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("Index.ets"), "struct Index {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    update_discovery_state(&WorkspaceDiscoveryState {
+        root_path: root_path.clone(),
+        generation: 22,
+        status: "ready".to_string(),
+        discovered_count: 1,
+        excluded_count: 0,
+        cursor: None,
+        error: None,
+    })
+    .unwrap();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let index_manager = WorkspaceIndexManagerRuntime::default();
+
+    open_workspace_through_manager(
+        index_runtime,
+        index_manager.clone(),
+        crate::services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default(),
+        &root_path,
+        |_, _| {},
+    )
+    .unwrap();
+
+    wait_for_workspace_index_idle(&index_manager, &root_path);
+    let statuses = index_manager.get_index_task_statuses(&root_path).unwrap();
+    assert!(statuses.iter().any(|status| {
+        status.kind == "discovery" && status.status == "ready" && status.generation > 22
+    }));
+    assert!(!statuses.iter().any(|status| {
+        status
+            .error
+            .as_deref()
+            .is_some_and(|error| error.contains("Stale discovery generation"))
+    }));
     remove_temp_dir(&root);
 }
 

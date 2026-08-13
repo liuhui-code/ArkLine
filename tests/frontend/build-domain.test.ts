@@ -242,6 +242,7 @@ describe("build command preflight", () => {
         defaultModule: "entry",
         products: ["default"],
         defaultProduct: "default",
+        productSigning: [{ product: "default", signingConfig: "default", ready: true, issues: [] }],
       },
       settings: {
         harmonySdkPath: "/opt/harmony-sdk",
@@ -251,12 +252,79 @@ describe("build command preflight", () => {
       },
       target: "hap",
       moduleName: "entry",
+      product: "default",
     });
 
     expect(result.canBuild).toBe(false);
     expect(result.issues).toContainEqual(expect.objectContaining({
       severity: "error",
       code: "missing-hvigor-wrapper",
+    }));
+  });
+
+  it("blocks signable targets when the selected product has no signing config", () => {
+    const result = preflightHarmonyBuild({
+      project: {
+        rootPath: "/workspace/Demo",
+        isHarmonyProject: true,
+        hasHvigorWrapper: true,
+        hvigorWrapperCommand: "./hvigorw",
+        hasHvigorFile: true,
+        hasBuildProfile: true,
+        hasOhPackage: true,
+        modules: ["entry"],
+        defaultModule: "entry",
+        products: ["default"],
+        defaultProduct: "default",
+        productSigning: [{
+          product: "default",
+          signingConfig: null,
+          ready: false,
+          issues: ["product does not reference signingConfig"],
+        }],
+      },
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+    });
+
+    expect(result.canBuild).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "missing-signing-config",
+      severity: "error",
+    }));
+  });
+
+  it("reports missing signing materials without exposing their values", () => {
+    const result = preflightHarmonyBuild({
+      project: {
+        rootPath: "/workspace/Demo",
+        isHarmonyProject: true,
+        hasHvigorWrapper: true,
+        hvigorWrapperCommand: "./hvigorw",
+        hasHvigorFile: true,
+        hasBuildProfile: true,
+        hasOhPackage: true,
+        modules: ["entry"],
+        defaultModule: "entry",
+        products: ["default"],
+        defaultProduct: "default",
+        productSigning: [{
+          product: "default",
+          signingConfig: "default",
+          ready: false,
+          issues: ["material.profile file does not exist"],
+        }],
+      },
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+    });
+
+    expect(result.canBuild).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "invalid-signing-material",
+      hint: "material.profile file does not exist",
     }));
   });
 });
@@ -273,11 +341,13 @@ describe("build artifacts", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       },
       {
         path: "/workspace/Demo/library/build/default/outputs/default/library.har",
         kind: "har",
         source: "output",
+        signature: "not-applicable",
       },
     ]);
   });
@@ -290,6 +360,7 @@ describe("build artifacts", () => {
         path: "/workspace/Demo/build/default/app/default/app.app",
         kind: "app",
         source: "output",
+        signature: "signed",
       },
     ]);
   });
@@ -318,6 +389,7 @@ describe("build freshness", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       }],
       environment,
     });
@@ -389,6 +461,7 @@ describe("build freshness", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       }],
       environment: createBuildEnvironmentSnapshot({ plan: oldPlan }),
     });
@@ -533,6 +606,7 @@ describe("build controller", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       },
     ]);
     expect(result.diagnostics).toEqual([
@@ -545,6 +619,135 @@ describe("build controller", () => {
         message: "Property width does not exist.",
       },
     ]);
+  });
+
+  it("rejects an unsigned artifact even when Hvigor exits successfully", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const artifactPath = "/workspace/Demo/entry/build/default/outputs/default/entry-default-unsigned.hap";
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-verified-artifact",
+      plan,
+      runTerminalCommand: async (request) => ({
+        runId: request.runId,
+        command: request.command,
+        stdout: "BUILD SUCCESSFUL",
+        stderr: "",
+        exitCode: 0,
+        durationMs: 10,
+        stopped: false,
+      }),
+      findBuildArtifacts: async () => [artifactPath],
+    });
+
+    expect(result.artifacts).toEqual([{
+      path: artifactPath,
+      kind: "hap",
+      source: "filesystem",
+      signature: "unsigned",
+    }]);
+    expect(result.status).toBe("failed");
+    expect(result.stderr).toContain("produced an unsigned .hap artifact");
+  });
+
+  it("accepts a signed artifact from the filesystem", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const artifactPath = "/workspace/Demo/entry/build/default/outputs/default/entry-default-signed.hap";
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-signed-artifact",
+      plan,
+      runTerminalCommand: async (request) => ({
+        runId: request.runId,
+        command: request.command,
+        stdout: "BUILD SUCCESSFUL",
+        stderr: "",
+        exitCode: 0,
+        durationMs: 10,
+        stopped: false,
+      }),
+      findBuildArtifacts: async () => [artifactPath],
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.artifacts[0]?.signature).toBe("signed");
+  });
+
+  it("accepts the signed output when Hvigor also logs its unsigned intermediate", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+    const signedPath = "/workspace/Demo/entry/build/default/outputs/default/entry-default-signed.hap";
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-signed-with-intermediate",
+      plan,
+      runTerminalCommand: async (request) => ({
+        runId: request.runId,
+        command: request.command,
+        stdout: "Signing /workspace/Demo/entry/build/intermediates/entry-default-unsigned.hap",
+        stderr: "",
+        exitCode: 0,
+        durationMs: 10,
+        stopped: false,
+      }),
+      findBuildArtifacts: async () => [signedPath],
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.artifacts.map((artifact) => artifact.signature)).toEqual(["unsigned", "signed"]);
+  });
+
+  it("does not report success when Hvigor exits zero without an artifact", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+    });
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-missing-artifact",
+      plan,
+      runTerminalCommand: async (request) => ({
+        runId: request.runId,
+        command: request.command,
+        stdout: "BUILD SUCCESSFUL",
+        stderr: "",
+        exitCode: 0,
+        durationMs: 10,
+        stopped: false,
+      }),
+      findBuildArtifacts: async () => [],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.stderr).toContain("no .hap artifact was found");
   });
 
   it("executes a build plan with custom diagnostic matchers", async () => {
@@ -751,6 +954,7 @@ describe("build store", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       }],
       environment: createBuildEnvironmentSnapshot({ plan: lifecyclePlan }),
     }));
@@ -852,6 +1056,7 @@ describe("build store", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       }],
       environment: createBuildEnvironmentSnapshot({ plan }),
     }));
@@ -947,6 +1152,7 @@ describe("build store", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
+        signature: "signed",
       }],
       environment: createBuildEnvironmentSnapshot({ plan }),
     }));

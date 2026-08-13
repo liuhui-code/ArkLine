@@ -23,6 +23,8 @@
     "check:line-count": "node scripts/check-line-count.mjs --limit=500",
     "check:fast": "node scripts/run-quality-gate.mjs --gate=fast --strict",
     "check": "node scripts/run-quality-gate.mjs --gate=full --strict",
+    "check:release:frontend": "node scripts/run-quality-gate.mjs --gate=release-frontend --strict",
+    "check:release:rust": "node scripts/run-quality-gate.mjs --gate=release-rust --strict",
     "build": "pnpm build:semantic-worker && tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "check:windows-build": "powershell -ExecutionPolicy Bypass -File scripts/check-windows-build.ps1",
     "package:windows": "node scripts/package-windows.mjs --target=windows-installer",

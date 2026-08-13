@@ -67,6 +67,7 @@ impl WorkspaceIndexManagerRuntime {
 
     #[allow(dead_code)]
     pub fn open_workspace_index(&self, root_path: &str) -> Result<(), String> {
+        self.synchronize_scheduler_generation(root_path)?;
         self.schedule_workspace_task(
             root_path,
             WorkspaceIndexTaskKind::OpenWorkspace,
@@ -491,3 +492,6 @@ impl WorkspaceIndexManagerRuntime {
             .unwrap_or(true)
     }
 }
+
+#[path = "workspace_index_manager_generation_service.rs"]
+mod generation;

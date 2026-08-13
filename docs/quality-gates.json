@@ -26,6 +26,26 @@
         "pnpm build",
         "pnpm perf:runtime"
       ]
+    },
+    "release-frontend": {
+      "command": "node scripts/run-quality-gate.mjs --gate=release-frontend --strict",
+      "description": "Release frontend, production build, and interaction performance lane.",
+      "stepTimeoutMs": 2000000,
+      "steps": [
+        "pnpm check:whitespace",
+        "pnpm check:line-count",
+        "pnpm test",
+        "pnpm build",
+        "pnpm perf:runtime"
+      ]
+    },
+    "release-rust": {
+      "command": "node scripts/run-quality-gate.mjs --gate=release-rust --strict",
+      "description": "Release Rust library and indexer sidecar integration lane.",
+      "stepTimeoutMs": 2000000,
+      "steps": [
+        "pnpm test:rust"
+      ]
     }
   },
   "frontendQualityTests": [

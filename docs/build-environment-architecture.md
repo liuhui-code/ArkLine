@@ -1,7 +1,9 @@
 # Build Environment Architecture
 
-ArkLine builds HarmonyOS projects through the project-owned `hvigorw` wrapper. The
-wrapper must run in the project root, with a usable Node runtime and a validated
+ArkLine prefers a project-owned `hvigorw` wrapper. Projects created by current
+DevEco Studio versions may not contain one, so auto-detection may fall back to
+the `hvigorw` bundled with a supported DevEco Studio installation. Either
+command runs in the project root with a usable Node runtime and validated
 HarmonyOS SDK. The build process must not depend on the shell that happened to
 launch the desktop app.
 
@@ -12,6 +14,8 @@ preflight and the Hvigor child process:
 
 - `nodePath`: directory containing `node` or `node.exe`
 - `sdkPath`: normalized SDK root containing `ets` and `toolchains`
+- `hvigorCommand`: project wrapper or an absolute DevEco Hvigor command
+- `hvigorSource`: `project-wrapper` or `deveco`
 - `pathEntries`: Node, SDK toolchains, SDK ets, and project `node_modules/.bin`
 - `environment`: explicit variables injected into the child process
 - `checks`: user-facing readiness details for Node and SDK
@@ -22,6 +26,18 @@ Resolution precedence is:
 2. ArkLine and DevEco-compatible process variables when auto-detect is enabled.
 3. Node lookup through `which` or `where`, and ArkLine's supported DevEco SDK
    defaults.
+
+Hvigor resolution is independent and ordered:
+
+1. Executable wrapper in the canonical project root.
+2. DevEco Studio bundled Hvigor when auto-detection is enabled.
+
+When DevEco Hvigor is selected, its bundled Node is preferred over the process
+`PATH`. `NODE_HOME` points to the Node installation root (the parent of `bin`),
+while `nodePath` and the injected `PATH` entry point to the executable directory.
+For builds, `DEVECO_SDK_HOME` points to the directory containing SDK version
+directories such as `default`; the semantic SDK path continues to point to the
+`openharmony` leaf containing `ets` and `toolchains`.
 
 An explicit invalid path is reported as invalid when it is the only configured
 source. Auto-detection may recover from an invalid optional value only when a
@@ -70,7 +86,7 @@ resolution and can break project-local dependencies.
 
 ```text
 project selection
-  -> inspect project root and hvigorw
+  -> inspect project root and resolve project/DevEco Hvigor
   -> resolve build environment
   -> show Node/SDK checks in preflight
   -> create build plan
@@ -92,7 +108,7 @@ command factory with `CREATE_NO_WINDOW`; builds must not open transient console
 windows.
 
 Preflight and execution consume the same resolution. A build cannot start when
-the wrapper, Node, or SDK check is unavailable. This avoids a false-positive
+Hvigor, Node, or the SDK check is unavailable. This avoids a false-positive
 preflight followed by a Hvigor process that cannot see the configured variables.
 Clean and Build are separate child processes. The executor stops after the first
 failed step, and does not pass the plan through a shell `&&` chain. The readable
@@ -145,12 +161,13 @@ write settings into the wrong workspace.
 - Add new vendor variable aliases only in the resolver and its tests.
 - Never put secrets or full environment dumps in build output.
 - Keep project build configuration separate from global SDK settings.
-- Preserve the project wrapper as the source of Hvigor version truth.
+- Prefer the project wrapper as the source of Hvigor version truth; use the
+  detected DevEco installation only when the project has no wrapper.
 - Keep the realistic DevEco fixture under
   `src-tauri/src/services/fixtures/harmony-project` aligned with root and module
   profile shapes.
-- Treat external DevEco command-line-tools Hvigor discovery as a separate future
-  execution source. Do not silently substitute it for a missing project wrapper.
+- Keep DevEco fallback explicit in the environment resolution and Build panel;
+  never silently select an unrelated global `hvigor` from `PATH`.
 
 Primary references:
 
@@ -164,3 +181,9 @@ SDK rows show the exact source result. If the SDK row is invalid, configure the
 directory that contains `ets` and `toolchains`, not an individual file. If the
 wrapper is present but still fails, verify that the selected project root is the
 directory containing `hvigorw`, `hvigorfile.ts`, and `build-profile.json5`.
+
+Signing is part of build correctness for HAP, APP, and HSP targets. Native
+project inspection resolves the selected product's signing configuration and
+checks required material without returning password values. Missing
+configuration or material blocks the build. A successful Hvigor exit that only
+produces an `unsigned` package is converted to a failed ArkLine build result.

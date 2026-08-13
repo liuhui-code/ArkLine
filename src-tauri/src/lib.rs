@@ -89,6 +89,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::build_environment::resolve_build_environment_command,
             commands::build_project::inspect_harmony_build_project_command,
+            commands::build_project::find_harmony_build_artifacts_command,
             commands::workspace::open_workspace,
             commands::workspace::list_workspace_directory,
             commands::workspace::get_workspace_index_state,

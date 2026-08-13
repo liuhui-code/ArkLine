@@ -1,0 +1,261 @@
+name: windows-exe-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "New immutable release tag, for example v0.1.26"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arkline-release
+  cancel-in-progress: false
+
+jobs:
+  validate-release:
+    name: Release / Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate new release tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "release_tag must be a version such as v0.1.26" >&2
+            exit 1
+          fi
+
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")"
+          if [[ -n "$remote_tag" ]]; then
+            echo "release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+  quality:
+    name: Release / Frontend Gate
+    needs: validate-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run release frontend gate
+        run: pnpm check:release:frontend
+
+      - name: Upload quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-release-quality-gate
+          path: artifacts/*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  rust:
+    name: Release / Rust Gate
+    needs: validate-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      - name: Run release Rust gate
+        run: pnpm check:release:rust
+
+      - name: Upload Rust quality evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-release-rust-gate
+          path: artifacts/quality-gate-release-rust.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  build-windows-exe:
+    name: Release / Windows Portable
+    needs: validate-release
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Publish PowerShell host path
+        shell: pwsh
+        run: |
+          $hostPath = Join-Path $PSHOME "pwsh.exe"
+          if (-not (Test-Path -LiteralPath $hostPath)) {
+            throw "PowerShell host was not found at $hostPath"
+          }
+          "ARKLINE_POWERSHELL_PATH=$hostPath" >> $env:GITHUB_ENV
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Edge driver
+        shell: pwsh
+        run: |
+          cargo install --git https://github.com/chippers/msedgedriver-tool
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          $driverPath = Join-Path $PWD.Path "msedgedriver.exe"
+          if (-not (Test-Path -LiteralPath $driverPath)) {
+            throw "Edge driver was not installed at $driverPath"
+          }
+          "ARKLINE_EDGEDRIVER=$driverPath" >> $env:GITHUB_ENV
+
+      - name: Build Windows portable exe
+        run: pnpm package:windows:portable
+
+      - name: Verify portable bundle
+        shell: pwsh
+        run: |
+          $archive = "dist/ArkLine-windows-x64.zip"
+          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
+            throw "Portable archive was not created at $archive"
+          }
+
+          Expand-Archive -LiteralPath $archive -DestinationPath artifacts/release-verify
+          $requiredFiles = @(
+            "artifacts/release-verify/ArkLine-windows-x64/ArkLine.exe",
+            "artifacts/release-verify/ArkLine-windows-x64/arkline-semantic.exe",
+            "artifacts/release-verify/ArkLine-windows-x64/arkline-indexer.exe"
+          )
+          foreach ($requiredFile in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+              throw "Portable archive is missing $requiredFile"
+            }
+          }
+
+      - name: Checkout pinned real Harmony project
+        uses: actions/checkout@v4
+        with:
+          repository: Joker-x-dev/CoolMallArkTS
+          ref: 17b6899086a57a4d48448842a14f9e325e3e35a3
+          path: artifacts/real-harmony-project
+
+      - name: Run packaged real-project semantic smoke
+        shell: pwsh
+        run: |
+          pnpm perf:packaged:windows -- `
+            --mode=smoke `
+            --application=artifacts/release-verify/ArkLine-windows-x64/ArkLine.exe `
+            --driver="$env:ARKLINE_EDGEDRIVER" `
+            --fixture=artifacts/real-harmony-project `
+            --scenario=docs/performance-fixtures/core-loop-coolmall-v1.json `
+            --sdk=semantic-worker/fixtures/golden-corpus/v1/sdk/openharmony `
+            --report=artifacts/packaged-real-project-report.json `
+            --strict
+
+      - name: Upload packaged evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-release-packaged-evidence
+          path: artifacts/packaged-*-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload verified portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ArkLine-windows-x64
+          path: dist/ArkLine-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Release / Publish
+    needs:
+      - quality
+      - rust
+      - build-windows-exe
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified portable bundle
+        uses: actions/download-artifact@v5
+        with:
+          name: ArkLine-windows-x64
+          path: dist
+
+      - name: Create immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/ArkLine-windows-x64.zip \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TAG" \
+            --notes "ArkLine Windows portable build from $GITHUB_SHA."

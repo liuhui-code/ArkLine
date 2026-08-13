@@ -66,6 +66,10 @@ pub struct WorkspaceIndexScheduleResult {
 }
 
 impl WorkspaceIndexScheduler {
+    pub(crate) fn advance_generation_to(&mut self, generation: u64) {
+        self.generation = self.generation.max(generation);
+    }
+
     #[allow(dead_code)]
     pub fn schedule(&mut self, task: WorkspaceIndexTask) -> Vec<WorkspaceIndexTask> {
         self.schedule_with_result(task).superseded_tasks

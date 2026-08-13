@@ -2,6 +2,15 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct HarmonyProductSigning {
+    pub product: String,
+    pub signing_config: Option<String>,
+    pub ready: bool,
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct HarmonyBuildProject {
     pub root_path: String,
     pub is_harmony_project: bool,
@@ -14,4 +23,5 @@ pub struct HarmonyBuildProject {
     pub default_module: Option<String>,
     pub products: Vec<String>,
     pub default_product: Option<String>,
+    pub product_signing: Vec<HarmonyProductSigning>,
 }

@@ -76,7 +76,19 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
         defaultModule: null,
         products: [],
         defaultProduct: null,
+        productSigning: [],
       };
+    },
+    async findHarmonyBuildArtifacts(rootPath, target, moduleName, product) {
+      if (hasTauriRuntime()) {
+        return invoke<string[]>("find_harmony_build_artifacts_command", {
+          rootPath,
+          target,
+          moduleName,
+          product,
+        });
+      }
+      return [];
     },
     async resolveBuildEnvironment(request: BuildEnvironmentRequest) {
       if (hasTauriRuntime()) {
@@ -84,6 +96,8 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
       }
       return {
         canBuild: false,
+        hvigorCommand: null,
+        hvigorSource: null,
         nodePath: null,
         sdkPath: null,
         pathEntries: [],

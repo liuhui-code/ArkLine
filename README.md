@@ -65,19 +65,21 @@ This is the main target platform.
 
 #### Build a downloadable Windows exe from GitHub
 
-The repository includes a manual GitHub Actions workflow that cross-compiles a
-portable Windows bundle from a macOS runner.
+The manual `windows-exe-release` workflow builds the portable bundle natively
+on a Windows runner. It runs frontend and Rust release gates alongside the
+Windows build, starts the packaged application against a pinned real Harmony
+project,
+and creates the requested tag only after every required job succeeds.
 
-To create a downloadable artifact:
+To create a downloadable release:
 
-1. Open the repository on GitHub.
-2. Go to `Actions`.
-3. Select `macos-windows-exe`.
-4. Click `Run workflow`.
-5. Leave `release_tag` empty for a workflow artifact only, or enter a tag such as
-   `v0.1.0` to also upload the bundle to a GitHub Release.
-6. After the run finishes, download the `ArkLine-windows-x64` artifact, or open
-   the matching release if a tag was provided.
+1. Commit and push the exact code that should be released.
+2. Confirm its `windows-ci` run is green.
+3. Open `Actions -> windows-exe-release -> Run workflow`.
+4. Select the branch containing the commit and enter a new tag such as `v0.1.26`.
+5. After the run finishes, download `ArkLine-windows-x64.zip` from the new
+   GitHub Release. The workflow run also retains the same verified bundle as an
+   Actions artifact for 30 days.
 
 The generated file is `ArkLine-windows-x64.zip`. It contains `ArkLine.exe`,
 `arkline-semantic.exe`, and `arkline-indexer.exe`; all three must remain in the
@@ -92,42 +94,33 @@ WebView2 Runtime.
 
 #### Publish a Windows exe to GitHub Releases
 
-Use the `macos-windows-exe` workflow when the release asset should be built on
-GitHub and attached to a versioned Release. This path is useful when the local
-machine is macOS or does not have the Windows MSVC toolchain.
+Use the `windows-exe-release` workflow when the release asset should be built on
+GitHub and attached to a versioned Release. Do not create or push the version
+tag beforehand: the workflow creates it at the exact validated commit.
 
 Before publishing:
 
-1. Commit and push the code that should be released to `main`.
-2. Confirm the repository Actions checks are green, especially `pnpm check:fast`.
-3. Choose a new immutable tag, for example `v0.1.1`. Do not reuse a tag for a
-   different build unless replacing an intentionally broken asset.
+1. Commit and push the code that should be released.
+2. Confirm the branch Actions checks are green, especially `pnpm check:fast`.
+3. Choose a new immutable tag, for example `v0.1.26`.
 
 Publish from the GitHub UI:
 
-1. Open `Actions -> macos-windows-exe -> Run workflow`.
-2. Set `release_tag` to the new tag, such as `v0.1.1`.
-3. Start the workflow and wait for the `build-windows-exe` job to finish.
-4. Open `Releases`, verify `ArkLine-windows-x64.zip` is attached to the tag,
+1. Open `Actions -> windows-exe-release -> Run workflow`.
+2. Select the branch to release; the workflow records its exact commit SHA.
+3. Set `release_tag` to the new tag, such as `v0.1.26`.
+4. Start the workflow and wait for `Release / Frontend Gate`, `Release / Rust
+   Gate`, and `Release / Windows Portable` to finish.
+5. Open `Releases`, verify `ArkLine-windows-x64.zip` is attached to the tag,
    and download it once before announcing the release.
-
-Publish from a pushed tag:
-
-```bash
-git tag v0.1.1
-git push origin v0.1.1
-```
-
-Pushing a `v*` tag runs the same `macos-windows-exe` workflow and uploads
-`ArkLine-windows-x64.zip` to the matching GitHub Release.
 
 The equivalent GitHub CLI command is:
 
 ```bash
-gh workflow run macos-windows-exe.yml -f release_tag=v0.1.1
-gh run list --workflow macos-windows-exe.yml --limit 1
+gh workflow run windows-exe-release.yml --ref <branch> -f release_tag=v0.1.26
+gh run list --workflow windows-exe-release.yml --limit 1
 gh run watch <run-id> --exit-status
-gh release view v0.1.1 --json tagName,assets,url
+gh release view v0.1.26 --json tagName,assets,url
 ```
 
 The workflow also uploads `ArkLine-windows-x64.zip` as a temporary Actions
@@ -136,10 +129,10 @@ downloadable. On the target Windows machine, install WebView2 if it is absent,
 then launch the executable and verify project opening, editor input, Ctrl+F,
 search navigation, and SDK/index status before distributing it.
 
-If the workflow fails before packaging, inspect the failed step first. Common
-causes are a failing quality gate, an invalid Rust target, missing
-`cargo-xwin`/`llvm-rc` setup, or a reused release tag. Fix the source or use a
-new tag, rerun, and verify the asset checksum and file size after download.
+If the workflow fails, no version tag or GitHub Release is created. Common
+causes are a failing quality gate, a Windows packaging error, a failed real-project
+smoke check, an invalid version, or an existing tag. Fix the source and rerun
+with the still-unused version, then verify the asset file size after download.
 
 #### Fastest way for developers
 
@@ -313,10 +306,12 @@ stage. The full release-candidate gate is:
 pnpm check
 ```
 
-GitHub protects `main` with `Quality Gate / Fast` and `Windows / Package`.
-The Windows package job starts only after the fast gate passes. Release tags
-use the full gate before uploading a Windows asset. The manual packaged soak
-remains a separate, serialized performance evidence workflow; see
+Every branch push and pull request runs `Quality Gate / Fast`; outdated
+non-`main` runs are cancelled. The Windows installer job starts only after the
+fast gate passes. A release splits the full checks into parallel frontend and
+Rust lanes alongside the native Windows portable build and real-project smoke
+check, then creates the immutable tag and uploads the verified asset. The manual packaged soak remains a separate,
+serialized performance evidence workflow; see
 [the gate architecture](docs/quality-gate-architecture.md).
 
 ## First-use flow
@@ -406,6 +401,8 @@ Important constraints in the current codebase:
 - MVP execution notes: [docs/mvp-execution-plan.md](/Users/liuhui/Documents/code/ArkLine/docs/mvp-execution-plan.md)
 - MVP implementation plan: [docs/mvp-implementation-plan.md](/Users/liuhui/Documents/code/ArkLine/docs/mvp-implementation-plan.md)
 - Editor capability matrix: [docs/editor-capability-matrix.md](/Users/liuhui/Documents/code/ArkLine/docs/editor-capability-matrix.md)
+- Build environment architecture: [docs/build-environment-architecture.md](/Users/liuhui/Documents/code/ArkLine/docs/build-environment-architecture.md)
+- Phase 0 real-project build baseline: [docs/phase-0-real-project-build.md](/Users/liuhui/Documents/code/ArkLine/docs/phase-0-real-project-build.md)
 - Release draft: [docs/releases/v0.1.0-draft.md](/Users/liuhui/Documents/code/ArkLine/docs/releases/v0.1.0-draft.md)
 - Screenshot checklist: [docs/releases/screenshot-checklist.md](/Users/liuhui/Documents/code/ArkLine/docs/releases/screenshot-checklist.md)
 - Development log: [gitlog.md](/Users/liuhui/Documents/code/ArkLine/gitlog.md)

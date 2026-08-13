@@ -12,6 +12,7 @@ type PreflightInput = {
   settings?: AppSettings["sdk"] | null;
   target: BuildTarget;
   moduleName: string | null;
+  product: string;
   environment?: BuildEnvironmentResolution | null;
 };
 
@@ -41,7 +42,10 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
     }));
   }
 
-  if (!input.project.hasHvigorWrapper) {
+  const externalHvigorReady = input.environment?.checks.some(
+    (check) => check.name === "hvigor" && check.available,
+  ) ?? false;
+  if (!input.project.hasHvigorWrapper && !externalHvigorReady) {
     issues.push(issue({
       severity: "error",
       code: "missing-hvigor-wrapper",
@@ -75,6 +79,27 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
       message: "No buildable module is selected.",
       hint: "Select an existing module such as entry, or open a file under module/src/main.",
     }));
+  }
+
+  if (input.target !== "har") {
+    const signing = input.project.productSigning.find((item) => item.product === input.product);
+    // The visible-file browser fallback cannot read build-profile.json5. Native
+    // inspection always returns one status per product and owns signing checks.
+    if (input.project.productSigning.length > 0 && !signing?.signingConfig) {
+      issues.push(issue({
+        severity: "error",
+        code: "missing-signing-config",
+        message: `Product ${input.product} has no usable signing configuration.`,
+        hint: "Configure app.signingConfigs and reference it from the selected product's signingConfig in build-profile.json5.",
+      }));
+    } else if (signing && !signing.ready) {
+      issues.push(issue({
+        severity: "error",
+        code: "invalid-signing-material",
+        message: `Signing configuration ${signing.signingConfig} is incomplete.`,
+        hint: signing.issues.join("; "),
+      }));
+    }
   }
 
   if (!input.project.hasOhPackage) {
