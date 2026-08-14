@@ -20,6 +20,8 @@ export type ShellCommand =
   | "showProject"
   | "showProblems"
   | "showGit"
+  | "commitChanges"
+  | "pushCommits"
   | "showTerminal"
   | "goToDefinition"
   | "findUsages"
@@ -53,6 +55,8 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "openReplaceInFiles", title: "Replace in Files", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "r" }] },
   { id: "openCommandPalette", title: "Command Palette", category: "Navigation", defaultKeybindings: [{ mod: true, shift: true, key: "a" }] },
   { id: "openRecentFiles", title: "Recent Files", category: "Navigation", defaultKeybindings: [{ mod: true, key: "e" }] },
+  { id: "commitChanges", title: "Commit Changes", category: "Version Control", defaultKeybindings: [{ mod: true, key: "k" }] },
+  { id: "pushCommits", title: "Push Commits", category: "Version Control", defaultKeybindings: [{ mod: true, shift: true, key: "k" }] },
   { id: "showProject", title: "Project", category: "Window", defaultKeybindings: [{ alt: true, key: "1" }] },
   { id: "showProblems", title: "Problems", category: "Window", defaultKeybindings: [{ alt: true, key: "4" }] },
   { id: "showGit", title: "Git", category: "Window", defaultKeybindings: [{ alt: true, key: "9" }] },

@@ -1,123 +1,39 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { GitDiffViewer } from "@/components/layout/GitDiffViewer";
-import type { DiffFile } from "@/features/diff/unified-diff";
-import type { GitDiffActionContext, GitFileComparison, GitPatchAction } from "@/features/git/git-source-control-model";
+import type { ReactNode } from "react";
+import { GitLogToolWindow } from "@/components/layout/GitLogToolWindow";
+import { GitStashView } from "@/components/layout/GitStashView";
+import type { GitHistoryController } from "@/components/layout/use-git-history-controller";
+import type { GitStashController } from "@/components/layout/use-git-stash-controller";
+import type { GitBranchSnapshot } from "@/features/git/git-branch-model";
 
-export type GitToolView = "changes" | "trace";
+export type GitToolView = "log" | "stashes" | "trace";
 
-type GitToolWindowProps = {
-  files: DiffFile[];
-  comparison?: GitFileComparison | null;
+type Props = {
   activeView: GitToolView;
+  history: GitHistoryController;
+  stash: GitStashController;
+  branches: GitBranchSnapshot | null;
   tracePanel: ReactNode;
+  onRefreshBranches: () => void;
   onChangeView: (view: GitToolView) => void;
-  onOpenFile: (path: string) => void;
-  actionContext?: GitDiffActionContext | null;
-  onApplyPartial?: (action: GitPatchAction, patch: string, context: GitDiffActionContext) => Promise<void>;
 };
 
-function getFileStatus(file: DiffFile) {
-  const hasAdded = file.hunks.some((hunk) => hunk.lines.some((line) => line.kind === "added"));
-  const hasRemoved = file.hunks.some((hunk) => hunk.lines.some((line) => line.kind === "removed"));
-  if (file.binary) {
-    return { short: "B", label: "Binary" };
-  }
-  if (hasAdded && hasRemoved) {
-    return { short: "M", label: "Modified" };
-  }
-  if (hasAdded) {
-    return { short: "A", label: "Added" };
-  }
-  if (hasRemoved) {
-    return { short: "D", label: "Deleted" };
-  }
-  return { short: "M", label: "Modified" };
-}
-
-export function GitToolWindow({ files, comparison = null, activeView, tracePanel, onChangeView, onOpenFile, actionContext = null, onApplyPartial }: GitToolWindowProps) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(files[0]?.path ?? null);
-
-  useEffect(() => {
-    setSelectedPath((current) => {
-      if (current && files.some((file) => file.path === current)) {
-        return current;
-      }
-
-      return files[0]?.path ?? null;
-    });
-  }, [files]);
-
-  const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0] ?? null;
-
+export function GitToolWindow({ activeView, history, stash, branches, tracePanel, onRefreshBranches, onChangeView }: Props) {
   return (
     <section aria-label="Git Panel" className="bottom-tool-window__panel bottom-tool-window__panel--git">
       <div className="git-tool-window__tabs" role="tablist" aria-label="Git Views">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeView === "changes"}
-          className={`git-tool-window__tab${activeView === "changes" ? " git-tool-window__tab--active" : ""}`}
-          onClick={() => onChangeView("changes")}
-        >
-          Local Changes
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeView === "trace"}
-          className={`git-tool-window__tab${activeView === "trace" ? " git-tool-window__tab--active" : ""}`}
-          onClick={() => onChangeView("trace")}
-        >
-          Line Trace
-        </button>
+        <Tab label="Log" active={activeView === "log"} onClick={() => onChangeView("log")} />
+        <Tab label="Stashes" active={activeView === "stashes"} onClick={() => onChangeView("stashes")} />
+        <Tab label="Line Trace" active={activeView === "trace"} onClick={() => onChangeView("trace")} />
       </div>
-      {activeView === "trace" ? (
-        <div className="git-tool-window__trace" role="tabpanel" aria-label="Line Trace View">
-          {tracePanel}
-        </div>
-      ) : files.length > 0 ? (
-        <div className="git-tool-window">
-          <div className="git-tool-window__sidebar">
-            <strong className="git-tool-window__heading">Local Changes</strong>
-            <div className="git-tool-window__file-list" role="list" aria-label="Changed Files">
-              {files.map((file) => (
-                <button
-                  key={file.path}
-                  type="button"
-                  className={`git-tool-window__file${selectedFile?.path === file.path ? " git-tool-window__file--active" : ""}`}
-                  onClick={() => setSelectedPath(file.path)}
-                >
-                  <span className="git-tool-window__file-path">{file.path}</span>
-                  <span className={`git-tool-window__file-status git-tool-window__file-status--${getFileStatus(file).short.toLowerCase()}`}>
-                    {getFileStatus(file).short}
-                  </span>
-                  <span className="visually-hidden">{getFileStatus(file).label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="git-tool-window__viewer" aria-label="Git Diff Viewer">
-            {selectedFile ? (
-              <>
-                <div className="git-tool-window__viewer-header">
-                  <div className="git-tool-window__viewer-meta">
-                    <strong>{selectedFile.path}</strong>
-                    <span className="git-tool-window__viewer-status">{getFileStatus(selectedFile).label}</span>
-                  </div>
-                  <button type="button" className="git-tool-window__viewer-action" onClick={() => onOpenFile(selectedFile.path)}>
-                    Open in Editor
-                  </button>
-                </div>
-                <GitDiffViewer file={selectedFile} comparison={comparison?.relativePath === selectedFile.path ? comparison : null} actionContext={actionContext} onApplyPartial={onApplyPartial} />
-              </>
-            ) : (
-              <p>Git and imported patch review will appear here.</p>
-            )}
-          </div>
-        </div>
-      ) : (
-        <p>Git and imported patch review will appear here.</p>
-      )}
+      <div className="git-tool-window__content" role="tabpanel">
+        {activeView === "log" ? <GitLogToolWindow history={history} branches={branches} onRefreshBranches={onRefreshBranches} /> : null}
+        {activeView === "stashes" ? <GitStashView stash={stash} /> : null}
+        {activeView === "trace" ? <div className="git-tool-window__trace">{tracePanel}</div> : null}
+      </div>
     </section>
   );
+}
+
+function Tab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return <button type="button" role="tab" aria-selected={active} className={`git-tool-window__tab${active ? " git-tool-window__tab--active" : ""}`} onClick={onClick}>{label}</button>;
 }

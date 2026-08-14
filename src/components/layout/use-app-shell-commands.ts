@@ -21,6 +21,8 @@ type AppShellCommandActions = {
   showProject: () => void;
   showProblems: () => void;
   showGit: () => void;
+  commitChanges: () => void;
+  pushCommits: () => void;
   showTerminal: () => void;
   goToDefinition: () => void | Promise<void>;
   findUsages: () => void | Promise<void>;
@@ -97,6 +99,8 @@ export function useAppShellCommands({
         showProject: actions.showProject,
         showProblems: actions.showProblems,
         showGit: actions.showGit,
+        commitChanges: actions.commitChanges,
+        pushCommits: actions.pushCommits,
         showTerminal: actions.showTerminal,
         goToDefinition: actions.goToDefinition,
         findUsages: actions.findUsages,

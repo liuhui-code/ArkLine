@@ -10,6 +10,12 @@ describe("shell keymap", () => {
     expect(resolveShellCommand(keyboardEvent({ key: "l", ctrlKey: true, altKey: true }))).toBe("formatDocument");
   });
 
+  it("maps IDEA-style Commit and Push Commits shortcuts", () => {
+    expect(resolveShellCommand(keyboardEvent({ key: "k", ctrlKey: true }))).toBe("commitChanges");
+    expect(resolveShellCommand(keyboardEvent({ key: "k", ctrlKey: true, shiftKey: true }))).toBe("pushCommits");
+    expect(resolveShellCommand(keyboardEvent({ key: "k", metaKey: true }))).toBe("commitChanges");
+  });
+
   it("does not format while modal UI is active", () => {
     const event = keyboardEvent({ key: "l", ctrlKey: true, altKey: true });
 

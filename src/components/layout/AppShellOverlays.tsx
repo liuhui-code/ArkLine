@@ -4,6 +4,8 @@ import { AppShellCodeActionSurfaces } from "@/components/layout/AppShellCodeActi
 import { CurrentClassMethodsPalette } from "@/components/layout/CurrentClassMethodsPalette";
 import { GitBlameCard } from "@/components/layout/GitBlameCard";
 import { GitBranchPicker } from "@/components/layout/GitBranchPicker";
+import { GitPushDialog } from "@/components/layout/GitPushDialog";
+import type { GitPushController } from "@/components/layout/use-git-push-controller";
 import { OpenProjectDecisionDialog } from "@/components/layout/OpenProjectDecisionDialog";
 import { OpenProjectDialog } from "@/components/layout/OpenProjectDialog";
 import { ProjectMutationDialog } from "@/components/layout/ProjectMutationDialog";
@@ -17,6 +19,7 @@ import type { CommandPaletteItem } from "@/components/layout/search-overlay-mode
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
 type AppShellOverlaysProps = {
+  gitPushController: GitPushController;
   selectedBlameAttribution: ComponentProps<typeof GitBlameCard>["attribution"] | null;
   onCloseBlameCard: () => void;
   onShowSelectedBlameCommit: () => void;
@@ -46,6 +49,7 @@ type AppShellOverlaysProps = {
 };
 
 export function AppShellOverlays({
+  gitPushController,
   selectedBlameAttribution,
   onCloseBlameCard,
   onShowSelectedBlameCommit,
@@ -76,6 +80,7 @@ export function AppShellOverlays({
   recordRenderPressure("AppShell/Overlays");
   return (
     <>
+      <GitPushDialog push={gitPushController} />
       {selectedBlameAttribution ? (
         <GitBlameCard
           attribution={selectedBlameAttribution}

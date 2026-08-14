@@ -1,6 +1,7 @@
 import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import type { GitBranchSnapshot, GitCheckoutBranchRequest, GitCheckoutBranchResult } from "@/features/git/git-branch-model";
 import type { GitCommitDetails, GitCommitDetailsRequest, GitCommitFileDiffRequest, GitHistoryActionRequest, GitHistoryPage, GitHistoryRequest } from "@/features/git/git-history-model";
+import type { GitPushPreview, GitPushPreviewRequest } from "@/features/git/git-push-model";
 import type { GitStashActionRequest, GitStashCreateRequest, GitStashDiffRequest, GitStashListRequest, GitStashPage } from "@/features/git/git-stash-model";
 import type {
   GitCommitRequest,
@@ -24,6 +25,7 @@ import type {
 } from "@/features/git/git-source-control-model";
 
 export type WorkspaceGitApi = {
+  getGitRoots?(rootPath: string): Promise<string[]>;
   getFileBlame?(path: string): Promise<GitBlameLine[] | GitTraceUnavailable>;
   getCommitTrace?(path: string, commit: string, line: number): Promise<GitCommitTrace | GitTraceUnavailable>;
   listGitBranches?(rootPath: string): Promise<GitBranchSnapshot>;
@@ -40,6 +42,7 @@ export type WorkspaceGitApi = {
   restoreGitPartialPatch?(request: GitRestorePatchRequest): Promise<GitMutationResult>;
   commitGitChanges?(request: GitCommitRequest): Promise<GitMutationResult>;
   runGitRemoteOperation?(request: GitRemoteOperationRequest): Promise<GitMutationResult>;
+  getGitPushPreview?(request: GitPushPreviewRequest): Promise<GitPushPreview>;
   getGitHistory?(request: GitHistoryRequest): Promise<GitHistoryPage>;
   getGitCommitDetails?(request: GitCommitDetailsRequest): Promise<GitCommitDetails>;
   getGitCommitDiff?(request: GitCommitDetailsRequest): Promise<GitDiffResult>;

@@ -184,6 +184,20 @@ fn compares_untracked_and_deleted_documents() {
 }
 
 #[test]
+fn compares_untracked_documents_before_the_first_commit() {
+    let repository = TestRepository::new();
+    repository.write("new.ets", "untracked\n");
+    let runtime = GitRepositoryRuntime::default();
+    let mut request = diff_request(&repository, "new.ets", false);
+    request.scope = Some("commit".to_string());
+
+    let comparison = runtime.file_comparison(&request).unwrap();
+    assert!(!comparison.before.exists);
+    assert_eq!(comparison.after.content.as_deref(), Some("untracked\n"));
+    assert!(comparison.patch.content.contains("+untracked"));
+}
+
+#[test]
 fn uses_the_original_path_for_a_staged_rename() {
     let repository = TestRepository::new();
     repository.write("old.ets", "tracked\n");
@@ -223,6 +237,7 @@ fn diff_request(
         relative_path: relative_path.to_string(),
         original_path: None,
         staged,
+        scope: None,
         request_id: format!("comparison-{relative_path}-{staged}"),
         timeout_ms: 10_000,
         max_bytes: 1024 * 1024,

@@ -1,10 +1,13 @@
 import { memo, type MutableRefObject, type RefObject } from "react";
 import { EditorQueryPanel } from "@/components/layout/EditorQueryPanel";
 import { EditorSurface } from "@/components/layout/EditorSurface";
+import { GitEditorDiffPreview } from "@/components/layout/GitEditorDiffPreview";
 import { useLatestCallback } from "@/components/layout/use-latest-callback";
 import type { EditorCaretRect, EditorLineColumn } from "@/editor/editor-events";
 import type { DocumentRuntimeStore } from "@/features/documents/document-runtime-store";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
+import type { DiffFile } from "@/features/diff/unified-diff";
+import type { GitDiffActionContext, GitFileComparison, GitPatchAction } from "@/features/git/git-source-control-model";
 import type { UsageResult, UsageSearchState } from "@/features/workspace/usage-search";
 import type { EditorAppearance } from "@/types/editor";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
@@ -51,6 +54,14 @@ export type AppShellEditorWorkbenchProps = {
   onEditorFormatDocument: () => void;
   onEditorCopyPath: () => void;
   onToggleGitBlame: () => void;
+  gitDiffPreview?: {
+    files: DiffFile[];
+    comparison: GitFileComparison | null;
+    actionContext: GitDiffActionContext | null;
+    onApplyPartial: (action: GitPatchAction, patch: string, context: GitDiffActionContext) => Promise<void>;
+    onOpenFile: (path: string) => void;
+    onClose: () => void;
+  } | null;
 };
 
 const MemoEditorSurface = memo(EditorSurface);
@@ -93,7 +104,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
           onOpenUsage={props.onOpenUsage}
         />
       ) : null}
-      <MemoEditorSurface
+      {props.gitDiffPreview ? <GitEditorDiffPreview {...props.gitDiffPreview} /> : <MemoEditorSurface
         activePath={props.activePath}
         documentsRef={props.documentsRef}
         openTabs={props.openTabs}
@@ -128,7 +139,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onEditorFormatDocument={onEditorFormatDocument}
         onEditorCopyPath={onEditorCopyPath}
         onToggleGitBlame={onToggleGitBlame}
-      />
+      />}
     </div>
   );
 }

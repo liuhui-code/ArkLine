@@ -15,7 +15,7 @@ export function GitDiscardDialog({ discard }: { discard: SourceControlDiscardCon
   }, [discard, entry]);
 
   if (!entry) return null;
-  const label = entry.kind === "untracked" ? "Delete untracked file" : "Discard unstaged changes";
+  const label = entry.kind === "untracked" ? "Delete Unversioned File" : "Rollback Changes";
   return (
     <div
       className="git-discard-dialog__backdrop"
@@ -35,14 +35,14 @@ export function GitDiscardDialog({ discard }: { discard: SourceControlDiscardCon
         <div className="git-discard-dialog__body">
           <strong>{getPathBasename(entry.relativePath)}</strong>
           <p>{entry.kind === "untracked"
-            ? "The file will be removed from the working tree."
-            : "Unstaged edits will be restored to the current index version."}</p>
+            ? "The unversioned file will be deleted from the working tree."
+            : "Local edits will be rolled back to the current index version."}</p>
           <p>ArkLine creates a protected Git safety commit first, so this action can be undone from Source Control.</p>
         </div>
         <footer>
           <button type="button" disabled={discard.discarding} onClick={discard.cancel}>Cancel</button>
           <button type="button" className="git-discard-dialog__danger" disabled={discard.discarding} onClick={() => void discard.confirm()}>
-            {discard.discarding ? "Discarding..." : "Discard Changes"}
+            {discard.discarding ? "Applying..." : entry.kind === "untracked" ? "Delete File" : "Rollback"}
           </button>
         </footer>
       </section>

@@ -11,6 +11,22 @@ pub fn load_comparison_documents(
     request: &GitFileDiffRequest,
 ) -> Result<(GitDiffDocument, GitDiffDocument), String> {
     let limit = request.max_bytes.clamp(64 * 1024, 16 * 1024 * 1024);
+    if request.scope.as_deref() == Some("commit") {
+        let before_path = request
+            .original_path
+            .as_deref()
+            .unwrap_or(&request.relative_path);
+        return Ok((
+            read_git_document(
+                queries,
+                root,
+                request,
+                &format!("HEAD:{before_path}"),
+                limit,
+            )?,
+            read_worktree_document(root, &request.relative_path, limit)?,
+        ));
+    }
     if request.staged {
         let before_path = request
             .original_path

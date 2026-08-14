@@ -38,8 +38,13 @@ impl GitRepositoryRuntime {
     pub fn file_diff(&self, request: &GitFileDiffRequest) -> Result<GitDiffResult, String> {
         let root = resolve_repo_root(Path::new(&request.root_path))?;
         validate_relative_path(&request.relative_path)?;
+        if request.scope.as_deref() == Some("commit") && !has_head(&root) {
+            return self.run_untracked_diff(&root, request);
+        }
         let mut args = vec!["diff", "--no-ext-diff"];
-        if request.staged {
+        if request.scope.as_deref() == Some("commit") {
+            args.push("HEAD");
+        } else if request.staged {
             args.push("--cached");
         }
         args.extend(["--", request.relative_path.as_str()]);
@@ -47,6 +52,14 @@ impl GitRepositoryRuntime {
         if !diff.content.is_empty() || request.staged || is_tracked(&root, &request.relative_path) {
             return Ok(diff);
         }
+        self.run_untracked_diff(&root, request)
+    }
+
+    fn run_untracked_diff(
+        &self,
+        root: &Path,
+        request: &GitFileDiffRequest,
+    ) -> Result<GitDiffResult, String> {
         self.run_diff_query(
             &root,
             &[
@@ -401,6 +414,10 @@ fn resolve_repo_root(path: &Path) -> Result<PathBuf, String> {
 
 fn is_tracked(root: &Path, path: &str) -> bool {
     run_git(root, &["ls-files", "--error-unmatch", "--", path]).is_ok()
+}
+
+fn has_head(root: &Path) -> bool {
+    run_git(root, &["rev-parse", "--verify", "HEAD"]).is_ok()
 }
 
 fn first_nonempty_line(output: &str, fallback: &str) -> String {

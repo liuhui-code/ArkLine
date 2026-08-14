@@ -5341,7 +5341,7 @@ describe("App shell", () => {
     expect(screen.getByText("File is not formatted")).toBeVisible();
   });
 
-  it("loads diff content into the review panel", async () => {
+  it("loads diff content into the central preview", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -5373,12 +5373,11 @@ describe("App shell", () => {
     await user.type(await screen.findByLabelText("Find Action Query"), "load diff");
     await user.click(await screen.findByRole("button", { name: "Load Diff" }));
 
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true"));
-    expect(await screen.findByRole("button", { name: "src/main.ets M Modified" })).toBeVisible();
-    const viewer = screen.getByLabelText("Git Diff Viewer");
-    expect(viewer).toBeVisible();
-    expect(viewer).toHaveTextContent("new");
-    expect(viewer).toHaveTextContent("old");
+    const preview = await screen.findByLabelText("Diff Preview");
+    expect(preview).toBeVisible();
+    expect(screen.getByRole("button", { name: "Modified src/main.ets" })).toBeVisible();
+    expect(preview).toHaveTextContent("new");
+    expect(preview).toHaveTextContent("old");
   });
 
   it("opens Git Trace for the current file and shows commit summary details", async () => {
@@ -5622,7 +5621,7 @@ describe("App shell", () => {
     expect(container).toHaveTextContent("Alex Chen");
   });
 
-  it("opens the Git diff view for a local uncommitted blame row", async () => {
+  it("opens the central diff preview for a local uncommitted blame row", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({
       openWorkspace: async () => ({
@@ -5674,9 +5673,8 @@ describe("App shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Show Local Diff" }));
 
-    expect(await screen.findByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("tab", { name: "Local Changes" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByLabelText("Git Diff Viewer")).toHaveTextContent("// local change");
+    expect(await screen.findByLabelText("Diff Preview")).toBeVisible();
+    expect(await screen.findByLabelText("Diff Preview")).toHaveTextContent("// local change");
     expect(screen.queryByRole("dialog", { name: "Git Blame Details" })).not.toBeInTheDocument();
   });
 
@@ -6670,22 +6668,22 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
     await user.type(await screen.findByLabelText("Find Action Query"), "load diff");
     await user.click(await screen.findByRole("button", { name: "Load Diff" }));
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true"));
-    expect(screen.getByRole("button", { name: /entry\/src\/main\/ets\/pages\/Index\.ets .* Modified/ })).toBeVisible();
-    expect(screen.getByLabelText("Git Diff Viewer")).toHaveTextContent("}");
+    expect(await screen.findByLabelText("Diff Preview")).toBeVisible();
+    expect(screen.getByRole("button", { name: /Modified entry\/src\/main\/ets\/pages\/Index\.ets/ })).toBeVisible();
+    expect(screen.getByLabelText("Diff Preview")).toHaveTextContent("}");
 
     await user.keyboard("{Control>}{Shift>}{F12}{/Shift}{/Control}");
     expect(screen.getByLabelText("Files")).not.toBeVisible();
     expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
-    expect(screen.getByLabelText("Git Panel")).not.toBeVisible();
+    expect(screen.queryByLabelText("Git Panel")).not.toBeInTheDocument();
 
     await user.keyboard("{Alt>}1{/Alt}");
     expect(screen.getByLabelText("Files")).toBeVisible();
 
     await user.keyboard("{Alt>}9{/Alt}");
-    expect(screen.getByRole("heading", { name: "Source Control" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Git" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByLabelText("Git Panel")).not.toBeVisible();
+    expect(screen.getByLabelText("Git Panel")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Log" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Git Log")).toBeVisible();
   }, 30_000);
 
   it("reopens a workspace from recent projects", async () => {

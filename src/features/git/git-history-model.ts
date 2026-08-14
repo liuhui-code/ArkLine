@@ -1,5 +1,6 @@
 export type GitHistoryRequest = {
   rootPath: string;
+  refName?: string | null;
   cursor: string | null;
   limit: number;
   requestId: string;

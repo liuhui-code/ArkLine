@@ -115,12 +115,12 @@ describe("useSourceControlController remote operations", () => {
     expect(runGitRemoteOperation).toHaveBeenCalledWith(expect.objectContaining({ operation: "pull" }));
   });
 
-  it("commits with controlled options and then pushes", async () => {
+  it("commits with controlled options and hands Commit and Push to the preview workflow", async () => {
     const staged = { ...snapshot, totalChanges: 1, stagedChanges: 1, changes: [{ ...change("tracked.ets"), statusCode: "M.", staged: true, unstaged: false }] };
     const committed = { ...snapshot, generation: 2, snapshotId: "snapshot-2", ahead: 1 };
-    const pushed = { ...committed, generation: 3, snapshotId: "snapshot-3", ahead: 0 };
     const commitGitChanges = vi.fn().mockResolvedValue({ message: "Commit created", snapshot: committed });
-    const runGitRemoteOperation = vi.fn().mockResolvedValue({ message: "Pushed to origin", snapshot: pushed });
+    const runGitRemoteOperation = vi.fn();
+    const onCommitComplete = vi.fn();
     const onStatusChange = vi.fn();
     const workspaceApi = {
       getGitRepositorySnapshot: vi.fn().mockResolvedValue(staged),
@@ -133,6 +133,7 @@ describe("useSourceControlController remote operations", () => {
       workspaceApi,
       onOpenDiff: vi.fn(),
       onStatusChange,
+      onCommitComplete,
     }));
     await waitFor(() => expect(result.current.snapshot?.stagedChanges).toBe(1));
 
@@ -150,12 +151,13 @@ describe("useSourceControlController remote operations", () => {
       amend: true,
       signOff: true,
     });
-    expect(runGitRemoteOperation).toHaveBeenCalledWith(expect.objectContaining({ operation: "push", branch: "main" }));
-    expect(onStatusChange).toHaveBeenLastCalledWith("Commit created. Pushed to origin");
+    expect(runGitRemoteOperation).not.toHaveBeenCalled();
+    expect(onCommitComplete).toHaveBeenCalledWith("commitAndPush", committed);
+    expect(onStatusChange).toHaveBeenLastCalledWith("Commit created");
     expect(result.current.commitDraft.message).toBe("");
   });
 
-  it("reports a failed push as a partial success and clears the committed draft", async () => {
+  it("clears the draft before opening the independent Push Commits preview", async () => {
     const staged = { ...snapshot, stagedChanges: 1 };
     const commitGitChanges = vi.fn().mockResolvedValue({ message: "Commit created", snapshot: { ...snapshot, ahead: 1 } });
     const workspaceApi = {
@@ -176,7 +178,8 @@ describe("useSourceControlController remote operations", () => {
 
     await act(async () => result.current.commit("commitAndPush"));
 
-    expect(result.current.error).toBe("Commit succeeded, but push failed: Authentication failed");
+    expect(result.current.error).toBeNull();
+    expect(workspaceApi.runGitRemoteOperation).not.toHaveBeenCalled();
     expect(result.current.commitDraft.message).toBe("");
   });
 

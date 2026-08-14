@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GitChangeEntry, GitChangeSelection, GitConflictContent, GitConflictResolution, GitDiffActionContext, GitPatchAction, GitRemoteOperation, GitRepositorySnapshot } from "@/features/git/git-source-control-model";
+import type { GitChangeEntry, GitChangeSelection, GitConflictContent, GitConflictResolution, GitDiffActionContext, GitFileDiffRequest, GitPatchAction, GitRemoteOperation, GitRepositorySnapshot } from "@/features/git/git-source-control-model";
 import type { GitCommitAction } from "@/features/git/git-commit-model";
 import { useGitHistoryController } from "@/components/layout/use-git-history-controller";
 import { useGitCommitDraft } from "@/components/layout/use-git-commit-draft";
@@ -12,6 +12,7 @@ import { gitMutationError, gitMutationStatus, skipGitDocumentReconciliation } fr
 const noDirtyDocuments = () => [];
 const saveNoDocuments = async (_paths: string[]) => undefined;
 export function useSourceControlController({ active, rootPath, workspaceApi, onOpenDiff, onStatusChange,
+  onCommitComplete,
   getDirtyDocumentPaths = noDirtyDocuments, saveDirtyDocuments = saveNoDocuments,
   reconcileDocuments = skipGitDocumentReconciliation }: UseSourceControlControllerOptions) {
   const [snapshot, setSnapshot] = useState<GitRepositorySnapshot | null>(null);
@@ -161,11 +162,12 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
     diffRequestRef.current = requestId;
     if (previousRequest) void workspaceApi.cancelGitQuery?.(previousRequest);
     try {
-      const request = {
+      const request: GitFileDiffRequest = {
         rootPath,
         relativePath: selection.entry.relativePath,
         originalPath: selection.entry.originalPath,
         staged: selection.staged,
+        scope: selection.commitView ? "commit" : selection.staged ? "index" : "workingTree",
         requestId,
         timeoutMs: GIT_QUERY_TIMEOUT_MS,
         maxBytes: GIT_DIFF_LIMIT_BYTES,
@@ -175,7 +177,7 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
       if (diffRequestRef.current !== requestId) return;
       onOpenDiff(diff.content, {
         relativePath: selection.entry.relativePath,
-        staged: selection.staged,
+        staged: selection.commitView ? false : selection.staged,
         kind: selection.entry.kind,
       }, comparison ?? null);
       onStatusChange(diff.truncated
@@ -300,7 +302,6 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
     if (!rootPath || !workspaceApi.commitGitChanges || operation !== "idle") return;
     setOperation("commit");
     setError(null);
-    let committed = false;
     try {
       const result = await workspaceApi.commitGitChanges({
         rootPath,
@@ -308,30 +309,17 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
         amend: commitDraft.draft.amend,
         signOff: commitDraft.draft.signOff,
       });
-      committed = true;
       applySnapshot(result.snapshot);
       invalidateHistory();
       commitDraft.clear();
       onStatusChange(result.message);
-      if (action === "commitAndPush" && workspaceApi.runGitRemoteOperation) {
-        setOperation("push");
-        const pushed = await workspaceApi.runGitRemoteOperation({
-          rootPath,
-          operation: "push",
-          remote: null,
-          branch: result.snapshot.currentBranch,
-          timeoutMs: 120_000,
-        });
-        applySnapshot(pushed.snapshot);
-        onStatusChange(`${result.message}. ${pushed.message}`);
-      }
+      onCommitComplete?.(action, result.snapshot);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      setError(committed ? `Commit succeeded, but push failed: ${message}` : message);
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setOperation("idle");
     }
-  }, [applySnapshot, commitDraft, invalidateHistory, onStatusChange, operation, rootPath, workspaceApi]);
+  }, [applySnapshot, commitDraft, invalidateHistory, onCommitComplete, onStatusChange, operation, rootPath, workspaceApi]);
 
   const runRemoteOperation = useCallback(async (kind: GitRemoteOperation) => {
     if (!rootPath || !workspaceApi.runGitRemoteOperation || operation !== "idle") return;

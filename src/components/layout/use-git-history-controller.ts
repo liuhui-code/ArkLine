@@ -30,6 +30,7 @@ export function useGitHistoryController({
   reconcileDocuments = skipGitDocumentReconciliation,
 }: UseGitHistoryControllerOptions) {
   const [commits, setCommits] = useState<GitCommitSummary[]>([]);
+  const [refName, setRefName] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [status, setStatus] = useState<GitHistoryStatus>("idle");
@@ -59,6 +60,7 @@ export function useGitHistoryController({
     requestGenerationRef.current += 1;
     detailGenerationRef.current += 1;
     detailsCacheRef.current.clear();
+    setRefName(null);
     setCommits([]);
     setNextCursor(null);
     setHasMore(false);
@@ -76,7 +78,7 @@ export function useGitHistoryController({
 
   useEffect(() => reset(), [reset, rootPath]);
 
-  const loadPage = useCallback(async (cursor: string | null, append: boolean) => {
+  const loadPage = useCallback(async (cursor: string | null, append: boolean, requestedRef = refName) => {
     if (!rootPath || !workspaceApi.getGitHistory) return;
     const generation = ++requestGenerationRef.current;
     const requestId = createGitQueryId("git-history");
@@ -87,6 +89,7 @@ export function useGitHistoryController({
     try {
       const page = await workspaceApi.getGitHistory({
         rootPath,
+        refName: requestedRef,
         cursor,
         limit: 40,
         requestId,
@@ -105,7 +108,7 @@ export function useGitHistoryController({
       if (historyRequestRef.current === requestId) historyRequestRef.current = null;
       if (generation === requestGenerationRef.current) setLoadingMore(false);
     }
-  }, [rootPath, workspaceApi]);
+  }, [refName, rootPath, workspaceApi]);
 
   const loadInitial = useCallback(() => {
     if (status === "idle") void loadPage(null, false);
@@ -114,6 +117,12 @@ export function useGitHistoryController({
   const loadMore = useCallback(() => {
     if (hasMore && nextCursor && !loadingMore) void loadPage(nextCursor, true);
   }, [hasMore, loadPage, loadingMore, nextCursor]);
+  const selectRef = useCallback((next: string | null) => {
+    setRefName(next);
+    setSelectedCommit(null);
+    setDetails(null);
+    void loadPage(null, false, next);
+  }, [loadPage]);
 
   const selectCommit = useCallback(async (commit: GitCommitSummary) => {
     const generation = ++detailGenerationRef.current;
@@ -273,6 +282,7 @@ export function useGitHistoryController({
 
   return {
     commits,
+    refName,
     status,
     loadingMore,
     hasMore,
@@ -287,6 +297,7 @@ export function useGitHistoryController({
     loadInitial,
     refresh,
     loadMore,
+    selectRef,
     selectCommit,
     selectCommitFile,
     openCommitDiff,

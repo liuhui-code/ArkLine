@@ -12,6 +12,20 @@ async function openEditor(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("Shell hotkeys", () => {
+  it("opens IDEA-style Commit and Push workflows with Ctrl+K shortcuts", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}k{/Control}");
+
+    expect(await screen.findByRole("region", { name: "Commit" })).toBeVisible();
+    expect(screen.getByLabelText("Commit message")).toHaveFocus();
+
+    await user.keyboard("{Control>}{Shift>}k{/Shift}{/Control}");
+    expect(await screen.findByRole("dialog", { name: "Push Commits" })).toBeVisible();
+  });
+
   it("closes Quick Open with Escape and returns focus to the editor", async () => {
     const user = userEvent.setup();
     render(<AppShell />);

@@ -39,7 +39,8 @@ export function useGitAndDiffController({
   const [diffFiles, setDiffFiles] = useState<DiffFile[]>([]);
   const [diffActionContext, setDiffActionContext] = useState<GitDiffActionContext | null>(null);
   const [diffComparison, setDiffComparison] = useState<GitFileComparison | null>(null);
-  const [gitToolView, setGitToolView] = useState<GitToolView>("changes");
+  const [diffPreviewVisible, setDiffPreviewVisible] = useState(false);
+  const [gitToolView, setGitToolView] = useState<GitToolView>("log");
   const [gitBlameVisible, setGitBlameVisible] = useState(false);
   const [gitBlameMenuOpen, setGitBlameMenuOpen] = useState(false);
   const [gitBlameRefreshToken, setGitBlameRefreshToken] = useState(0);
@@ -122,8 +123,7 @@ export function useGitAndDiffController({
     if (selectedBlameAttribution?.commit) {
       openGitTraceView();
     } else {
-      setGitToolView("changes");
-      showGit();
+      void loadDiff();
     }
   }
 
@@ -139,8 +139,7 @@ export function useGitAndDiffController({
     setDiffFiles(parseUnifiedDiff(diffText));
     setDiffActionContext(null);
     setDiffComparison(null);
-    setGitToolView("changes");
-    showGit();
+    setDiffPreviewVisible(true);
     onStatusChange(diffText ? "Diff loaded" : "No diff");
   }
 
@@ -161,8 +160,7 @@ export function useGitAndDiffController({
     setDiffFiles(parseUnifiedDiff(patch));
     setDiffActionContext(context ?? null);
     setDiffComparison(comparison);
-    setGitToolView("changes");
-    showGit();
+    setDiffPreviewVisible(true);
     onStatusChange(patch ? "Commit diff loaded" : "No commit diff");
   }
 
@@ -184,12 +182,14 @@ export function useGitAndDiffController({
     setDiffFiles([]);
     setDiffActionContext(null);
     setDiffComparison(null);
+    setDiffPreviewVisible(false);
   }
 
   return {
     diffFiles,
     diffActionContext,
     diffComparison,
+    diffPreviewVisible,
     gitToolView,
     setGitToolView,
     gitTraceState,

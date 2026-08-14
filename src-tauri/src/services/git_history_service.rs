@@ -32,6 +32,10 @@ pub fn load_history(
     let format = format!(
         "--format={RECORD_SEPARATOR}%H{FIELD_SEPARATOR}%h{FIELD_SEPARATOR}%P{FIELD_SEPARATOR}%D{FIELD_SEPARATOR}%an{FIELD_SEPARATOR}%ae{FIELD_SEPARATOR}%at{FIELD_SEPARATOR}%s"
     );
+    let revision = request.ref_name.as_deref().unwrap_or("--all");
+    if revision.starts_with('-') && revision != "--all" {
+        return Err("Invalid Git history reference".to_string());
+    }
     let output = match run_git(
         runtime,
         &request.request_id,
@@ -39,7 +43,7 @@ pub fn load_history(
         &[
             "log",
             "--graph",
-            "--all",
+            revision,
             "--topo-order",
             "--decorate=full",
             format.as_str(),

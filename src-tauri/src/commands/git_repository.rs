@@ -5,11 +5,19 @@ use crate::models::git::{
     GitConflictContent, GitConflictContentRequest, GitDiffResult, GitDiscardResult,
     GitFileComparison, GitFileDiffRequest, GitHistoryActionRequest, GitHistoryPage,
     GitHistoryRequest, GitMutationResult, GitPatchMutationResult, GitPatchRequest, GitPathsRequest,
-    GitRemoteOperationRequest, GitRepositoryActionRequest, GitRepositorySnapshot,
-    GitRepositorySnapshotRequest, GitResolveConflictRequest, GitRestoreDiscardRequest,
-    GitRestorePatchRequest,
+    GitPushPreview, GitPushPreviewRequest, GitRemoteOperationRequest, GitRepositoryActionRequest,
+    GitRepositorySnapshot, GitRepositorySnapshotRequest, GitResolveConflictRequest,
+    GitRestoreDiscardRequest, GitRestorePatchRequest,
 };
 use crate::services::git_repository_service::GitRepositoryRuntime;
+use std::path::Path;
+
+#[tauri::command]
+pub async fn get_git_roots(root_path: String) -> Result<Vec<String>, String> {
+    spawn_blocking(move || crate::services::git_root_service::discover(Path::new(&root_path)))
+        .await
+        .map_err(|error| error.to_string())?
+}
 
 #[tauri::command]
 pub async fn get_git_repository_snapshot(
@@ -138,6 +146,19 @@ pub async fn run_git_remote_operation(
     spawn_blocking(move || runtime.remote_operation(&request))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_git_push_preview(
+    request: GitPushPreviewRequest,
+    runtime: State<'_, GitRepositoryRuntime>,
+) -> Result<GitPushPreview, String> {
+    let query_runtime = runtime.query_runtime().clone();
+    spawn_blocking(move || {
+        crate::services::git_push_service::preview_push(&query_runtime, &request)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

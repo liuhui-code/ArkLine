@@ -44,22 +44,43 @@ fn plan_remote_operation(
             args: vec!["fetch".into(), "--prune".into(), remote.clone()],
             success_message: format!("Fetched {remote}"),
         }),
-        "pull" => {
+        "pull" | "pullRebase" | "pullMerge" => {
             let (branch, upstream) = branch_context(root, request.branch.as_deref())?;
+            let strategy = match request.operation.as_str() {
+                "pullRebase" => "--rebase",
+                "pullMerge" => "--no-rebase",
+                _ => "--ff-only",
+            };
             let args = if upstream {
-                vec!["pull".into(), "--ff-only".into()]
+                vec!["pull".into(), strategy.into()]
             } else {
-                vec!["pull".into(), "--ff-only".into(), remote.clone(), branch]
+                vec!["pull".into(), strategy.into(), remote.clone(), branch]
             };
             Ok(RemoteOperationPlan {
                 args,
-                success_message: "Pulled with fast-forward only".to_string(),
+                success_message: match request.operation.as_str() {
+                    "pullRebase" => "Updated with rebase",
+                    "pullMerge" => "Updated with merge",
+                    _ => "Pulled with fast-forward only",
+                }
+                .to_string(),
             })
         }
-        "push" => {
+        "push" | "forcePush" => {
             let (branch, upstream) = branch_context(root, request.branch.as_deref())?;
-            let args = if upstream {
+            let force = request.operation == "forcePush";
+            let args = if upstream && force {
+                vec!["push".into(), "--force-with-lease".into()]
+            } else if upstream {
                 vec!["push".into()]
+            } else if force {
+                vec![
+                    "push".into(),
+                    "--force-with-lease".into(),
+                    "--set-upstream".into(),
+                    remote.clone(),
+                    branch,
+                ]
             } else {
                 vec![
                     "push".into(),
@@ -70,7 +91,11 @@ fn plan_remote_operation(
             };
             Ok(RemoteOperationPlan {
                 args,
-                success_message: format!("Pushed to {remote}"),
+                success_message: if force {
+                    format!("Force-pushed with lease to {remote}")
+                } else {
+                    format!("Pushed to {remote}")
+                },
             })
         }
         _ => Err("Unsupported Git remote operation".to_string()),

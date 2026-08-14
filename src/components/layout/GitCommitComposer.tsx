@@ -4,6 +4,7 @@ import { evaluateGitCommitDraft, type GitCommitAction, type GitCommitDraft } fro
 type GitCommitComposerProps = {
   draft: GitCommitDraft;
   stagedCount: number;
+  focusToken?: number;
   conflictCount: number;
   disabled: boolean;
   committing: boolean;
@@ -17,6 +18,7 @@ type GitCommitComposerProps = {
 export function GitCommitComposer(props: GitCommitComposerProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
   const readiness = evaluateGitCommitDraft(props.draft, props.stagedCount, props.conflictCount);
   const disabled = props.disabled || !readiness.ready;
   const primaryLabel = props.draft.amend ? "Amend Commit" : `Commit${props.stagedCount ? ` (${props.stagedCount})` : ""}`;
@@ -30,9 +32,14 @@ export function GitCommitComposer(props: GitCommitComposerProps) {
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (props.focusToken) messageRef.current?.focus();
+  }, [props.focusToken]);
+
   return (
     <section className="git-commit-composer" aria-label="Commit changes">
       <textarea
+        ref={messageRef}
         aria-label="Commit message"
         placeholder="Commit message"
         rows={3}

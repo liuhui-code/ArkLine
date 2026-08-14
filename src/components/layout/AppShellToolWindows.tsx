@@ -12,13 +12,14 @@ import { ProblemsPanel } from "@/components/layout/ProblemsPanel";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 import { TerminalToolWindowHost } from "@/components/layout/TerminalToolWindowHost";
 import type { BuildState, BuildTarget } from "@/features/build/build-model";
-import type { DiffFile } from "@/features/diff/unified-diff";
 import type { GitTraceState } from "@/features/git/git-trace-model";
-import type { GitDiffActionContext, GitFileComparison, GitPatchAction } from "@/features/git/git-source-control-model";
 import type { ProblemItem } from "@/features/problems/problems-store";
 import type { TerminalSettings } from "@/features/settings/settings-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
+import type { GitHistoryController } from "@/components/layout/use-git-history-controller";
+import type { GitStashController } from "@/components/layout/use-git-stash-controller";
+import type { GitBranchSnapshot } from "@/features/git/git-branch-model";
 
 type AppShellToolWindowsProps = {
   bottomToolWindowRef: RefObject<HTMLElement | null>;
@@ -50,16 +51,15 @@ type AppShellToolWindowsProps = {
   onRunBuild: () => void;
   onRunCleanBuild: () => void;
   onStopBuild: () => void;
-  diffFiles: DiffFile[];
-  diffActionContext: GitDiffActionContext | null;
-  diffComparison: GitFileComparison | null;
-  gitToolView: "changes" | "trace";
+  gitToolView: "log" | "stashes" | "trace";
   gitTraceState: GitTraceState;
-  onChangeGitToolView: (view: "changes" | "trace") => void;
-  onOpenGitFile: (path: string) => void;
+  gitHistory: GitHistoryController;
+  gitStash: GitStashController;
+  gitBranches: GitBranchSnapshot | null;
+  onRefreshGitBranches: () => void;
+  onChangeGitToolView: (view: "log" | "stashes" | "trace") => void;
   onFocusEditorFromGitTrace: () => void;
   onOpenGitTraceCommitDiff: (patch: string) => void;
-  onApplyGitPartial: (action: GitPatchAction, patch: string, context: GitDiffActionContext) => Promise<void>;
   onStatusChange: (message: string) => void;
   indexAndStatus: AppShellIndexAndStatusSurfacesProps;
 };
@@ -94,16 +94,15 @@ export function AppShellToolWindows({
   onRunBuild,
   onRunCleanBuild,
   onStopBuild,
-  diffFiles,
-  diffActionContext,
-  diffComparison,
   gitToolView,
   gitTraceState,
+  gitHistory,
+  gitStash,
+  gitBranches,
+  onRefreshGitBranches,
   onChangeGitToolView,
-  onOpenGitFile,
   onFocusEditorFromGitTrace,
   onOpenGitTraceCommitDiff,
-  onApplyGitPartial,
   onStatusChange,
   indexAndStatus,
 }: AppShellToolWindowsProps) {
@@ -125,7 +124,7 @@ export function AppShellToolWindows({
         problemsPanel={<ProblemsPanel problems={problems} />}
         terminalPanel={<TerminalToolWindowHost active={bottomContentVisible && activeBottomTool === "terminal"} layoutToken={bottomLayoutToken} onStatusChange={onStatusChange} terminalSettings={terminalSettings} workspaceApi={workspaceApi} workspaceRootPath={workspaceRootPath} />}
         buildPanel={<BuildToolWindow state={buildState} workspaceRootPath={workspaceRootPath} modules={buildModules} onChangeTarget={onChangeBuildTarget} onChangeModuleName={onChangeBuildModuleName} onChangeProduct={onChangeBuildProduct} onChangeBuildMode={onChangeBuildMode} onChangeFastMode={onChangeBuildFastMode} onSelectConfiguration={onSelectBuildConfiguration} onSaveConfiguration={onSaveBuildConfiguration} onCopyConfiguration={onCopyBuildConfiguration} onDeleteConfiguration={onDeleteBuildConfiguration} onRunBuild={onRunBuild} onRunCleanBuild={onRunCleanBuild} onStopBuild={onStopBuild} />}
-        gitPanel={<GitToolWindow files={diffFiles} comparison={diffComparison} actionContext={diffActionContext} onApplyPartial={onApplyGitPartial} activeView={gitToolView} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={onFocusEditorFromGitTrace} onOpenCommitDiff={onOpenGitTraceCommitDiff} />} onChangeView={onChangeGitToolView} onOpenFile={onOpenGitFile} />}
+        gitPanel={<GitToolWindow activeView={gitToolView} history={gitHistory} stash={gitStash} branches={gitBranches} onRefreshBranches={onRefreshGitBranches} tracePanel={<GitTracePanel state={gitTraceState} onOpenInEditor={onFocusEditorFromGitTrace} onOpenCommitDiff={onOpenGitTraceCommitDiff} />} onChangeView={onChangeGitToolView} />}
         deviceLogPanel={<DeviceLogToolWindow active={bottomContentVisible && activeBottomTool === "deviceLog"} workspaceApi={workspaceApi} onStatusChange={onStatusChange} />}
       />
       <AppShellIndexAndStatusSurfaces {...indexAndStatus} />

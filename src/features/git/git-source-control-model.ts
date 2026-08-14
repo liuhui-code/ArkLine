@@ -45,6 +45,7 @@ export type GitFileDiffRequest = {
   relativePath: string;
   originalPath: string | null;
   staged: boolean;
+  scope?: "index" | "workingTree" | "commit";
   requestId: string;
   timeoutMs: number;
   maxBytes: number;
@@ -84,7 +85,7 @@ export type GitCommitRequest = {
   signOff: boolean;
 };
 
-export type GitRemoteOperation = "fetch" | "pull" | "push";
+export type GitRemoteOperation = "fetch" | "pull" | "pullRebase" | "pullMerge" | "push" | "forcePush";
 
 export type GitRemoteOperationRequest = {
   rootPath: string;
@@ -136,6 +137,7 @@ export type GitRestorePatchRequest = {
 export type GitChangeSelection = {
   entry: GitChangeEntry;
   staged: boolean;
+  commitView?: boolean;
 };
 
 export type GitDiffActionContext = {

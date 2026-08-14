@@ -1,6 +1,7 @@
 import type { GitBlameLine, GitCommitTrace, GitTraceUnavailable } from "@/features/git/git-trace-model";
 import type { GitBranchSnapshot, GitCheckoutBranchResult } from "@/features/git/git-branch-model";
 import type { GitCommitDetails, GitHistoryPage } from "@/features/git/git-history-model";
+import type { GitPushPreview } from "@/features/git/git-push-model";
 import type { GitStashPage } from "@/features/git/git-stash-model";
 import type { GitConflictContent, GitDiffResult, GitDiscardResult, GitFileComparison, GitMutationResult, GitPatchMutationResult, GitRepositorySnapshot } from "@/features/git/git-source-control-model";
 import {
@@ -12,6 +13,10 @@ import { normalizePath } from "@/features/workspace/workspace-store";
 
 export function createWorkspaceGitApi(): Partial<WorkspaceApi> {
   return {
+    async getGitRoots(rootPath) {
+      if (hasTauriRuntime()) return invoke<string[]>("get_git_roots", { rootPath });
+      return [rootPath];
+    },
     async getGitRepositorySnapshot(request) {
       if (hasTauriRuntime()) return invoke<GitRepositorySnapshot>("get_git_repository_snapshot", { request });
       return demoRepositorySnapshot(request.rootPath);
@@ -74,8 +79,12 @@ export function createWorkspaceGitApi(): Partial<WorkspaceApi> {
     },
     async runGitRemoteOperation(request) {
       if (hasTauriRuntime()) return invoke<GitMutationResult>("run_git_remote_operation", { request });
-      const message = request.operation === "fetch" ? "Fetched origin" : request.operation === "pull" ? "Pulled with fast-forward only" : "Pushed to origin";
+      const message = request.operation === "fetch" ? "Fetched origin" : request.operation === "pullRebase" ? "Updated with rebase" : request.operation === "pullMerge" ? "Updated with merge" : request.operation === "pull" ? "Pulled with fast-forward only" : request.operation === "forcePush" ? "Force-pushed with lease to origin" : "Pushed to origin";
       return demoMutation(request.rootPath, message);
+    },
+    async getGitPushPreview(request) {
+      if (hasTauriRuntime()) return invoke<GitPushPreview>("get_git_push_preview", { request });
+      return demoPushPreview(request.rootPath);
     },
     async getGitHistory(request) {
       if (hasTauriRuntime()) return invoke<GitHistoryPage>("get_git_history", { request });
@@ -215,6 +224,21 @@ export function createWorkspaceGitApi(): Partial<WorkspaceApi> {
           : "@@ -1,3 +1,3 @@\n @Entry\n @Component\n+struct Index {}",
       };
     },
+  };
+}
+
+function demoPushPreview(rootPath: string): GitPushPreview {
+  const root = normalizePath(rootPath);
+  return {
+    rootPath: root,
+    repositoryRoot: root,
+    localBranch: "main",
+    remote: "origin",
+    remoteBranch: "main",
+    hasUpstream: true,
+    totalCommits: 0,
+    commitsTruncated: false,
+    commits: [],
   };
 }
 

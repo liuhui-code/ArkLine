@@ -180,6 +180,7 @@ impl TestRepository {
     fn history_request(&self, cursor: Option<String>, limit: u32) -> GitHistoryRequest {
         GitHistoryRequest {
             root_path: self.path_string(),
+            ref_name: None,
             cursor,
             limit,
             request_id: format!("history-page-{limit}"),

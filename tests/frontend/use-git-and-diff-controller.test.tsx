@@ -35,7 +35,7 @@ describe("useGitAndDiffController", () => {
     useGitTraceMock.mockImplementation(() => ({ gitTraceState: gitTraceState.current }));
   });
 
-  it("loads workspace diff into the git changes view", async () => {
+  it("loads workspace diff into the central diff preview", async () => {
     const loadDiff = vi.fn(async () => [
       "diff --git a/entry/src/main.ets b/entry/src/main.ets",
       "--- a/entry/src/main.ets",
@@ -57,13 +57,14 @@ describe("useGitAndDiffController", () => {
     });
 
     expect(loadDiff).toHaveBeenCalledWith("/project");
-    expect(result.current.gitToolView).toBe("changes");
+    expect(result.current.gitToolView).toBe("log");
     expect(result.current.diffFiles).toHaveLength(1);
-    expect(showGit).toHaveBeenCalledTimes(1);
+    expect(result.current.diffPreviewVisible).toBe(true);
+    expect(showGit).not.toHaveBeenCalled();
     expect(onStatusChange).toHaveBeenCalledWith("Diff loaded");
   });
 
-  it("opens commit patches in the changes view", () => {
+  it("opens commit patches in the central diff preview", () => {
     const showGit = vi.fn();
     const onStatusChange = vi.fn();
     const { result } = renderHarness({ showGit, onStatusChange });
@@ -79,9 +80,10 @@ describe("useGitAndDiffController", () => {
       ].join("\n"));
     });
 
-    expect(result.current.gitToolView).toBe("changes");
+    expect(result.current.gitToolView).toBe("log");
     expect(result.current.diffFiles).toHaveLength(1);
-    expect(showGit).toHaveBeenCalledTimes(1);
+    expect(result.current.diffPreviewVisible).toBe(true);
+    expect(showGit).not.toHaveBeenCalled();
     expect(onStatusChange).toHaveBeenCalledWith("Commit diff loaded");
   });
 

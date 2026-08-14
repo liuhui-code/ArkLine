@@ -103,6 +103,8 @@ pub struct GitFileDiffRequest {
     #[serde(default)]
     pub original_path: Option<String>,
     pub staged: bool,
+    #[serde(default)]
+    pub scope: Option<String>,
     pub request_id: String,
     pub timeout_ms: u64,
     pub max_bytes: usize,
@@ -162,6 +164,28 @@ pub struct GitRemoteOperationRequest {
     pub timeout_ms: u64,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushPreviewRequest {
+    pub root_path: String,
+    pub request_id: String,
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitPushPreview {
+    pub root_path: String,
+    pub repository_root: String,
+    pub local_branch: String,
+    pub remote: String,
+    pub remote_branch: String,
+    pub has_upstream: bool,
+    pub total_commits: usize,
+    pub commits_truncated: bool,
+    pub commits: Vec<GitCommitSummary>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct GitMutationResult {
@@ -215,6 +239,8 @@ pub struct GitRestorePatchRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GitHistoryRequest {
     pub root_path: String,
+    #[serde(default)]
+    pub ref_name: Option<String>,
     pub cursor: Option<String>,
     pub limit: u32,
     pub request_id: String,
