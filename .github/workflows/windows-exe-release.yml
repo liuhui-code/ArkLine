@@ -189,9 +189,9 @@ jobs:
 
           Expand-Archive -LiteralPath $archive -DestinationPath artifacts/release-verify
           $requiredFiles = @(
-            "artifacts/release-verify/ArkLine-windows-x64/ArkLine.exe",
-            "artifacts/release-verify/ArkLine-windows-x64/arkline-semantic.exe",
-            "artifacts/release-verify/ArkLine-windows-x64/arkline-indexer.exe"
+            "artifacts/release-verify/ArkLine.exe",
+            "artifacts/release-verify/arkline-semantic.exe",
+            "artifacts/release-verify/arkline-indexer.exe"
           )
           foreach ($requiredFile in $requiredFiles) {
             if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
@@ -211,7 +211,7 @@ jobs:
         run: |
           pnpm perf:packaged:windows -- `
             --mode=smoke `
-            --application=artifacts/release-verify/ArkLine-windows-x64/ArkLine.exe `
+            --application=artifacts/release-verify/ArkLine.exe `
             --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/real-harmony-project `
             --scenario=docs/performance-fixtures/core-loop-coolmall-v1.json `

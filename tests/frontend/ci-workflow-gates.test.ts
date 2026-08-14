@@ -70,7 +70,7 @@ describe("CI quality gates", () => {
     expect(packageJob).toContain("uses: Swatinem/rust-cache@v2");
     expect(packageJob).toContain("run: pnpm package:windows:portable");
     expect(packageJob).toContain("Run packaged real-project semantic smoke");
-    expect(packageJob).toContain("--application=artifacts/release-verify/ArkLine-windows-x64/ArkLine.exe");
+    expect(packageJob).toContain("--application=artifacts/release-verify/ArkLine.exe");
 
     expect(workflow).toContain("name: Release / Publish");
     expect(publishJob).toContain("needs:\n      - quality\n      - rust\n      - build-windows-exe");
