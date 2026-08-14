@@ -11,6 +11,13 @@ pub struct HarmonyProductSigning {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct HarmonyProductSdk {
+    pub product: String,
+    pub compile_sdk_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct HarmonyBuildProject {
     pub root_path: String,
     pub is_harmony_project: bool,
@@ -24,4 +31,5 @@ pub struct HarmonyBuildProject {
     pub products: Vec<String>,
     pub default_product: Option<String>,
     pub product_signing: Vec<HarmonyProductSigning>,
+    pub product_sdks: Vec<HarmonyProductSdk>,
 }

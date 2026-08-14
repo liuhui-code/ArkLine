@@ -27,6 +27,7 @@ pub struct BuildEnvironmentResolution {
     pub hvigor_source: Option<String>,
     pub node_path: Option<String>,
     pub sdk_path: Option<String>,
+    pub sdk_api_version: Option<String>,
     pub path_entries: Vec<String>,
     pub environment: HashMap<String, String>,
     pub checks: Vec<BuildEnvironmentCheck>,

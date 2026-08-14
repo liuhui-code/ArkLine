@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 
-use crate::models::build_project::{HarmonyBuildProject, HarmonyProductSigning};
+use crate::models::build_project::{HarmonyBuildProject, HarmonyProductSdk, HarmonyProductSigning};
 
 pub fn find_harmony_build_artifacts(
     root_path: &str,
@@ -109,6 +109,7 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
         .cloned()
         .or_else(|| products.first().cloned());
     let product_signing = inspect_product_signing(&root, &profile_content, &products);
+    let product_sdks = inspect_product_sdks(&profile_content, &products);
 
     Ok(HarmonyBuildProject {
         root_path: root.to_string_lossy().to_string(),
@@ -133,7 +134,27 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
         products,
         default_product,
         product_signing,
+        product_sdks,
     })
+}
+
+fn inspect_product_sdks(profile_content: &str, products: &[String]) -> Vec<HarmonyProductSdk> {
+    let product_objects = named_array_body(profile_content, "products")
+        .map(array_objects)
+        .unwrap_or_default();
+    products
+        .iter()
+        .map(|product| {
+            let compile_sdk_version = product_objects
+                .iter()
+                .find(|object| string_field(object, "name").as_deref() == Some(product))
+                .and_then(|object| scalar_field(object, "compileSdkVersion"));
+            HarmonyProductSdk {
+                product: product.clone(),
+                compile_sdk_version,
+            }
+        })
+        .collect()
 }
 
 fn inspect_product_signing(
@@ -220,6 +241,19 @@ fn string_field(content: &str, name: &str) -> Option<String> {
     pattern
         .captures(content)?
         .get(1)
+        .map(|value| value.as_str().trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn scalar_field(content: &str, name: &str) -> Option<String> {
+    let pattern = Regex::new(&format!(
+        r#"\b{name}\s*:\s*(?:[\"']([^\"']+)[\"']|([0-9]+(?:\.[0-9]+)*))"#
+    ))
+    .ok()?;
+    let captures = pattern.captures(content)?;
+    captures
+        .get(1)
+        .or_else(|| captures.get(2))
         .map(|value| value.as_str().trim().to_string())
         .filter(|value| !value.is_empty())
 }

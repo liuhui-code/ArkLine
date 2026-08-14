@@ -139,7 +139,7 @@ fn merges_modules_declared_by_build_profile() {
     fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
     fs::write(
         root.join("build-profile.json5"),
-        "{ products: [{ name: 'china' }, { name: 'default' }], modules: [{ name: 'feature' }] }",
+        "{ products: [{ name: 'china', compileSdkVersion: 25 }, { name: 'default', compileSdkVersion: '26.0.0' }], modules: [{ name: 'feature' }] }",
     )
     .unwrap();
 
@@ -148,6 +148,15 @@ fn merges_modules_declared_by_build_profile() {
     assert_eq!(project.modules, vec!["feature"]);
     assert_eq!(project.products, vec!["china", "default"]);
     assert_eq!(project.default_product.as_deref(), Some("default"));
+    assert_eq!(project.product_sdks[0].product, "china");
+    assert_eq!(
+        project.product_sdks[0].compile_sdk_version.as_deref(),
+        Some("25")
+    );
+    assert_eq!(
+        project.product_sdks[1].compile_sdk_version.as_deref(),
+        Some("26.0.0")
+    );
     fs::remove_dir_all(root).unwrap();
 }
 

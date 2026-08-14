@@ -102,6 +102,19 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
     }
   }
 
+  const requiredCompileApi = apiMajor(input.project.productSdks?.find(
+    (item) => item.product === input.product,
+  )?.compileSdkVersion);
+  const installedApi = apiMajor(input.environment?.sdkApiVersion);
+  if (requiredCompileApi !== null && installedApi !== null && requiredCompileApi > installedApi) {
+    issues.push(issue({
+      severity: "error",
+      code: "incompatible-compile-sdk",
+      message: `Product ${input.product} requires compile SDK API ${requiredCompileApi}, but the selected SDK provides API ${installedApi}.`,
+      hint: `Install HarmonyOS SDK API ${requiredCompileApi} or newer, or select a compatible product.`,
+    }));
+  }
+
   if (!input.project.hasOhPackage) {
     issues.push(issue({
       severity: "warning",
@@ -148,4 +161,14 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
     canBuild: issues.every((item) => item.severity !== "error"),
     issues,
   };
+}
+
+function apiMajor(version: string | null | undefined): number | null {
+  const normalized = version?.trim();
+  if (!normalized) return null;
+  const integerMatch = normalized.match(/^(\d+)$/);
+  const unifiedMatch = normalized.match(/^(\d+)\.\d+\.\d+$/);
+  const value = Number(integerMatch?.[1] ?? unifiedMatch?.[1]);
+  if (!integerMatch && (!unifiedMatch || value < 26)) return null;
+  return Number.isSafeInteger(value) ? value : null;
 }

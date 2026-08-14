@@ -327,6 +327,82 @@ describe("build command preflight", () => {
       hint: "material.profile file does not exist",
     }));
   });
+
+  it("blocks a product that requires a newer compile SDK API", () => {
+    const result = preflightHarmonyBuild({
+      project: {
+        rootPath: "/workspace/Demo",
+        isHarmonyProject: true,
+        hasHvigorWrapper: true,
+        hvigorWrapperCommand: "./hvigorw",
+        hasHvigorFile: true,
+        hasBuildProfile: true,
+        hasOhPackage: true,
+        modules: ["entry"],
+        defaultModule: "entry",
+        products: ["default"],
+        defaultProduct: "default",
+        productSigning: [{ product: "default", signingConfig: "default", ready: true, issues: [] }],
+        productSdks: [{ product: "default", compileSdkVersion: "25" }],
+      },
+      environment: {
+        canBuild: true,
+        hvigorCommand: "/opt/deveco/tools/hvigor/bin/hvigorw",
+        hvigorSource: "deveco",
+        nodePath: "/opt/deveco/tools/node/bin",
+        sdkPath: "/opt/deveco/sdk/default/openharmony",
+        sdkApiVersion: "24",
+        pathEntries: [],
+        environment: {},
+        checks: [],
+      },
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+    });
+
+    expect(result.canBuild).toBe(false);
+    expect(result.issues).toContainEqual(expect.objectContaining({
+      code: "incompatible-compile-sdk",
+      message: "Product default requires compile SDK API 25, but the selected SDK provides API 24.",
+    }));
+  });
+
+  it("leaves legacy platform-version compatibility to Hvigor", () => {
+    const result = preflightHarmonyBuild({
+      project: {
+        rootPath: "/workspace/Demo",
+        isHarmonyProject: true,
+        hasHvigorWrapper: true,
+        hvigorWrapperCommand: "./hvigorw",
+        hasHvigorFile: true,
+        hasBuildProfile: true,
+        hasOhPackage: true,
+        modules: ["entry"],
+        defaultModule: "entry",
+        products: ["default"],
+        defaultProduct: "default",
+        productSigning: [{ product: "default", signingConfig: "default", ready: true, issues: [] }],
+        productSdks: [{ product: "default", compileSdkVersion: "5.0.0" }],
+      },
+      environment: {
+        canBuild: true,
+        nodePath: "/opt/node/bin",
+        sdkPath: "/opt/sdk",
+        sdkApiVersion: "4",
+        pathEntries: [],
+        environment: {},
+        checks: [],
+      },
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+    });
+
+    expect(result.issues).not.toContainEqual(expect.objectContaining({
+      code: "incompatible-compile-sdk",
+    }));
+  });
 });
 
 describe("build artifacts", () => {

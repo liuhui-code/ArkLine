@@ -86,12 +86,20 @@ copy, or persist private keys.
 - Build planning receives the exact Hvigor command selected by preflight.
 - Successful Hvigor completion is followed by a bounded filesystem artifact scan.
 - A missing or empty expected artifact changes the ArkLine build result to failed.
+- Windows auto-detection checks standard system and per-user DevEco Studio
+  installations for `hvigorw.bat`.
+- Selecting bundled DevEco Hvigor now resolves Node and the HarmonyOS SDK from
+  that same installation on both macOS and Windows.
+- ArkLine compares the selected product's `compileSdkVersion` with the installed
+  SDK component `apiVersion` and blocks a known-incompatible build before Hvigor.
 
 ## Remaining Limits
 
-- Automatic DevEco Hvigor discovery is currently implemented for macOS paths.
-- SDK API compatibility is still reported by Hvigor rather than parsed by ArkLine
-  into a dedicated preflight diagnostic.
+- Windows discovery is covered by a cross-platform installation-shape test, but
+  the full signed project build still needs execution on a Windows host with
+  DevEco Studio installed.
+- SDK compatibility preflight intentionally handles only explicit numeric API
+  prefixes; unknown future version formats remain reported by Hvigor.
 - Device installation and launch verification are outside this Phase 0 baseline.
 - The real application stays outside this repository; deterministic unit tests
   cover environment selection and artifact verification inside the repository.

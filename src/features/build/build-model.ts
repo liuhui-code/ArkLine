@@ -112,6 +112,7 @@ export type BuildEnvironmentResolution = {
   hvigorSource?: "project-wrapper" | "deveco" | null;
   nodePath: string | null;
   sdkPath: string | null;
+  sdkApiVersion?: string | null;
   pathEntries: string[];
   environment: Record<string, string>;
   checks: BuildEnvironmentCheck[];
@@ -169,6 +170,12 @@ export type HarmonyBuildProject = {
   products: string[];
   defaultProduct: string | null;
   productSigning: HarmonyProductSigning[];
+  productSdks?: HarmonyProductSdk[];
+};
+
+export type HarmonyProductSdk = {
+  product: string;
+  compileSdkVersion: string | null;
 };
 
 export type HarmonyProductSigning = {
@@ -190,6 +197,7 @@ export type BuildPreflightIssueCode =
   | "missing-node-path"
   | "missing-signing-config"
   | "invalid-signing-material"
+  | "incompatible-compile-sdk"
   | "build-environment-node"
   | "build-environment-sdk"
   | "build-environment-hvigor"

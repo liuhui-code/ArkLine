@@ -14,6 +14,7 @@ preflight and the Hvigor child process:
 
 - `nodePath`: directory containing `node` or `node.exe`
 - `sdkPath`: normalized SDK root containing `ets` and `toolchains`
+- `sdkApiVersion`: installed API reported by the SDK component manifest when available
 - `hvigorCommand`: project wrapper or an absolute DevEco Hvigor command
 - `hvigorSource`: `project-wrapper` or `deveco`
 - `pathEntries`: Node, SDK toolchains, SDK ets, and project `node_modules/.bin`
@@ -32,12 +33,20 @@ Hvigor resolution is independent and ordered:
 1. Executable wrapper in the canonical project root.
 2. DevEco Studio bundled Hvigor when auto-detection is enabled.
 
-When DevEco Hvigor is selected, its bundled Node is preferred over the process
-`PATH`. `NODE_HOME` points to the Node installation root (the parent of `bin`),
-while `nodePath` and the injected `PATH` entry point to the executable directory.
-For builds, `DEVECO_SDK_HOME` points to the directory containing SDK version
-directories such as `default`; the semantic SDK path continues to point to the
-`openharmony` leaf containing `ets` and `toolchains`.
+DevEco candidates cover the supported macOS application bundle names and
+Windows installations under the standard `Program Files` roots or the current
+user's `LOCALAPPDATA/Programs` directory. A candidate is accepted only when its
+bundled `hvigorw` or `hvigorw.bat` file exists.
+
+When DevEco Hvigor is selected, its bundled Node and SDK are preferred over the
+process `PATH` and SDK environment variables. This keeps all three build tools
+on one DevEco installation and avoids version mixing. `NODE_HOME` points to the
+Node installation root (the parent of `bin` on macOS, or the directory
+containing `node.exe` on Windows), while `nodePath` and the injected `PATH`
+entry point to the executable directory. For builds, `DEVECO_SDK_HOME` points
+to the directory containing SDK version directories such as `default`; the
+semantic SDK path continues to point to the `openharmony` leaf containing `ets`
+and `toolchains`.
 
 An explicit invalid path is reported as invalid when it is the only configured
 source. Auto-detection may recover from an invalid optional value only when a
@@ -153,6 +162,12 @@ Profile parsing may expand module and product options, but it cannot overwrite
 an active configuration. Configuration writes are serialized and capture the
 project root at the time of the user action, so fast project switching cannot
 write settings into the wrong workspace.
+
+Native inspection also reads each product's `compileSdkVersion`. The build
+environment reads the selected SDK's API from an `oh-uni-package.json`
+component manifest. When both values have a numeric API prefix and the product
+requires a newer API, preflight blocks before Hvigor starts. Missing or unknown
+future formats remain Hvigor-owned rather than becoming false ArkLine errors.
 
 ## Maintenance Rules
 
