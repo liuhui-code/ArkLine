@@ -60,13 +60,13 @@ export function SourceControlToolWindow(props: Props) {
       <div className="source-control__groups source-control__groups--commit" aria-busy={busy}>
         {!snapshot && !props.error ? <p className="source-control__empty">Open a Git repository to view local changes.</p> : null}
         {snapshot && groups.every((group) => group.entries.length === 0) ? <p className="source-control__empty">No local changes</p> : null}
-        {groups.map((group) => group.entries.length ? <ChangeSection key={group.id} group={group} busy={busy} selected={props.selected} includedPaths={props.selection.includedPaths} onSetGroup={props.selection.setGroup} onToggle={props.selection.toggle} onOpenDiff={props.onOpenDiff} onOpenFile={props.onOpenFile} onOpenConflict={props.conflict.open} onContextMenu={(event, entry) => openChangeContextMenu(event, entry, props, setContextMenu)} /> : null)}
+        {groups.map((group) => group.entries.length ? <ChangeSection key={group.id} group={group} busy={busy} selected={props.selected} includedPaths={props.selection.includedPaths} partiallyIncludedPaths={props.selection.partiallyIncludedPaths} onSetGroup={props.selection.setGroup} onToggle={props.selection.toggle} onOpenDiff={props.onOpenDiff} onOpenFile={props.onOpenFile} onOpenConflict={props.conflict.open} onContextMenu={(event, entry) => openChangeContextMenu(event, entry, props, setContextMenu)} /> : null)}
         {snapshot?.hasMore ? <button type="button" className="source-control__load-more" disabled={busy || props.loadingMoreChanges} onClick={props.onLoadMoreChanges}>{props.loadingMoreChanges ? "Loading…" : `Load More (${snapshot.changes.length}/${snapshot.totalChanges})`}</button> : null}
       </div>
       {props.discard.backup ? <div className="source-control__undo" role="status"><span>Rolled back {getPathBasename(props.discard.backup.path)}</span><button type="button" disabled={busy || props.discard.restoring} onClick={() => void props.discard.restore()}>Undo</button><button type="button" aria-label="Dismiss rollback backup" onClick={props.discard.dismissBackup}>×</button></div> : null}
       {props.error || props.selection.error ? <div className="source-control__error" role="alert">{props.selection.error ?? props.error}</div> : null}
       <GitCommitComposer draft={props.commitDraft} stagedCount={props.selection.includedCount} conflictCount={conflictCount} disabled={busy || !snapshot || Boolean(snapshot?.hasMore)} committing={props.operation === "commit"} loadingAmendMessage={props.loadingAmendMessage} focusToken={props.commitFocusToken} onChangeMessage={props.onChangeCommitMessage} onChangeAmend={props.onChangeCommitAmend} onChangeSignOff={props.onChangeCommitSignOff} onCommit={props.onCommit} />
-      <footer className="source-control__footer"><span>{snapshot ? `${props.selection.includedCount} of ${snapshot.totalChanges} changes selected` : "Git unavailable"}</span><span>{operationLabel(props.operation)}</span></footer>
+      <footer className="source-control__footer"><span>{snapshot ? `${props.selection.includedCount} of ${snapshot.totalChanges} files included${props.selection.partiallyIncludedPaths.size ? ` · ${props.selection.partiallyIncludedPaths.size} partial` : ""}` : "Git unavailable"}</span><span>{operationLabel(props.operation)}</span></footer>
       <GitConflictResolver conflict={props.conflict} />
       <GitDiscardDialog discard={props.discard} />
       <GitDirtyDocumentsDialog guard={props.dirtyGuard} />
@@ -75,23 +75,26 @@ export function SourceControlToolWindow(props: Props) {
   );
 }
 
-function ChangeSection({ group, busy, selected, includedPaths, onSetGroup, onToggle, onOpenDiff, onOpenFile, onOpenConflict, onContextMenu }: {
-  group: ChangeGroup; busy: boolean; selected: GitChangeSelection | null; includedPaths: Set<string>;
+function ChangeSection({ group, busy, selected, includedPaths, partiallyIncludedPaths, onSetGroup, onToggle, onOpenDiff, onOpenFile, onOpenConflict, onContextMenu }: {
+  group: ChangeGroup; busy: boolean; selected: GitChangeSelection | null; includedPaths: Set<string>; partiallyIncludedPaths: Set<string>;
   onSetGroup: (entries: GitChangeEntry[], included: boolean) => void; onToggle: (entry: GitChangeEntry) => void;
   onOpenDiff: (selection: GitChangeSelection) => void; onOpenFile: (path: string) => void; onOpenConflict: (entry: GitChangeEntry) => void;
   onContextMenu: (event: ReactMouseEvent<HTMLElement>, entry: GitChangeEntry) => void;
 }) {
   const selectable = group.entries.filter((entry) => !entry.conflicted);
-  const allIncluded = selectable.length > 0 && selectable.every((entry) => includedPaths.has(entry.relativePath));
+  const allIncluded = selectable.length > 0 && selectable.every((entry) => includedPaths.has(entry.relativePath) && !partiallyIncludedPaths.has(entry.relativePath));
+  const someIncluded = selectable.some((entry) => includedPaths.has(entry.relativePath));
+  const groupPartial = someIncluded && !allIncluded;
   return <section className="source-control__group" aria-label={group.label}>
-    <header className="source-control__group-header"><input type="checkbox" aria-label={`Include all ${group.label}`} checked={allIncluded} disabled={!selectable.length || busy} onChange={() => onSetGroup(selectable, !allIncluded)} /><strong>{group.label}</strong><span>{group.entries.length}</span></header>
+    <header className="source-control__group-header"><input ref={(node) => { if (node) node.indeterminate = groupPartial; }} type="checkbox" aria-label={`Include all ${group.label}`} checked={allIncluded} disabled={!selectable.length || busy} onChange={() => onSetGroup(selectable, !allIncluded)} /><strong>{group.label}</strong><span>{group.entries.length}</span></header>
     <div role="listbox" aria-label={`${group.label} files`}>{group.entries.map((entry) => {
       const active = selected?.entry.relativePath === entry.relativePath;
       const included = includedPaths.has(entry.relativePath);
+      const partial = partiallyIncludedPaths.has(entry.relativePath);
       const open = () => entry.conflicted ? onOpenConflict(entry) : onOpenDiff({ entry, staged: false, commitView: true });
       return <div key={entry.relativePath} className={`source-control__change${active ? " source-control__change--active" : ""}`} role="option" aria-selected={active} tabIndex={0} onContextMenu={(event) => onContextMenu(event, entry)} onKeyDown={(event) => handleRowKey(event, entry, open, onToggle)}>
-        <input type="checkbox" aria-label={`Include ${entry.relativePath}`} checked={included} disabled={busy || entry.conflicted} onChange={() => onToggle(entry)} />
-        <button type="button" className="source-control__change-main" title={entry.relativePath} onClick={open} onDoubleClick={() => onOpenFile(entry.absolutePath)}><span className="source-control__filename">{getPathBasename(entry.relativePath)}</span><span className="source-control__path">{parentPath(entry.relativePath)}</span><span className={`source-control__status source-control__status--${entry.kind}`}>{statusLabel(entry)}</span></button>
+        <input ref={(node) => { if (node) node.indeterminate = partial; }} type="checkbox" aria-label={`Include ${entry.relativePath}`} title={partial ? "Partially included: staged changes will be committed; click to include the entire file" : undefined} checked={included} disabled={busy || entry.conflicted} onChange={() => onToggle(entry)} />
+        <button type="button" className="source-control__change-main" title={entry.relativePath} onClick={open} onDoubleClick={() => onOpenFile(entry.absolutePath)}><span className="source-control__filename">{getPathBasename(entry.relativePath)}</span><span className="source-control__path">{parentPath(entry.relativePath)}</span>{partial ? <span className="source-control__inclusion">Partial</span> : null}<span className={`source-control__status source-control__status--${entry.kind}`}>{statusLabel(entry)}</span></button>
       </div>;
     })}</div>
   </section>;

@@ -6,6 +6,7 @@ import type { GitChangeEntry, GitRepositorySnapshot } from "@/features/git/git-s
 
 const tracked = change("src/main.ets", ".M", "modified", { unstaged: true });
 const staged = change("src/staged.ets", "M.", "modified", { staged: true });
+const partiallyStaged = change("src/partial.ets", "MM", "modified", { staged: true, unstaged: true });
 const unversioned = change("notes.txt", "??", "untracked", { unstaged: true });
 const conflicted = change("src/conflict.ets", "UU", "conflicted", { unstaged: true, conflicted: true });
 const changes = [tracked, staged, unversioned, conflicted];
@@ -24,7 +25,7 @@ describe("IDEA-style Commit tool window", () => {
     expect(screen.getByRole("checkbox", { name: "Include src/conflict.ets" })).toBeDisabled();
   });
 
-  it("toggles inclusion without exposing staging vocabulary", async () => {
+  it("uses inclusion controls to define commit scope", async () => {
     const user = userEvent.setup();
     const props = createProps();
     render(<SourceControlToolWindow {...props} />);
@@ -32,6 +33,27 @@ describe("IDEA-style Commit tool window", () => {
     await user.click(screen.getByRole("checkbox", { name: "Include notes.txt" }));
     expect(props.selection.toggle).toHaveBeenCalledWith(unversioned);
     expect(screen.queryByText(/Stage All/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a partially included file as mixed until the user expands it", async () => {
+    const user = userEvent.setup();
+    const selection = {
+      includedPaths: new Set([partiallyStaged.relativePath]), partiallyIncludedPaths: new Set([partiallyStaged.relativePath]),
+      includedCount: 1, preparing: false, error: null, toggle: vi.fn(), setGroup: vi.fn(), prepare: vi.fn(),
+    };
+    const props = createProps({
+      snapshot: { ...snapshot, changes: [partiallyStaged], totalChanges: 1, stagedChanges: 1, conflictedChanges: 0 },
+      selection,
+    });
+    render(<SourceControlToolWindow {...props} />);
+
+    const fileCheckbox = screen.getByRole("checkbox", { name: "Include src/partial.ets" }) as HTMLInputElement;
+    expect(fileCheckbox.indeterminate).toBe(true);
+    expect(screen.getByText("Partial")).toBeVisible();
+    expect(screen.getByText("1 of 1 files included · 1 partial")).toBeVisible();
+    expect((screen.getByRole("checkbox", { name: "Include all Changes" }) as HTMLInputElement).indeterminate).toBe(true);
+    await user.click(fileCheckbox);
+    expect(selection.toggle).toHaveBeenCalledWith(partiallyStaged);
   });
 
   it("opens a commit-scope diff and opens the editor on double click", () => {
@@ -99,7 +121,7 @@ const snapshot: GitRepositorySnapshot = {
 function createProps(overrides: Partial<ComponentProps<typeof SourceControlToolWindow>> = {}): ComponentProps<typeof SourceControlToolWindow> {
   return {
     snapshot, selected: null,
-    selection: { includedPaths: new Set([tracked.relativePath, staged.relativePath]), includedCount: 2, preparing: false, error: null, toggle: vi.fn(), setGroup: vi.fn(), prepare: vi.fn() },
+    selection: { includedPaths: new Set([tracked.relativePath, staged.relativePath]), partiallyIncludedPaths: new Set(), includedCount: 2, preparing: false, error: null, toggle: vi.fn(), setGroup: vi.fn(), prepare: vi.fn() },
     commitDraft: { message: "", amend: false, signOff: false }, commitFocusToken: 0, operation: "idle", error: null,
     loadingMoreChanges: false, loadingAmendMessage: false, conflict: emptyConflict(), discard: emptyDiscard(), dirtyGuard: emptyDirtyGuard(),
     onChangeCommitMessage: vi.fn(), onChangeCommitAmend: vi.fn(), onChangeCommitSignOff: vi.fn(), onRefresh: vi.fn(),
