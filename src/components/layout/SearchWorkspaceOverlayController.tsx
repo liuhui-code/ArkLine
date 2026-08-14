@@ -121,8 +121,7 @@ export function SearchWorkspaceOverlayController(props: SearchWorkspaceOverlayCo
         props.onOpenQuickOpen();
       },
       open: (mode, initialQuery) => {
-        openSearchOverlay(mode);
-        if (initialQuery !== undefined) setQuery(initialQuery);
+        openSearchOverlay(mode, initialQuery);
       },
     });
   }, [openSearchOverlay, props, resetSearchOverlayState]);

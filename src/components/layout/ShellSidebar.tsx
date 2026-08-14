@@ -149,7 +149,7 @@ export function ShellSidebar({
       <LeftToolRail activeTool={activeTool} onSelectTool={onSelectTool} />
       <div className="sidebar__panes">
         <div ref={filesPaneRef} className="sidebar__pane">
-          <ToolWindow ariaLabel={activeTool === "git" ? "Source Control" : "Files"} title={activeTool === "git" ? "Source Control" : "Project"} caption={activeTool === "git" ? "Git" : "Files"} visible={filesVisible} className="tool-window">
+          <ToolWindow ariaLabel={activeTool === "git" ? "Commit Tool Window" : "Files"} title={activeTool === "git" ? "Commit" : "Project"} caption={activeTool === "git" ? "Local Changes" : "Files"} visible={filesVisible} className="tool-window">
             {activeTool === "git" ? sourceControlProps ? <SourceControlToolWindow {...sourceControlProps} /> : <p>Source Control unavailable.</p> : workspace ? (
               useLazyProjectTree ? (
                 <ProjectToolWindow

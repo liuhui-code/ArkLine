@@ -225,8 +225,25 @@ describe("App shell", () => {
     expect(within(statusBar).getByText("Ready")).toHaveClass("status-pill--em");
     expect(within(screen.getByLabelText("Files")).getByText("Project")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Project" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Commit" })).toHaveAttribute("aria-pressed", "false");
     expect(within(header).getByRole("button", { name: "Settings" })).toHaveClass("toolbar__button--primary");
     await waitFor(() => expect(screen.getByLabelText("Semantic Mode")).toHaveTextContent("Fallback"));
+  });
+
+  it("separates Commit local changes from Git history in the View menu", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(screen.getByRole("menuitem", { name: "Commit" }));
+    expect(screen.getByRole("region", { name: "Commit Tool Window" })).toBeVisible();
+    expect(screen.getByLabelText("Commit message")).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "false");
+
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await user.click(screen.getByRole("menuitem", { name: "Git" }));
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByLabelText("Git Panel")).toBeVisible();
   });
 
   it("maximizes and restores the bottom tool window from the chrome actions", async () => {
@@ -1975,7 +1992,7 @@ describe("App shell", () => {
     expect(await screen.findByText("Index: partial (1 files)")).toBeVisible();
   });
 
-  it("searches workspace text with regex and text options, groups relative path results, previews the selected hit, and opens the file", async () => {
+  it("searches workspace text, previews a single-clicked hit, and opens it on double click", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -2010,11 +2027,20 @@ describe("App shell", () => {
 
     await user.click(appJsonMatch);
 
-    expect(screen.queryByLabelText("Search Everywhere Overlay")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Find in Files Overlay")).toBeVisible();
+    expect(appJsonMatch).toHaveAttribute("aria-selected", "true");
+
+    await user.dblClick(appJsonMatch);
+
+    expect(screen.queryByLabelText("Find in Files Overlay")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "app.json5", pressed: true })).toBeVisible();
     const editor = await screen.findByLabelText("Editor Content");
     expect(editor).toHaveTextContent("\"bundleName\": \"com.demo.app\"");
     await waitFor(() => expect(editor).toHaveFocus());
+
+    await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+    expect(await screen.findByLabelText("Find in Files Query")).toHaveValue("/bundleName/");
+    expect(screen.getByRole("button", { name: /AppScope\/app\.json5:3:6/ })).toHaveAttribute("aria-selected", "true");
   });
 
   it("moves Find in Files focus with keyboard and wheel and opens the focused match", async () => {

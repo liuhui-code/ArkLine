@@ -10,6 +10,7 @@ export type ShellCommand =
   | "closeActiveFile"
   | "hideActiveToolWindow"
   | "navigateBack"
+  | "navigateForward"
   | "toggleEditorOnly"
   | "openQuickOpen"
   | "openSearchEverywhere"
@@ -39,6 +40,7 @@ export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "closeTransientUi", title: "Close", category: "Window", defaultKeybindings: [{ key: "Escape" }] },
   { id: "closeActiveFile", title: "Close Active File", category: "File", defaultKeybindings: [{ mod: true, key: "w" }] },
   { id: "navigateBack", title: "Navigate Back", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowLeft" }] },
+  { id: "navigateForward", title: "Navigate Forward", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowRight" }] },
   { id: "findUsages", title: "Find Usages", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F7" }] },
   { id: "showCurrentClassMethods", title: "Show Current Class Methods", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F12" }] },
   { id: "showCodeActions", title: "Show Code Actions", category: "Editor", defaultKeybindings: [{ alt: true, key: "Enter" }], when: editorCommandAvailable },

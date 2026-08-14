@@ -11,6 +11,7 @@ type AppShellCommandActions = {
   hideActiveToolWindow: () => void;
   toggleEditorOnly: () => void;
   navigateBack: () => void | Promise<void>;
+  navigateForward: () => void | Promise<void>;
   openQuickOpen: () => void;
   openSearchEverywhere: () => void;
   openFindInFiles: () => void;
@@ -89,6 +90,7 @@ export function useAppShellCommands({
         hideActiveToolWindow: actions.hideActiveToolWindow,
         toggleEditorOnly: actions.toggleEditorOnly,
         navigateBack: actions.navigateBack,
+        navigateForward: actions.navigateForward,
         openQuickOpen: actions.openQuickOpen,
         openSearchEverywhere: actions.openSearchEverywhere,
         openFindInFiles: actions.openFindInFiles,

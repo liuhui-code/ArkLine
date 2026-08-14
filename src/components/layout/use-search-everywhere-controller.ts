@@ -101,6 +101,11 @@ export function useSearchEverywhereController({
     caseSensitive: false,
     wholeWord: false,
   });
+  const rememberedQueriesRef = useRef<Record<SearchEverywhereMode, string>>({
+    searchEverywhere: "",
+    find: "",
+    replace: "",
+  });
   const searchSessionStoreRef = useRef(createSearchSessionStore());
   const workspaceApiRef = useRef(workspaceApi);
   const workspaceRootRef = useRef<string | null>(workspace?.rootPath ?? null);
@@ -204,6 +209,7 @@ export function useSearchEverywhereController({
     reportTextMiss: searchMissReporters.reportTextMiss,
     onStreamError: (message) => onStatusChange(`Search failed: ${message}`),
     runFallback: fallbackTextSearch,
+    getSearchSnapshot: searchSessionStoreRef.current.getSnapshot,
   });
   const searchOverlayCommands = createSearchOverlayCommandActions({
     mode: searchEverywhereMode,
@@ -217,10 +223,14 @@ export function useSearchEverywhereController({
     setQuickOpenQuery,
     setActiveOverlay,
     setSearchEverywhereOptions,
+    getRestoredQuery: (mode) => rememberedQueriesRef.current[mode],
+    rememberQuery: (mode, query) => {
+      rememberedQueriesRef.current[mode] = query;
+    },
   });
 
-  function openSearchOverlay(mode: SearchEverywhereMode) {
-    searchOverlayCommands.openSearchOverlay(mode);
+  function openSearchOverlay(mode: SearchEverywhereMode, initialQuery?: string) {
+    searchOverlayCommands.openSearchOverlay(mode, initialQuery);
   }
 
   function handleOverlayQueryChange(value: string) {

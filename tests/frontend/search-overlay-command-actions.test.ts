@@ -103,4 +103,28 @@ describe("search overlay command actions", () => {
 
     expect(setQuickOpenQuery).toHaveBeenCalledWith("latest selection");
   });
+
+  it("remembers committed queries and restores them on the next open", () => {
+    const remembered = new Map<string, string>();
+    const setQuickOpenQuery = vi.fn();
+    const actions = createSearchOverlayCommandActions({
+      mode: "find",
+      getEditorSelectedText: () => "",
+      invalidateSearchSession: vi.fn(),
+      resetDebouncedSearchQuery: vi.fn(),
+      patchSearchSession: vi.fn(),
+      setSearchEverywhereMode: vi.fn(),
+      setSearchEverywhereScope: vi.fn(),
+      setQuickOpenQuery,
+      setActiveOverlay: vi.fn(),
+      setSearchEverywhereOptions: vi.fn(),
+      getRestoredQuery: (mode) => remembered.get(mode) ?? "",
+      rememberQuery: (mode, query) => remembered.set(mode, query),
+    });
+
+    actions.handleOverlayQueryChange("needle");
+    actions.openSearchOverlay("find");
+
+    expect(setQuickOpenQuery).toHaveBeenLastCalledWith("needle");
+  });
 });

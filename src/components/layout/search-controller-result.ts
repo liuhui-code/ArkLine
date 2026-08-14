@@ -17,7 +17,7 @@ export type SearchControllerActions = {
   setSearchEverywhereScope: Dispatch<SetStateAction<WorkspaceIndexQueryScope>>;
   setSearchEverywhereReplaceQuery: Dispatch<SetStateAction<string>>;
   setSearchEverywhereSelectedIndex: (selectedIndex: number) => void;
-  openSearchOverlay: (mode: SearchEverywhereMode) => void;
+  openSearchOverlay: (mode: SearchEverywhereMode, initialQuery?: string) => void;
   handleOverlayQueryChange: (value: string) => void;
   handleOverlayQueryDraftChange: (value: string) => void;
   resetSearchOverlayState: () => void;

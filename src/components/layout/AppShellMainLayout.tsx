@@ -35,10 +35,13 @@ type AppShellMainLayoutProps = {
     onOpenCommandPalette: () => void;
     onRunLint: () => void;
     onRunBuild: () => void;
-    onLoadDiff: () => void;
+    onOpenCommit: () => void;
+    onOpenGit: () => void;
     onOpenTerminal: () => void;
     onOpenSettings: () => void;
     onToggleEditorOnly: () => void;
+    onNavigateBack: () => void;
+    onNavigateForward: () => void;
   };
   sidebar: {
     activePath: string | null;

@@ -18,10 +18,13 @@ type TopBarProps = {
   onOpenCommandPalette: () => void;
   onRunLint: () => void;
   onRunBuild: () => void;
-  onLoadDiff: () => void;
+  onOpenCommit: () => void;
+  onOpenGit: () => void;
   onOpenTerminal: () => void;
   onOpenSettings: () => void;
   onToggleEditorOnly: () => void;
+  onNavigateBack: () => void;
+  onNavigateForward: () => void;
 };
 
 type MenuKey = "file" | "edit" | "view" | "run";
@@ -48,10 +51,13 @@ export function TopBar({
   onOpenCommandPalette,
   onRunLint,
   onRunBuild,
-  onLoadDiff,
+  onOpenCommit,
+  onOpenGit,
   onOpenTerminal,
   onOpenSettings,
   onToggleEditorOnly,
+  onNavigateBack,
+  onNavigateForward,
 }: TopBarProps) {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -108,6 +114,10 @@ export function TopBar({
     ],
     edit: [
       [
+        { label: "Navigate Back", action: onNavigateBack, shortcut: getShellCommandShortcut("navigateBack") },
+        { label: "Navigate Forward", action: onNavigateForward, shortcut: getShellCommandShortcut("navigateForward") },
+      ],
+      [
         { label: "Command Palette", action: onOpenCommandPalette, shortcut: getShellCommandShortcut("openCommandPalette") },
       ],
       [
@@ -122,7 +132,8 @@ export function TopBar({
       ],
       [
         { label: "Terminal", action: onOpenTerminal, shortcut: getShellCommandShortcut("showTerminal") },
-        { label: "Git", action: onLoadDiff, shortcut: getShellCommandShortcut("showGit") },
+        { label: "Commit", action: onOpenCommit, shortcut: getShellCommandShortcut("commitChanges") },
+        { label: "Git", action: onOpenGit, shortcut: getShellCommandShortcut("showGit") },
       ],
       [
         { label: "Editor Only", action: onToggleEditorOnly, shortcut: getShellCommandShortcut("toggleEditorOnly") },

@@ -56,6 +56,15 @@ describe("IDEA-style Commit tool window", () => {
     expect(props.onCommit).toHaveBeenCalledWith("commitAndPush");
   });
 
+  it("honors a pending commit focus request once repository loading completes", () => {
+    const props = createProps({ snapshot: null, commitFocusToken: 1 });
+    const view = render(<SourceControlToolWindow {...props} />);
+
+    expect(screen.getByLabelText("Commit message")).toBeDisabled();
+    view.rerender(<SourceControlToolWindow {...props} snapshot={snapshot} />);
+    expect(screen.getByLabelText("Commit message")).toHaveFocus();
+  });
+
   it("uses IDEA rollback terminology and preserves undo", async () => {
     const user = userEvent.setup();
     const props = createProps({ discard: { ...emptyDiscard(), pending: tracked, backup: { commit: "abc", path: tracked.relativePath } } });
