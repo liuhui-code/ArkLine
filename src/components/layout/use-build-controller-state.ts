@@ -311,7 +311,7 @@ export function useBuildControllerState({
     buildRunCounterRef.current += 1;
     const runId = `build-${buildRunCounterRef.current}`;
 
-    buildStoreRef.current.start({ ...plan, runId });
+    buildStoreRef.current.start({ ...plan, runId }, preflight);
     syncBuildState();
     showBuild();
     onStatusChange(plan.label);
@@ -323,14 +323,14 @@ export function useBuildControllerState({
         runTerminalCommand: workspaceApi.runTerminalCommand,
         settings: sdkSettings,
         toolchain,
-        findBuildArtifacts: workspaceApi.findHarmonyBuildArtifacts
-          ? () => workspaceApi.findHarmonyBuildArtifacts!(
+        findBuildArtifacts: () => workspaceApi.findHarmonyBuildArtifacts
+          ? workspaceApi.findHarmonyBuildArtifacts(
             plan.intent.projectRoot,
             plan.intent.target,
             plan.intent.moduleName,
             plan.intent.product,
           )
-          : undefined,
+          : Promise.resolve([]),
       });
       buildStoreRef.current.finish(buildResult);
       replaceBuildProblems(buildResult.diagnostics);

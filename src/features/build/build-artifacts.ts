@@ -35,7 +35,7 @@ export function inferArtifactSignature(
   if (/(?:^|[-_])signed(?:[-_.]|$)/.test(fileName)) {
     return "signed";
   }
-  // Hvigor appends an unsigned suffix when it skips signing. Custom artifact
-  // names omit a signed suffix, so every other signable output is signed.
-  return "signed";
+  // A custom artifact name may omit both suffixes. Do not claim it is signed
+  // without explicit evidence from the produced artifact.
+  return "unknown";
 }
