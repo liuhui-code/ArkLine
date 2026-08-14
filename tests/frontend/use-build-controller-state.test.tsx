@@ -95,6 +95,82 @@ describe("useBuildControllerState", () => {
     expect(replaceBuildProblems.mock.calls[0]?.[0]).toEqual(expect.not.arrayContaining([diagnostic]));
   });
 
+  it("runs the build when the selected product has no signing configuration", async () => {
+    const unsignedArtifact = "/project/entry/build/default/outputs/default/entry-default-unsigned.hap";
+    const runTerminalCommand = vi.fn(async () => ({
+      runId: "build-1",
+      command: "./hvigorw assembleHap",
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const inspectHarmonyBuildProject = vi.fn(async () => ({
+      rootPath: "/project",
+      isHarmonyProject: true,
+      hasHvigorWrapper: true,
+      hvigorWrapperCommand: "./hvigorw",
+      hasHvigorFile: true,
+      hasBuildProfile: true,
+      hasOhPackage: true,
+      modules: ["entry"],
+      defaultModule: "entry",
+      products: ["default"],
+      defaultProduct: "default",
+      productSigning: [{
+        product: "default",
+        signingConfig: null,
+        ready: false,
+        issues: ["product does not reference signingConfig"],
+      }],
+    }));
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({
+        inspectHarmonyBuildProject,
+        runTerminalCommand,
+        findHarmonyBuildArtifacts: vi.fn(async () => [unsignedArtifact]),
+      }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(runTerminalCommand).toHaveBeenCalledOnce();
+    expect(result.current.buildState.status).toBe("success");
+    expect(result.current.buildState.lastResult?.artifacts).toContainEqual(expect.objectContaining({
+      path: unsignedArtifact,
+      signature: "unsigned",
+    }));
+    expect(result.current.buildState.preflight?.issues).toContainEqual(expect.objectContaining({
+      code: "missing-signing-config",
+      severity: "warning",
+    }));
+  });
+
+  it("fails closed when the production artifact verifier is unavailable", async () => {
+    const runTerminalCommand = vi.fn(async () => ({
+      runId: "build-1",
+      command: "./hvigorw assembleHap",
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({ runTerminalCommand, findHarmonyBuildArtifacts: undefined }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(result.current.buildState.status).toBe("failed");
+    expect(result.current.buildState.lastResult?.stderr).toContain("no .hap artifact was found");
+  });
+
   it("uses one resolved environment for build preflight and Hvigor", async () => {
     const resolveBuildEnvironment = vi.fn(async (_request: BuildEnvironmentRequest) => ({
       canBuild: true,
@@ -420,6 +496,7 @@ function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
       stopped: false,
     })),
     stopTerminalCommand: vi.fn(async () => undefined),
+    findHarmonyBuildArtifacts: vi.fn(async () => ["/project/entry/build/default/outputs/default/entry-default-signed.hap"]),
     ...overrides,
   } as unknown as WorkspaceApi;
 }

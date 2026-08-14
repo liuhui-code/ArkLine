@@ -212,8 +212,13 @@ directory that contains `ets` and `toolchains`, not an individual file. If the
 wrapper is present but still fails, verify that the selected project root is the
 directory containing `hvigorw`, `hvigorfile.ts`, and `build-profile.json5`.
 
-Signing is part of build correctness for HAP, APP, and HSP targets. Native
-project inspection resolves the selected product's signing configuration and
-checks required material without returning password values. Missing
-configuration or material blocks the build. A successful Hvigor exit that only
-produces an `unsigned` package is converted to a failed ArkLine build result.
+Signing is optional for HAP, APP, and HSP compilation. Native project inspection
+resolves the selected product's signing configuration and checks required
+material without returning password values. Missing configuration or material
+is a non-blocking warning. A successful Hvigor exit that produces an `unsigned`
+package remains a successful build result and records its unsigned status so
+install and launch workflows can reject it when signing is actually required.
+The Build tool window keeps the warning visible after completion and renders an
+artifact receipt with package kind, path, and conservative signature state.
+Packages without explicit signing evidence are reported as `unknown`, never
+silently promoted to `signed`.

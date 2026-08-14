@@ -283,7 +283,7 @@ describe("build command preflight", () => {
     }));
   });
 
-  it("blocks signable targets when the selected product has no signing config", () => {
+  it("allows unsigned builds when the selected product has no signing config", () => {
     const result = preflightHarmonyBuild({
       project: {
         rootPath: "/workspace/Demo",
@@ -309,14 +309,14 @@ describe("build command preflight", () => {
       product: "default",
     });
 
-    expect(result.canBuild).toBe(false);
+    expect(result.canBuild).toBe(true);
     expect(result.issues).toContainEqual(expect.objectContaining({
       code: "missing-signing-config",
-      severity: "error",
+      severity: "warning",
     }));
   });
 
-  it("reports missing signing materials without exposing their values", () => {
+  it("allows unsigned builds when signing materials are incomplete", () => {
     const result = preflightHarmonyBuild({
       project: {
         rootPath: "/workspace/Demo",
@@ -342,9 +342,10 @@ describe("build command preflight", () => {
       product: "default",
     });
 
-    expect(result.canBuild).toBe(false);
+    expect(result.canBuild).toBe(true);
     expect(result.issues).toContainEqual(expect.objectContaining({
       code: "invalid-signing-material",
+      severity: "warning",
       hint: "material.profile file does not exist",
     }));
   });
@@ -438,7 +439,7 @@ describe("build artifacts", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
-        signature: "signed",
+        signature: "unknown",
       },
       {
         path: "/workspace/Demo/library/build/default/outputs/default/library.har",
@@ -457,7 +458,7 @@ describe("build artifacts", () => {
         path: "/workspace/Demo/build/default/app/default/app.app",
         kind: "app",
         source: "output",
-        signature: "signed",
+        signature: "unknown",
       },
     ]);
   });
@@ -703,7 +704,7 @@ describe("build controller", () => {
         path: "/workspace/Demo/entry/build/default/outputs/default/entry-default.hap",
         kind: "hap",
         source: "output",
-        signature: "signed",
+        signature: "unknown",
       },
     ]);
     expect(result.diagnostics).toEqual([
@@ -718,7 +719,7 @@ describe("build controller", () => {
     ]);
   });
 
-  it("rejects an unsigned artifact even when Hvigor exits successfully", async () => {
+  it("accepts an unsigned artifact when Hvigor exits successfully", async () => {
     const plan = planHarmonyBuildCommand({
       rootPath: "/workspace/Demo",
       target: "hap",
@@ -751,8 +752,8 @@ describe("build controller", () => {
       source: "filesystem",
       signature: "unsigned",
     }]);
-    expect(result.status).toBe("failed");
-    expect(result.stderr).toContain("produced an unsigned .hap artifact");
+    expect(result.status).toBe("success");
+    expect(result.stderr).toBe("");
   });
 
   it("accepts a signed artifact from the filesystem", async () => {
