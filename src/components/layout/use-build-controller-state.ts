@@ -120,6 +120,8 @@ export function useBuildControllerState({
         canBuild: false,
         hvigorCommand: null,
         hvigorSource: null,
+        ohpmCommand: null,
+        dependencyRestoreRequired: false,
         nodePath: null,
         sdkPath: null,
         pathEntries: [],

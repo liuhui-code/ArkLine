@@ -26,6 +26,8 @@ export type HarmonyBuildRequest = {
   clean: boolean;
   fastMode: boolean;
   wrapperCommand?: string | null;
+  restoreDependencies?: boolean;
+  ohpmCommand?: string | null;
 };
 
 export type BuildPlanStep = {
@@ -110,6 +112,8 @@ export type BuildEnvironmentResolution = {
   canBuild: boolean;
   hvigorCommand?: string | null;
   hvigorSource?: "project-wrapper" | "deveco" | null;
+  ohpmCommand?: string | null;
+  dependencyRestoreRequired?: boolean;
   nodePath: string | null;
   sdkPath: string | null;
   sdkApiVersion?: string | null;
@@ -129,6 +133,7 @@ export type BuildEnvironmentSnapshot = {
   buildMode: "debug" | "release";
   clean: boolean;
   fastMode: boolean;
+  dependencyRestore: boolean;
   toolchain: BuildToolchainSnapshot;
 };
 
@@ -201,6 +206,7 @@ export type BuildPreflightIssueCode =
   | "build-environment-node"
   | "build-environment-sdk"
   | "build-environment-hvigor"
+  | "build-environment-ohpm"
   | "missing-oh-package";
 
 export type BuildPreflightIssue = {

@@ -139,6 +139,53 @@ describe("useBuildControllerState", () => {
     }));
   });
 
+  it("restores missing ohpm dependencies before starting Hvigor", async () => {
+    const ohpm = "/Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm";
+    const runTerminalCommand = vi.fn(async (request) => ({
+      runId: request.runId,
+      command: request.command,
+      stdout: request.program === ohpm ? "Install dependencies successful" : "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const resolveBuildEnvironment = vi.fn(async () => ({
+      canBuild: true,
+      hvigorCommand: "./hvigorw",
+      hvigorSource: "project-wrapper" as const,
+      ohpmCommand: ohpm,
+      dependencyRestoreRequired: true,
+      nodePath: "/tools/node",
+      sdkPath: "/tools/sdk",
+      pathEntries: ["/tools/node"],
+      environment: {},
+      checks: [
+        { name: "hvigor", available: true, detail: "Wrapper ready" },
+        { name: "node", available: true, detail: "Node ready" },
+        { name: "harmonySdk", available: true, detail: "SDK ready" },
+        { name: "ohpm", available: true, detail: "Dependency restore ready" },
+      ],
+    }));
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({ resolveBuildEnvironment, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(runTerminalCommand).toHaveBeenCalledTimes(2);
+    expect(runTerminalCommand.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      program: ohpm,
+      args: ["install", "--all"],
+      cwd: "/project",
+    }));
+    expect(runTerminalCommand.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      program: "./hvigorw",
+    }));
+  });
+
   it("builds a lazily opened project from native project inspection", async () => {
     const runTerminalCommand = vi.fn(async () => ({
       runId: "build-1",

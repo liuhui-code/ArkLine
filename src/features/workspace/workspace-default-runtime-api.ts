@@ -98,6 +98,8 @@ export function createWorkspaceRuntimeApi(): Partial<WorkspaceApi> {
         canBuild: false,
         hvigorCommand: null,
         hvigorSource: null,
+        ohpmCommand: null,
+        dependencyRestoreRequired: false,
         nodePath: null,
         sdkPath: null,
         pathEntries: [],

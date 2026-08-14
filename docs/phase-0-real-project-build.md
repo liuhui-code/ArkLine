@@ -38,6 +38,8 @@ PATH=<DevEco>/Contents/tools/node/bin:...
 ```
 
 Dependency restoration completed with the DevEco-bundled `ohpm install --all`.
+Phase 1 now automates this step when a project or module declares dependencies
+but its `oh_modules` installation evidence is missing.
 
 ## Evidence
 

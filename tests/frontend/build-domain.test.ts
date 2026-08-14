@@ -202,6 +202,7 @@ describe("build environment snapshot", () => {
       buildMode: "release",
       clean: true,
       fastMode: false,
+      dependencyRestore: false,
       toolchain: {
         harmonySdkPath: "/opt/harmony-sdk",
         semanticWorkerPath: "/opt/arkts-worker/index.js",
@@ -226,6 +227,26 @@ describe("build command preflight", () => {
     });
 
     expect(plan.command).toBe("hvigorw.bat clean --no-daemon && hvigorw.bat --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon");
+  });
+
+  it("restores project dependencies before clean and build when required", () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: true,
+      fastMode: false,
+      restoreDependencies: true,
+      ohpmCommand: "/opt/deveco/tools/ohpm/bin/ohpm",
+    });
+
+    expect(plan.steps.map((step) => step.label)).toEqual(["Dependencies", "Clean", "Build"]);
+    expect(plan.steps[0]).toEqual(expect.objectContaining({
+      program: "/opt/deveco/tools/ohpm/bin/ohpm",
+      args: ["install", "--all"],
+    }));
   });
 
   it("blocks builds when the Harmony project has no Hvigor wrapper", () => {
@@ -904,6 +925,42 @@ describe("build controller", () => {
     expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
       program: "./hvigorw",
       args: ["clean", "--no-daemon"],
+    }));
+    expect(result.status).toBe("failed");
+  });
+
+  it("does not start Hvigor when dependency restoration fails", async () => {
+    const plan = planHarmonyBuildCommand({
+      rootPath: "/workspace/Demo",
+      target: "hap",
+      moduleName: "entry",
+      product: "default",
+      buildMode: "debug",
+      clean: false,
+      fastMode: false,
+      restoreDependencies: true,
+      ohpmCommand: "/opt/deveco/tools/ohpm/bin/ohpm",
+    });
+    const runTerminalCommand = vi.fn(async (request) => ({
+      runId: request.runId,
+      command: request.command,
+      stdout: "",
+      stderr: "ohpm registry unavailable",
+      exitCode: 1,
+      durationMs: 15,
+      stopped: false,
+    }));
+
+    const result = await executeHarmonyBuildPlan({
+      runId: "build-dependencies-failed",
+      plan,
+      runTerminalCommand,
+    });
+
+    expect(runTerminalCommand).toHaveBeenCalledTimes(1);
+    expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      program: "/opt/deveco/tools/ohpm/bin/ohpm",
+      args: ["install", "--all"],
     }));
     expect(result.status).toBe("failed");
   });

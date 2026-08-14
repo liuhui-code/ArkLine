@@ -97,11 +97,26 @@ resolution and can break project-local dependencies.
 project selection
   -> inspect project root and resolve project/DevEco Hvigor
   -> resolve build environment
-  -> show Node/SDK checks in preflight
+  -> show Node/SDK/ohpm checks in preflight
   -> create build plan
+  -> restore missing ohpm dependencies when required
   -> run each Hvigor step from project root with structured program/args
   -> parse output and retain environment snapshot
 ```
+
+## Dependency Readiness
+
+Project and direct module `oh-package.json5` manifests are inspected before a
+build. A manifest that declares `dependencies`, `devDependencies`, or
+`dynamicDependencies` requires an adjacent `oh_modules` directory. When that
+evidence is missing, environment resolution must find ohpm from the selected or
+detected DevEco installation, with PATH as an auto-detect fallback.
+
+The command planner prepends `ohpm install --all` only for that missing state.
+It runs as a separate structured process under the build run ID, so output,
+duration, cancellation, and failure are handled consistently. A failed restore
+prevents Clean and Build. A ready project never performs an unconditional
+dependency installation, preserving the normal incremental path.
 
 Hvigor global options precede the task, matching the supported command-line
 shape documented by Huawei:

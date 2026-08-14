@@ -34,6 +34,7 @@ export function createBuildEnvironmentSnapshot(input: BuildEnvironmentSnapshotIn
     buildMode: input.plan.intent.buildMode,
     clean: input.plan.intent.clean,
     fastMode: input.plan.intent.fastMode,
+    dependencyRestore: input.plan.steps.some((step) => step.label === "Dependencies"),
     toolchain,
   };
 }

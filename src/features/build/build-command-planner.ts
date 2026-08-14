@@ -56,12 +56,21 @@ export function planHarmonyBuildCommand(request: HarmonyBuildRequest): BuildPlan
   const buildArgs = argsForIntent(intent);
   const buildCommand = renderCommand(wrapperCommand, buildArgs);
   const cleanArgs = ["clean", ...(intent.fastMode ? [] : ["--no-daemon"])];
-  const steps = intent.clean
+  const buildSteps = intent.clean
     ? [
       { label: "Clean", command: renderCommand(wrapperCommand, cleanArgs), program: wrapperCommand, args: cleanArgs },
       { label: "Build", command: buildCommand, program: wrapperCommand, args: buildArgs },
     ]
     : [{ label: "Build", command: buildCommand, program: wrapperCommand, args: buildArgs }];
+  const ohpmCommand = request.ohpmCommand?.trim();
+  const steps = request.restoreDependencies && ohpmCommand
+    ? [{
+      label: "Dependencies",
+      command: renderCommand(ohpmCommand, ["install", "--all"]),
+      program: ohpmCommand,
+      args: ["install", "--all"],
+    }, ...buildSteps]
+    : buildSteps;
 
   return {
     label: `Build ${labelForTarget(intent.target)} ${intent.moduleName ?? "project"} ${intent.buildMode}`,

@@ -9,6 +9,10 @@ use crate::models::build_environment::{
 use crate::services::process_command_service::hidden_command;
 use crate::services::semantic_host::sdk::discover_harmony_sdk;
 
+#[path = "build_dependency_service.rs"]
+mod build_dependency_service;
+use build_dependency_service::dependency_restore_required;
+
 const SDK_ENV_NAMES: [&str; 5] = [
     "ARKLINE_HARMONY_SDK_PATH",
     "HOS_SDK_HOME",
@@ -38,17 +42,26 @@ fn resolve_build_environment_from_candidates(
     request: &BuildEnvironmentRequest,
     deveco_candidates: Vec<PathBuf>,
 ) -> BuildEnvironmentResolution {
+    let ohpm_candidates = deveco_ohpm_candidates(&deveco_candidates);
     let hvigor = resolve_hvigor_from_candidates(request, deveco_candidates);
     let node = resolve_node_path(request, hvigor.as_ref());
     let sdk = resolve_sdk_path(request, hvigor.as_ref());
+    let dependency_restore_required = dependency_restore_required(Path::new(&request.root_path));
+    let ohpm = resolve_ohpm(request, hvigor.as_ref(), ohpm_candidates);
     let mut checks = Vec::new();
     checks.push(check_hvigor(hvigor.as_ref(), request));
     checks.push(check_node(node.as_ref(), request));
     checks.push(check_sdk(sdk.as_ref(), request));
+    checks.push(check_ohpm(ohpm.as_ref(), dependency_restore_required));
 
     let mut path_entries = Vec::new();
     if let Some(node) = node.as_ref() {
         push_unique_path(&mut path_entries, node.bin_dir.clone());
+    }
+    if let Some(command) = ohpm.as_ref() {
+        if let Some(parent) = command.parent() {
+            push_unique_path(&mut path_entries, parent.to_path_buf());
+        }
     }
     if let Some(sdk_path) = sdk.as_ref() {
         for suffix in ["toolchains", "ets"] {
@@ -98,12 +111,62 @@ fn resolve_build_environment_from_candidates(
             .as_ref()
             .map(|value| value.command.to_string_lossy().to_string()),
         hvigor_source: hvigor.as_ref().map(|value| value.source.to_string()),
+        ohpm_command: ohpm.map(|value| value.to_string_lossy().to_string()),
+        dependency_restore_required,
         node_path: node.map(|value| value.bin_dir.to_string_lossy().to_string()),
         sdk_api_version: sdk.as_deref().and_then(read_sdk_api_version),
         sdk_path: sdk.map(|path| path.to_string_lossy().to_string()),
         path_entries,
         environment,
         checks,
+    }
+}
+
+fn deveco_ohpm_candidates(hvigor_candidates: &[PathBuf]) -> Vec<PathBuf> {
+    hvigor_candidates
+        .iter()
+        .filter_map(|command| command.ancestors().nth(4))
+        .map(|contents| {
+            contents
+                .join("tools/ohpm/bin")
+                .join(if cfg!(windows) { "ohpm.bat" } else { "ohpm" })
+        })
+        .collect()
+}
+
+fn resolve_ohpm(
+    request: &BuildEnvironmentRequest,
+    hvigor: Option<&ResolvedHvigor>,
+    mut candidates: Vec<PathBuf>,
+) -> Option<PathBuf> {
+    if let Some(contents) = hvigor.and_then(|value| value.deveco_contents.as_ref()) {
+        candidates.insert(
+            0,
+            contents
+                .join("tools/ohpm/bin")
+                .join(if cfg!(windows) { "ohpm.bat" } else { "ohpm" }),
+        );
+    }
+    if request.auto_detect {
+        if let Some(command) = lookup_command("ohpm") {
+            candidates.push(command);
+        }
+    }
+    candidates.into_iter().find(|path| wrapper_is_usable(path))
+}
+
+fn check_ohpm(ohpm: Option<&PathBuf>, dependency_restore_required: bool) -> BuildEnvironmentCheck {
+    BuildEnvironmentCheck {
+        name: "ohpm".to_string(),
+        available: !dependency_restore_required || ohpm.is_some(),
+        detail: if !dependency_restore_required {
+            "Dependency restore is not required".to_string()
+        } else {
+            ohpm.map_or_else(
+                || "Dependencies are missing, but ohpm was not found in the selected DevEco installation or PATH".to_string(),
+                |command| format!("Dependency restore ready with {}", command.display()),
+            )
+        },
     }
 }
 
@@ -266,8 +329,12 @@ fn wrapper_is_usable(path: &Path) -> bool {
 }
 
 fn lookup_node() -> Option<PathBuf> {
+    lookup_command("node")
+}
+
+fn lookup_command(name: &str) -> Option<PathBuf> {
     let command = if cfg!(windows) { "where" } else { "which" };
-    let output = hidden_command(command).arg("node").output().ok()?;
+    let output = hidden_command(command).arg(name).output().ok()?;
     if !output.status.success() {
         return None;
     }

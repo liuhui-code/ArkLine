@@ -30,6 +30,8 @@ export function createHarmonyBuildPlanFromState(input: BuildPlanFromStateInput):
     clean: input.clean,
     fastMode: input.state.fastMode,
     wrapperCommand: input.project?.hvigorWrapperCommand ?? input.toolchain?.hvigorCommand,
+    restoreDependencies: input.toolchain?.dependencyRestoreRequired ?? false,
+    ohpmCommand: input.toolchain?.ohpmCommand,
   });
 }
 

@@ -207,3 +207,104 @@ fn resolves_windows_deveco_hvigor_node_and_sdk_from_one_installation() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn requires_ohpm_only_when_declared_dependencies_are_not_installed() {
+    let root = temporary_root();
+    let node_home = root.join("node-home");
+    let sdk = root.join("sdk");
+    fs::create_dir_all(node_home.join("bin")).unwrap();
+    fs::create_dir_all(sdk.join("ets")).unwrap();
+    fs::create_dir_all(sdk.join("toolchains")).unwrap();
+    fs::write(node_home.join("bin/node"), "node").unwrap();
+    fs::write(root.join("hvigorw"), "#!/bin/sh").unwrap();
+    fs::write(
+        root.join("oh-package.json5"),
+        r#"{ "dependencies": { "@ohos/example": "1.0.0" } }"#,
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(root.join("hvigorw")).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(root.join("hvigorw"), permissions).unwrap();
+    }
+
+    let request = BuildEnvironmentRequest {
+        root_path: root.to_string_lossy().to_string(),
+        harmony_sdk_path: sdk.to_string_lossy().to_string(),
+        node_path: node_home.to_string_lossy().to_string(),
+        auto_detect: false,
+    };
+    let missing = resolve_build_environment_from_candidates(&request, Vec::new());
+
+    assert!(missing.dependency_restore_required);
+    assert!(!missing.can_build);
+    assert_eq!(missing.ohpm_command, None);
+    assert!(missing
+        .checks
+        .iter()
+        .any(|check| check.name == "ohpm" && !check.available));
+
+    fs::create_dir_all(root.join("oh_modules")).unwrap();
+    let installed = resolve_build_environment_from_candidates(&request, Vec::new());
+
+    assert!(!installed.dependency_restore_required);
+    assert!(installed.can_build);
+    assert!(installed
+        .checks
+        .iter()
+        .any(|check| check.name == "ohpm" && check.available));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn detects_deveco_ohpm_for_missing_module_dependencies() {
+    let root = temporary_root();
+    let install = root.join("DevEco-Studio.app/Contents");
+    let project = root.join("workspace");
+    let hvigor = install.join("tools/hvigor/bin/hvigorw");
+    let ohpm = install.join("tools/ohpm/bin/ohpm");
+    let node = install.join("tools/node/bin/node");
+    let sdk = install.join("sdk/default/openharmony");
+    fs::create_dir_all(project.join("entry/src/main")).unwrap();
+    fs::create_dir_all(hvigor.parent().unwrap()).unwrap();
+    fs::create_dir_all(ohpm.parent().unwrap()).unwrap();
+    fs::create_dir_all(node.parent().unwrap()).unwrap();
+    fs::create_dir_all(sdk.join("ets")).unwrap();
+    fs::create_dir_all(sdk.join("toolchains")).unwrap();
+    fs::write(&hvigor, "#!/bin/sh").unwrap();
+    fs::write(&ohpm, "#!/bin/sh").unwrap();
+    fs::write(&node, "node").unwrap();
+    fs::write(
+        project.join("entry/oh-package.json5"),
+        r#"{ "devDependencies": { /* test dependency */ "@ohos/hypium": "1.0.0" } }"#,
+    )
+    .unwrap();
+    #[cfg(unix)]
+    for command in [&hvigor, &ohpm] {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(command).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(command, permissions).unwrap();
+    }
+
+    let resolution = resolve_build_environment_from_candidates(
+        &BuildEnvironmentRequest {
+            root_path: project.to_string_lossy().to_string(),
+            harmony_sdk_path: String::new(),
+            node_path: String::new(),
+            auto_detect: true,
+        },
+        vec![hvigor],
+    );
+
+    assert!(resolution.can_build);
+    assert!(resolution.dependency_restore_required);
+    assert_eq!(
+        resolution.ohpm_command,
+        Some(ohpm.to_string_lossy().to_string())
+    );
+    fs::remove_dir_all(root).unwrap();
+}

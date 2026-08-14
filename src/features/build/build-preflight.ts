@@ -149,10 +149,11 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
     }
     const isNode = check.name === "node";
     const isHvigor = check.name === "hvigor";
+    const isOhpm = check.name === "ohpm";
     issues.push(issue({
       severity: "error",
-      code: isNode ? "build-environment-node" : isHvigor ? "build-environment-hvigor" : "build-environment-sdk",
-      message: `${isNode ? "Node" : isHvigor ? "Hvigor wrapper" : "HarmonyOS SDK"} is not available to the build.`,
+      code: isNode ? "build-environment-node" : isHvigor ? "build-environment-hvigor" : isOhpm ? "build-environment-ohpm" : "build-environment-sdk",
+      message: `${isNode ? "Node" : isHvigor ? "Hvigor wrapper" : isOhpm ? "ohpm" : "HarmonyOS SDK"} is not available to the build.`,
       hint: check.detail,
     }));
   }
