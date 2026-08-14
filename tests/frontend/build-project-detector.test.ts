@@ -27,6 +27,7 @@ describe("Harmony build project detector", () => {
       defaultModule: "entry",
       products: [],
       defaultProduct: null,
+      productSigning: [],
     });
   });
 

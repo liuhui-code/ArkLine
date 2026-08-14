@@ -139,6 +139,53 @@ describe("useBuildControllerState", () => {
     }));
   });
 
+  it("restores missing ohpm dependencies before starting Hvigor", async () => {
+    const ohpm = "/Applications/DevEco-Studio.app/Contents/tools/ohpm/bin/ohpm";
+    const runTerminalCommand = vi.fn(async (request) => ({
+      runId: request.runId,
+      command: request.command,
+      stdout: request.program === ohpm ? "Install dependencies successful" : "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const resolveBuildEnvironment = vi.fn(async () => ({
+      canBuild: true,
+      hvigorCommand: "./hvigorw",
+      hvigorSource: "project-wrapper" as const,
+      ohpmCommand: ohpm,
+      dependencyRestoreRequired: true,
+      nodePath: "/tools/node",
+      sdkPath: "/tools/sdk",
+      pathEntries: ["/tools/node"],
+      environment: {},
+      checks: [
+        { name: "hvigor", available: true, detail: "Wrapper ready" },
+        { name: "node", available: true, detail: "Node ready" },
+        { name: "harmonySdk", available: true, detail: "SDK ready" },
+        { name: "ohpm", available: true, detail: "Dependency restore ready" },
+      ],
+    }));
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({ resolveBuildEnvironment, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(runTerminalCommand).toHaveBeenCalledTimes(2);
+    expect(runTerminalCommand.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      program: ohpm,
+      args: ["install", "--all"],
+      cwd: "/project",
+    }));
+    expect(runTerminalCommand.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      program: "./hvigorw",
+    }));
+  });
+
   it("builds a lazily opened project from native project inspection", async () => {
     const runTerminalCommand = vi.fn(async () => ({
       runId: "build-1",
@@ -161,6 +208,7 @@ describe("useBuildControllerState", () => {
       defaultModule: "entry",
       products: ["china"],
       defaultProduct: "china",
+      productSigning: [{ product: "china", signingConfig: "default", ready: true, issues: [] }],
     }));
     const { result } = renderHarness({
       workspace: { ...workspace(), visibleFiles: [], fileTree: [] },
@@ -175,6 +223,64 @@ describe("useBuildControllerState", () => {
     expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
       command: "./hvigorw --mode module -p module=entry@china -p product=china -p buildMode=debug assembleHap --no-daemon",
       cwd: "/project",
+    }));
+    expect(result.current.buildState.status).toBe("success");
+  });
+
+  it("uses detected DevEco Hvigor when a real project has no wrapper", async () => {
+    const devecoHvigor = "/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw";
+    const runTerminalCommand = vi.fn(async (request) => ({
+      runId: request.runId,
+      command: request.command,
+      stdout: "BUILD SUCCESSFUL",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 12,
+      stopped: false,
+    }));
+    const inspectHarmonyBuildProject = vi.fn(async () => ({
+      rootPath: "/project",
+      isHarmonyProject: true,
+      hasHvigorWrapper: false,
+      hvigorWrapperCommand: null,
+      hasHvigorFile: true,
+      hasBuildProfile: true,
+      hasOhPackage: true,
+      modules: ["entry"],
+      defaultModule: "entry",
+      products: ["default"],
+      defaultProduct: "default",
+      productSigning: [{ product: "default", signingConfig: "default", ready: true, issues: [] }],
+    }));
+    const resolveBuildEnvironment = vi.fn(async () => ({
+      canBuild: true,
+      hvigorCommand: devecoHvigor,
+      hvigorSource: "deveco" as const,
+      nodePath: "/Applications/DevEco-Studio.app/Contents/tools/node/bin",
+      sdkPath: "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony",
+      pathEntries: ["/Applications/DevEco-Studio.app/Contents/tools/node/bin"],
+      environment: {
+        NODE_HOME: "/Applications/DevEco-Studio.app/Contents/tools/node",
+        DEVECO_SDK_HOME: "/Applications/DevEco-Studio.app/Contents/sdk",
+      },
+      checks: [
+        { name: "hvigor", available: true, detail: "DevEco Hvigor ready" },
+        { name: "node", available: true, detail: "Node ready" },
+        { name: "harmonySdk", available: true, detail: "SDK ready" },
+      ],
+    }));
+    const { result } = renderHarness({
+      workspace: { ...workspace(), visibleFiles: [], fileTree: [] },
+      workspaceApi: workspaceApi({ inspectHarmonyBuildProject, resolveBuildEnvironment, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(runTerminalCommand).toHaveBeenCalledWith(expect.objectContaining({
+      program: devecoHvigor,
+      command: `${devecoHvigor} --mode module -p module=entry@default -p product=default -p buildMode=debug assembleHap --no-daemon`,
     }));
     expect(result.current.buildState.status).toBe("success");
   });
@@ -214,6 +320,7 @@ describe("useBuildControllerState", () => {
       defaultModule: "entry",
       products: ["default"],
       defaultProduct: "default",
+      productSigning: [{ product: "default", signingConfig: "default", ready: true, issues: [] }],
     }));
     const { result } = renderHarness({
       workspace: {

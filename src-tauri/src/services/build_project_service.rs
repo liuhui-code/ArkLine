@@ -3,7 +3,69 @@ use std::path::{Path, PathBuf};
 
 use regex::Regex;
 
-use crate::models::build_project::HarmonyBuildProject;
+use crate::models::build_project::{HarmonyBuildProject, HarmonyProductSdk, HarmonyProductSigning};
+
+pub fn find_harmony_build_artifacts(
+    root_path: &str,
+    target: &str,
+    module_name: Option<&str>,
+    product: &str,
+) -> Result<Vec<String>, String> {
+    let build_root = if target == "app" {
+        PathBuf::from(root_path).join("build")
+    } else {
+        let module =
+            module_name.ok_or_else(|| "A module is required for this build target".to_string())?;
+        PathBuf::from(root_path).join(module).join("build")
+    };
+    if !build_root.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let preferred_root = build_root.join(product).join("outputs");
+    let search_root = if preferred_root.is_dir() {
+        preferred_root
+    } else {
+        build_root
+    };
+    let mut artifacts = Vec::new();
+    collect_artifacts(&search_root, target, 0, &mut artifacts)?;
+    artifacts.sort();
+    artifacts.dedup();
+    Ok(artifacts)
+}
+
+fn collect_artifacts(
+    directory: &Path,
+    target: &str,
+    depth: usize,
+    artifacts: &mut Vec<String>,
+) -> Result<(), String> {
+    if depth > 6 {
+        return Ok(());
+    }
+    for entry in fs::read_dir(directory)
+        .map_err(|error| error.to_string())?
+        .flatten()
+    {
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            collect_artifacts(&path, target, depth + 1, artifacts)?;
+        } else if path.extension().and_then(|value| value.to_str()) == Some(target)
+            && entry
+                .metadata()
+                .map(|metadata| metadata.len() > 0)
+                .unwrap_or(false)
+        {
+            artifacts.push(path.to_string_lossy().to_string());
+        }
+    }
+    Ok(())
+}
 
 pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProject, String> {
     let selected_path = PathBuf::from(root_path);
@@ -46,6 +108,8 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
         .find(|product| product.as_str() == "default")
         .cloned()
         .or_else(|| products.first().cloned());
+    let product_signing = inspect_product_signing(&root, &profile_content, &products);
+    let product_sdks = inspect_product_sdks(&profile_content, &products);
 
     Ok(HarmonyBuildProject {
         root_path: root.to_string_lossy().to_string(),
@@ -69,7 +133,200 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
         default_module,
         products,
         default_product,
+        product_signing,
+        product_sdks,
     })
+}
+
+fn inspect_product_sdks(profile_content: &str, products: &[String]) -> Vec<HarmonyProductSdk> {
+    let product_objects = named_array_body(profile_content, "products")
+        .map(array_objects)
+        .unwrap_or_default();
+    products
+        .iter()
+        .map(|product| {
+            let compile_sdk_version = product_objects
+                .iter()
+                .find(|object| string_field(object, "name").as_deref() == Some(product))
+                .and_then(|object| scalar_field(object, "compileSdkVersion"));
+            HarmonyProductSdk {
+                product: product.clone(),
+                compile_sdk_version,
+            }
+        })
+        .collect()
+}
+
+fn inspect_product_signing(
+    root: &Path,
+    profile_content: &str,
+    products: &[String],
+) -> Vec<HarmonyProductSigning> {
+    let product_objects = named_array_body(profile_content, "products")
+        .map(array_objects)
+        .unwrap_or_default();
+    let signing_objects = named_array_body(profile_content, "signingConfigs")
+        .map(array_objects)
+        .unwrap_or_default();
+
+    products
+        .iter()
+        .map(|product| {
+            let product_object = product_objects
+                .iter()
+                .find(|object| string_field(object, "name").as_deref() == Some(product));
+            let signing_config =
+                product_object.and_then(|object| string_field(object, "signingConfig"));
+            let mut issues = Vec::new();
+            let signing_object = signing_config.as_ref().and_then(|config_name| {
+                signing_objects.iter().find(|object| {
+                    string_field(object, "name").as_deref() == Some(config_name.as_str())
+                })
+            });
+
+            if signing_config.is_none() {
+                issues.push("product does not reference signingConfig".to_string());
+            } else if signing_object.is_none() {
+                issues.push(format!(
+                    "signingConfigs does not define '{}'",
+                    signing_config.as_deref().unwrap_or_default()
+                ));
+            }
+
+            if let Some(config) = signing_object {
+                if string_field(config, "type").as_deref() != Some("HarmonyOS") {
+                    issues.push("signing config type must be HarmonyOS".to_string());
+                }
+                let material = named_object_body(config, "material");
+                for field in ["storePassword", "keyAlias", "keyPassword", "signAlg"] {
+                    if material
+                        .and_then(|value| string_field(value, field))
+                        .is_none()
+                    {
+                        issues.push(format!("material.{field} is missing"));
+                    }
+                }
+                for field in ["certpath", "profile", "storeFile"] {
+                    match material.and_then(|value| string_field(value, field)) {
+                        None => issues.push(format!("material.{field} is missing")),
+                        Some(value) if !resolve_material_path(root, &value).is_file() => {
+                            issues.push(format!("material.{field} file does not exist"));
+                        }
+                        Some(_) => {}
+                    }
+                }
+            }
+
+            HarmonyProductSigning {
+                product: product.clone(),
+                signing_config,
+                ready: issues.is_empty(),
+                issues,
+            }
+        })
+        .collect()
+}
+
+fn resolve_material_path(root: &Path, value: &str) -> PathBuf {
+    let path = PathBuf::from(value);
+    if path.is_absolute() {
+        path
+    } else {
+        root.join(path)
+    }
+}
+
+fn string_field(content: &str, name: &str) -> Option<String> {
+    let pattern = Regex::new(&format!(r#"\b{name}\s*:\s*[\"']([^\"']+)[\"']"#)).ok()?;
+    pattern
+        .captures(content)?
+        .get(1)
+        .map(|value| value.as_str().trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn scalar_field(content: &str, name: &str) -> Option<String> {
+    let pattern = Regex::new(&format!(
+        r#"\b{name}\s*:\s*(?:[\"']([^\"']+)[\"']|([0-9]+(?:\.[0-9]+)*))"#
+    ))
+    .ok()?;
+    let captures = pattern.captures(content)?;
+    captures
+        .get(1)
+        .or_else(|| captures.get(2))
+        .map(|value| value.as_str().trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn named_object_body<'a>(content: &'a str, name: &str) -> Option<&'a str> {
+    let marker = Regex::new(&format!(r#"\b{name}\s*:\s*\{{"#)).ok()?;
+    let marker_match = marker.find(content)?;
+    balanced_body(content, marker_match.end(), '{', '}')
+}
+
+fn array_objects(content: &str) -> Vec<&str> {
+    let bytes = content.as_bytes();
+    let mut objects = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] as char == '{' {
+            let start = index + 1;
+            if let Some(body) = balanced_body(content, start, '{', '}') {
+                objects.push(body);
+                index = start + body.len() + 1;
+                continue;
+            }
+        }
+        index += 1;
+    }
+    objects
+}
+
+fn balanced_body(content: &str, start: usize, open: char, close: char) -> Option<&str> {
+    let bytes = content.as_bytes();
+    let mut depth = 1;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut line_comment = false;
+    let mut block_comment = false;
+    let mut index = start;
+    while index < bytes.len() {
+        let current = bytes[index] as char;
+        let next = bytes.get(index + 1).copied().map(char::from);
+        if line_comment {
+            line_comment = current != '\n';
+        } else if block_comment {
+            if current == '*' && next == Some('/') {
+                block_comment = false;
+                index += 1;
+            }
+        } else if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if current == '\\' {
+                escaped = true;
+            } else if current == active_quote {
+                quote = None;
+            }
+        } else if current == '/' && next == Some('/') {
+            line_comment = true;
+            index += 1;
+        } else if current == '/' && next == Some('*') {
+            block_comment = true;
+            index += 1;
+        } else if current == '"' || current == '\'' {
+            quote = Some(current);
+        } else if current == open {
+            depth += 1;
+        } else if current == close {
+            depth -= 1;
+            if depth == 0 {
+                return content.get(start..index);
+            }
+        }
+        index += 1;
+    }
+    None
 }
 
 fn find_harmony_project_root(selected_dir: &Path) -> PathBuf {
@@ -204,137 +461,5 @@ fn named_array_body<'a>(content: &'a str, name: &str) -> Option<&'a str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::fs;
-    use std::path::PathBuf;
-
-    use super::inspect_harmony_build_project;
-
-    #[test]
-    fn detects_root_markers_and_modules_without_a_workspace_scan() {
-        let root =
-            std::env::temp_dir().join(format!("arkline-build-project-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("entry/src/main/ets")).unwrap();
-        fs::write(root.join("hvigorw"), "#!/bin/sh").unwrap();
-        fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
-        fs::write(root.join("build-profile.json5"), "{}").unwrap();
-
-        let project = inspect_harmony_build_project(root.to_str().unwrap()).unwrap();
-
-        assert!(project.is_harmony_project);
-        assert_eq!(project.hvigor_wrapper_command.as_deref(), Some("./hvigorw"));
-        assert_eq!(project.modules, vec!["entry"]);
-        assert_eq!(project.default_module.as_deref(), Some("entry"));
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn resolves_project_root_from_a_selected_module_directory() {
-        let repo = std::env::temp_dir().join(format!(
-            "arkline-build-project-nested-{}",
-            std::process::id()
-        ));
-        let root = repo.join("apps/Demo");
-        let selected = root.join("entry/src/main/ets");
-        let _ = fs::remove_dir_all(&repo);
-        fs::create_dir_all(&selected).unwrap();
-        fs::write(root.join("hvigorw"), "#!/bin/sh").unwrap();
-        fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
-        fs::write(root.join("build-profile.json5"), "{}").unwrap();
-
-        let project = inspect_harmony_build_project(selected.to_str().unwrap()).unwrap();
-
-        assert_eq!(project.root_path, root.to_string_lossy());
-        assert!(project.is_harmony_project);
-        assert_eq!(project.modules, vec!["entry"]);
-        fs::remove_dir_all(repo).unwrap();
-    }
-
-    #[test]
-    fn prefers_the_wrapper_root_over_a_module_package_marker() {
-        let repo = std::env::temp_dir().join(format!(
-            "arkline-build-project-module-package-{}",
-            std::process::id()
-        ));
-        let root = repo.join("apps/Demo");
-        let file = root.join("entry/src/main/ets/Index.ets");
-        let _ = fs::remove_dir_all(&repo);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(&file, "@Entry struct Index {}").unwrap();
-        fs::write(root.join("hvigorw"), "#!/bin/sh").unwrap();
-        fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
-        fs::write(root.join("build-profile.json5"), "{}").unwrap();
-        fs::write(root.join("entry/oh-package.json5"), "{}").unwrap();
-
-        let project = inspect_harmony_build_project(file.to_str().unwrap()).unwrap();
-
-        assert_eq!(project.root_path, root.to_string_lossy());
-        assert!(project.has_hvigor_wrapper);
-        assert_eq!(project.modules, vec!["entry"]);
-        fs::remove_dir_all(repo).unwrap();
-    }
-
-    #[test]
-    fn inspects_a_realistic_deveco_project_from_a_module_source_file() {
-        let root =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/services/fixtures/harmony-project");
-        let file = root.join("entry/src/main/ets/Index.ets");
-
-        let project = inspect_harmony_build_project(file.to_str().unwrap()).unwrap();
-
-        assert_eq!(project.root_path, root.to_string_lossy());
-        assert_eq!(project.modules, vec!["entry"]);
-        assert_eq!(project.default_module.as_deref(), Some("entry"));
-        assert_eq!(project.products, vec!["china", "default"]);
-        assert_eq!(project.default_product.as_deref(), Some("default"));
-        assert!(project.has_hvigor_wrapper);
-    }
-
-    #[test]
-    fn resolves_project_root_from_an_active_file() {
-        let repo =
-            std::env::temp_dir().join(format!("arkline-build-project-file-{}", std::process::id()));
-        let root = repo.join("apps/Demo");
-        let file = root.join("entry/src/main/ets/Index.ets");
-        let _ = fs::remove_dir_all(&repo);
-        fs::create_dir_all(file.parent().unwrap()).unwrap();
-        fs::write(&file, "@Entry struct Index {}").unwrap();
-        fs::write(root.join("hvigorw.bat"), "").unwrap();
-        fs::write(root.join("oh-package.json5"), "{}").unwrap();
-
-        let project = inspect_harmony_build_project(file.to_str().unwrap()).unwrap();
-
-        assert_eq!(project.root_path, root.to_string_lossy());
-        assert_eq!(
-            project.hvigor_wrapper_command.as_deref(),
-            Some("hvigorw.bat")
-        );
-        assert_eq!(project.default_module.as_deref(), Some("entry"));
-        fs::remove_dir_all(repo).unwrap();
-    }
-
-    #[test]
-    fn merges_modules_declared_by_build_profile() {
-        let root = std::env::temp_dir().join(format!(
-            "arkline-build-project-profile-{}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("feature")).unwrap();
-        fs::write(root.join("hvigorw"), "#!/bin/sh").unwrap();
-        fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
-        fs::write(
-            root.join("build-profile.json5"),
-            "{ products: [{ name: 'china' }, { name: 'default' }], modules: [{ name: 'feature' }] }",
-        )
-        .unwrap();
-
-        let project = inspect_harmony_build_project(root.to_str().unwrap()).unwrap();
-
-        assert_eq!(project.modules, vec!["feature"]);
-        assert_eq!(project.products, vec!["china", "default"]);
-        assert_eq!(project.default_product.as_deref(), Some("default"));
-        fs::remove_dir_all(root).unwrap();
-    }
-}
+#[path = "build_project_service_tests.rs"]
+mod tests;

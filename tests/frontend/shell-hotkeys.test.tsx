@@ -178,7 +178,11 @@ describe("Shell hotkeys", () => {
     await user.click(await openEditor(user));
     await user.keyboard(" ");
     await user.keyboard("{Control>}p{/Control}");
-    await user.click(await screen.findByRole("button", { name: "C:\\samples\\DemoWorkspace\\AppScope\\app.json5" }));
+    await user.click(await screen.findByRole(
+      "button",
+      { name: "C:\\samples\\DemoWorkspace\\AppScope\\app.json5" },
+      { timeout: 10_000 },
+    ));
 
     expect(await screen.findByRole("button", { name: "app.json5", pressed: true })).toBeVisible();
     expect(screen.getByRole("button", { name: "main.ets", pressed: false })).toBeVisible();

@@ -1,5 +1,5 @@
 import { planHarmonyBuildCommand } from "@/features/build/build-command-planner";
-import { extractBuildArtifacts } from "@/features/build/build-artifacts";
+import { extractBuildArtifacts, inferArtifactSignature } from "@/features/build/build-artifacts";
 import { parseBuildDiagnostics, type BuildDiagnosticMatcher } from "@/features/build/build-diagnostics";
 import { createBuildEnvironmentSnapshot } from "@/features/build/build-environment-snapshot";
 import { createBuildToolchainEnvironment } from "@/features/build/build-toolchain-environment";
@@ -13,6 +13,7 @@ export type BuildPlanFromStateInput = {
   state: Pick<BuildState, "lastTarget" | "moduleName" | "product" | "buildMode" | "fastMode">;
   clean: boolean;
   project?: HarmonyBuildProject | null;
+  toolchain?: BuildEnvironmentResolution | null;
 };
 
 export type TerminalBuildRunner = (request: TerminalRunRequest) => Promise<TerminalRunResult>;
@@ -28,7 +29,9 @@ export function createHarmonyBuildPlanFromState(input: BuildPlanFromStateInput):
     buildMode: input.state.buildMode,
     clean: input.clean,
     fastMode: input.state.fastMode,
-    wrapperCommand: input.project?.hvigorWrapperCommand,
+    wrapperCommand: input.project?.hvigorWrapperCommand ?? input.toolchain?.hvigorCommand,
+    restoreDependencies: input.toolchain?.dependencyRestoreRequired ?? false,
+    ohpmCommand: input.toolchain?.ohpmCommand,
   });
 }
 
@@ -39,6 +42,7 @@ export async function executeHarmonyBuildPlan(input: {
   settings?: AppSettings["sdk"] | null;
   toolchain?: BuildEnvironmentResolution | null;
   diagnosticMatchers?: BuildDiagnosticMatcher[];
+  findBuildArtifacts?: () => Promise<string[]>;
 }): Promise<BuildResult> {
   const toolchain = input.toolchain ?? createBuildToolchainEnvironment(input.settings);
   const runs: TerminalRunResult[] = [];
@@ -61,9 +65,47 @@ export async function executeHarmonyBuildPlan(input: {
   const output = [terminalResult.stdout, terminalResult.stderr].filter(Boolean).join("\n");
   const problems = parseBuildDiagnostics(output, input.diagnosticMatchers);
   const artifacts = extractBuildArtifacts(output);
+  if (terminalResult.exitCode === 0 && !terminalResult.stopped && input.findBuildArtifacts) {
+    const discovered = await input.findBuildArtifacts();
+    const knownPaths = new Set(artifacts.map((artifact) => artifact.path));
+    for (const path of discovered) {
+      if (!knownPaths.has(path)) {
+        artifacts.push({
+          path,
+          kind: input.plan.target,
+          source: "filesystem",
+          signature: inferArtifactSignature(path, input.plan.target),
+        });
+        knownPaths.add(path);
+      }
+    }
+  }
+  const artifactVerificationFailed = terminalResult.exitCode === 0
+    && !terminalResult.stopped
+    && Boolean(input.findBuildArtifacts)
+    && artifacts.length === 0;
+  const unsignedArtifactFailed = terminalResult.exitCode === 0
+    && !terminalResult.stopped
+    && input.plan.target !== "har"
+    && artifacts.length > 0
+    && artifacts.every((artifact) => artifact.signature === "unsigned");
+  const verifiedTerminalResult = artifactVerificationFailed || unsignedArtifactFailed
+    ? {
+      ...terminalResult,
+      exitCode: 1,
+      stderr: [
+        terminalResult.stderr,
+        artifactVerificationFailed
+          ? `Build command succeeded, but no .${input.plan.target} artifact was found.`
+          : `Build command produced an unsigned .${input.plan.target} artifact. Configure signing for product ${input.plan.intent.product}.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    }
+    : terminalResult;
 
   return createBuildResultFromTerminalRun({
-    ...terminalResult,
+    ...verifiedTerminalResult,
     planId: input.plan.id,
     problems,
     artifacts,

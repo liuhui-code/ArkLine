@@ -50,6 +50,7 @@ export function detectHarmonyBuildProject(rootPath: string, files: string[]): Ha
     defaultModule,
     products: [],
     defaultProduct: null,
+    productSigning: [],
   };
 }
 

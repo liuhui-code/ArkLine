@@ -6,6 +6,7 @@ use crate::services::workspace_index_scheduler_service::{
 };
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_test_fixture_service::create_empty_workspace;
+use crate::services::workspace_index_task_status_service::failed_task_result;
 use crate::services::workspace_index_worker_service::{
     run_index_tasks, run_index_tasks_with_cancellation,
 };
@@ -39,6 +40,24 @@ fn worker_records_failed_task_result_instead_of_aborting_the_batch() {
         .as_ref()
         .is_some_and(|error| error.contains("missing sdk path")));
     assert_eq!(observed, vec![("sdk".to_string(), "running".to_string())]);
+}
+
+#[test]
+fn failed_discovery_result_keeps_the_running_discovery_task_identity() {
+    let task = WorkspaceIndexTask {
+        root_path: "/workspace".to_string(),
+        kind: WorkspaceIndexTaskKind::ChangedPaths,
+        priority: WorkspaceIndexTaskPriority::VisibleFiles,
+        changed_paths: Vec::new(),
+        sdk_path: None,
+        sdk_version: None,
+        generation: 2,
+        reason: "workspace-discovery".to_string(),
+    };
+    let result = failed_task_result(task, "discovery failed".to_string(), 100);
+
+    assert_eq!(result.kind, "discovery");
+    assert_eq!(result.status, "failed");
 }
 
 #[test]

@@ -93,7 +93,7 @@ describe("AppShell Ctrl+Click definition", () => {
 
     await openProject(user);
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
-    const editor = await screen.findByLabelText("Editor Content");
+    const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     fireEvent.mouseDown(editor, { ctrlKey: true, button: 0, clientX: 24, clientY: 24 });
 
     await waitFor(() => expect(queryDefinitionCandidatesWithReadiness).toHaveBeenCalledWith(

@@ -118,6 +118,10 @@ export function useBuildControllerState({
       const detail = error instanceof Error ? error.message : String(error);
       const failedEnvironment = {
         canBuild: false,
+        hvigorCommand: null,
+        hvigorSource: null,
+        ohpmCommand: null,
+        dependencyRestoreRequired: false,
         nodePath: null,
         sdkPath: null,
         pathEntries: [],
@@ -286,6 +290,7 @@ export function useBuildControllerState({
       settings: sdkSettings,
       target: state.lastTarget,
       moduleName: state.lastTarget === "app" ? null : state.moduleName,
+      product: state.product,
       environment: toolchain,
     });
     if (!preflight.canBuild) {
@@ -301,6 +306,7 @@ export function useBuildControllerState({
       state,
       clean,
       project,
+      toolchain,
     });
     buildRunCounterRef.current += 1;
     const runId = `build-${buildRunCounterRef.current}`;
@@ -317,6 +323,14 @@ export function useBuildControllerState({
         runTerminalCommand: workspaceApi.runTerminalCommand,
         settings: sdkSettings,
         toolchain,
+        findBuildArtifacts: workspaceApi.findHarmonyBuildArtifacts
+          ? () => workspaceApi.findHarmonyBuildArtifacts!(
+            plan.intent.projectRoot,
+            plan.intent.target,
+            plan.intent.moduleName,
+            plan.intent.product,
+          )
+          : undefined,
       });
       buildStoreRef.current.finish(buildResult);
       replaceBuildProblems(buildResult.diagnostics);

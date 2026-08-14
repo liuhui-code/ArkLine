@@ -23,8 +23,13 @@ pub struct BuildEnvironmentCheck {
 #[serde(rename_all = "camelCase")]
 pub struct BuildEnvironmentResolution {
     pub can_build: bool,
+    pub hvigor_command: Option<String>,
+    pub hvigor_source: Option<String>,
+    pub ohpm_command: Option<String>,
+    pub dependency_restore_required: bool,
     pub node_path: Option<String>,
     pub sdk_path: Option<String>,
+    pub sdk_api_version: Option<String>,
     pub path_entries: Vec<String>,
     pub environment: HashMap<String, String>,
     pub checks: Vec<BuildEnvironmentCheck>,

@@ -197,6 +197,24 @@ pub(crate) fn load_ready_discovery_generation(root_path: &str) -> Result<Option<
         .map_err(|error| error.to_string())
 }
 
+pub(crate) fn load_discovery_generation(root_path: &str) -> Result<Option<u64>, String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(None);
+    }
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(None);
+    };
+    connection
+        .query_row(
+            "select generation from workspace_discovery_state where root_path = ?1",
+            params![normalize_index_path(root_path)],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map(|generation| generation.map(|value| value.max(0) as u64))
+        .map_err(|error| error.to_string())
+}
+
 pub(crate) fn load_ready_searchable_discovered_files(
     root_path: &str,
     limit: usize,

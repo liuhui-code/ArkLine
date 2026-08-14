@@ -3,16 +3,15 @@ name: windows-ci
 on:
   push:
     branches:
-      - main
-      - "codex/**"
+      - "**"
   pull_request:
 
 permissions:
   contents: read
 
 concurrency:
-  group: arkline-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: arkline-ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 jobs:
   quality:
@@ -37,6 +36,12 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -76,6 +81,12 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

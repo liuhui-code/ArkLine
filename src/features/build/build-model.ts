@@ -26,6 +26,8 @@ export type HarmonyBuildRequest = {
   clean: boolean;
   fastMode: boolean;
   wrapperCommand?: string | null;
+  restoreDependencies?: boolean;
+  ohpmCommand?: string | null;
 };
 
 export type BuildPlanStep = {
@@ -73,7 +75,8 @@ export type BuildArtifactKind = BuildTarget;
 export type BuildArtifact = {
   path: string;
   kind: BuildArtifactKind;
-  source: "output";
+  source: "output" | "filesystem";
+  signature: "signed" | "unsigned" | "not-applicable" | "unknown";
 };
 
 export type BuildFreshnessStatus = "unknown" | "candidate-current" | "stale";
@@ -107,8 +110,13 @@ export type BuildEnvironmentCheck = {
 
 export type BuildEnvironmentResolution = {
   canBuild: boolean;
+  hvigorCommand?: string | null;
+  hvigorSource?: "project-wrapper" | "deveco" | null;
+  ohpmCommand?: string | null;
+  dependencyRestoreRequired?: boolean;
   nodePath: string | null;
   sdkPath: string | null;
+  sdkApiVersion?: string | null;
   pathEntries: string[];
   environment: Record<string, string>;
   checks: BuildEnvironmentCheck[];
@@ -125,6 +133,7 @@ export type BuildEnvironmentSnapshot = {
   buildMode: "debug" | "release";
   clean: boolean;
   fastMode: boolean;
+  dependencyRestore: boolean;
   toolchain: BuildToolchainSnapshot;
 };
 
@@ -165,6 +174,20 @@ export type HarmonyBuildProject = {
   defaultModule: string | null;
   products: string[];
   defaultProduct: string | null;
+  productSigning: HarmonyProductSigning[];
+  productSdks?: HarmonyProductSdk[];
+};
+
+export type HarmonyProductSdk = {
+  product: string;
+  compileSdkVersion: string | null;
+};
+
+export type HarmonyProductSigning = {
+  product: string;
+  signingConfig: string | null;
+  ready: boolean;
+  issues: string[];
 };
 
 export type BuildPreflightIssueSeverity = "error" | "warning";
@@ -177,9 +200,13 @@ export type BuildPreflightIssueCode =
   | "missing-module"
   | "missing-sdk-path"
   | "missing-node-path"
+  | "missing-signing-config"
+  | "invalid-signing-material"
+  | "incompatible-compile-sdk"
   | "build-environment-node"
   | "build-environment-sdk"
   | "build-environment-hvigor"
+  | "build-environment-ohpm"
   | "missing-oh-package";
 
 export type BuildPreflightIssue = {
