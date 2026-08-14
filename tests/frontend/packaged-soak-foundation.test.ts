@@ -356,7 +356,7 @@ describe("packaged Windows soak foundation", () => {
       attempts.push(command);
       if (command === "powershell.exe") throw new Error("missing");
       return "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
-    });
+    }, {});
 
     expect(attempts).toEqual(["powershell.exe", "pwsh.exe"]);
     expect(resolved).toContain("pwsh.exe");
