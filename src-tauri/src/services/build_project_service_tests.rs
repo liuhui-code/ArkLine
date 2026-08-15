@@ -84,6 +84,76 @@ fn prefers_the_wrapper_root_over_a_module_package_marker() {
 }
 
 #[test]
+fn prefers_the_project_profile_over_a_module_profile_without_a_wrapper() {
+    let repo = std::env::temp_dir().join(format!(
+        "arkline-build-project-profile-root-{}",
+        std::process::id()
+    ));
+    let root = repo.join("Demo");
+    let module = root.join("entry");
+    let file = module.join("src/main/ets/Index.ets");
+    let _ = fs::remove_dir_all(&repo);
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "@Entry struct Index {}").unwrap();
+    fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
+    fs::write(
+        root.join("build-profile.json5"),
+        r#"{
+          "app": { "products": [{ "name": "china" }, { "name": "default" }] },
+          "modules": [{ "name": "entry", "srcPath": "./entry" }]
+        }"#,
+    )
+    .unwrap();
+    fs::write(module.join("hvigorfile.ts"), "export {}").unwrap();
+    fs::write(
+        module.join("build-profile.json5"),
+        r#"{ "apiType": "stageMode", "targets": [{ "name": "default" }] }"#,
+    )
+    .unwrap();
+
+    let project = inspect_harmony_build_project(file.to_str().unwrap()).unwrap();
+
+    assert_eq!(project.root_path, root.to_string_lossy());
+    assert_eq!(project.modules, vec!["entry"]);
+    assert_eq!(project.products, vec!["china", "default"]);
+    assert!(!project.has_hvigor_wrapper);
+    fs::remove_dir_all(repo).unwrap();
+}
+
+#[test]
+fn discovers_quoted_project_modules_from_their_src_paths() {
+    let root = std::env::temp_dir().join(format!(
+        "arkline-build-project-src-path-{}",
+        std::process::id()
+    ));
+    let module = root.join("packages/feature");
+    let selected = module.join("src/main/ets/Feature.ets");
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(selected.parent().unwrap()).unwrap();
+    fs::create_dir_all(root.join("entry/src/main")).unwrap();
+    fs::write(&selected, "export struct Feature {}").unwrap();
+    fs::write(root.join("hvigorfile.ts"), "export {}").unwrap();
+    fs::write(
+        root.join("build-profile.json5"),
+        r#"{
+          "app": { "products": [{ "name": "default" }] },
+          "modules": [
+            { "name": "entry", "srcPath": "./entry" },
+            { "name": "featureAlias", "srcPath": "./packages/feature" }
+          ]
+        }"#,
+    )
+    .unwrap();
+
+    let project = inspect_harmony_build_project(selected.to_str().unwrap()).unwrap();
+
+    assert_eq!(project.root_path, root.to_string_lossy());
+    assert_eq!(project.modules, vec!["entry", "featureAlias"]);
+    assert_eq!(project.default_module.as_deref(), Some("featureAlias"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn inspects_a_realistic_deveco_project_from_a_module_source_file() {
     let root =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/services/fixtures/harmony-project");

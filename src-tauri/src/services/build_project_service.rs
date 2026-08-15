@@ -5,6 +5,12 @@ use regex::Regex;
 
 use crate::models::build_project::{HarmonyBuildProject, HarmonyProductSdk, HarmonyProductSigning};
 
+#[derive(Clone)]
+struct ProjectModuleDeclaration {
+    name: String,
+    src_path: String,
+}
+
 pub fn find_harmony_build_artifacts(
     root_path: &str,
     target: &str,
@@ -78,10 +84,10 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
     let selected_dir = if selected_path.is_file() {
         match selected_path.parent() {
             Some(parent) => parent.to_path_buf(),
-            None => selected_path,
+            None => selected_path.clone(),
         }
     } else {
-        selected_path
+        selected_path.clone()
     };
     let root = find_harmony_project_root(&selected_dir);
 
@@ -91,17 +97,21 @@ pub fn inspect_harmony_build_project(root_path: &str) -> Result<HarmonyBuildProj
     let has_build_profile = root.join("build-profile.json5").is_file();
     let has_oh_package = root.join("oh-package.json5").is_file();
     let profile_content = fs::read_to_string(root.join("build-profile.json5")).unwrap_or_default();
-    let modules = discover_modules(&root, &profile_content)?;
+    let module_declarations = declared_project_modules(&profile_content);
+    let modules = discover_modules(&root, &profile_content, &module_declarations)?;
     let mut products = named_profile_values(&profile_content, "products");
     if products.is_empty() {
         products.push("default".to_string());
     }
     let is_harmony_project =
         has_hvigor_file || has_build_profile || has_oh_package || !modules.is_empty();
-    let default_module = modules
-        .iter()
-        .find(|module_name| module_name.as_str() == "entry")
-        .cloned()
+    let default_module = selected_declared_module(&root, &selected_path, &module_declarations)
+        .or_else(|| {
+            modules
+                .iter()
+                .find(|module_name| module_name.as_str() == "entry")
+                .cloned()
+        })
         .or_else(|| modules.first().cloned());
     let default_product = products
         .iter()
@@ -237,7 +247,11 @@ fn resolve_material_path(root: &Path, value: &str) -> PathBuf {
 }
 
 fn string_field(content: &str, name: &str) -> Option<String> {
-    let pattern = Regex::new(&format!(r#"\b{name}\s*:\s*[\"']([^\"']+)[\"']"#)).ok()?;
+    let name = regex::escape(name);
+    let pattern = Regex::new(&format!(
+        r#"(?:[\"']{name}[\"']|\b{name})\s*:\s*[\"']([^\"']+)[\"']"#,
+    ))
+    .ok()?;
     pattern
         .captures(content)?
         .get(1)
@@ -246,8 +260,9 @@ fn string_field(content: &str, name: &str) -> Option<String> {
 }
 
 fn scalar_field(content: &str, name: &str) -> Option<String> {
+    let name = regex::escape(name);
     let pattern = Regex::new(&format!(
-        r#"\b{name}\s*:\s*(?:[\"']([^\"']+)[\"']|([0-9]+(?:\.[0-9]+)*))"#
+        r#"(?:[\"']{name}[\"']|\b{name})\s*:\s*(?:[\"']([^\"']+)[\"']|([0-9]+(?:\.[0-9]+)*))"#
     ))
     .ok()?;
     let captures = pattern.captures(content)?;
@@ -259,7 +274,8 @@ fn scalar_field(content: &str, name: &str) -> Option<String> {
 }
 
 fn named_object_body<'a>(content: &'a str, name: &str) -> Option<&'a str> {
-    let marker = Regex::new(&format!(r#"\b{name}\s*:\s*\{{"#)).ok()?;
+    let name = regex::escape(name);
+    let marker = Regex::new(&format!(r#"(?:[\"']{name}[\"']|\b{name})\s*:\s*\{{"#,)).ok()?;
     let marker_match = marker.find(content)?;
     balanced_body(content, marker_match.end(), '{', '}')
 }
@@ -335,7 +351,7 @@ fn find_harmony_project_root(selected_dir: &Path) -> PathBuf {
     let mut best_priority = 0;
     loop {
         let priority = harmony_project_root_priority(&current);
-        if priority == 4 {
+        if priority == 5 {
             return current;
         }
         if priority > best_priority {
@@ -350,6 +366,10 @@ fn find_harmony_project_root(selected_dir: &Path) -> PathBuf {
 }
 
 fn harmony_project_root_priority(path: &Path) -> u8 {
+    let profile_content = fs::read_to_string(path.join("build-profile.json5")).unwrap_or_default();
+    if !declared_project_modules(&profile_content).is_empty() {
+        return 5;
+    }
     if path.join("hvigorw").is_file() || path.join("hvigorw.bat").is_file() {
         return 4;
     }
@@ -364,7 +384,11 @@ fn harmony_project_root_priority(path: &Path) -> u8 {
     u8::from(path.join("oh-package.json5").is_file())
 }
 
-fn discover_modules(root: &Path, profile_content: &str) -> Result<Vec<String>, String> {
+fn discover_modules(
+    root: &Path,
+    profile_content: &str,
+    declarations: &[ProjectModuleDeclaration],
+) -> Result<Vec<String>, String> {
     let entries = fs::read_dir(root).map_err(|error| error.to_string())?;
     let mut modules = entries
         .flatten()
@@ -377,22 +401,80 @@ fn discover_modules(root: &Path, profile_content: &str) -> Result<Vec<String>, S
                 .then(|| entry.file_name().to_string_lossy().to_string())
         })
         .collect::<Vec<_>>();
-    modules.extend(
-        named_profile_values(profile_content, "modules")
-            .into_iter()
-            .filter(|name| root.join(name).is_dir()),
-    );
+    modules.extend(declarations.iter().map(|module| module.name.clone()));
+    modules.extend(legacy_declared_modules(root, profile_content));
     modules.sort();
     modules.dedup();
     Ok(modules)
+}
+
+fn declared_project_modules(profile_content: &str) -> Vec<ProjectModuleDeclaration> {
+    let objects = named_array_body(profile_content, "modules")
+        .map(array_objects)
+        .unwrap_or_default();
+    objects
+        .into_iter()
+        .filter_map(|object| {
+            let name = string_field(object, "name")?;
+            let src_path = string_field(object, "srcPath")?;
+            (!name.is_empty() && !src_path.is_empty())
+                .then_some(ProjectModuleDeclaration { name, src_path })
+        })
+        .fold(Vec::new(), |mut modules, module| {
+            if !modules
+                .iter()
+                .any(|existing: &ProjectModuleDeclaration| existing.name == module.name)
+            {
+                modules.push(module);
+            }
+            modules
+        })
+}
+
+fn selected_declared_module(
+    root: &Path,
+    selected_path: &Path,
+    declarations: &[ProjectModuleDeclaration],
+) -> Option<String> {
+    let selected_path =
+        fs::canonicalize(selected_path).unwrap_or_else(|_| selected_path.to_path_buf());
+    declarations
+        .iter()
+        .filter_map(|module| {
+            let src_path = PathBuf::from(&module.src_path);
+            let module_path = if src_path.is_absolute() {
+                src_path
+            } else {
+                root.join(src_path)
+            };
+            let module_path = fs::canonicalize(&module_path).unwrap_or(module_path);
+            selected_path
+                .starts_with(&module_path)
+                .then_some((module_path.components().count(), module.name.clone()))
+        })
+        .max_by_key(|(depth, _)| *depth)
+        .map(|(_, name)| name)
+}
+
+fn legacy_declared_modules(root: &Path, profile_content: &str) -> Vec<String> {
+    let objects = named_array_body(profile_content, "modules")
+        .map(array_objects)
+        .unwrap_or_default();
+    objects
+        .into_iter()
+        .filter_map(|object| {
+            let name = string_field(object, "name")?;
+            (string_field(object, "srcPath").is_none() && root.join(&name).is_dir()).then_some(name)
+        })
+        .collect()
 }
 
 fn named_profile_values(content: &str, name: &str) -> Vec<String> {
     let Some(array) = named_array_body(content, name) else {
         return Vec::new();
     };
-    let name_pattern =
-        Regex::new(r#"\bname\s*:\s*["']([^"']+)["']"#).expect("module name pattern should compile");
+    let name_pattern = Regex::new(r#"(?:["']name["']|\bname)\s*:\s*["']([^"']+)["']"#)
+        .expect("profile name pattern should compile");
     name_pattern
         .captures_iter(array)
         .filter_map(|capture| {
@@ -410,7 +492,8 @@ fn named_profile_values(content: &str, name: &str) -> Vec<String> {
 }
 
 fn named_array_body<'a>(content: &'a str, name: &str) -> Option<&'a str> {
-    let marker = Regex::new(&format!(r#"\b{name}\s*:\s*\["#)).ok()?;
+    let name = regex::escape(name);
+    let marker = Regex::new(&format!(r#"(?:[\"']{name}[\"']|\b{name})\s*:\s*\["#,)).ok()?;
     let marker_match = marker.find(content)?;
     let start = marker_match.end();
     let bytes = content.as_bytes();
