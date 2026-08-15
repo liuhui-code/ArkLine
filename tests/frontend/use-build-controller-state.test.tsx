@@ -39,6 +39,40 @@ describe("useBuildControllerState", () => {
     expect(result.current.buildProject?.defaultModule).toBe("feature");
   });
 
+  it("keeps native products authoritative after a stale profile read completes", async () => {
+    let finishProfileRead!: (content: string) => void;
+    const openFile = vi.fn(() => new Promise<string>((resolve) => {
+      finishProfileRead = resolve;
+    }));
+    const inspectHarmonyBuildProject = vi.fn(async () => ({
+      rootPath: "/project",
+      isHarmonyProject: true,
+      hasHvigorWrapper: true,
+      hvigorWrapperCommand: "./hvigorw",
+      hasHvigorFile: true,
+      hasBuildProfile: true,
+      hasOhPackage: true,
+      modules: ["entry"],
+      defaultModule: "entry",
+      products: ["china"],
+      defaultProduct: "china",
+      productSigning: [{ product: "china", signingConfig: null, ready: false, issues: [] }],
+    }));
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({ openFile, inspectHarmonyBuildProject }),
+    });
+
+    await waitFor(() => {
+      expect(result.current.buildProject?.products).toEqual(["china"]);
+    });
+    await act(async () => {
+      finishProfileRead(`{ "app": { "products": [{ "name": "default" }] } }`);
+    });
+
+    expect(result.current.buildState.products).toEqual(["china"]);
+    expect(result.current.buildState.product).toBe("china");
+  });
+
   it("loads and saves build configurations through the workspace api", async () => {
     const loadBuildConfigurations = vi.fn(async () => [configuration("entry-debug")]);
     const saveBuildConfigurations = vi.fn(async () => undefined);
@@ -438,6 +472,24 @@ describe("useBuildControllerState", () => {
     expect(result.current.buildState.status).toBe("failed");
     expect(result.current.buildState.message).toBe("Open a project before building");
     expect(showBuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports native project inspection errors instead of building a fallback project", async () => {
+    const runTerminalCommand = vi.fn();
+    const inspectHarmonyBuildProject = vi.fn(async () => {
+      throw new Error("build-profile.json5 cannot be parsed");
+    });
+    const { result } = renderHarness({
+      workspaceApi: workspaceApi({ inspectHarmonyBuildProject, runTerminalCommand }),
+    });
+
+    await act(async () => {
+      await result.current.runBuild();
+    });
+
+    expect(runTerminalCommand).not.toHaveBeenCalled();
+    expect(result.current.buildState.status).toBe("failed");
+    expect(result.current.buildState.message).toContain("build-profile.json5 cannot be parsed");
   });
 });
 

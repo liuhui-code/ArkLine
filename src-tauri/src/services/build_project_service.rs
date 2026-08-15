@@ -17,12 +17,15 @@ pub fn find_harmony_build_artifacts(
     module_name: Option<&str>,
     product: &str,
 ) -> Result<Vec<String>, String> {
+    let project_root = PathBuf::from(root_path);
     let build_root = if target == "app" {
-        PathBuf::from(root_path).join("build")
+        project_root.join("build")
     } else {
         let module =
             module_name.ok_or_else(|| "A module is required for this build target".to_string())?;
-        PathBuf::from(root_path).join(module).join("build")
+        declared_module_root(&project_root, module)
+            .unwrap_or_else(|| project_root.join(module))
+            .join("build")
     };
     if !build_root.is_dir() {
         return Ok(Vec::new());
@@ -39,6 +42,20 @@ pub fn find_harmony_build_artifacts(
     artifacts.sort();
     artifacts.dedup();
     Ok(artifacts)
+}
+
+fn declared_module_root(root: &Path, module_name: &str) -> Option<PathBuf> {
+    let profile_content = fs::read_to_string(root.join("build-profile.json5")).ok()?;
+    let module = declared_project_modules(&profile_content)
+        .into_iter()
+        .find(|module| module.name == module_name)?;
+    let src_path = PathBuf::from(module.src_path);
+    let module_root = if src_path.is_absolute() {
+        src_path
+    } else {
+        root.join(src_path)
+    };
+    Some(module_root.components().collect())
 }
 
 fn collect_artifacts(

@@ -160,9 +160,15 @@ This keeps Build usable while a workspace tree is still loading and avoids
 silently dropping a valid module just because its files are not currently
 visible in the UI.
 
-Native inspection provides product defaults synchronously to `runBuild()`. The
-first Build click therefore does not race the UI effect that opens
-`build-profile.json5`. The frontend parser remains a browser-preview fallback.
+Native inspection provides product defaults synchronously to `runBuild()`. Once
+a native model is available, the UI does not merge or overwrite its modules and
+products with a later frontend profile read. The frontend parser remains a
+browser-preview fallback only.
+
+Artifact discovery resolves the selected Hvigor module name back through the
+project-level `modules[].srcPath` declaration before scanning its `build` tree.
+Nested or aliased module directories therefore use the same module identity for
+selection, command planning, and output verification.
 
 ## Configuration Selection and Persistence
 
