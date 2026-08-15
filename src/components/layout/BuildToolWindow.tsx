@@ -136,7 +136,33 @@ export function BuildToolWindow({
           ))}
         </ul>
       ) : null}
+      {state.lastResult?.artifacts.length ? (
+        <section className="build-tool-window__artifacts" aria-label="Build Artifacts">
+          <header><strong>Artifacts</strong><span>{state.lastResult.artifacts.length}</span></header>
+          <ul>
+            {state.lastResult.artifacts.map((artifact) => {
+              const receipt = artifactSignatureReceipt(artifact.signature);
+              return <li key={`${artifact.kind}:${artifact.path}`}>
+                <span className="build-tool-window__artifact-kind">{artifact.kind.toUpperCase()}</span>
+                <span className="build-tool-window__artifact-path"><strong>{artifactName(artifact.path)}</strong><code title={artifact.path}>{artifact.path}</code></span>
+                <span className={`build-tool-window__artifact-signature build-tool-window__artifact-signature--${artifact.signature}`}><strong>{receipt.label}</strong><small>{receipt.detail}</small></span>
+              </li>;
+            })}
+          </ul>
+        </section>
+      ) : null}
       <pre className="build-tool-window__output">{state.output || "Build output will appear here."}</pre>
     </section>
   );
+}
+
+function artifactName(path: string) {
+  return path.replaceAll("\\", "/").split("/").at(-1) ?? path;
+}
+
+function artifactSignatureReceipt(signature: NonNullable<BuildState["lastResult"]>["artifacts"][number]["signature"]) {
+  if (signature === "signed") return { label: "Signed", detail: "Signature detected" };
+  if (signature === "unsigned") return { label: "Unsigned", detail: "Deployment not verified" };
+  if (signature === "not-applicable") return { label: "Not applicable", detail: "Library artifact" };
+  return { label: "Unknown", detail: "Signature not verified" };
 }

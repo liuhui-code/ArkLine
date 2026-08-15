@@ -28,6 +28,9 @@ describe("CI quality gates", () => {
     expect(workflow).toContain("name: Quality Gate / Fast");
     expect(workflow).toContain("name: Windows / Package");
     expect(workflow).toContain("needs: quality");
+    expect(workflow).toContain("name: Install Tauri Linux dependencies");
+    expect(workflow).toContain("libwebkit2gtk-4.1-dev");
+    expect(workflow).toContain("libayatana-appindicator3-dev");
     expect(workflow).toContain("github.event.pull_request.head.ref || github.ref_name");
     expect(workflow).toContain("cancel-in-progress: ${{ github.ref_name != 'main' }}");
     expect(workflow).not.toContain("run: pnpm test\n");

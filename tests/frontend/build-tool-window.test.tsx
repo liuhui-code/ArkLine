@@ -56,6 +56,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
       stopped: false,
     }),
     stopTerminalCommand: async () => undefined,
+    findHarmonyBuildArtifacts: async () => ["/workspace/Demo/entry/build/default/outputs/default/entry-default-signed.hap"],
     createTerminalSession: async () => ({ id: "session-1", title: "zsh", cwd: "/workspace/Demo", shell: "zsh", status: "idle" }),
     listTerminalSessions: async () => [],
     writeTerminalInput: async () => undefined,
@@ -95,6 +96,37 @@ describe("build tool window", () => {
     })));
     expect(screen.getAllByText("Build succeeded").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Build Status")).toHaveTextContent("Build succeeded");
+  });
+
+  it("keeps unsigned advisories visible and presents a verified artifact receipt", async () => {
+    const user = userEvent.setup();
+    const unsignedArtifact = "/workspace/Demo/entry/build/default/outputs/default/entry-default-unsigned.hap";
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      inspectHarmonyBuildProject: async () => ({
+        rootPath: "/workspace/Demo",
+        isHarmonyProject: true,
+        hasHvigorWrapper: true,
+        hvigorWrapperCommand: "./hvigorw",
+        hasHvigorFile: true,
+        hasBuildProfile: true,
+        hasOhPackage: true,
+        modules: ["entry"],
+        defaultModule: "entry",
+        products: ["default"],
+        defaultProduct: "default",
+        productSigning: [{ product: "default", signingConfig: null, ready: false, issues: ["product does not reference signingConfig"] }],
+      }),
+      findHarmonyBuildArtifacts: async () => [unsignedArtifact],
+    })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "Run Build" }));
+
+    expect(await screen.findByText("Product default has no usable signing configuration; the artifact will be unsigned.")).toBeVisible();
+    const artifacts = screen.getByRole("region", { name: "Build Artifacts" });
+    expect(within(artifacts).getByText("entry-default-unsigned.hap")).toBeVisible();
+    expect(within(artifacts).getByText("Unsigned")).toBeVisible();
+    expect(within(artifacts).getByText("Deployment not verified")).toBeVisible();
   });
 
   it("parses build diagnostics into Problems after a failed build", async () => {

@@ -87,16 +87,16 @@ export function preflightHarmonyBuild(input: PreflightInput): BuildPreflightResu
     // inspection always returns one status per product and owns signing checks.
     if (input.project.productSigning.length > 0 && !signing?.signingConfig) {
       issues.push(issue({
-        severity: "error",
+        severity: "warning",
         code: "missing-signing-config",
-        message: `Product ${input.product} has no usable signing configuration.`,
-        hint: "Configure app.signingConfigs and reference it from the selected product's signingConfig in build-profile.json5.",
+        message: `Product ${input.product} has no usable signing configuration; the artifact will be unsigned.`,
+        hint: "Configure app.signingConfigs only when you need an installable signed artifact.",
       }));
     } else if (signing && !signing.ready) {
       issues.push(issue({
-        severity: "error",
+        severity: "warning",
         code: "invalid-signing-material",
-        message: `Signing configuration ${signing.signingConfig} is incomplete.`,
+        message: `Signing configuration ${signing.signingConfig} is incomplete; the artifact may be unsigned.`,
         hint: signing.issues.join("; "),
       }));
     }

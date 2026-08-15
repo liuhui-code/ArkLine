@@ -1835,6 +1835,107 @@ button:disabled {
   opacity: 0.62;
 }
 
+.build-tool-window__artifacts {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.build-tool-window__artifacts > header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.build-tool-window__artifacts > header strong {
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
+.build-tool-window__artifacts > header span {
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  text-align: center;
+}
+
+.build-tool-window__artifacts ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.build-tool-window__artifacts li {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+}
+
+.build-tool-window__artifact-kind {
+  color: var(--accent);
+  font: 700 9px/1 var(--font-mono);
+  letter-spacing: 0.06em;
+}
+
+.build-tool-window__artifact-path,
+.build-tool-window__artifact-signature {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.build-tool-window__artifact-path strong,
+.build-tool-window__artifact-path code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.build-tool-window__artifact-path strong {
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.build-tool-window__artifact-path code,
+.build-tool-window__artifact-signature small {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.build-tool-window__artifact-signature {
+  justify-items: end;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.build-tool-window__artifact-signature strong {
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.build-tool-window__artifact-signature--signed strong,
+.build-tool-window__artifact-signature--not-applicable strong {
+  color: var(--success);
+}
+
+.build-tool-window__artifact-signature--unsigned strong {
+  color: var(--warning);
+}
+
 .build-tool-window__button,
 .build-tool-window__field input,
 .build-tool-window__field select {

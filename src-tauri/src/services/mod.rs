@@ -1,5 +1,5 @@
 pub mod build_configuration_store;
-pub mod build_environment_service;
+pub mod build_environment_service; mod build_profile_parser_service;
 pub mod build_project_service;
 pub mod device_fault_log_service;
 pub mod device_log_buffer_service;

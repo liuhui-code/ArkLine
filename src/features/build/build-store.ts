@@ -146,7 +146,7 @@ export function createBuildStore() {
     clearQueue() {
       state.queue = [];
     },
-    start(plan: HarmonyBuildPlan & { runId: string }) {
+    start(plan: HarmonyBuildPlan & { runId: string }, preflight: BuildPreflightResult | null = null) {
       state.status = "running";
       state.currentRun = plan;
       appendEvent({
@@ -158,7 +158,7 @@ export function createBuildStore() {
         plan,
         history: state.history,
       });
-      state.preflight = null;
+      state.preflight = preflight;
       state.output = "";
       state.problems = [];
       state.lastResult = null;
@@ -197,7 +197,6 @@ export function createBuildStore() {
         status: result.status,
       });
       state.currentRun = null;
-      state.preflight = null;
     },
     failPreflight(result: BuildPreflightResult) {
       state.status = "failed";
