@@ -20,6 +20,9 @@ function expectPnpmBeforeNodeCache(workflow: string) {
 describe("CI quality gates", () => {
   it("runs the shared fast quality gate for every branch before the Windows package job", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
+    const qualityIndex = workflow.indexOf("  quality:");
+    const packageIndex = workflow.indexOf("  package:");
+    const qualityJob = workflow.slice(qualityIndex, packageIndex);
 
     expect(workflow).toContain("version: 10.12.1");
     expectPnpmBeforeNodeCache(workflow);
@@ -38,6 +41,13 @@ describe("CI quality gates", () => {
     expect(workflow).toContain("name: Quality Gate / Fast");
     expect(workflow).toContain("name: Windows / Package");
     expect(workflow).toContain("needs: quality");
+    expect(qualityJob).toContain("name: Install Linux desktop dependencies");
+    expect(qualityJob).toContain("libwebkit2gtk-4.1-dev");
+    expect(qualityJob).toContain("libayatana-appindicator3-dev");
+    expect(qualityJob).toContain("librsvg2-dev");
+    expect(qualityJob.indexOf("name: Install Linux desktop dependencies")).toBeLessThan(
+      qualityJob.indexOf("run: pnpm check:fast"),
+    );
     expect(workflow).toContain("github.event.pull_request.head.ref || github.ref_name");
     expect(workflow).toContain("cancel-in-progress: ${{ github.ref_name != 'main' }}");
     expect(workflow).not.toContain("run: pnpm test\n");
