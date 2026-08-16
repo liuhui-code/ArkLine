@@ -36,6 +36,7 @@ import { useWorkspaceResetController } from "@/components/layout/use-workspace-r
 import { useWorkspaceSession } from "@/components/layout/use-workspace-session";
 import { useWorkspaceIndexWatchers } from "@/components/layout/use-workspace-index-watchers";
 import { useWorkspaceOpeningController } from "@/components/layout/use-workspace-opening-controller";
+import { useAppZoom } from "@/components/layout/use-app-zoom";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
 import { createSettingsStore } from "@/features/settings/settings-store";
 import { useDefinitionController } from "@/components/layout/use-definition-controller";
@@ -53,6 +54,7 @@ import { createCodeMirrorSignatureHelpBroker } from "@/components/layout/codemir
 import { createCodeMirrorCompletionBroker, createCodeMirrorCompletionResolver, createCodeMirrorCompletionResultReporter } from "@/components/layout/codemirror-completion-broker";
 type AppShellProps = { workspaceApi?: WorkspaceApi };
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
+  useAppZoom();
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const statusMessageStore = useMemo(() => createStatusMessageStore("Mode: shell bootstrap"), []);
   const onStatusChange = statusMessageStore.setMessage;
