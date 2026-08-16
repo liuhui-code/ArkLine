@@ -283,7 +283,7 @@ describe("build command preflight", () => {
     }));
   });
 
-  it("blocks signable targets when the selected product has no signing config", () => {
+  it("allows an unsigned build when the selected product has no signing config", () => {
     const result = preflightHarmonyBuild({
       project: {
         rootPath: "/workspace/Demo",
@@ -309,10 +309,10 @@ describe("build command preflight", () => {
       product: "default",
     });
 
-    expect(result.canBuild).toBe(false);
+    expect(result.canBuild).toBe(true);
     expect(result.issues).toContainEqual(expect.objectContaining({
       code: "missing-signing-config",
-      severity: "error",
+      severity: "warning",
     }));
   });
 
@@ -718,7 +718,7 @@ describe("build controller", () => {
     ]);
   });
 
-  it("rejects an unsigned artifact even when Hvigor exits successfully", async () => {
+  it("accepts an unsigned artifact when Hvigor exits successfully", async () => {
     const plan = planHarmonyBuildCommand({
       rootPath: "/workspace/Demo",
       target: "hap",
@@ -751,8 +751,8 @@ describe("build controller", () => {
       source: "filesystem",
       signature: "unsigned",
     }]);
-    expect(result.status).toBe("failed");
-    expect(result.stderr).toContain("produced an unsigned .hap artifact");
+    expect(result.status).toBe("success");
+    expect(result.stderr).toBe("");
   });
 
   it("accepts a signed artifact from the filesystem", async () => {

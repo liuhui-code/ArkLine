@@ -84,20 +84,13 @@ export async function executeHarmonyBuildPlan(input: {
     && !terminalResult.stopped
     && Boolean(input.findBuildArtifacts)
     && artifacts.length === 0;
-  const unsignedArtifactFailed = terminalResult.exitCode === 0
-    && !terminalResult.stopped
-    && input.plan.target !== "har"
-    && artifacts.length > 0
-    && artifacts.every((artifact) => artifact.signature === "unsigned");
-  const verifiedTerminalResult = artifactVerificationFailed || unsignedArtifactFailed
+  const verifiedTerminalResult = artifactVerificationFailed
     ? {
       ...terminalResult,
       exitCode: 1,
       stderr: [
         terminalResult.stderr,
-        artifactVerificationFailed
-          ? `Build command succeeded, but no .${input.plan.target} artifact was found.`
-          : `Build command produced an unsigned .${input.plan.target} artifact. Configure signing for product ${input.plan.intent.product}.`,
+        `Build command succeeded, but no .${input.plan.target} artifact was found.`,
       ]
         .filter(Boolean)
         .join("\n"),
