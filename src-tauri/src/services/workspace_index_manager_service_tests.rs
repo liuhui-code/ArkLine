@@ -11,6 +11,9 @@ use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriori
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
+#[path = "workspace_index_final_readiness_tests.rs"]
+mod final_readiness;
+
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)

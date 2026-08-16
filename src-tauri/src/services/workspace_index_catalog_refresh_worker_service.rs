@@ -63,9 +63,16 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
         }
         complete_deep_refresh_catalog(&task.root_path, cursor.catalog_generation)?;
         clear_deep_refresh_cursor(&task.root_path, &task.reason)?;
-        return Ok(Some(skipped_task_result(
+        let state = index_runtime.finalize_workspace_background_index(&task.root_path)?;
+        return Ok(Some(refresh_task_result(
             task,
-            "Deep refresh catalog complete",
+            "changed-paths",
+            WorkspaceIndexRefreshResult {
+                state,
+                changed: false,
+                added_paths: Vec::new(),
+                removed_paths: Vec::new(),
+            },
             started_at,
         )));
     }

@@ -93,6 +93,20 @@ pub fn persist_incremental_sqlite_file_symbol_state(
     })
 }
 
+pub fn persist_workspace_index_metadata(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+) -> Result<(), String> {
+    let root_key = state
+        .root_path
+        .clone()
+        .unwrap_or_else(|| normalize_index_path(root_path));
+    with_workspace_index_writer(root_path, |connection| {
+        ensure_workspace_index_schema(connection)?;
+        persist_metadata_row(connection, &root_key, state)
+    })
+}
+
 #[allow(dead_code)]
 pub fn persist_incremental_sqlite_deep_state(
     root_path: &str,

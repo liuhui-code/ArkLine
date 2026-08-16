@@ -7,6 +7,10 @@ use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_catalog_fingerprints,
 };
 use crate::services::workspace_file_search_index_service::WorkspaceFileSearchIndex;
+use crate::services::workspace_index_incremental_persistence_service::persist_workspace_index_metadata;
+use crate::services::workspace_index_layer_readiness_store_service::{
+    count_rows, with_layer_readiness_store,
+};
 use crate::services::workspace_index_persistence_service::persist_incremental_file_symbol_state;
 use crate::services::workspace_index_service::{IndexedWorkspace, WorkspaceIndexRuntime};
 use crate::services::workspace_symbol_index_service::update_workspace_symbols_with_delta;
@@ -89,6 +93,45 @@ impl WorkspaceIndexRuntime {
             removed_paths,
         )?;
 
+        Ok(workspace.state)
+    }
+
+    pub(crate) fn finalize_workspace_background_index(
+        &self,
+        root_path: &str,
+    ) -> Result<WorkspaceIndexState, String> {
+        let normalized_root = normalize_index_path(root_path);
+        let mut workspace = {
+            let workspaces = self
+                .workspaces
+                .lock()
+                .map_err(|_| "Workspace index lock poisoned".to_string())?;
+            workspaces.get(&normalized_root).cloned()
+        }
+        .map(Ok)
+        .unwrap_or_else(|| restore_minimal_workspace(self, root_path))?;
+
+        let parser_error_count = with_layer_readiness_store(root_path, |connection| {
+            count_rows(connection, "workspace_stub_parse_errors", &normalized_root)
+        })?;
+        if workspace.state.file_paths.is_empty() {
+            workspace.state.status = WorkspaceIndexStatus::Empty;
+            workspace.state.partial_reason = None;
+        } else if parser_error_count > 0 {
+            workspace.state.status = WorkspaceIndexStatus::Partial;
+            let suffix = if parser_error_count == 1 { "" } else { "s" };
+            workspace.state.partial_reason = Some(format!(
+                "Project indexing completed with {parser_error_count} parser error{suffix}; results for affected files may be incomplete"
+            ));
+        } else {
+            workspace.state.status = WorkspaceIndexStatus::Ready;
+            workspace.state.partial_reason = None;
+        }
+        persist_workspace_index_metadata(root_path, &workspace.state)?;
+        self.workspaces
+            .lock()
+            .map_err(|_| "Workspace index lock poisoned".to_string())?
+            .insert(normalized_root, workspace.clone());
         Ok(workspace.state)
     }
 }
