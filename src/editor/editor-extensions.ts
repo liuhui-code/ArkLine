@@ -82,11 +82,7 @@ export function detectDocumentKind(path: string): EditorDocumentKind {
   return "plain";
 }
 
-export function languageExtensionForPath(path: string, largeDocumentMode = false): Extension {
-  if (largeDocumentMode) {
-    return [];
-  }
-
+export function languageExtensionForPath(path: string): Extension {
   const kind = detectDocumentKind(path);
 
   if (kind === "arkts" || kind === "typescript") {
@@ -189,7 +185,7 @@ export function createEditorExtensions(
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
     editorStructureCompartment.of(structureExtensionForDocument(deferDocumentExtensions)),
-    languageCompartment.of(languageExtensionForPath(path, deferDocumentExtensions)),
+    languageCompartment.of(languageExtensionForPath(path)),
     gitTraceCompartment.of(gitTrace && !reducedPerformanceMode ? createGitTraceGutter(gitTrace) : []),
   ];
 }

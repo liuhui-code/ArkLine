@@ -308,7 +308,7 @@ export function ArkTsEditor({
       annotations: [editorDocumentReplacement.of(true), Transaction.addToHistory.of(false)],
       effects: [
         editorStructureCompartment.reconfigure(structureExtensionForDocument(deferEnhancements)),
-        languageCompartment.reconfigure(languageExtensionForPath(path, deferEnhancements)),
+        languageCompartment.reconfigure(languageExtensionForPath(path)),
       ],
     });
     publishSessionStats();
@@ -371,7 +371,7 @@ export function ArkTsEditor({
       view.dispatch({
         effects: [
           editorStructureCompartment.reconfigure(structureExtensionForDocument(false)),
-          languageCompartment.reconfigure(languageExtensionForPath(scheduledPath, false)),
+          languageCompartment.reconfigure(languageExtensionForPath(scheduledPath)),
         ],
       });
       activeEnhancedRef.current = true;
