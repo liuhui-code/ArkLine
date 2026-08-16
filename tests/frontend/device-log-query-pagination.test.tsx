@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, vi } from "vitest";
 import { AppShell } from "@/components/layout/AppShell";
@@ -340,6 +340,35 @@ describe("Device Log query pagination", () => {
     await user.click(within(panel).getAllByLabelText("Regex")[0]);
 
     expect(await within(panel).findByText(/Device log regex is too long/u)).toBeVisible();
+  });
+
+  it("keeps loaded logs visible when a later backend filter query fails", async () => {
+    const queryDeviceLogs = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [makeRow(10, "retained fault")],
+        totalCandidates: 1,
+        scannedLines: 1,
+        truncated: false,
+        nextCursorSeq: null,
+        budgetExceeded: false,
+        queryMs: 2,
+      })
+      .mockRejectedValueOnce(new Error("Backend log query unavailable"));
+    const user = userEvent.setup();
+    render(<AppShell workspaceApi={createWorkspaceApi(queryDeviceLogs)} />);
+
+    await user.click(screen.getByRole("tab", { name: "Device Log" }));
+    await user.click(screen.getByRole("tab", { name: "HiLog" }));
+    const panel = await screen.findByLabelText("Device Log Panel");
+    await user.click(within(panel).getByRole("button", { name: "Start Device Log Stream" }));
+    expect(await within(panel).findByLabelText("retained fault")).toBeVisible();
+
+    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "fault" } });
+
+    await waitFor(() => expect(queryDeviceLogs).toHaveBeenCalledTimes(2));
+    expect(await within(panel).findByText(/Backend log query unavailable/u)).toBeVisible();
+    expect(within(panel).getByLabelText("retained fault")).toBeVisible();
   });
 
   it("loads older backend query matches with cursor pagination", async () => {
