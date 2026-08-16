@@ -32,6 +32,10 @@ type QualityGateManifest = {
   frontendQualityTests: string[];
 };
 
+type CapabilityRegistry = {
+  alwaysRunTests: string[];
+};
+
 async function readJson<T>(relativePath: string) {
   return JSON.parse(
     await readFile(path.join(process.cwd(), relativePath), "utf8"),
@@ -44,6 +48,7 @@ describe("quality gate manifest", () => {
       "docs/quality-gates.json",
     );
     const packageJson = await readJson<PackageJson>("package.json");
+    const registry = await readJson<CapabilityRegistry>("docs/quality/capabilities.json");
     const scripts = packageJson.scripts ?? {};
 
     expect(manifest.gates.fast.command).toBe(
@@ -67,5 +72,6 @@ describe("quality gate manifest", () => {
     expect(scripts["test:frontend:quality"]).toBe(
       `vitest run ${manifest.frontendQualityTests.join(" ")}`,
     );
+    expect(manifest.frontendQualityTests).toEqual(expect.arrayContaining(registry.alwaysRunTests));
   });
 });

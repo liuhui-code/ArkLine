@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 const DEFAULT_MANIFEST = "docs/quality-gates.json";
 const DEFAULT_REPORT_DIR = "artifacts";
+const MAX_CAPTURED_OUTPUT = 2 * 1024 * 1024;
 
 export async function runQualityGate({ gateName, manifestPath = DEFAULT_MANIFEST, reportPath }) {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -29,6 +30,12 @@ export async function runQualityGate({ gateName, manifestPath = DEFAULT_MANIFEST
       timedOut: result.timedOut,
       passed: result.exitCode === 0 && !result.timedOut,
     };
+    if (!step.passed) {
+      step.failedTests = extractFailedTestIdentities(result.output ?? "");
+      step.failureIdentityPrecision = step.failedTests.length > 0
+        ? "runner-output"
+        : "step-only";
+    }
     steps.push(step);
     console.log(`[quality-gate:${gateName}] ${step.passed ? "PASS" : "FAIL"} ${command}`);
     if (!step.passed) {
@@ -55,6 +62,18 @@ export async function runQualityGate({ gateName, manifestPath = DEFAULT_MANIFEST
   return report;
 }
 
+export function extractFailedTestIdentities(output) {
+  const identities = [];
+  for (const rawLine of output.split(/\r?\n/u)) {
+    const line = rawLine.replace(/\u001b\[[0-9;]*m/gu, "").trim();
+    const vitest = line.match(/^FAIL\s+(.+)$/u)?.[1]?.trim();
+    const rust = line.match(/^test (.+) \.\.\. FAILED$/u)?.[1]?.trim();
+    const identity = vitest ?? rust;
+    if (identity && !identities.includes(identity)) identities.push(identity);
+  }
+  return identities;
+}
+
 function runCommand(commandLine, timeoutMs) {
   const [command, ...args] = tokenize(commandLine);
   if (!command) return Promise.resolve({ exitCode: 1, timedOut: false });
@@ -64,9 +83,16 @@ function runCommand(commandLine, timeoutMs) {
     const child = spawn(executable, args, {
       cwd: process.cwd(),
       env: process.env,
-      stdio: "inherit",
+      stdio: ["inherit", "pipe", "pipe"],
       windowsHide: true,
     });
+    let output = "";
+    const capture = (chunk, target) => {
+      target.write(chunk);
+      output = `${output}${chunk.toString()}`.slice(-MAX_CAPTURED_OUTPUT);
+    };
+    child.stdout.on("data", (chunk) => capture(chunk, process.stdout));
+    child.stderr.on("data", (chunk) => capture(chunk, process.stderr));
     let timedOut = false;
     const timeout = setTimeout(() => {
       timedOut = true;
@@ -77,11 +103,11 @@ function runCommand(commandLine, timeoutMs) {
     child.once("error", (error) => {
       clearTimeout(timeout);
       console.error(`[quality-gate] could not start ${commandLine}: ${error.message}`);
-      resolve({ exitCode: 1, timedOut });
+      resolve({ exitCode: 1, timedOut, output });
     });
     child.once("close", (exitCode, signal) => {
       clearTimeout(timeout);
-      resolve({ exitCode: exitCode ?? 1, signal, timedOut });
+      resolve({ exitCode: exitCode ?? 1, signal, timedOut, output });
     });
   });
 }

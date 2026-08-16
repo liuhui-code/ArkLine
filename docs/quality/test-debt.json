@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "rust-suite-file-descriptor-exhaustion",
+      "status": "resolved",
+      "severity": "critical",
+      "owner": "core-platform",
+      "targetDate": "2026-08-31",
+      "evidence": "A serial cargo test run reached EMFILE after roughly 600 library tests and cascaded into 438 unrelated filesystem and SQLite failures.",
+      "nextAction": "Keep the writer connection budget regression tests in the merge gate.",
+      "resolvedDate": "2026-08-16",
+      "resolutionEvidence": "The global workspace-index writer pool now retains at most eight least-recently-used connections; the complete serial Rust library suite passed with 1049 tests green and 12 ignored."
+    },
+    {
+      "id": "frontend-app-shell-heavy-suite",
+      "status": "open",
+      "severity": "high",
+      "owner": "core-platform",
+      "targetDate": "2026-09-15",
+      "evidence": "tests/frontend/app-shell.test.tsx is 6733 lines and requires dedicated batching, serial execution, timeout handling, and individual retries.",
+      "nextAction": "Move product journeys behind stable domain interfaces and retain only a bounded AppShell smoke layer."
+    },
+    {
+      "id": "rust-test-binary-startup-latency",
+      "status": "open",
+      "severity": "high",
+      "owner": "quality-platform",
+      "targetDate": "2026-09-15",
+      "evidence": "On macOS, each large Rust test binary spends roughly two to three minutes in process startup before libtest begins, causing the former all-target Rust gate to exceed its 900-second budget.",
+      "nextAction": "Profile test-binary startup outside libtest and reduce binary size or platform security scanning overhead without weakening the library and consolidated integration coverage."
+    },
+    {
+      "id": "unmapped-capability-tests",
+      "status": "open",
+      "severity": "high",
+      "owner": "quality-platform",
+      "targetDate": "2026-09-15",
+      "evidence": "The Stage 0 inventory reports 153 test files without an explicit capability mapping out of 535 discovered test files.",
+      "nextAction": "Map high-risk unmapped tests first and split shared infrastructure contracts from product capability coverage."
+    }
+  ]
+}

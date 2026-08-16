@@ -49,4 +49,21 @@ describe("quality gate runner", () => {
       expect(report.steps).toHaveLength(1);
     });
   });
+
+  it("persists failed test identities emitted by the authoritative runner", async () => {
+    const command = "node -e \"console.log('FAIL  tests/frontend/build.test.ts > build > rejects invalid root'); process.exit(7)\"";
+    await withManifest([command], async (root) => {
+      const report = await runQualityGate({
+        gateName: "test",
+        manifestPath: path.join(root, "manifest.json"),
+        reportPath: path.join(root, "report.json"),
+      });
+
+      expect(report.steps[0]).toMatchObject({
+        passed: false,
+        failureIdentityPrecision: "runner-output",
+        failedTests: ["tests/frontend/build.test.ts > build > rejects invalid root"],
+      });
+    });
+  });
 });

@@ -19,6 +19,8 @@ export function main() {
       "test",
       "--manifest-path",
       "src-tauri/Cargo.toml",
+      "--lib",
+      "--test", "indexer_sidecar",
       "--",
       "--test-threads=1",
     ],

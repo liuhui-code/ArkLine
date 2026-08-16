@@ -61,6 +61,15 @@
     "tests/frontend/check-line-count.test.mjs",
     "tests/frontend/app-crash-boundary.test.tsx",
     "tests/frontend/editor-crash-boundary.test.tsx",
-    "tests/frontend/ui-latency-monitor.test.ts"
+    "tests/frontend/ui-latency-monitor.test.ts",
+    "tests/frontend/tdd-capability-registry.test.ts",
+    "tests/frontend/tdd-test-inventory.test.ts",
+    "tests/frontend/tdd-test-impact.test.ts",
+    "tests/frontend/tdd-rust-impact.test.ts",
+    "tests/frontend/tdd-test-impact-reconciliation.test.ts",
+    "tests/frontend/tdd-test-impact-history.test.ts",
+    "tests/frontend/tdd-test-impact-calibration.test.ts",
+    "tests/frontend/tdd-test-impact-promotion-review.test.ts",
+    "tests/frontend/tdd-governance.test.ts"
   ]
 }

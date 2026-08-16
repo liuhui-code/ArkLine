@@ -299,6 +299,40 @@ Run the staged local gate before opening a pull request:
 pnpm check:fast
 ```
 
+Inspect the test portfolio and preview which tests a change would select:
+
+```bash
+pnpm test:inventory
+pnpm test:impact:shadow
+pnpm test:impact:advisory -- --files=src/features/build/build-preflight.ts
+pnpm test:impact:reconcile
+pnpm test:impact:calibration
+pnpm test:impact:history -- --dir=artifacts/test-impact-history
+pnpm test:impact:review
+```
+
+These commands write `artifacts/test-inventory.json` and
+`artifacts/test-impact-shadow.json`. The advisory command also writes
+`artifacts/test-impact-advisory.json` and executes selected Frontend and
+semantic-worker tests plus conservatively grouped Rust tests. A zero-match Rust
+filter fails closed. The reconciliation command compares that evidence with
+`artifacts/quality-gate-fast.json`; fail-safe full selections remain delegated
+to the authoritative gate. After downloading retained CI artifacts into one
+directory, the history command reports sample counts, failure-bearing rates,
+and advisory-promotion blockers. The calibration command deliberately makes one
+sentinel test fail, verifies that its identity is captured, writes a
+`controlled-failure` reconciliation sample, and exits successfully only when
+that expected failure is observed. The separate `test-impact-evidence` workflow
+runs this calibration weekly, downloads up to 100 completed `windows-ci` evidence
+artifacts plus recent independent calibration samples, and retains both the
+current calibration and refreshed summary for 90 days. It is evidence-only and
+does not block product CI. The review command converts the aggregate into JSON
+and Markdown with `collecting`, `blocked`, or `review-required` status. Even a
+threshold-qualified report keeps `blockingAuthorized` false; GitHub Actions
+shows the Markdown summary but cannot enable a required check automatically. See the
+[TDD policy](docs/quality/tdd-policy.md) and
+[capability registry](docs/quality/capabilities.json).
+
 It writes `artifacts/quality-gate-fast.json` and stops at the first failed
 stage. The full release-candidate gate is:
 

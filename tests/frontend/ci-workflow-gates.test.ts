@@ -25,6 +25,16 @@ describe("CI quality gates", () => {
     expectPnpmBeforeNodeCache(workflow);
     expect(workflow).toContain('branches:\n      - "**"');
     expect(workflow).toContain("run: pnpm check:fast");
+    expect(workflow).toContain("fetch-depth: 0");
+    expect(workflow).toContain("name: Run TDD impact advisory");
+    expect(workflow).toContain("continue-on-error: true");
+    expect(workflow).toContain('pnpm test:impact:advisory -- --base="$ARKLINE_BASE_SHA" --head="$GITHUB_SHA"');
+    expect(workflow).toContain("name: Reconcile TDD impact evidence");
+    expect(workflow).toContain("run: pnpm test:impact:reconcile");
+    expect(workflow).toContain("retention-days: 90");
+    expect(workflow.indexOf("run: pnpm test:impact:reconcile")).toBeGreaterThan(
+      workflow.indexOf("run: pnpm check:fast"),
+    );
     expect(workflow).toContain("name: Quality Gate / Fast");
     expect(workflow).toContain("name: Windows / Package");
     expect(workflow).toContain("needs: quality");
@@ -79,5 +89,34 @@ describe("CI quality gates", () => {
     expect(publishJob).toContain('gh release create "$RELEASE_TAG" dist/ArkLine-windows-x64.zip');
     expect(publishJob).toContain('--target "$GITHUB_SHA"');
     expect(publishJob).not.toContain("--clobber");
+  });
+
+  it("collects and calibrates test-impact history on a non-blocking schedule", async () => {
+    const workflow = await readWorkflow("test-impact-evidence.yml");
+
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("schedule:");
+    expect(workflow).toContain("actions: read");
+    expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(workflow).toContain("gh run list --workflow=windows-ci.yml");
+    expect(workflow).toContain("gh run list --workflow=test-impact-evidence.yml");
+    expect(workflow).toContain('gh run download "$run_id"');
+    expect(workflow).toContain("pnpm test:impact:calibration");
+    expect(workflow).toContain("pnpm test:impact:history");
+    expect(workflow).toContain("pnpm test:impact:review");
+    expect(workflow).toContain('cat artifacts/test-impact-promotion-review.md >> "$GITHUB_STEP_SUMMARY"');
+    expect(workflow).toContain("artifacts/test-impact-promotion-review.json");
+    expect(workflow).toContain("artifacts/test-impact-promotion-review.md");
+    expect(workflow.indexOf("pnpm test:impact:review")).toBeGreaterThan(
+      workflow.indexOf("pnpm test:impact:history"),
+    );
+    expect(workflow.indexOf("$GITHUB_STEP_SUMMARY")).toBeGreaterThan(
+      workflow.indexOf("pnpm test:impact:review"),
+    );
+    expect(workflow).toContain("name: arkline-test-impact-calibration");
+    expect(workflow).toContain("name: arkline-test-impact-history");
+    expect(workflow).toContain("retention-days: 90");
+    expect(workflow).not.toContain("continue-on-error");
   });
 });

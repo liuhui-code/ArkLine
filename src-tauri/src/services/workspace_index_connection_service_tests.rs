@@ -203,6 +203,24 @@ fn reuses_the_same_writer_connection_for_a_workspace() {
 }
 
 #[test]
+fn bounds_cached_writer_connections_across_workspaces() {
+    let manager = WorkspaceIndexConnectionManager::new(0);
+    let roots = (0..9)
+        .map(|index| unique_temp_dir(&format!("workspace-index-writer-bound-{index}")))
+        .collect::<Vec<_>>();
+
+    for root in &roots {
+        manager.with_writer(root_str(root), |_| Ok(())).unwrap();
+    }
+
+    assert_eq!(manager.pooled_writer_count(), 8);
+    for root in &roots {
+        manager.clear(root_str(root)).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
 fn records_failed_writer_operations_without_leaking_active_or_queued_counts() {
     let root = unique_temp_dir("workspace-index-writer-failure-metrics");
     let manager = WorkspaceIndexConnectionManager::new(0);

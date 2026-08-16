@@ -67,7 +67,16 @@ impl SemanticRequestActor {
         timeout: Duration,
     ) -> Result<String, String> {
         let (response, receiver) = mpsc::channel();
-        self.state.queued.fetch_add(1, Ordering::Relaxed);
+        if self
+            .state
+            .queued
+            .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |queued| {
+                (queued < REQUEST_QUEUE_CAPACITY).then_some(queued + 1)
+            })
+            .is_err()
+        {
+            return Err("Semantic worker request queue is full".to_string());
+        }
         let command = ActorCommand::Exchange(ExchangeRequest {
             request_id,
             method,
