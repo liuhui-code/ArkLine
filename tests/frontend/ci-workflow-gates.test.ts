@@ -18,6 +18,22 @@ function expectPnpmBeforeNodeCache(workflow: string) {
 }
 
 describe("CI quality gates", () => {
+  it("blocks pull requests without complete executable TDD evidence", async () => {
+    const workflow = await readWorkflow("tdd-enforcement.yml");
+
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).toContain("name: TDD Evidence");
+    expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("fetch-depth: 0");
+    expect(workflow).toContain("ARKLINE_PR_BODY: ${{ github.event.pull_request.body }}");
+    expect(workflow).toContain("ARKLINE_BASE_SHA: ${{ github.event.pull_request.base.sha }}");
+    expect(workflow).toContain("ARKLINE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}");
+    expect(workflow).toContain(
+      'pnpm test:tdd:evidence -- --base="$ARKLINE_BASE_SHA" --head="$ARKLINE_HEAD_SHA"',
+    );
+    expect(workflow).not.toContain("continue-on-error");
+  });
+
   it("runs the shared fast quality gate for every branch before the Windows package job", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
     const qualityIndex = workflow.indexOf("  quality:");

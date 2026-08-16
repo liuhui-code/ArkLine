@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "baselines": {
+    "unmappedCapabilityFiles": 153,
+    "ignoredFiles": 6,
+    "mockCallAssertionFiles": 135
+  },
   "items": [
     {
       "id": "rust-suite-file-descriptor-exhaustion",

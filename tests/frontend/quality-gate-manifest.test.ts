@@ -72,6 +72,9 @@ describe("quality gate manifest", () => {
     expect(scripts["test:frontend:quality"]).toBe(
       `vitest run ${manifest.frontendQualityTests.join(" ")}`,
     );
+    expect(manifest.frontendQualityTests).toContain(
+      "tests/frontend/tdd-enforcement.test.ts",
+    );
     expect(manifest.frontendQualityTests).toEqual(expect.arrayContaining(registry.alwaysRunTests));
   });
 });

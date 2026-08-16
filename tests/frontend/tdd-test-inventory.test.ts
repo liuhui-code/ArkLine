@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 import { buildTestInventory } from "../../scripts/test-inventory.mjs";
 
 describe("TDD test inventory", () => {
@@ -31,5 +32,33 @@ describe("TDD test inventory", () => {
     expect(report.tests.find((test) => (
       test.path === "src-tauri/src/services/workspace_index_writer_connection_pool_service.rs"
     ))?.capabilities).toContain("project-open-index-readiness");
+  });
+
+  it("prevents existing TDD debt baselines from increasing", async () => {
+    const report = await buildTestInventory({ rootPath: process.cwd() });
+    const debt = JSON.parse(
+      await readFile("docs/quality/test-debt.json", "utf8"),
+    ) as {
+      baselines?: {
+        unmappedCapabilityFiles: number;
+        ignoredFiles: number;
+        mockCallAssertionFiles: number;
+      };
+    };
+
+    expect(debt.baselines).toEqual({
+      unmappedCapabilityFiles: 153,
+      ignoredFiles: 6,
+      mockCallAssertionFiles: 135,
+    });
+    expect(report.summary.unmappedCapabilityFiles).toBeLessThanOrEqual(
+      debt.baselines?.unmappedCapabilityFiles ?? -1,
+    );
+    expect(report.summary.ignoredFiles).toBeLessThanOrEqual(
+      debt.baselines?.ignoredFiles ?? -1,
+    );
+    expect(report.summary.mockCallAssertionFiles).toBeLessThanOrEqual(
+      debt.baselines?.mockCallAssertionFiles ?? -1,
+    );
   });
 });

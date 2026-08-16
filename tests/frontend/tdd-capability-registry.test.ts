@@ -56,6 +56,7 @@ describe("TDD capability registry", () => {
       "tests/frontend/tdd-test-impact-history.test.ts",
       "tests/frontend/tdd-test-impact-calibration.test.ts",
       "tests/frontend/tdd-test-impact-promotion-review.test.ts",
+      "tests/frontend/tdd-enforcement.test.ts",
       "tests/frontend/tdd-governance.test.ts",
     ]);
     expect(registry.fullSuitePatterns.length).toBeGreaterThan(0);

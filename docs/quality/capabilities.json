@@ -21,6 +21,7 @@
     "tests/frontend/tdd-test-impact-history.test.ts",
     "tests/frontend/tdd-test-impact-calibration.test.ts",
     "tests/frontend/tdd-test-impact-promotion-review.test.ts",
+    "tests/frontend/tdd-enforcement.test.ts",
     "tests/frontend/tdd-governance.test.ts"
   ],
   "fullSuitePatterns": [
@@ -142,7 +143,7 @@
       "owner": "release-engineering",
       "behavior": "The exact Windows artifact that passes package verification and real-project smoke is the artifact eligible for immutable publication.",
       "sourcePatterns": [".github/workflows/**", "scripts/package-*.mjs", "scripts/run-windows-*.mjs", "scripts/packaged-soak-*.mjs", "src-tauri/tauri.conf.json"],
-      "testPatterns": ["tests/frontend/*ci-workflow*.test.*", "tests/frontend/*package*.test.*", "tests/frontend/packaged-soak-*.test.ts", "tests/frontend/*test-impact*.test.ts"],
+      "testPatterns": ["tests/frontend/*ci-workflow*.test.*", "tests/frontend/*package*.test.*", "tests/frontend/packaged-soak-*.test.ts", "tests/frontend/*test-impact*.test.ts", "tests/frontend/*tdd*.test.ts"],
       "testLevels": ["small", "product"]
     }
   ]

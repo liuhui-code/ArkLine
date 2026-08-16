@@ -7,6 +7,25 @@ ArkLine capability still works, not only that an internal callback was invoked.
 The capability registry in `docs/quality/capabilities.json` is the source of truth
 for product risk, ownership, source impact, and test mapping.
 
+## Project-wide enforcement
+
+TDD is mandatory for every behavior change, defect fix, refactor, build/CI
+change, and developer-tooling change. Contributors work on a branch and merge
+through a pull request; direct updates to `main` are not an accepted development
+path. Each pull request must identify the capability and acceptance criterion,
+record a failing RED command on the parent behavior, record its focused GREEN
+command, and name the merge-ready gate evidence.
+
+The blocking `TDD Evidence` check validates that executable changes include a
+changed test contract and complete RED/GREEN evidence. Rust files containing
+inline tests are discovered through the repository test inventory. A branch
+ruleset must require `TDD Evidence`, `Quality Gate / Fast`, and
+`Windows / Package` before merge.
+
+Documentation-only and mechanically generated changes may use an explicit TDD
+exception. The exception must state its reason, affected scope, owner, and a
+future expiry date. An exception that includes production code is invalid.
+
 ## Change workflow
 
 Behavior changes and defect fixes use one vertical slice at a time:

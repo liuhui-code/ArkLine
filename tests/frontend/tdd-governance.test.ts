@@ -7,6 +7,22 @@ async function read(relativePath: string) {
 }
 
 describe("TDD governance", () => {
+  it("declares project-wide TDD as mandatory for every contributor and agent", async () => {
+    const agentInstructions = await read("AGENTS.md");
+    const policy = await read("docs/quality/tdd-policy.md");
+    const template = await read(".github/PULL_REQUEST_TEMPLATE.md");
+
+    expect(agentInstructions).toContain("## Mandatory project-wide TDD");
+    expect(agentInstructions).toContain("Do not edit production code before observing RED");
+    expect(agentInstructions).toContain("One test → one minimal implementation → refactor while GREEN");
+    expect(agentInstructions).toContain("Never push or merge directly to `main`");
+    expect(policy).toContain("Project-wide enforcement");
+    expect(policy).toContain("TDD Evidence");
+    for (const field of ["Reason", "Affected scope", "Owner", "Expiry"]) {
+      expect(template).toContain(`- ${field}:`);
+    }
+  });
+
   it("defines repository-wide behavior, test-size, impact, and flake policy", async () => {
     const policy = await read("docs/quality/tdd-policy.md");
 
