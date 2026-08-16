@@ -27,6 +27,10 @@
 
 ## TDD exception
 
-Leave empty for normal behavior changes. Otherwise provide reason, affected
-capability, owner and expiry. Documentation-only and generated changes still
-need an explicit statement when no executable test applies.
+Leave these fields empty for normal behavior changes. Exceptions are limited to
+documentation-only or mechanically generated changes.
+
+- Reason:
+- Affected scope:
+- Owner:
+- Expiry:
