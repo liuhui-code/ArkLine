@@ -181,6 +181,14 @@ fn reports_skeleton_language_runtime() {
         assert!(report.completion);
         assert!(report.document_symbols);
         assert!(report.find_usages);
+        assert!(report
+            .capabilities
+            .iter()
+            .any(|capability| capability == "generateCode"));
+        assert!(!report
+            .capabilities
+            .iter()
+            .any(|capability| capability == "renameSymbol"));
         assert!(report.detail.contains("independent semantic worker"));
     });
 }

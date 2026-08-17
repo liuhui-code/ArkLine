@@ -212,6 +212,15 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         completion: true,
         documentSymbols: true,
         findUsages: true,
+        capabilities: [
+          "hover",
+          "definition",
+          "completion",
+          "documentSymbols",
+          "findUsages",
+          "codeActions",
+          "generateCode",
+        ],
         detail: "Mock fallback ArkTS language service for demo and integration-shell wiring",
       };
     },
@@ -353,6 +362,14 @@ function validateBrowserDocument(path: string, content: string): ValidationProbl
         line: index + 1,
         column: line.indexOf("\t") + 1,
         message: "Replace tabs with spaces",
+        fix: {
+          title: "Replace tab with spaces",
+          startLine: index + 1,
+          startColumn: line.indexOf("\t") + 1,
+          endLine: index + 1,
+          endColumn: line.indexOf("\t") + 2,
+          replacement: "  ",
+        },
       });
     }
 

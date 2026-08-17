@@ -44,7 +44,7 @@ export class SemanticWorkerSession {
           payload: {
             status: discoverHarmonySdk().ready ? "ready" : "ready",
             protocolVersion: SEMANTIC_PROTOCOL_VERSION,
-            capabilities: ["completion", "completionResolve", "definition", "signatureHelp", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
+            capabilities: ["completion", "completionResolve", "definition", "signatureHelp", "codeActions", "generateCode", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
           },
         }
       case "restoreDocuments":

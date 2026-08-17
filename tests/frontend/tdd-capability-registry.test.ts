@@ -85,4 +85,22 @@ describe("TDD capability registry", () => {
       expect(critical.get(id)?.testLevels).toEqual(expect.arrayContaining(["medium", "product"]));
     }
   });
+
+  it("governs the trustworthy code-change loop as one critical product journey", async () => {
+    const registry = await readRegistry();
+    const capability = registry.capabilities.find((item) => item.id === "trustworthy-code-change-loop");
+
+    expect(capability).toMatchObject({
+      domain: "change-loop",
+      risk: "critical",
+      owner: "ide-workbench",
+    });
+    expect(capability?.testLevels).toEqual(expect.arrayContaining(["small", "medium", "product"]));
+    expect(capability?.sourcePatterns).toEqual(expect.arrayContaining([
+      "src/editor/**",
+      "src/features/semantic/**",
+      "src/features/build/**",
+      "src/features/git/**",
+    ]));
+  });
 });

@@ -2,6 +2,10 @@ import type { BuildConfiguration, BuildEnvironmentResolution, BuildTarget, Harmo
 import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
+import type { LanguageServiceReport } from "@/features/workspace/workspace-language-api-types";
+import type { ValidationProblem } from "@/features/workspace/workspace-validation-api-types";
+export type * from "@/features/workspace/workspace-language-api-types";
+export type * from "@/features/workspace/workspace-validation-api-types";
 import type {
   WorkspaceTextSearchResult,
   WorkspaceTextSearchStreamEvent,
@@ -156,15 +160,6 @@ export type PathSaveOptions = {
   title: string;
 };
 
-export type ValidationProblem = {
-  source: "lint" | "format" | "language" | "build";
-  severity: "error" | "warning";
-  path: string;
-  line: number;
-  column: number;
-  message: string;
-};
-
 export type EnvironmentTool = {
   name: string;
   available: boolean;
@@ -198,50 +193,6 @@ export type SemanticDocumentCloseRequest = {
 export type SemanticDocumentPrepareRequest = {
   path: string;
   documentVersion: number;
-};
-
-export type SemanticSupervisorSnapshot = {
-  status: string;
-  restartCount: number;
-  restoredDocumentCount: number;
-  consecutiveFailures: number;
-  lastHeartbeatEpochMs: number | null;
-  retryAfterMs: number;
-  lastError: string | null;
-  runtime: {
-    rssBytes: number;
-    heapUsedBytes: number;
-    heapTotalBytes: number;
-    externalBytes: number;
-    uptimeMs: number;
-    providerLatencies?: Record<string, {
-      count: number;
-      p50Us: number;
-      p95Us: number;
-      maxUs: number;
-    }>;
-  } | null;
-  memoryBudgetBytes: number;
-  requestActor?: {
-    running: boolean;
-    queued: number;
-    completed: number;
-    superseded: number;
-    failed: number;
-  };
-};
-
-export type LanguageServiceReport = {
-  provider: string;
-  mode: "semantic" | "fallback" | "unavailable";
-  running: boolean;
-  hover: boolean;
-  definition: boolean;
-  completion: boolean;
-  documentSymbols: boolean;
-  findUsages: boolean;
-  detail: string;
-  supervisor?: SemanticSupervisorSnapshot;
 };
 
 export type HoverResponse = {

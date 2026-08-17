@@ -150,15 +150,14 @@ describe("Shell hotkeys", () => {
     expect(await screen.findByRole("option", { name: /Generate ArkTS Page.*Generate/ })).toBeVisible();
   });
 
-  it("shows Rename Symbol Generate Code and Refactor This command palette entries", async () => {
+  it("only shows semantic commands that the active language service reports as supported", async () => {
     const user = userEvent.setup();
     render(<AppShell />);
 
     await user.click(await openEditor(user));
     await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
     await user.type(await screen.findByLabelText("Find Action Query"), "rename");
-    expect(await screen.findByRole("button", { name: "Rename Symbol" })).toBeVisible();
-    expect(screen.getByText("F2")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Rename Symbol" })).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Find Action Query"));
     await user.type(screen.getByLabelText("Find Action Query"), "generate");
@@ -167,8 +166,19 @@ describe("Shell hotkeys", () => {
 
     await user.clear(screen.getByLabelText("Find Action Query"));
     await user.type(screen.getByLabelText("Find Action Query"), "refactor");
-    expect(await screen.findByRole("button", { name: "Refactor This" })).toBeVisible();
-    expect(screen.getByText("Ctrl+Alt+Shift+T")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Refactor This" })).not.toBeInTheDocument();
+  });
+
+  it("does not intercept the rename shortcut when semantic rename is unsupported", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{F2}");
+
+    expect(screen.queryByRole("dialog", { name: "Rename Symbol" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Code Actions" })).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
 
   it("closes the active editor tab with Ctrl+W instead of closing the window", async () => {

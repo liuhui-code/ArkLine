@@ -44,6 +44,14 @@ export function useProblemsController({
     onStatusChange("Lint complete");
   }
 
+  function replaceLiveValidationProblems(path: string, validationProblems: ProblemItem[]) {
+    if (path !== activePath) return;
+    commitProblems([
+      ...problemsRef.current.state.items.filter((item) => item.source === "build"),
+      ...validationProblems.filter((item) => item.path === path && item.source !== "build"),
+    ]);
+  }
+
   function replaceBuildProblems(buildProblems: ProblemItem[]) {
     commitProblems([
       ...problemsRef.current.state.items.filter((item) => item.source !== "build"),
@@ -56,6 +64,7 @@ export function useProblemsController({
     resetProblems,
     refreshProblems,
     runLint,
+    replaceLiveValidationProblems,
     replaceBuildProblems,
   };
 }
