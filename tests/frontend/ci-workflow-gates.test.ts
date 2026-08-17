@@ -100,6 +100,7 @@ describe("CI quality gates", () => {
     expect(rustJob).toContain("needs: validate-release");
     expect(rustJob).toContain("runs-on: ubuntu-latest");
     expect(rustJob).toContain("run: pnpm check:release:rust");
+    expect(rustJob).not.toContain("cache: pnpm");
     expect(packageJob).toContain("needs: validate-release");
     expect(packageJob).not.toContain("needs: quality");
     expect(packageJob).toContain("runs-on: windows-latest");

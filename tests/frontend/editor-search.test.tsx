@@ -13,7 +13,7 @@ it("opens replace with Ctrl+R and reports match position", async () => {
       onChange={() => undefined}
     />,
   );
-  await user.click(screen.getByLabelText("Editor Content"));
+  screen.getByLabelText("Editor Content").focus();
   await user.keyboard("{Control>}f{/Control}");
   const searchInput = container.querySelector<HTMLInputElement>('input[name="search"]');
   expect(searchInput).toBeInTheDocument();
