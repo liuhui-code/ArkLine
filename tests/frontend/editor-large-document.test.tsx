@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { typescriptLanguage } from "@codemirror/lang-javascript";
 import { EditorView } from "@codemirror/view";
 import { vi } from "vitest";
 import { ArkTsEditor } from "@/editor/ArkTsEditor";
@@ -9,6 +10,67 @@ import {
 import { defaultSettings } from "@/features/settings/settings-store";
 
 describe("ArkTsEditor large document mode", () => {
+  it("keeps syntax highlighting active beyond the reduced-render line threshold", () => {
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/line-dense.ets"
+        value={lineDenseDocument()}
+        onChange={() => undefined}
+      />,
+    );
+
+    expectTypeScriptLanguageActive(container);
+  });
+
+  it("keeps syntax highlighting when switching to a reduced-render document", () => {
+    const appearance = defaultSettings().editor;
+    const onChange = () => undefined;
+    const { container, rerender } = render(
+      <ArkTsEditor
+        appearance={appearance}
+        path="C:/demo/readme.txt"
+        value="plain text"
+        onChange={onChange}
+      />,
+    );
+
+    rerender(
+      <ArkTsEditor
+        appearance={appearance}
+        path="C:/demo/line-dense.ets"
+        value={lineDenseDocument()}
+        onChange={onChange}
+      />,
+    );
+
+    expectTypeScriptLanguageActive(container);
+  });
+
+  it("keeps syntax highlighting when an open document crosses the reduced-render threshold", () => {
+    const appearance = defaultSettings().editor;
+    const onChange = () => undefined;
+    const { container, rerender } = render(
+      <ArkTsEditor
+        appearance={appearance}
+        path="C:/demo/growing.ets"
+        value="const value = 1;"
+        onChange={onChange}
+      />,
+    );
+
+    rerender(
+      <ArkTsEditor
+        appearance={appearance}
+        path="C:/demo/growing.ets"
+        value={lineDenseDocument()}
+        onChange={onChange}
+      />,
+    );
+
+    expectTypeScriptLanguageActive(container);
+  });
+
   it("uses the reduced editor extension set for line-dense files", () => {
     const { container } = render(
       <ArkTsEditor
@@ -102,3 +164,16 @@ describe("ArkTsEditor large document mode", () => {
     raf.mockRestore();
   });
 });
+
+function lineDenseDocument() {
+  return "const value = 1;\n".repeat(EDITOR_REDUCED_RENDER_LINE_THRESHOLD - 1);
+}
+
+function expectTypeScriptLanguageActive(container: HTMLElement) {
+  const root = container.querySelector(".cm-editor");
+  expect(root).toBeInstanceOf(HTMLElement);
+  const view = EditorView.findFromDOM(root as HTMLElement);
+
+  expect(view).toBeTruthy();
+  expect(typescriptLanguage.isActiveAt(view!.state, 0)).toBe(true);
+}

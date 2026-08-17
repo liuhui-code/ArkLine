@@ -129,6 +129,7 @@ function ownerForDomain(domain) {
     terminal: "terminal",
     "device-log": "device-tools",
     release: "release-engineering",
+    "change-loop": "ide-workbench",
     shared: "core-platform",
   }[domain];
 }

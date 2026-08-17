@@ -76,6 +76,11 @@ impl SemanticProvider for CompositeSemanticProvider {
         report.hover = self.fallback.report().hover;
         report.document_symbols = true;
         report.find_usages = true;
+        for capability in self.fallback.report().capabilities {
+            if !report.capabilities.contains(&capability) {
+                report.capabilities.push(capability);
+            }
+        }
         report.detail = format!(
             "{}; fallback remains active for hover, document symbols, and usages",
             report.detail

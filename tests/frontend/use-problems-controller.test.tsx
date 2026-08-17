@@ -45,6 +45,25 @@ describe("useProblemsController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Lint complete");
   });
 
+  it("accepts live validation only for the active document and preserves build diagnostics", () => {
+    const buildProblem = problem({ source: "build", message: "Build failed" });
+    const liveProblem = problem({ source: "lint", message: "Unsaved warning" });
+    const { result } = renderHarness({ activePath: "/project/main.ets" });
+
+    act(() => {
+      result.current.replaceBuildProblems([buildProblem]);
+      result.current.replaceLiveValidationProblems("/project/old.ets", [
+        problem({ path: "/project/old.ets", message: "Stale warning" }),
+      ]);
+    });
+    expect(result.current.problems).toEqual([buildProblem]);
+
+    act(() => {
+      result.current.replaceLiveValidationProblems("/project/main.ets", [liveProblem]);
+    });
+    expect(result.current.problems).toEqual([buildProblem, liveProblem]);
+  });
+
   it("ignores lint when no document is active and resets problems", async () => {
     const buildProblem = problem({ source: "build", message: "Build failed" });
     const runValidation = vi.fn(async () => [problem({ source: "lint" })]);

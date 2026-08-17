@@ -4,6 +4,7 @@ import type { KeybindingContext } from "@/components/layout/keybinding-model";
 
 type UseShellHotkeysOptions = {
   context?: KeybindingContext;
+  isCommandEnabled?: (command: ShellCommand) => boolean;
   onCommand: (command: ShellCommand) => void;
 };
 
@@ -22,10 +23,14 @@ function shouldDeferToEditor(event: KeyboardEvent, command: ShellCommand, contex
     return true;
   }
 
+  if (command === "showCodeActions") {
+    return true;
+  }
+
   return command === "closeTransientUi" && Boolean(document.querySelector(".cm-tooltip-autocomplete"));
 }
 
-export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOptions) {
+export function useShellHotkeys({ context = {}, isCommandEnabled, onCommand }: UseShellHotkeysOptions) {
   const lastShiftAtRef = useRef(0);
 
   useEffect(() => {
@@ -54,6 +59,10 @@ export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOpti
         return;
       }
 
+      if (isCommandEnabled && !isCommandEnabled(command)) {
+        return;
+      }
+
       if (shouldDeferToEditor(event, command, context)) {
         return;
       }
@@ -63,7 +72,26 @@ export function useShellHotkeys({ context = {}, onCommand }: UseShellHotkeysOpti
       onCommand(command);
     }
 
+    function handleDeferredEditorKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || !isCodeMirrorTarget(event.target)) {
+        return;
+      }
+
+      const command = resolveShellCommand(event, context);
+      if (command !== "showCodeActions" || isCommandEnabled && !isCommandEnabled(command)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      onCommand(command);
+    }
+
     window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [context, onCommand]);
+    window.addEventListener("keydown", handleDeferredEditorKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keydown", handleDeferredEditorKeyDown);
+    };
+  }, [context, isCommandEnabled, onCommand]);
 }

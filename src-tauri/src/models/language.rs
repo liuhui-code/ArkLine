@@ -17,6 +17,7 @@ pub struct LanguageServiceReport {
     pub completion: bool,
     pub document_symbols: bool,
     pub find_usages: bool,
+    pub capabilities: Vec<String>,
     pub detail: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supervisor: Option<SemanticSupervisorSnapshot>,

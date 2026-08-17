@@ -34,6 +34,15 @@ describe("language service api skeleton", () => {
       completion: true,
       documentSymbols: true,
       findUsages: true,
+      capabilities: [
+        "hover",
+        "definition",
+        "completion",
+        "documentSymbols",
+        "findUsages",
+        "codeActions",
+        "generateCode",
+      ],
       detail: "Mock fallback ArkTS language service for demo and integration-shell wiring",
     });
   });

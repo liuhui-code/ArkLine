@@ -117,6 +117,13 @@ impl SemanticProvider for ArkTsLspProvider {
             completion: true,
             document_symbols: false,
             find_usages: false,
+            capabilities: vec![
+                "definition".to_string(),
+                "completion".to_string(),
+                "signatureHelp".to_string(),
+                "codeActions".to_string(),
+                "generateCode".to_string(),
+            ],
             detail: format!(
                 "Semantic worker active at {} using {}; supervisor={}, restarts={}, failures={}, rss={}/{} MiB; {}",
                 self.binary_path.display(),

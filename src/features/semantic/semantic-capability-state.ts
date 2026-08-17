@@ -14,6 +14,9 @@ export type SemanticCapabilityState = {
   semanticNavigation: boolean;
   semanticCompletion: boolean;
   localFallback: boolean;
+  renameSymbol: boolean;
+  generateCode: boolean;
+  refactor: boolean;
   message: string;
 };
 
@@ -27,6 +30,9 @@ export function describeSemanticCapabilities(
       semanticNavigation: false,
       semanticCompletion: false,
       localFallback: false,
+      renameSymbol: false,
+      generateCode: false,
+      refactor: false,
       message: "SDK settings are still applying",
     };
   }
@@ -37,6 +43,9 @@ export function describeSemanticCapabilities(
       semanticNavigation: false,
       semanticCompletion: false,
       localFallback: true,
+      renameSymbol: false,
+      generateCode: false,
+      refactor: false,
       message: "SDK settings apply failed",
     };
   }
@@ -47,6 +56,9 @@ export function describeSemanticCapabilities(
       semanticNavigation: true,
       semanticCompletion: true,
       localFallback: true,
+      renameSymbol: semanticState.capabilities?.includes("renameSymbol") ?? false,
+      generateCode: semanticState.capabilities?.includes("generateCode") ?? false,
+      refactor: semanticState.capabilities?.includes("refactor") ?? false,
       message: semanticState.detail,
     };
   }
@@ -57,6 +69,9 @@ export function describeSemanticCapabilities(
       semanticNavigation: false,
       semanticCompletion: false,
       localFallback: true,
+      renameSymbol: semanticState.capabilities?.includes("renameSymbol") ?? false,
+      generateCode: semanticState.capabilities?.includes("generateCode") ?? false,
+      refactor: semanticState.capabilities?.includes("refactor") ?? false,
       message: semanticState.detail,
     };
   }
@@ -66,6 +81,9 @@ export function describeSemanticCapabilities(
     semanticNavigation: false,
     semanticCompletion: false,
     localFallback: false,
+    renameSymbol: false,
+    generateCode: false,
+    refactor: false,
     message: semanticState.detail,
   };
 }

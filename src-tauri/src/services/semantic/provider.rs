@@ -79,6 +79,12 @@ impl SemanticProvider for FallbackProvider {
             completion: true,
             document_symbols: true,
             find_usages: true,
+            capabilities: vec![
+                "definition".to_string(),
+                "completion".to_string(),
+                "documentSymbols".to_string(),
+                "findUsages".to_string(),
+            ],
             detail: self.detail.clone(),
             supervisor: None,
         }
