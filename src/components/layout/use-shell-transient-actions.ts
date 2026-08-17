@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type { OverlayKey } from "@/components/layout/shell-state";
 
 export type UseShellTransientActionsOptions = {
+  closeActiveFile: () => void;
   closeTransientGitUi: () => boolean;
   codeActionsVisible: boolean;
   closeCodeActionsPalette: () => void;
@@ -29,6 +30,7 @@ export type UseShellTransientActionsOptions = {
 };
 
 export function useShellTransientActions({
+  closeActiveFile,
   closeTransientGitUi,
   codeActionsVisible,
   closeCodeActionsPalette,
@@ -93,21 +95,45 @@ export function useShellTransientActions({
     return false;
   }
 
-  function hideActiveToolWindow() {
-    if (closeTransientUi()) {
-      return;
-    }
+  const focusTargets = [
+    [bottomContentVisible, bottomToolWindowRef.current, hideBottomToolWindow],
+    [filesVisible, filesPaneRef.current, () => setFilesVisible(false)],
+  ] as const;
+
+  function hideFocusedToolWindow() {
     const activeElement = document.activeElement;
-    const focusTargets = [
-      [bottomContentVisible, bottomToolWindowRef.current, hideBottomToolWindow],
-      [filesVisible, filesPaneRef.current, () => setFilesVisible(false)],
-    ] as const;
     const focusedTarget = activeElement instanceof Node
       ? focusTargets.find(([, container]) => container?.contains(activeElement))
       : null;
-    if (focusedTarget) {
-      focusedTarget[2]();
-      focusEditor();
+    if (!focusedTarget) {
+      return false;
+    }
+
+    focusedTarget[2]();
+    focusEditor();
+    return true;
+  }
+
+  function closeFocusedDialog() {
+    const activeElement = document.activeElement;
+    const dialog = activeElement instanceof Element
+      ? activeElement.closest<HTMLElement>('[role="dialog"]')
+      : null;
+    if (!dialog) {
+      return false;
+    }
+
+    const closeControl = dialog.querySelector<HTMLButtonElement>(
+      'button[data-close-focused-context], button[aria-label^="Close"], button[aria-label^="Cancel"]',
+    );
+    if (closeControl && !closeControl.disabled) {
+      closeControl.click();
+    }
+    return true;
+  }
+
+  function hideActiveToolWindow() {
+    if (closeTransientUi() || hideFocusedToolWindow()) {
       return;
     }
     const visibleTarget = focusTargets.find(([visible]) => visible);
@@ -115,6 +141,13 @@ export function useShellTransientActions({
       visibleTarget[2]();
       focusEditor();
     }
+  }
+
+  function closeFocusedContext() {
+    if (closeTransientUi() || closeFocusedDialog() || hideFocusedToolWindow()) {
+      return;
+    }
+    closeActiveFile();
   }
 
   function enterEditorOnlyMode() {
@@ -127,6 +160,7 @@ export function useShellTransientActions({
   }
 
   return {
+    closeFocusedContext,
     closeTransientUi,
     hideActiveToolWindow,
     enterEditorOnlyMode,
