@@ -2,6 +2,7 @@ import {
   waitForCoreIndexReady,
   waitForDiscoveryReady,
   waitForInteractiveIndexReady,
+  waitForTerminalIndexReady,
 } from "./packaged-soak-readiness.mjs";
 import { warmSemanticInteractions } from "./packaged-soak-semantic-workload.mjs";
 import { buildFixtureRelativePath } from "./generate-performance-fixture.mjs";
@@ -38,4 +39,12 @@ export async function preparePackagedSoakRun(
     definitionMissCount: 0,
     completionMissCount: 0,
   }, []);
+  if (scenario.kind === "real-workspace") {
+    onPhase("terminal-index-ready");
+    await waitForTerminalIndexReady(
+      driver,
+      options.fixturePath,
+      options.coreIndexTimeoutMs,
+    );
+  }
 }

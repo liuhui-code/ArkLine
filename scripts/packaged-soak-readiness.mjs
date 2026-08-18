@@ -39,6 +39,16 @@ export async function waitForCoreIndexReady(driver, rootPath, timeoutMs) {
   );
 }
 
+export async function waitForTerminalIndexReady(driver, rootPath, timeoutMs) {
+  return waitForIndexState(
+    driver,
+    rootPath,
+    timeoutMs,
+    isTerminalWorkspaceIndexReady,
+    "Workspace index did not reach a terminal state",
+  );
+}
+
 export async function waitForInteractiveIndexReady(
   driver,
   rootPath,
@@ -84,6 +94,12 @@ export function isCoreWorkspaceIndexReady(value) {
       + (contentFreshness?.skippedCount ?? 0) >= value.fileCount
     && (contentReadiness?.indexedCount ?? 0)
       + (contentFreshness?.skippedCount ?? 0) >= value.fileCount;
+}
+
+export function isTerminalWorkspaceIndexReady(value) {
+  return ["ready", "empty"].includes(value.workspaceState?.status)
+    && value.workspaceState?.partialReason == null
+    && value.queuePressure?.workspacePendingTaskCount === 0;
 }
 
 export async function waitForSearchResult(

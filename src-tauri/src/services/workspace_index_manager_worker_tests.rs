@@ -192,7 +192,7 @@ fn background_worker_is_reused_after_the_old_idle_window() {
         .iter()
         .any(|status| status == "ready"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_dir(&root);
 }
 
 #[test]

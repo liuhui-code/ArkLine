@@ -2,7 +2,7 @@ use crate::indexer_host::{
     IndexerContentPublicationMode, IndexerHostRuntime, IndexerStubRefreshAttempt,
 };
 use crate::indexer_sidecar::{IndexerTaskKey, INDEXER_STUB_REFRESH_PATH_LIMIT};
-use crate::models::workspace::{WorkspaceIndexState, WorkspaceIndexStatus};
+use crate::models::workspace::WorkspaceIndexState;
 use crate::services::workspace_content_chunk_plan_service::take_refresh_chunk;
 use crate::services::workspace_content_refresh_service::update_workspace_content_at_generation;
 use crate::services::workspace_content_refresh_service::WORKSPACE_CONTENT_MAX_CHUNK_BYTES;
@@ -31,6 +31,7 @@ use content::refresh_content_chunks;
 pub(crate) enum WorkspaceDeepLayerUpdate {
     Applied(WorkspaceIndexState),
     Deferred(WorkspaceIndexState),
+    Failed(String),
     Cancelled,
 }
 
@@ -92,14 +93,12 @@ pub(crate) fn update_background_deep_layer<G: Fn() -> bool + Sync>(
         return Ok(WorkspaceDeepLayerUpdate::Applied(state));
     }
     if indexer.is_some_and(IndexerHostRuntime::requires_process_isolation) {
-        let mut state = state;
-        state.status = WorkspaceIndexStatus::Partial;
-        state.partial_reason = Some(
-            indexer
-                .expect("checked indexer runtime")
-                .degraded_message("content and symbol refresh"),
+        return degraded_sidecar_update(
+            index_runtime,
+            indexer.expect("checked indexer runtime"),
+            &task.root_path,
+            "content and symbol refresh",
         );
-        return Ok(WorkspaceDeepLayerUpdate::Deferred(state));
     }
     if token.is_cancelled() {
         return Ok(WorkspaceDeepLayerUpdate::Cancelled);
@@ -212,14 +211,12 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
         LayerChunkOutcome::Unavailable
             if indexer.is_some_and(IndexerHostRuntime::requires_process_isolation) =>
         {
-            let mut state = state;
-            state.status = WorkspaceIndexStatus::Partial;
-            state.partial_reason = Some(
-                indexer
-                    .expect("checked indexer runtime")
-                    .degraded_message("catalog deep refresh"),
-            );
-            Ok(WorkspaceDeepLayerUpdate::Deferred(state))
+            degraded_sidecar_update(
+                index_runtime,
+                indexer.expect("checked indexer runtime"),
+                &task.root_path,
+                "catalog deep refresh",
+            )
         }
         LayerChunkOutcome::Unavailable => {
             match phase {
@@ -253,6 +250,20 @@ pub(crate) fn update_background_deep_layer_phase<G: Fn() -> bool + Sync>(
             Ok(WorkspaceDeepLayerUpdate::Applied(state))
         }
     }
+}
+
+fn degraded_sidecar_update(
+    index_runtime: &WorkspaceIndexRuntime,
+    indexer: &IndexerHostRuntime,
+    root_path: &str,
+    operation: &str,
+) -> Result<WorkspaceDeepLayerUpdate, String> {
+    let reason = indexer.degraded_message(operation);
+    let state = index_runtime.degrade_workspace_deep_layer(root_path, &reason)?;
+    if let Some(error) = indexer.terminal_unavailability_message() {
+        return Ok(WorkspaceDeepLayerUpdate::Failed(error));
+    }
+    Ok(WorkspaceDeepLayerUpdate::Deferred(state))
 }
 
 fn publish_deep_fingerprints(

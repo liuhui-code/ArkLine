@@ -90,12 +90,11 @@ describe("useWorkspaceIndexWatchers", () => {
     expect(teardown).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes the displayed index state when a background task becomes ready", async () => {
+  it("does not refetch workspace state from task status notifications", async () => {
     const rootPath = "/workspace";
-    const readyState = indexRefreshResult(rootPath).state;
     const applyWorkspaceIndexRefreshResult = vi.fn();
     let onTaskStatus: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
-    const getWorkspaceIndexState = vi.fn(async () => readyState);
+    const getWorkspaceIndexState = vi.fn(async () => indexRefreshResult(rootPath).state);
     const watchWorkspaceIndexTaskStatuses = vi.fn(async (
       _rootPath: string,
       next: (status: WorkspaceIndexTaskStatus) => void,
@@ -121,13 +120,8 @@ describe("useWorkspaceIndexWatchers", () => {
       onTaskStatus?.(indexTaskStatus({ status: "ready" }));
     });
 
-    await waitFor(() => expect(getWorkspaceIndexState).toHaveBeenCalledWith(rootPath));
-    await waitFor(() => expect(applyWorkspaceIndexRefreshResult).toHaveBeenCalledWith({
-      state: readyState,
-      changed: true,
-      addedPaths: [],
-      removedPaths: [],
-    }));
+    expect(getWorkspaceIndexState).not.toHaveBeenCalled();
+    expect(applyWorkspaceIndexRefreshResult).not.toHaveBeenCalled();
   });
 });
 

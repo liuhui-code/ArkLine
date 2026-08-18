@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use notify::{recommended_watcher, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::models::workspace::WorkspaceIndexRefreshResult;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::normalize_path;
@@ -71,6 +72,19 @@ impl WorkspaceIndexWatcherRuntime {
             .lock()
             .map_err(|_| "Workspace index watcher lock poisoned".to_string())?
             .insert(root_key, watcher);
+
+        let index_runtime = app_handle.state::<WorkspaceIndexRuntime>();
+        if let Ok(state) = index_runtime.get_index_state(root_path) {
+            let _ = app_handle.emit(
+                WORKSPACE_INDEX_CHANGED_EVENT,
+                WorkspaceIndexRefreshResult {
+                    state,
+                    changed: true,
+                    added_paths: Vec::new(),
+                    removed_paths: Vec::new(),
+                },
+            );
+        }
 
         Ok(())
     }

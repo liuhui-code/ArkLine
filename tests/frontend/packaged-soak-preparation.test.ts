@@ -4,6 +4,7 @@ const readiness = vi.hoisted(() => ({
   waitForCoreIndexReady: vi.fn(async () => undefined),
   waitForDiscoveryReady: vi.fn(async () => undefined),
   waitForInteractiveIndexReady: vi.fn(async () => undefined),
+  waitForTerminalIndexReady: vi.fn(async () => undefined),
 }));
 const semantic = vi.hoisted(() => ({
   warmSemanticInteractions: vi.fn(async () => undefined),
@@ -36,6 +37,16 @@ describe("packaged soak preparation", () => {
       options.coreIndexTimeoutMs,
     );
     expect(semantic.warmSemanticInteractions).toHaveBeenCalled();
-    expect(phases).toEqual(["discovery-ready", "core-index-ready", "semantic-warmup"]);
+    expect(readiness.waitForTerminalIndexReady).toHaveBeenCalledWith(
+      {},
+      options.fixturePath,
+      options.coreIndexTimeoutMs,
+    );
+    expect(phases).toEqual([
+      "discovery-ready",
+      "core-index-ready",
+      "semantic-warmup",
+      "terminal-index-ready",
+    ]);
   });
 });
