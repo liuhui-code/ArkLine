@@ -2,7 +2,7 @@ import { createEvent, fireEvent, render, screen, waitFor, within } from "@testin
 import userEvent from "@testing-library/user-event";
 import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
-import type { LanguageCompletionItem, WorkspaceApi, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import type { LanguageCompletionItem, LanguageServiceCapability, WorkspaceApi, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 import type { WorkspaceEditPlan } from "@/features/code-actions/workspace-edit-model";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import { defaultSettings } from "@/features/settings/settings-store";
@@ -115,6 +115,21 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     }),
     startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
     stopDeviceLogStream: async () => undefined,
+  };
+}
+
+function semanticLanguageServiceReport(...capabilities: LanguageServiceCapability[]) {
+  return {
+    provider: "arkts-semantic",
+    mode: "semantic" as const,
+    running: true,
+    hover: true,
+    definition: true,
+    completion: true,
+    documentSymbols: true,
+    findUsages: true,
+    capabilities,
+    detail: "ready",
   };
 }
 
@@ -2593,6 +2608,7 @@ describe("App shell", () => {
 
   it("filters F2 to rename code actions", async () => {
     const user = userEvent.setup();
+    const inspectLanguageService = vi.fn(async () => semanticLanguageServiceReport("renameSymbol", "codeActions"));
     const listCodeActions = vi.fn(async () => [
       {
         id: "arkts.generate-page",
@@ -2610,7 +2626,7 @@ describe("App shell", () => {
       },
     ]);
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ inspectLanguageService, listCodeActions })} />);
 
     await openMainEditor(user);
     await user.keyboard("{F2}");
@@ -2618,6 +2634,7 @@ describe("App shell", () => {
     const results = await screen.findByRole("listbox", { name: "Code Actions" });
     expect(within(results).getByRole("option", { name: /Rename File/ })).toBeVisible();
     expect(within(results).queryByRole("option", { name: /Generate ArkTS Page/ })).not.toBeInTheDocument();
+    expect(inspectLanguageService).toHaveBeenCalled();
   });
 
   it("ignores stale code action resolutions after the palette closes", async () => {
@@ -3006,6 +3023,7 @@ describe("App shell", () => {
 
   it("applies Rename File from the IDE and updates the file tree", async () => {
     const user = userEvent.setup();
+    const inspectLanguageService = vi.fn(async () => semanticLanguageServiceReport("renameSymbol", "codeActions"));
     const listCodeActions = vi.fn(async () => [
       {
         id: "workspace.renameFile",
@@ -3048,7 +3066,7 @@ describe("App shell", () => {
       changedFiles: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/src/Home.ets"],
     }));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ inspectLanguageService, listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
 
     await openMainEditor(user);
     await user.keyboard("{F2}");
@@ -3563,12 +3581,13 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}{Enter}ind");
     await user.keyboard("{Control>} {/Control}");
 
     await waitFor(() => expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
       "C:\\samples\\DemoWorkspace\\src\\main.ets",
-      "",
+      "ind",
       80,
     ));
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -3619,6 +3638,7 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}{Enter}ind");
     await user.keyboard("{Control>} {/Control}");
 
     expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
@@ -3735,6 +3755,7 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}{Enter}wid");
     await user.keyboard("{Control>} {/Control}");
 
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });

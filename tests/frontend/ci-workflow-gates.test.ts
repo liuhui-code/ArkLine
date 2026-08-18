@@ -9,6 +9,13 @@ async function readWorkflow(name: string) {
   );
 }
 
+async function readScript(name: string) {
+  return readFile(
+    path.join(process.cwd(), "scripts", name),
+    "utf8",
+  );
+}
+
 function expectPnpmBeforeNodeCache(workflow: string) {
   const pnpmIndex = workflow.indexOf("name: Setup pnpm");
   const nodeIndex = workflow.indexOf("name: Setup Node.js");
@@ -58,9 +65,7 @@ describe("CI quality gates", () => {
     expect(workflow).toContain("name: Windows / Package");
     expect(workflow).toContain("needs: quality");
     expect(qualityJob).toContain("name: Install Linux desktop dependencies");
-    expect(qualityJob).toContain("libwebkit2gtk-4.1-dev");
-    expect(qualityJob).toContain("libayatana-appindicator3-dev");
-    expect(qualityJob).toContain("librsvg2-dev");
+    expect(qualityJob).toContain("run: bash scripts/install-tauri-linux-deps.sh");
     expect(qualityJob.indexOf("name: Install Linux desktop dependencies")).toBeLessThan(
       qualityJob.indexOf("run: pnpm check:fast"),
     );
@@ -99,6 +104,7 @@ describe("CI quality gates", () => {
     expect(qualityJob).not.toContain("pnpm test:rust");
     expect(rustJob).toContain("needs: validate-release");
     expect(rustJob).toContain("runs-on: ubuntu-latest");
+    expect(rustJob).toContain("run: bash scripts/install-tauri-linux-deps.sh");
     expect(rustJob).toContain("run: pnpm check:release:rust");
     expect(rustJob).not.toContain("cache: pnpm");
     expect(packageJob).toContain("needs: validate-release");
@@ -116,6 +122,20 @@ describe("CI quality gates", () => {
     expect(publishJob).toContain('gh release create "$RELEASE_TAG" dist/ArkLine-windows-x64.zip');
     expect(publishJob).toContain('--target "$GITHUB_SHA"');
     expect(publishJob).not.toContain("--clobber");
+  });
+
+  it("bounds and retries non-interactive Tauri dependency installation", async () => {
+    const script = await readScript("install-tauri-linux-deps.sh");
+
+    expect(script).toContain("DEBIAN_FRONTEND=noninteractive");
+    expect(script).toContain("timeout --signal=TERM 4m");
+    expect(script).toContain("Acquire::Retries=3");
+    expect(script).toContain("Acquire::http::Timeout=30");
+    expect(script).toContain("for attempt in 1 2");
+    expect(script).toContain("--no-install-recommends");
+    expect(script).toContain("libwebkit2gtk-4.1-dev");
+    expect(script).toContain("libayatana-appindicator3-dev");
+    expect(script).toContain("librsvg2-dev");
   });
 
   it("collects and calibrates test-impact history on a non-blocking schedule", async () => {
