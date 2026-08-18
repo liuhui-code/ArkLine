@@ -170,6 +170,29 @@ export function useWorkspaceIndexWatchers({
     let disposed = false;
     const watchedRootPath = rootPath;
     let teardownWatcher: (() => void) | null = null;
+    async function synchronizeReadyWorkspaceState(status: WorkspaceIndexTaskStatus) {
+      if (status.status !== "ready" || !workspaceApi.getWorkspaceIndexState) {
+        return;
+      }
+
+      try {
+        const state = await workspaceApi.getWorkspaceIndexState(watchedRootPath);
+        if (disposed || (state.status !== "ready" && state.status !== "empty")) {
+          return;
+        }
+        workspaceIndexProjectionStore.recordRefreshResult(watchedRootPath, {
+          state,
+          changed: true,
+          addedPaths: [],
+          removedPaths: [],
+        });
+      } catch (error) {
+        if (!disposed) {
+          onStatusChange(`Workspace index state refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+
     void refreshWorkspaceIndexTaskStatuses(watchedRootPath);
     void workspaceApi.watchWorkspaceIndexTaskStatuses(watchedRootPath, (status) => {
       if (disposed) {
@@ -177,6 +200,7 @@ export function useWorkspaceIndexWatchers({
       }
 
       recordWorkspaceIndexTaskStatus(status);
+      void synchronizeReadyWorkspaceState(status);
     })
       .then((teardown) => {
         if (disposed) {

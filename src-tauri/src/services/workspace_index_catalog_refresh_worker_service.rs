@@ -61,13 +61,23 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
             result.message = Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE.to_string());
             return Ok(Some(result));
         }
+        let state = index_runtime.complete_workspace_deep_layer(&task.root_path)?;
         complete_deep_refresh_catalog(&task.root_path, cursor.catalog_generation)?;
         clear_deep_refresh_cursor(&task.root_path, &task.reason)?;
-        return Ok(Some(skipped_task_result(
+        let mut result = refresh_task_result(
             task,
-            "Deep refresh catalog complete",
+            "changed-paths",
+            WorkspaceIndexRefreshResult {
+                state,
+                changed: false,
+                added_paths: Vec::new(),
+                removed_paths: Vec::new(),
+            },
             started_at,
-        )));
+        );
+        result.refresh_result = None;
+        result.message = Some("Deep refresh catalog complete".to_string());
+        return Ok(Some(result));
     }
     let ui_latency_sensitive_at_start = is_ui_latency_sensitive();
     // A newly active UI preempts before starting another sidecar operation. When the
