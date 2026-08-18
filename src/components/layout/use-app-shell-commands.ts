@@ -7,7 +7,7 @@ import type { CommandPaletteItem } from "@/components/layout/search-overlay-mode
 
 type AppShellCommandActions = {
   closeTransientUi: () => void;
-  closeActiveFile: () => void;
+  closeFocusedContext: () => void;
   hideActiveToolWindow: () => void;
   toggleEditorOnly: () => void;
   navigateBack: () => void | Promise<void>;
@@ -93,7 +93,7 @@ export function useAppShellCommands({
     onCommand(command: ShellCommand) {
       const handlers: Partial<Record<ShellCommand, () => void | Promise<void>>> = {
         closeTransientUi: actions.closeTransientUi,
-        closeActiveFile: actions.closeActiveFile,
+        closeFocusedContext: actions.closeFocusedContext,
         hideActiveToolWindow: actions.hideActiveToolWindow,
         toggleEditorOnly: actions.toggleEditorOnly,
         navigateBack: actions.navigateBack,

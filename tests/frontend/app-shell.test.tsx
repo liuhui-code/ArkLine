@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
@@ -1056,6 +1056,49 @@ describe("App shell", () => {
     await user.click(screen.getByRole("menuitem", { name: "Format Document" }));
 
     expect(await screen.findByText("Formatted main.ets")).toBeVisible();
+  });
+
+  it("suppresses unrelated context menus on app regions without actions", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Problems" }),
+    });
+    expect(screen.getByRole("menu", { name: "Problems tool window actions" })).toBeVisible();
+
+    const statusBar = screen.getByLabelText("Status Bar");
+    const contextMenuEvent = createEvent.contextMenu(statusBar, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 40,
+      clientY: 40,
+    });
+
+    fireEvent.pointerDown(statusBar);
+    fireEvent(statusBar, contextMenuEvent);
+
+    expect(contextMenuEvent.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("keeps native editing context menus available on text inputs", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+    await user.click(screen.getByRole("button", { name: "File" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Open Project..." }));
+    const projectPath = await screen.findByLabelText("Project Path");
+    const contextMenuEvent = createEvent.contextMenu(projectPath, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 40,
+      clientY: 40,
+    });
+
+    fireEvent(projectPath, contextMenuEvent);
+
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("opens quick open from the keyboard and filters workspace paths", async () => {
