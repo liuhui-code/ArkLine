@@ -3,6 +3,7 @@ import {
   isCoreWorkspaceIndexReady,
   isInteractiveWorkspaceIndexReady,
   isTerminalWorkspaceIndexReady,
+  waitForTerminalIndexReady,
 } from "../../scripts/packaged-soak-readiness.mjs";
 
 describe("packaged soak index readiness", () => {
@@ -149,5 +150,53 @@ describe("packaged soak index readiness", () => {
       ...ready,
       queuePressure: { workspacePendingTaskCount: 1 },
     })).toBe(false);
+  });
+
+  it("uses a lightweight probe while waiting for terminal index readiness", async () => {
+    const calls: unknown[][] = [];
+    const driver = {
+      async executeAsync(...args: unknown[]) {
+        calls.push(args);
+        return {
+          ok: true,
+          value: {
+            workspaceState: { status: "ready", partialReason: null },
+            queuePressure: { workspacePendingTaskCount: 0 },
+          },
+        };
+      },
+    };
+
+    await waitForTerminalIndexReady(driver, "/workspace", 1_000);
+
+    const [script, args] = calls[0] as [string, string[]];
+    expect(script).toContain("get_workspace_index_state");
+    expect(script).toContain("get_workspace_index_task_statuses");
+    expect(script).not.toContain("inspect_workspace_index");
+    expect(args).toEqual(["/workspace"]);
+  });
+
+  it("retries a transient aborted readiness probe within the overall deadline", async () => {
+    const abortError = Object.assign(new Error("This operation was aborted"), {
+      name: "AbortError",
+    });
+    let callCount = 0;
+    const driver = {
+      async executeAsync() {
+        callCount += 1;
+        if (callCount === 1) throw abortError;
+        return {
+          ok: true,
+          value: {
+            workspaceState: { status: "ready", partialReason: null },
+            queuePressure: { workspacePendingTaskCount: 0 },
+          },
+        };
+      },
+    };
+
+    await waitForTerminalIndexReady(driver, "/workspace", 1_000);
+
+    expect(callCount).toBe(2);
   });
 });

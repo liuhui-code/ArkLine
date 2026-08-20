@@ -289,6 +289,34 @@ export const DIAGNOSTICS_SCRIPT = `
     .catch((error) => done({ ok: false, error: String(error) }));
 `;
 
+export const TERMINAL_INDEX_READINESS_SCRIPT = `
+  const done = arguments[arguments.length - 1];
+  const rootPath = arguments[0];
+  const invoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+  if (!invoke) { done({ ok: false, error: "Tauri invoke unavailable" }); return; }
+  Promise.all([
+    invoke("get_workspace_index_state", { rootPath }),
+    invoke("get_workspace_index_task_statuses", { rootPath })
+  ])
+    .then(([workspaceState, taskStatuses]) => {
+      const terminalStatuses = new Set([
+        "ready", "partial", "failed", "cancelled", "superseded", "skipped"
+      ]);
+      const workspacePendingTaskCount = taskStatuses.filter(
+        (status) => !terminalStatuses.has(status.status)
+      ).length;
+      done({
+        ok: true,
+        value: {
+          workspaceState,
+          taskStatuses,
+          queuePressure: { workspacePendingTaskCount }
+        }
+      });
+    })
+    .catch((error) => done({ ok: false, error: String(error) }));
+`;
+
 export function telemetryDurations(snapshot) {
   return {
     eventTimings: (snapshot.eventTimings ?? []).map((entry) => entry.duration),
