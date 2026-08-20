@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use tauri::{ipc::Channel, AppHandle, Emitter, State};
+use tauri::{ipc::Channel, AppHandle, State};
 
 use crate::commands::workspace_emit::{
     emit_workspace_index_events, emit_workspace_index_task_statuses,
+    emit_workspace_index_task_update,
 };
 use crate::models::workspace::{
     WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexHealth,
@@ -47,6 +48,7 @@ pub async fn open_workspace(
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<WorkspaceSnapshot, String> {
     let app_handle = app_handle.clone();
+    let callback_runtime = index_runtime.inner().clone();
     ui_activity.record_ui_activity(
         WorkspaceIndexUiActivityKind::FileOpen,
         current_time_millis() as u64,
@@ -57,7 +59,7 @@ pub async fn open_workspace(
         ui_activity.inner().clone(),
         root_path,
         move |status, events| {
-            let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_task_update(&app_handle, &callback_runtime, status);
             emit_workspace_index_events(&app_handle, &events);
         },
     )
@@ -145,6 +147,7 @@ pub fn rebuild_workspace_sdk_index(
     let target = load_active_sdk_repair_target(&root_path)?
         .ok_or_else(|| "No active SDK index metadata available".to_string())?;
     let app_handle = app_handle.clone();
+    let callback_runtime = index_runtime.inner().clone();
     submit_workspace_sdk_index_through_manager(
         index_runtime.inner().clone(),
         index_manager.inner().clone(),
@@ -152,7 +155,7 @@ pub fn rebuild_workspace_sdk_index(
         &target.sdk_path,
         &target.sdk_version,
         move |status, events| {
-            let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_task_update(&app_handle, &callback_runtime, status);
             emit_workspace_index_events(&app_handle, &events);
         },
     )
@@ -205,6 +208,7 @@ pub fn submit_workspace_sdk_index(
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
 ) -> Result<WorkspaceIndexTaskStatus, String> {
     let app_handle = app_handle.clone();
+    let callback_runtime = index_runtime.inner().clone();
     submit_workspace_sdk_index_through_manager(
         index_runtime.inner().clone(),
         index_manager.inner().clone(),
@@ -212,7 +216,7 @@ pub fn submit_workspace_sdk_index(
         &sdk_path,
         &sdk_version,
         move |status, events| {
-            let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_task_update(&app_handle, &callback_runtime, status);
             emit_workspace_index_events(&app_handle, &events);
         },
     )

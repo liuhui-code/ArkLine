@@ -6,6 +6,7 @@ import type {
   WorkspaceApi,
   WorkspaceIndexEvent,
   WorkspaceIndexRefreshResult,
+  WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
 
 describe("useWorkspaceIndexWatchers", () => {
@@ -88,6 +89,40 @@ describe("useWorkspaceIndexWatchers", () => {
 
     expect(teardown).toHaveBeenCalledTimes(1);
   });
+
+  it("does not refetch workspace state from task status notifications", async () => {
+    const rootPath = "/workspace";
+    const applyWorkspaceIndexRefreshResult = vi.fn();
+    let onTaskStatus: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
+    const getWorkspaceIndexState = vi.fn(async () => indexRefreshResult(rootPath).state);
+    const watchWorkspaceIndexTaskStatuses = vi.fn(async (
+      _rootPath: string,
+      next: (status: WorkspaceIndexTaskStatus) => void,
+    ) => {
+      onTaskStatus = next;
+      return vi.fn();
+    });
+
+    renderHook(() => useWorkspaceIndexWatchers({
+      rootPath,
+      workspaceApi: {
+        getWorkspaceIndexState,
+        watchWorkspaceIndexTaskStatuses,
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult,
+      refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    await waitFor(() => expect(watchWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(1));
+    act(() => {
+      onTaskStatus?.(indexTaskStatus({ status: "ready" }));
+    });
+
+    expect(getWorkspaceIndexState).not.toHaveBeenCalled();
+    expect(applyWorkspaceIndexRefreshResult).not.toHaveBeenCalled();
+  });
 });
 
 function indexRefreshResult(rootPath: string): WorkspaceIndexRefreshResult {
@@ -118,6 +153,29 @@ function indexEvent(overrides: Partial<WorkspaceIndexEvent> = {}): WorkspaceInde
     generation: 1,
     payloadJson: "{}",
     createdAt: 1,
+    ...overrides,
+  };
+}
+
+function indexTaskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {
+  return {
+    taskId: "1:changed-paths",
+    rootPath: "/workspace",
+    kind: "changed-paths",
+    status: "partial",
+    reason: "full-refresh-deep:background-refresh-after-open",
+    generation: 1,
+    progressCurrent: 1,
+    progressTotal: 1,
+    targetPaths: [],
+    targetPathCount: null,
+    startedAt: 1,
+    lastHeartbeatAt: 1,
+    stalled: false,
+    finishedAt: 1,
+    symbolCount: null,
+    message: "Deep refresh catalog complete",
+    error: null,
     ...overrides,
   };
 }

@@ -1,7 +1,9 @@
 use tauri::async_runtime::spawn_blocking;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
-use crate::commands::workspace_emit::emit_workspace_index_events;
+use crate::commands::workspace_emit::{
+    emit_workspace_index_events, emit_workspace_index_task_update,
+};
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTaskPriority;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -164,10 +166,11 @@ fn start_index_worker(
     ui_activity: WorkspaceIndexUiActivityRuntime,
 ) -> Result<(), String> {
     let app_handle = app_handle.clone();
+    let callback_runtime = index_runtime.clone();
     index_manager.start_background_worker_with_events_and_ui_activity(
         index_runtime,
         move |status, events| {
-            let _ = app_handle.emit("workspace-index-task-updated", status);
+            emit_workspace_index_task_update(&app_handle, &callback_runtime, status);
             emit_workspace_index_events(&app_handle, &events);
         },
         move || {

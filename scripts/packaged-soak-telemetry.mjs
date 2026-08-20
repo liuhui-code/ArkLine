@@ -274,6 +274,7 @@ export const DIAGNOSTICS_SCRIPT = `
   if (!invoke) { done({ ok: false, error: "Tauri invoke unavailable" }); return; }
   Promise.all([
     invoke("inspect_workspace_index", { rootPath }),
+    invoke("get_workspace_index_state", { rootPath }),
     invoke("get_workspace_index_task_statuses", { rootPath }),
     invoke("get_workspace_index_layer_readiness", {
       rootPath,
@@ -281,9 +282,9 @@ export const DIAGNOSTICS_SCRIPT = `
     }),
     invoke("inspect_language_service").catch(() => null)
   ])
-    .then(([value, taskStatuses, layerReadiness, languageService]) => done({
+    .then(([value, workspaceState, taskStatuses, layerReadiness, languageService]) => done({
       ok: true,
-      value: { ...value, taskStatuses, layerReadiness, languageService }
+      value: { ...value, workspaceState, taskStatuses, layerReadiness, languageService }
     }))
     .catch((error) => done({ ok: false, error: String(error) }));
 `;

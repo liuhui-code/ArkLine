@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isCoreWorkspaceIndexReady,
   isInteractiveWorkspaceIndexReady,
+  isTerminalWorkspaceIndexReady,
 } from "../../scripts/packaged-soak-readiness.mjs";
 
 describe("packaged soak index readiness", () => {
@@ -130,6 +131,23 @@ describe("packaged soak index readiness", () => {
           currentFileStatus: "missing",
         }],
       },
+    })).toBe(false);
+  });
+
+  it("requires the published workspace state and queue to reach a terminal state", () => {
+    const ready = {
+      workspaceState: { status: "ready", partialReason: null },
+      queuePressure: { workspacePendingTaskCount: 0 },
+    };
+
+    expect(isTerminalWorkspaceIndexReady(ready)).toBe(true);
+    expect(isTerminalWorkspaceIndexReady({
+      ...ready,
+      workspaceState: { status: "partial", partialReason: "Background indexing is pending" },
+    })).toBe(false);
+    expect(isTerminalWorkspaceIndexReady({
+      ...ready,
+      queuePressure: { workspacePendingTaskCount: 1 },
     })).toBe(false);
   });
 });

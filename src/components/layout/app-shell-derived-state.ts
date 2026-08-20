@@ -50,6 +50,11 @@ export function getAppShellDerivedState({
     && workspaceIndexState.queryReadiness.state !== "missing"
     ? workspaceIndexState.queryReadiness.reason ?? `Index is ${workspaceIndexState.queryReadiness.state}; results may be incomplete.`
     : null;
+  const workspacePartialNotice = workspaceIndexState.queryReadiness?.state === "ready"
+    ? null
+    : queryReadinessNotice
+      ?? workspaceIndexState.partialReason
+      ?? getWorkspacePartialNotice(workspace);
 
   const quickOpenResults = activeOverlay === "quickOpen" && workspace && !persistentQuickOpenAvailable
     ? workspaceIndex.queryQuickOpen(quickOpenQuery, 8).flatMap((candidate) => candidate.path ? [{ path: candidate.path }] : [])
@@ -82,9 +87,7 @@ export function getAppShellDerivedState({
     workspaceScanText: getWorkspaceScanText(workspace),
     workspaceIndexText: workspaceIndexStatusSummary.workspaceIndexText,
     sdkIndexText: workspaceIndexStatusSummary.sdkIndexText,
-    workspacePartialNotice: queryReadinessNotice
-      ?? workspaceIndexState.partialReason
-      ?? getWorkspacePartialNotice(workspace),
+    workspacePartialNotice,
   };
 }
 

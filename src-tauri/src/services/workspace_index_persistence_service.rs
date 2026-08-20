@@ -14,7 +14,7 @@ use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, with_workspace_index_writer,
 };
 use crate::services::workspace_index_entity_persistence_service::{
-    insert_legacy_symbol, insert_symbol_entity,
+    insert_legacy_symbol, insert_symbol_entity, persist_metadata_row,
 };
 use crate::services::workspace_index_incremental_persistence_service::{
     persist_incremental_sqlite_deep_state_with_priority,
@@ -116,6 +116,28 @@ pub fn persist_incremental_deep_index_state_with_priority(
         removed_paths,
         priority,
     )
+}
+
+pub(crate) fn persist_index_metadata(
+    root_path: &str,
+    state: &WorkspaceIndexState,
+) -> Result<(), String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(());
+    }
+
+    let root_key = state
+        .root_path
+        .clone()
+        .unwrap_or_else(|| normalized_root_key(root_path));
+    with_workspace_index_writer(root_path, |connection| {
+        ensure_schema(connection)?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        persist_metadata_row(&transaction, &root_key, state)?;
+        transaction.commit().map_err(|error| error.to_string())
+    })
 }
 
 pub fn restore_catalog_cache_state(root_path: &str) -> Result<WorkspaceIndexState, String> {

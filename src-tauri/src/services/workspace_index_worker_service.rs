@@ -442,6 +442,7 @@ fn refresh_full_refresh_continuation_chunk<G: Fn() -> bool + Sync>(
             )? {
                 WorkspaceDeepLayerUpdate::Applied(state) => (state, false),
                 WorkspaceDeepLayerUpdate::Deferred(state) => (state, true),
+                WorkspaceDeepLayerUpdate::Failed(error) => return Err(error),
                 WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
             }
         }

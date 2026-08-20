@@ -4,8 +4,7 @@ use crate::services::workspace_content_chunk_plan_service::take_refresh_chunk;
 use crate::services::workspace_index_adaptive_chunk_service::initial_refresh_limits;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_deep_refresh_catalog_service::{
-    complete_deep_refresh_catalog, create_deep_refresh_catalog, load_deep_refresh_catalog_batch,
-    supersede_deep_refresh_catalog,
+    create_deep_refresh_catalog, load_deep_refresh_catalog_batch, supersede_deep_refresh_catalog,
 };
 use crate::services::workspace_index_deep_refresh_cursor_service::{
     advance_deep_refresh_cursor, clear_deep_refresh_cursor, load_deep_refresh_cursor,
@@ -18,7 +17,7 @@ use crate::services::workspace_index_deep_sidecar_service::{
 use crate::services::workspace_index_scheduler_service::WorkspaceIndexTask;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_task_status_service::{
-    refresh_task_result, skipped_task_result, WorkspaceIndexTaskResult,
+    failed_task_result, refresh_task_result, skipped_task_result, WorkspaceIndexTaskResult,
 };
 use crate::services::workspace_index_worker_budget_service::effective_deep_layer_path_budget;
 
@@ -61,13 +60,25 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
             result.message = Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE.to_string());
             return Ok(Some(result));
         }
-        complete_deep_refresh_catalog(&task.root_path, cursor.catalog_generation)?;
-        clear_deep_refresh_cursor(&task.root_path, &task.reason)?;
-        return Ok(Some(skipped_task_result(
+        let state = index_runtime.complete_workspace_deep_layer(
+            &task.root_path,
+            cursor.catalog_generation,
+            &task.reason,
+        )?;
+        let mut result = refresh_task_result(
             task,
-            "Deep refresh catalog complete",
+            "changed-paths",
+            WorkspaceIndexRefreshResult {
+                state,
+                changed: false,
+                added_paths: Vec::new(),
+                removed_paths: Vec::new(),
+            },
             started_at,
-        )));
+        );
+        result.refresh_result = None;
+        result.message = Some("Deep refresh catalog complete".to_string());
+        return Ok(Some(result));
     }
     let ui_latency_sensitive_at_start = is_ui_latency_sensitive();
     // A newly active UI preempts before starting another sidecar operation. When the
@@ -97,6 +108,9 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
         WorkspaceDeepLayerUpdate::Applied(state) => state,
         WorkspaceDeepLayerUpdate::Deferred(state) => {
             return Ok(Some(yielded_result(task, state, started_at)))
+        }
+        WorkspaceDeepLayerUpdate::Failed(error) => {
+            return Ok(Some(failed_task_result(task.clone(), error, started_at)))
         }
         WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
     };
