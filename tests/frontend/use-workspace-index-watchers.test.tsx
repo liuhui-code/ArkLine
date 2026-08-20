@@ -90,6 +90,49 @@ describe("useWorkspaceIndexWatchers", () => {
     expect(teardown).toHaveBeenCalledTimes(1);
   });
 
+  it("does not replay the latest refresh result when callback identities change", async () => {
+    const rootPath = "/workspace";
+    const firstApply = vi.fn();
+    const secondApply = vi.fn();
+    let onChange: ((result: WorkspaceIndexRefreshResult) => void) | null = null;
+    const watchWorkspaceIndex = vi.fn(async (
+      _rootPath: string,
+      next: (result: WorkspaceIndexRefreshResult) => void,
+    ) => {
+      onChange = next;
+      return vi.fn();
+    });
+    const workspaceApi = { watchWorkspaceIndex } as unknown as WorkspaceApi;
+
+    const { rerender } = renderHook(
+      ({ apply, onStatusChange }) => useWorkspaceIndexWatchers({
+        rootPath,
+        workspaceApi,
+        applyWorkspaceIndexRefreshResult: apply,
+        refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+        recordWorkspaceIndexTaskStatus: vi.fn(),
+        onStatusChange,
+      }),
+      {
+        initialProps: {
+          apply: firstApply,
+          onStatusChange: vi.fn(),
+        },
+      },
+    );
+
+    await waitFor(() => expect(watchWorkspaceIndex).toHaveBeenCalledTimes(1));
+    act(() => {
+      onChange?.(indexRefreshResult(rootPath));
+    });
+    await waitFor(() => expect(firstApply).toHaveBeenCalledTimes(1));
+
+    rerender({ apply: secondApply, onStatusChange: vi.fn() });
+
+    expect(secondApply).not.toHaveBeenCalled();
+    expect(watchWorkspaceIndex).toHaveBeenCalledTimes(1);
+  });
+
   it("does not refetch workspace state from task status notifications", async () => {
     const rootPath = "/workspace";
     const applyWorkspaceIndexRefreshResult = vi.fn();
