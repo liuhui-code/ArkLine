@@ -358,7 +358,7 @@ fn stub_layer(
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
     let count = count_rows(connection, "workspace_stub_files", root_key)?;
     let failures = count_rows(connection, "workspace_stub_parse_errors", root_key)?;
-    let expected = count_rows(connection, "workspace_files", root_key)?;
+    let expected = count_stub_source_files(connection, root_key)?;
     Ok(layer_with_current(
         "stub",
         status_with_expected_count(count, failures, expected),
@@ -368,6 +368,17 @@ fn stub_layer(
         0,
         None,
     ))
+}
+
+fn count_stub_source_files(connection: &Connection, root_key: &str) -> Result<i64, String> {
+    connection
+        .query_row(
+            "select count(*) from workspace_files
+             where root_path = ?1 and (path glob '*.ets' or path glob '*.ts')",
+            params![root_key],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
 }
 
 fn symbol_layer(

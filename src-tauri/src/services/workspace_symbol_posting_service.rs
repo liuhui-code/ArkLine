@@ -111,7 +111,6 @@ pub(crate) fn query_posted_symbols(
     query: &str,
     source: Option<&str>,
     requested_limit: usize,
-    include_entity_fallback: bool,
 ) -> Result<Option<Vec<WorkspaceIndexedSymbol>>, String> {
     let normalized_query = query.trim().to_lowercase();
     if normalized_query.is_empty() {
@@ -133,9 +132,6 @@ pub(crate) fn query_posted_symbols(
             source,
             candidate_limit,
         )?);
-        if !include_entity_fallback {
-            return Ok(Some(symbols));
-        }
     }
     if has_postings(connection, root_key, "entity")? {
         has_any_postings = true;

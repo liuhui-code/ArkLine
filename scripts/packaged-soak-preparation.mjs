@@ -36,6 +36,8 @@ export async function preparePackagedSoakRun(
       options.fixturePath,
       options.coreIndexTimeoutMs,
     );
+    onPhase("search-everywhere-class-ready");
+    await verifySearchEverywhereClass(driver, scenario.searchEverywhereClass);
   }
   onPhase("semantic-warmup");
   await warmSemanticInteractions(driver, scenario, {

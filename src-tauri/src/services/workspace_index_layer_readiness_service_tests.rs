@@ -135,6 +135,28 @@ fn reports_ready_current_file_layers_after_indexing() {
 }
 
 #[test]
+fn non_source_assets_do_not_keep_the_stub_layer_partial() {
+    let root = create_empty_workspace("layer-readiness-stub-eligibility");
+    let source_dir = create_workspace_source_dir(&root);
+    fs::write(source_dir.join("Entry.ets"), "export class Entry {}\n").unwrap();
+    fs::write(root.join("build-profile.json5"), "{ app: {} }\n").unwrap();
+    fs::write(root.join("app-icon.png"), [0_u8, 1, 2, 3]).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let report = get_workspace_index_layer_readiness(&root_path, None).unwrap();
+    let stub = report.layer("stub").unwrap();
+
+    assert_eq!(stub.workspace_status, WorkspaceIndexLayerStatus::Ready);
+    assert_eq!(stub.indexed_count, 1);
+    assert_eq!(stub.failed_count, 0);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn content_layer_counts_empty_files_and_persisted_failures() {
     let root = create_empty_workspace("layer-readiness-content-states");
     let source_dir = create_workspace_source_dir(&root);

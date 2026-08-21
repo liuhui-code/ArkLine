@@ -47,7 +47,10 @@ describe("packaged soak preparation", () => {
       coreIndexTimeoutMs: 300_000,
     };
 
-    await preparePackagedSoakRun({}, options, { kind: "real-workspace" }, phases.push.bind(phases));
+    await preparePackagedSoakRun({}, options, {
+      kind: "real-workspace",
+      searchEverywhereClass: "EntryViewModel",
+    }, phases.push.bind(phases));
 
     expect(readiness.waitForDiscoveryReady).toHaveBeenCalledWith(
       {},
@@ -59,6 +62,7 @@ describe("packaged soak preparation", () => {
       options.fixturePath,
       options.coreIndexTimeoutMs,
     );
+    expect(search.verifySearchEverywhereClass).toHaveBeenCalledWith({}, "EntryViewModel");
     expect(semantic.warmSemanticInteractions).toHaveBeenCalled();
     expect(readiness.waitForTerminalIndexReady).toHaveBeenCalledWith(
       {},
@@ -68,6 +72,7 @@ describe("packaged soak preparation", () => {
     expect(phases).toEqual([
       "discovery-ready",
       "core-index-ready",
+      "search-everywhere-class-ready",
       "semantic-warmup",
       "terminal-index-ready",
     ]);

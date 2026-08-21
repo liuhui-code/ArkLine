@@ -359,15 +359,59 @@ fn module_name_from_path(path: &str) -> Option<String> {
 }
 
 fn strip_line_comment(value: &str) -> &str {
-    value.split("//").next().unwrap_or(value)
+    line_comment_start(value)
+        .and_then(|index| value.get(..index))
+        .unwrap_or(value)
 }
 
 fn brace_delta(value: &str) -> i32 {
-    value.chars().fold(0, |sum, character| match character {
-        '{' => sum + 1,
-        '}' => sum - 1,
-        _ => sum,
+    let mut quote = None;
+    let mut escaped = false;
+    strip_line_comment(value).chars().fold(0, |sum, character| {
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == active_quote {
+                quote = None;
+            }
+            return sum;
+        }
+        match character {
+            '\'' | '"' | '`' => {
+                quote = Some(character);
+                sum
+            }
+            '{' => sum + 1,
+            '}' => sum - 1,
+            _ => sum,
+        }
     })
+}
+
+fn line_comment_start(value: &str) -> Option<usize> {
+    let mut quote = None;
+    let mut escaped = false;
+    let mut characters = value.char_indices().peekable();
+    while let Some((index, character)) = characters.next() {
+        if let Some(active_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '\'' | '"' | '`' => quote = Some(character),
+            '/' if characters.peek().is_some_and(|(_, next)| *next == '/') => return Some(index),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn is_container_kind(kind: &str) -> bool {

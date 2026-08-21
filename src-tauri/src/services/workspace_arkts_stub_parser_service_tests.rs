@@ -245,3 +245,24 @@ struct Broken {
         .iter()
         .any(|declaration| declaration.name == "Broken"));
 }
+
+#[test]
+fn url_strings_do_not_turn_closing_braces_into_line_comments() {
+    let stub = parse_arkts_file_stub(
+        "entry/src/main/ets/common/constants/CommonConstants.ets",
+        r#"
+class CommonConstants {
+  SEARCH_ENGINES: string[] = [
+    { engine: "Bing", prefix: "https://cn.bing.com/search?q=" },
+    { engine: "Google", prefix: "http://www.google.com/search?q=" }
+  ]
+}
+"#,
+    );
+
+    assert_eq!(stub.parse_errors, Vec::new());
+    assert!(stub
+        .declarations
+        .iter()
+        .any(|declaration| declaration.name == "CommonConstants"));
+}

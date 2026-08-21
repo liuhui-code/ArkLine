@@ -355,7 +355,7 @@ pub mod workspace_index_watcher_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_budget_integration_tests;
 pub(crate) mod workspace_index_worker_budget_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_budget_service_tests;
-pub mod workspace_index_worker_service;
+#[rustfmt::skip] pub mod workspace_index_worker_service; pub(crate) mod workspace_index_worker_ownership_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_isolation_tests;
 #[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_service_tests;
 #[rustfmt::skip] #[cfg(test)] mod workspace_index_worker_sidecar_fallback_tests;
