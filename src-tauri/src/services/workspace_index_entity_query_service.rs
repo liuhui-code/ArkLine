@@ -158,7 +158,14 @@ fn query_symbol_entities(
     };
     let root_key = normalize_index_path(root_path);
     let freshness = load_index_freshness(&connection, &root_key)?;
-    let symbols = match query_posted_symbols(&connection, &root_key, query, source, limit)? {
+    let symbols = match query_posted_symbols(
+        &connection,
+        &root_key,
+        query,
+        source,
+        limit,
+        freshness == "partial",
+    )? {
         Some(symbols) => symbols,
         None => load_stub_symbols(&connection, &root_key).and_then(|symbols| {
             if symbols.is_empty() {

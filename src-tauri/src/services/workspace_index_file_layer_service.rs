@@ -15,6 +15,38 @@ use crate::services::workspace_index_service::{IndexedWorkspace, WorkspaceIndexR
 use crate::services::workspace_symbol_index_service::update_workspace_symbols_with_delta;
 
 impl WorkspaceIndexRuntime {
+    pub fn complete_workspace_incremental_deep_layer(
+        &self,
+        root_path: &str,
+    ) -> Result<WorkspaceIndexState, String> {
+        let normalized_root = normalize_index_path(root_path);
+        let existing_workspace = {
+            let workspaces = self
+                .workspaces
+                .lock()
+                .map_err(|_| "Workspace index lock poisoned".to_string())?;
+            workspaces.get(&normalized_root).cloned()
+        };
+        let mut workspace = if let Some(workspace) = existing_workspace {
+            workspace
+        } else {
+            restore_minimal_workspace(self, root_path)?
+        };
+
+        workspace.state.status = if workspace.state.file_paths.is_empty() {
+            WorkspaceIndexStatus::Empty
+        } else {
+            WorkspaceIndexStatus::Ready
+        };
+        workspace.state.partial_reason = None;
+        persist_index_metadata(root_path, &workspace.state)?;
+        self.workspaces
+            .lock()
+            .map_err(|_| "Workspace index lock poisoned".to_string())?
+            .insert(normalized_root, workspace.clone());
+        Ok(workspace.state)
+    }
+
     pub fn degrade_workspace_deep_layer(
         &self,
         root_path: &str,

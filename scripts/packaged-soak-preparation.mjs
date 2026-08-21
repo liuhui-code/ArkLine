@@ -5,6 +5,7 @@ import {
   waitForTerminalIndexReady,
 } from "./packaged-soak-readiness.mjs";
 import { warmSemanticInteractions } from "./packaged-soak-semantic-workload.mjs";
+import { verifySearchEverywhereClass } from "./packaged-soak-search-workload.mjs";
 import { buildFixtureRelativePath } from "./generate-performance-fixture.mjs";
 import path from "node:path";
 
@@ -22,6 +23,8 @@ export async function preparePackagedSoakRun(
       path.join(options.fixturePath, buildFixtureRelativePath(0)),
       90_000,
     );
+    onPhase("search-everywhere-class-ready");
+    await verifySearchEverywhereClass(driver, "Page000000");
   } else {
     onPhase("discovery-ready");
     await waitForDiscoveryReady(driver, options.fixturePath, 180_000);

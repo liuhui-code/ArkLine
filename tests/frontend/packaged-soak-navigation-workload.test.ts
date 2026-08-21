@@ -1,8 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 import { EDITOR_TARGET_READINESS_SCRIPT } from "../../scripts/packaged-soak-readiness.mjs";
-import { exerciseQuickOpen } from "../../scripts/packaged-soak-search-workload.mjs";
+import {
+  exerciseQuickOpen,
+  verifySearchEverywhereClass,
+} from "../../scripts/packaged-soak-search-workload.mjs";
 
 describe("packaged Quick Open workload", () => {
+  it("verifies class search through Double Shift while indexing continues", async () => {
+    const driver = createDriver();
+
+    await expect(verifySearchEverywhereClass(driver, "Page000000")).resolves.toBeUndefined();
+
+    expect(driver.keyChord).toHaveBeenNthCalledWith(1, ["\uE008"]);
+    expect(driver.keyChord).toHaveBeenNthCalledWith(2, ["\uE008"]);
+    expect(driver.typeText).toHaveBeenCalledWith("Page000000");
+    expect(driver.keyChord).toHaveBeenLastCalledWith(["\uE00C"]);
+  });
+
   it("waits for target editor content before recording navigation", async () => {
     const driver = createDriver();
     const jumps: number[] = [];
