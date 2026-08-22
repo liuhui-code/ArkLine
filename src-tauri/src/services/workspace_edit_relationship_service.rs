@@ -70,6 +70,23 @@ pub(crate) fn validate_operation_relationships(
         }
     }
 
+    let structural_paths = file_paths.keys().collect::<Vec<_>>();
+    for (index, left) in structural_paths.iter().enumerate() {
+        for right in structural_paths.iter().skip(index + 1) {
+            if path_is_ancestor(left, right) || path_is_ancestor(right, left) {
+                let affected_path = if path_is_ancestor(left, right) {
+                    right
+                } else {
+                    left
+                };
+                conflicts.push(conflict(
+                    affected_path,
+                    "File operations cannot target parent or child paths in one workspace edit",
+                ));
+            }
+        }
+    }
+
     for (path, roles) in file_paths {
         if roles.len() > 1 {
             conflicts.push(conflict(

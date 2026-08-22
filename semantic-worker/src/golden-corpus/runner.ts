@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import type { SemanticCompletionItem, SemanticDefinitionTarget } from "../protocol.js"
+import type { SemanticCompletionItem, SemanticDefinitionTarget, SemanticUsageResult } from "../protocol.js"
 import { SemanticWorkerSession } from "../session.js"
 import type {
   MaterializedMarker,
@@ -11,6 +11,7 @@ import type {
   SemanticGoldenDefinitionCase,
   SemanticGoldenFailure,
   SemanticGoldenReport,
+  SemanticGoldenUsageCase,
 } from "./model.js"
 
 const MARKER_PATTERN = /\/\*@([A-Za-z0-9._-]+)\*\//gu
@@ -45,6 +46,10 @@ export function runSemanticGoldenCorpus(corpusPath: string): SemanticGoldenRepor
     let completionRequiredTopK = 0
     let completionTotalRequired = 0
     let completionForbiddenViolations = 0
+    let usageCases = 0
+    let usageExactMatches = 0
+    let usageTotalExpected = 0
+    let usageUnexpected = 0
     const session = new SemanticWorkerSession()
 
     for (const testCase of corpus.cases) {
@@ -60,6 +65,13 @@ export function runSemanticGoldenCorpus(corpusPath: string): SemanticGoldenRepor
         completionRequiredTopK += result.requiredTopK
         completionForbiddenViolations += result.forbiddenViolations
         if (result.failure) failures.push({ id: testCase.id, reason: result.failure })
+      } else if (testCase.capability === "usages") {
+        usageCases += 1
+        usageTotalExpected += testCase.expected.length
+        const result = runUsageCase(session, runtime, testCase)
+        usageExactMatches += result.exactMatches
+        usageUnexpected += result.unexpected
+        if (result.failure) failures.push({ id: testCase.id, reason: result.failure })
       }
     }
 
@@ -71,6 +83,12 @@ export function runSemanticGoldenCorpus(corpusPath: string): SemanticGoldenRepor
       failedCases: failures,
       coverage: [...new Set(corpus.cases.flatMap((testCase) => testCase.coverage))].sort(),
       definition: { exact: definitionExact, total: definitionTotal },
+      usages: {
+        cases: usageCases,
+        exactMatches: usageExactMatches,
+        totalExpected: usageTotalExpected,
+        unexpected: usageUnexpected,
+      },
       completion: {
         cases: completionCases,
         requiredTopK: completionRequiredTopK,
@@ -83,6 +101,57 @@ export function runSemanticGoldenCorpus(corpusPath: string): SemanticGoldenRepor
     else process.env.ARKLINE_HARMONY_SDK_PATH = previousSdkPath
     fs.rmSync(tempRoot, { recursive: true, force: true })
   }
+}
+
+function runUsageCase(
+  session: SemanticWorkerSession,
+  runtime: MaterializedCorpus,
+  testCase: SemanticGoldenUsageCase,
+): { exactMatches: number; unexpected: number; failure: string | null } {
+  const query = requireMarker(runtime.markers, testCase.query)
+  const expected = testCase.expected.map((reference) => {
+    const marker = requireMarker(runtime.markers, reference)
+    return { path: materializedPath(runtime, marker.file), line: marker.line, column: marker.column }
+  })
+  const response = session.handle({
+    id: testCase.id,
+    method: "findUsages",
+    position: {
+      path: materializedPath(runtime, query.file),
+      line: query.line,
+      column: query.column,
+      workspaceRoot: runtime.projectRoot,
+    },
+  })
+  if (!response.ok || !Array.isArray(response.payload)) {
+    return { exactMatches: 0, unexpected: 0, failure: response.error ?? "usages query failed" }
+  }
+  const actual = response.payload as SemanticUsageResult[]
+  const matches = expected.filter((target) => actual.some((item) => sameLocation(item, target)))
+  const unexpected = actual.filter((item) => !expected.some((target) => sameLocation(item, target)))
+  const missing = expected.filter((target) => !actual.some((item) => sameLocation(item, target)))
+  const reasons = [
+    missing.length > 0 ? `missing usages: ${missing.map(locationLabel).join(", ")}` : null,
+    unexpected.length > 0 ? `unexpected usages: ${unexpected.map(locationLabel).join(", ")}` : null,
+  ].filter((reason): reason is string => Boolean(reason))
+  return {
+    exactMatches: matches.length,
+    unexpected: unexpected.length,
+    failure: reasons.length > 0 ? reasons.join("; ") : null,
+  }
+}
+
+function sameLocation(
+  left: { path: string; line: number; column: number },
+  right: { path: string; line: number; column: number },
+) {
+  return path.resolve(left.path) === path.resolve(right.path)
+    && left.line === right.line
+    && left.column === right.column
+}
+
+function locationLabel(location: { path: string; line: number; column: number }) {
+  return `${location.path}:${location.line}:${location.column}`
 }
 
 function runCompletionCase(
@@ -173,7 +242,9 @@ function readCorpus(corpusPath: string): SemanticGoldenCorpus {
   }
   for (const testCase of parsed.cases) {
     if (!isRecord(testCase)) throw new Error("Semantic golden case must be an object")
-    if (testCase.capability !== "definition" && testCase.capability !== "completion") {
+    if (testCase.capability !== "definition"
+      && testCase.capability !== "completion"
+      && testCase.capability !== "usages") {
       throw new Error(`Unsupported semantic golden capability: ${String(testCase.capability)}`)
     }
     if (!Array.isArray(testCase.coverage)

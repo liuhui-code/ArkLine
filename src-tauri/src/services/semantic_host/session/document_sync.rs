@@ -48,6 +48,7 @@ impl SemanticWorkerSession {
                 position: None,
                 action: None,
                 completion: None,
+                new_name: None,
                 documents: None,
                 document: Some(SemanticDocumentSync {
                     path: path.to_string(),
@@ -73,6 +74,7 @@ impl SemanticWorkerSession {
                 position: None,
                 action: None,
                 completion: None,
+                new_name: None,
                 documents: None,
                 document: None,
                 document_path: Some(path.to_string()),

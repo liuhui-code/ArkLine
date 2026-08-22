@@ -10,7 +10,7 @@ use crate::services::process_command_service::hidden_command;
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::process::SemanticWorkerProcessSpec;
 use crate::services::semantic_host::session::{
-    parse_completion_item, IdleHealthProbe, SemanticWorkerSession,
+    parse_completion_item, parse_usage_result, IdleHealthProbe, SemanticWorkerSession,
 };
 
 fn unique_temp_path(name: &str, extension: &str) -> PathBuf {
@@ -241,6 +241,25 @@ fn parses_completion_v2_fields() {
     assert_eq!(parsed.replacement_range.unwrap().start_column, 6);
     assert_eq!(parsed.definition_target.unwrap().line, 20927);
     assert_eq!(parsed.additional_text_edits[0].expected_version, Some(7));
+}
+
+#[test]
+fn parses_exact_semantic_usage_results() {
+    let usage = serde_json::json!({
+        "path": "/workspace/Index.ts",
+        "line": 3,
+        "column": 6,
+        "preview": "user.name",
+        "kind": "semantic",
+        "confidence": "exact"
+    });
+
+    let parsed = parse_usage_result(&usage).expect("usage result should parse");
+
+    assert_eq!(parsed.path, "/workspace/Index.ts");
+    assert_eq!(parsed.line, 3);
+    assert_eq!(parsed.column, 6);
+    assert_eq!(parsed.confidence, "exact");
 }
 
 #[test]

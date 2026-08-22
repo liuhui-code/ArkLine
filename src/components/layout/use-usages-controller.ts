@@ -99,19 +99,33 @@ export function useUsagesController({
         ? await languageRequestTimeout(workspaceApi.queryUsagesWithReadiness(workspace.rootPath, request), languageSession.timeoutMs)
         : null;
       if (isStaleRequest()) return;
-      const items = envelope?.items ?? await languageRequestTimeout(Promise.resolve(workspaceApi.findUsages?.(request) ?? []), languageSession.timeoutMs);
+      const semanticResult = envelope
+        ? null
+        : await languageRequestTimeout(Promise.resolve(workspaceApi.findUsages?.(request)), languageSession.timeoutMs);
       if (isStaleRequest()) return;
+      const items = envelope?.items ?? semanticResult?.items ?? [];
       const readinessMessage = envelope && envelope.readiness.state !== "ready"
         ? `Index is ${envelope.readiness.state}; usages may be incomplete`
         : undefined;
       const envelopeExplanation = items.length === 0
         ? formatQueryEnvelopeExplain(envelope?.explain)
         : null;
+      const availability = envelope
+        ? envelope.readiness.state === "ready"
+          ? "ready"
+          : items.length > 0 ? "partial" : "unavailable"
+        : semanticResult?.availability ?? "unavailable";
+      const unavailable = availability === "unavailable" || (availability === "partial" && items.length === 0);
+      const partial = availability === "partial" && items.length > 0;
+      const message = items.length > 0
+        ? semanticResult?.message ?? readinessMessage
+        : semanticResult?.message ?? envelopeExplanation ?? readinessMessage
+          ?? (availability === "ready" ? "No usages found" : "Find Usages unavailable");
       setUsageSearch({
-        status: items.length > 0 ? "ready" : "empty",
+        status: partial ? "partial" : items.length > 0 ? "ready" : unavailable ? "unavailable" : "empty",
         items,
         requestedSymbol: request,
-        message: items.length > 0 ? readinessMessage : envelopeExplanation ?? readinessMessage ?? "No usages found",
+        message,
       });
       if (envelopeExplanation) {
         recordRecentQueryExplain({
@@ -121,7 +135,11 @@ export function useUsagesController({
           explain: envelope?.explain,
         });
       }
-      onStatusChange(items.length > 0 ? `Usages: ${items.length} matches` : "Usages: none");
+      onStatusChange(items.length > 0
+        ? `Usages: ${items.length} matches${partial ? " (partial)" : ""}`
+        : unavailable
+          ? `Find Usages unavailable: ${message}`
+          : "Usages: none");
       languageSessionStore.complete(languageSession);
     } catch (error) {
       if (isStaleRequest()) return;

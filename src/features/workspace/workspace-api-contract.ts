@@ -2,7 +2,7 @@ import type { BuildConfiguration, BuildEnvironmentResolution, BuildTarget, Harmo
 import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
-import type { LanguageServiceReport } from "@/features/workspace/workspace-language-api-types";
+import type { LanguageServiceReport, SemanticAvailability } from "@/features/workspace/workspace-language-api-types";
 import type { ValidationProblem } from "@/features/workspace/workspace-validation-api-types";
 export type * from "@/features/workspace/workspace-language-api-types";
 export type * from "@/features/workspace/workspace-validation-api-types";
@@ -148,6 +148,14 @@ export type WorkspaceIndexRefreshResult = {
 };
 
 export type WorkspaceIndexWatcher = (result: WorkspaceIndexRefreshResult) => void;
+
+export type WorkspaceFileChangeEvent = {
+  rootPath: string;
+  path: string;
+  kind: "modified";
+};
+
+export type WorkspaceFileChangeWatcher = (event: WorkspaceFileChangeEvent) => void;
 
 export type PathPickOptions = {
   directory?: boolean;
@@ -319,6 +327,23 @@ export type UnsupportedCodeActionResolution = {
 
 export type CodeActionResolution = WorkspaceEditPlan | UnsupportedCodeActionResolution;
 
+export type RenameSymbolRequest = LanguageQueryRequest & {
+  newName: string;
+  documentVersion?: number;
+};
+
+export type UsageQueryResult = {
+  availability: SemanticAvailability;
+  items: UsageResult[];
+  message?: string;
+};
+
+export type RenameSymbolResult = {
+  availability: SemanticAvailability;
+  resolution?: CodeActionResolution;
+  message?: string;
+};
+
 export type WorkspaceEditPreviewRequest = {
   workspaceRoot: string;
   plan: WorkspaceEditPlan;
@@ -340,6 +365,7 @@ export type ApplyWorkspaceEditResult = {
   applied: boolean;
   conflicts: EditConflict[];
   changedFiles: string[];
+  undoPlan?: WorkspaceEditPlan;
 };
 
 type WorkspaceCoreApi = {
@@ -383,6 +409,7 @@ type WorkspaceCoreApi = {
   refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
+  watchWorkspaceFileChanges?(rootPath: string, onChange: WorkspaceFileChangeWatcher): Promise<() => void>;
   searchWorkspaceText?(request: WorkspaceTextSearchRequest): Promise<WorkspaceTextSearchResult>;
   streamWorkspaceText?(
     request: WorkspaceTextSearchRequest,
@@ -393,7 +420,7 @@ type WorkspaceCoreApi = {
   getLaunchWorkspacePath?(): Promise<string | null>;
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;
   openFile(path: string, telemetry?: { interactionId?: string }): Promise<string>;
-  saveFile(path: string, content: string): Promise<void>;
+  saveFile(path: string, content: string, expectedContent?: string): Promise<void>;
   syncSemanticDocument?(request: SemanticDocumentSyncRequest): Promise<void>;
   prepareSemanticDocument?(request: SemanticDocumentPrepareRequest): Promise<void>;
   closeSemanticDocument?(request: SemanticDocumentCloseRequest): Promise<void>;
@@ -408,9 +435,10 @@ type WorkspaceCoreApi = {
   resolveCompletion?(request: LanguageQueryRequest, item: LanguageCompletionItem, documentVersion?: number): Promise<LanguageCompletionItem>;
   signatureHelp?(request: LanguageQueryRequest): Promise<LanguageSignatureHelp | null>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
-  findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
+  findUsages?(request: LanguageQueryRequest): Promise<UsageQueryResult>;
   listCodeActions?(request: LanguageQueryRequest): Promise<CodeAction[]>;
   resolveCodeAction?(request: CodeActionResolveRequest): Promise<CodeActionResolution>;
+  renameSymbol?(request: RenameSymbolRequest): Promise<RenameSymbolResult>;
   previewWorkspaceEdit?(request: WorkspaceEditPreviewRequest): Promise<WorkspaceEditPreview>;
   applyWorkspaceEdit?(request: ApplyWorkspaceEditRequest): Promise<ApplyWorkspaceEditResult>;
   loadSettings(): Promise<AppSettings>;

@@ -13,6 +13,7 @@ import type { NonSearchOverlayContentProps } from "@/components/layout/NonSearch
 import { AppShellSearchOverlaySurface } from "@/components/layout/AppShellSearchOverlaySurface";
 import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { WorkspaceEditPreview } from "@/components/layout/WorkspaceEditPreview";
+import { RenameSymbolDialog } from "@/components/layout/RenameSymbolDialog";
 import type { ProjectMutationDialogState } from "@/components/layout/app-shell-types";
 import type { OverlayKey } from "@/components/layout/shell-state";
 import type { CommandPaletteItem } from "@/components/layout/search-overlay-model";
@@ -42,6 +43,7 @@ type AppShellOverlaysProps = {
   codeActionsProps: ComponentProps<typeof CodeActionsPalette>;
   workspaceEditPreview: ComponentProps<typeof WorkspaceEditPreview>["preview"] | null;
   workspaceEditProps: Omit<ComponentProps<typeof WorkspaceEditPreview>, "preview">;
+  renameSymbolProps: ComponentProps<typeof RenameSymbolDialog> | null;
   openProjectDialogProps: ComponentProps<typeof OpenProjectDialog>;
   openProjectDecisionDialogProps: ComponentProps<typeof OpenProjectDecisionDialog>;
   settingsDialogProps: ComponentProps<typeof SettingsDialog>;
@@ -72,6 +74,7 @@ export function AppShellOverlays({
   codeActionsProps,
   workspaceEditPreview,
   workspaceEditProps,
+  renameSymbolProps,
   openProjectDialogProps,
   openProjectDecisionDialogProps,
   settingsDialogProps,
@@ -102,7 +105,7 @@ export function AppShellOverlays({
         />
       ) : null}
       {currentMethodsVisible ? <CurrentClassMethodsPalette {...currentMethodsProps} /> : null}
-      <AppShellCodeActionSurfaces codeActionsVisible={codeActionsVisible} codeActionsProps={codeActionsProps} workspaceEditPreview={workspaceEditPreview} workspaceEditProps={workspaceEditProps} />
+      <AppShellCodeActionSurfaces codeActionsVisible={codeActionsVisible} codeActionsProps={codeActionsProps} workspaceEditPreview={workspaceEditPreview} workspaceEditProps={workspaceEditProps} renameSymbolProps={renameSymbolProps} />
       <OpenProjectDialog {...openProjectDialogProps} />
       <OpenProjectDecisionDialog {...openProjectDecisionDialogProps} />
       <SettingsDialog {...settingsDialogProps} />

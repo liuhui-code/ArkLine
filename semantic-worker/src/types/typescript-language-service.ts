@@ -10,6 +10,9 @@ import type {
   SemanticDefinitionCandidate,
   SemanticDocumentPosition,
   SemanticSignatureHelp,
+  SemanticUnsupportedResult,
+  SemanticUsageResult,
+  SemanticWorkspaceEditPlan,
 } from "../protocol.js"
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
@@ -174,6 +177,85 @@ export class TypeScriptLanguageServiceEngine {
     })
   }
 
+  usages(position: SemanticDocumentPosition): SemanticUsageResult[] {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return []
+    script.lastAccess = ++this.accessClock
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const references = this.service.getReferencesAtPosition(filePath, offset) ?? []
+    const definitions = new Set((this.service.getDefinitionAtPosition(filePath, offset) ?? [])
+      .map((definition) => `${path.resolve(definition.fileName)}:${definition.textSpan.start}:${definition.textSpan.length}`))
+    const seen = new Set<string>()
+    return references.flatMap((reference) => {
+      const targetPath = path.resolve(reference.fileName)
+      const spanKey = `${targetPath}:${reference.textSpan.start}:${reference.textSpan.length}`
+      if (definitions.has(spanKey)) return []
+      const targetScript = this.scripts.get(targetPath)
+      const content = targetScript?.sourceContent ?? safeRead(targetPath)
+      if (content === null) return []
+      const targetOffset = targetScript
+        ? targetScript.virtualDocument.toSourceOffset(reference.textSpan.start)
+        : reference.textSpan.start
+      const target = offsetToLineColumn(content, targetOffset)
+      const key = `${targetPath}:${target.line}:${target.column}`
+      if (seen.has(key)) return []
+      seen.add(key)
+      return [{
+        path: targetPath,
+        line: target.line,
+        column: target.column,
+        preview: content.split("\n")[target.line - 1]?.trim() ?? "",
+        kind: "semantic" as const,
+        confidence: "exact" as const,
+      }]
+    })
+  }
+
+  rename(
+    position: SemanticDocumentPosition,
+    newName: string,
+  ): SemanticWorkspaceEditPlan | SemanticUnsupportedResult {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return unsupportedRename("Rename target is not loaded.")
+    if (!isIdentifierText(newName)) {
+      return unsupportedRename(`'${newName}' is not a valid identifier.`)
+    }
+    const sourceOffset = lineColumnToOffset(script.sourceContent, position.line, position.column)
+    const offset = script.virtualDocument.toGeneratedOffset(sourceOffset)
+    const info = this.service.getRenameInfo(filePath, offset, { allowRenameOfImportPath: false })
+    if (!info.canRename) return unsupportedRename(info.localizedErrorMessage)
+    const locations = this.service.findRenameLocations(filePath, offset, false, false, true) ?? []
+    const operations = locations.flatMap((location) => {
+      const targetPath = path.resolve(location.fileName)
+      const targetScript = this.scripts.get(targetPath)
+      if (!targetScript || !isWithinRoot(this.rootPath, targetPath)) return []
+      return [{
+        kind: "text" as const,
+        path: targetPath,
+        range: targetScript.virtualDocument.generatedSpanToSourceRange(
+          location.textSpan.start,
+          location.textSpan.length,
+        ),
+        newText: `${location.prefixText ?? ""}${newName}${location.suffixText ?? ""}`,
+        expectedContentVersion: contentVersion(targetScript.sourceContent),
+      }]
+    }).sort(compareTextEdits)
+    if (operations.length === 0) return unsupportedRename("No rename locations were found.")
+    const affectedFiles = [...new Set(operations.map((operation) => operation.path))].sort()
+    return {
+      id: `semantic.rename.${contentVersion(`${filePath}:${offset}:${newName}`)}`,
+      title: `Rename ${info.displayName} to ${newName}`,
+      operations,
+      conflicts: [],
+      affectedFiles,
+      undoLabel: `Undo rename ${info.displayName} to ${newName}`,
+      requiresPreview: true,
+    }
+  }
+
   signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null {
     const filePath = path.resolve(position.path)
     const script = this.scripts.get(filePath)
@@ -249,7 +331,16 @@ export class TypeScriptLanguageServiceEngine {
     const base = path.resolve(path.dirname(containingFile), name)
     const candidates = path.extname(base)
       ? [base]
-      : [base + ".ets", base + ".ts", path.join(base, "index.ets"), path.join(base, "index.ts")]
+      : [
+          base + ".d.ets",
+          base + ".d.ts",
+          base + ".ets",
+          base + ".ts",
+          path.join(base, "index.d.ets"),
+          path.join(base, "index.d.ts"),
+          path.join(base, "index.ets"),
+          path.join(base, "index.ts"),
+        ]
     const resolved = candidates.find((candidate) =>
       this.scripts.has(path.resolve(candidate)) || fs.existsSync(candidate))
     return resolved
@@ -368,4 +459,37 @@ function safeRead(filePath: string): string | null {
   } catch {
     return null
   }
+}
+
+function unsupportedRename(reason: string): SemanticUnsupportedResult {
+  return { status: "unsupported", reason }
+}
+
+function isWithinRoot(rootPath: string, filePath: string) {
+  const relative = path.relative(path.resolve(rootPath), path.resolve(filePath))
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+function contentVersion(content: string) {
+  let hash = 0xcbf29ce484222325n
+  for (const byte of Buffer.from(content)) {
+    hash ^= BigInt(byte)
+    hash = BigInt.asUintN(64, hash * 0x100000001b3n)
+  }
+  return `fnv1a64:${hash.toString(16).padStart(16, "0")}`
+}
+
+function compareTextEdits(
+  left: { path: string; range: { startLine: number; startColumn: number } },
+  right: { path: string; range: { startLine: number; startColumn: number } },
+) {
+  return left.path.localeCompare(right.path)
+    || left.range.startLine - right.range.startLine
+    || left.range.startColumn - right.range.startColumn
+}
+
+function isIdentifierText(value: string) {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, value)
+  return scanner.scan() === ts.SyntaxKind.Identifier
+    && scanner.scan() === ts.SyntaxKind.EndOfFileToken
 }

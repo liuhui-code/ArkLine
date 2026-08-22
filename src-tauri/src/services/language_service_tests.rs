@@ -185,7 +185,7 @@ fn reports_skeleton_language_runtime() {
             .capabilities
             .iter()
             .any(|capability| capability == "generateCode"));
-        assert!(!report
+        assert!(report
             .capabilities
             .iter()
             .any(|capability| capability == "renameSymbol"));
@@ -255,29 +255,15 @@ fn resolves_same_file_semantic_queries_without_sdk() {
                 },
             ]
         );
-        assert_eq!(
-            find_usages(&runtime, &settings, &request(&path_text, 5, 4)),
-            vec![
-                crate::models::language::UsageResult {
-                    path: path_text.clone(),
-                    line: 3,
-                    column: 8,
-                    preview: "struct Index {}".to_string(),
-                    kind: "fallback".to_string(),
-                    confidence: "fallback".to_string(),
-                    caller: None,
-                },
-                crate::models::language::UsageResult {
-                    path: path_text.clone(),
-                    line: 5,
-                    column: 3,
-                    preview: "Index;".to_string(),
-                    kind: "fallback".to_string(),
-                    confidence: "fallback".to_string(),
-                    caller: None,
-                },
-            ]
-        );
+        let usages =
+            serde_json::to_value(find_usages(&runtime, &settings, &request(&path_text, 5, 4)))
+                .unwrap();
+        assert_eq!(usages["availability"], "unavailable");
+        assert_eq!(usages["items"], serde_json::json!([]));
+        assert!(usages["message"]
+            .as_str()
+            .unwrap()
+            .contains("response was not an array"));
 
         fs::remove_file(path).unwrap();
     });

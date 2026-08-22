@@ -1,6 +1,16 @@
 import { buildCommandPaletteItems } from "@/components/layout/search-overlay-model";
 import { getShellCommandShortcut } from "@/components/layout/shell-keymap";
 
+const nativeContextMenuInputTypes = new Set(["date", "datetime-local", "email", "month", "number", "password", "search", "tel", "text", "time", "url", "week"]);
+
+export function hasNativeEditingContextMenu(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  const editable = target.closest("input, textarea, [contenteditable]");
+  if (editable instanceof HTMLInputElement) return nativeContextMenuInputTypes.has(editable.type);
+  if (editable instanceof HTMLTextAreaElement) return true;
+  return editable !== null && editable.getAttribute("contenteditable") !== "false";
+}
+
 export function parseGoToLineQuery(query: string) {
   const match = query.trim().match(/^(\d+)(?::(\d+))?$/);
   if (!match) {

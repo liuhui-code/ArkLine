@@ -1,8 +1,8 @@
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentPrepareRequest,
-    SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
+    LanguageServiceReport, RenameSymbolRequest, RenameSymbolResult, SemanticDocumentCloseRequest,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageQueryResult,
 };
 use crate::services::document_service::read_text_file;
 use crate::services::semantic::router::SemanticRouter;
@@ -219,7 +219,7 @@ pub fn find_usages(
     runtime: &LanguageRuntime,
     settings: &AppSettings,
     request: &LanguageQueryRequest,
-) -> Vec<UsageResult> {
+) -> UsageQueryResult {
     runtime.with_router(settings, |router| router.active().usages(request))
 }
 
@@ -238,6 +238,20 @@ pub fn resolve_code_action(
 ) -> CodeActionResolution {
     runtime.with_router(settings, |router| {
         router.active().resolve_code_action(request)
+    })
+}
+
+pub fn rename_symbol(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &RenameSymbolRequest,
+) -> RenameSymbolResult {
+    runtime.with_router(settings, |router| {
+        router.active().rename_symbol(
+            &request.query(),
+            &request.new_name,
+            request.document_version,
+        )
     })
 }
 

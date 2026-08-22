@@ -26,7 +26,15 @@ export interface SemanticGoldenCompletionCase {
   expected: SemanticGoldenCompletionExpectation
 }
 
-export type SemanticGoldenCase = SemanticGoldenDefinitionCase | SemanticGoldenCompletionCase
+export interface SemanticGoldenUsageCase {
+  id: string
+  capability: "usages"
+  coverage: string[]
+  query: SemanticGoldenMarkerRef
+  expected: SemanticGoldenMarkerRef[]
+}
+
+export type SemanticGoldenCase = SemanticGoldenDefinitionCase | SemanticGoldenCompletionCase | SemanticGoldenUsageCase
 
 export interface SemanticGoldenCorpus {
   schemaVersion: 1
@@ -51,6 +59,12 @@ export interface SemanticGoldenReport {
   definition: {
     exact: number
     total: number
+  }
+  usages: {
+    cases: number
+    exactMatches: number
+    totalExpected: number
+    unexpected: number
   }
   completion: {
     cases: number

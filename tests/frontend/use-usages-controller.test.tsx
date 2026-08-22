@@ -40,8 +40,32 @@ describe("useUsagesController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Usages: 1 matches");
   });
 
-  it("records envelope explain evidence for empty usage results", async () => {
+  it("marks usable but incomplete usage results as partial", async () => {
+    const item = usage({ path: "/workspace/A.ets", line: 4, column: 2 });
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useUsagesController(options({
+      workspaceApi: workspaceApi({
+        queryUsagesWithReadiness: vi.fn(async () => ({
+          items: [item],
+          readiness: readiness("partial"),
+        })),
+      }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.findUsagesFromEditor();
+    });
+
+    expect(result.current.usageSearch.status).toBe("partial");
+    expect(result.current.usageSearch.items).toEqual([item]);
+    expect(result.current.usageSearch.message).toBe("Index is partial; usages may be incomplete");
+    expect(onStatusChange).toHaveBeenCalledWith("Usages: 1 matches (partial)");
+  });
+
+  it("does not report zero usages when the index cannot answer authoritatively", async () => {
     const recordRecentQueryExplain = vi.fn();
+    const onStatusChange = vi.fn();
     const { result } = renderHook(() => useUsagesController(options({
       workspaceApi: workspaceApi({
         queryUsagesWithReadiness: vi.fn(async () => ({
@@ -55,14 +79,16 @@ describe("useUsagesController", () => {
         })),
       }),
       recordRecentQueryExplain,
+      onStatusChange,
     })));
 
     await act(async () => {
       await result.current.findUsagesFromEditor();
     });
 
-    expect(result.current.usageSearch.status).toBe("empty");
+    expect(result.current.usageSearch.status).toBe("unavailable");
     expect(result.current.usageSearch.message).toBe("References are still indexing");
+    expect(onStatusChange).toHaveBeenCalledWith("Find Usages unavailable: References are still indexing");
     expect(recordRecentQueryExplain).toHaveBeenCalledWith(expect.objectContaining({
       kind: "usages",
       query: "A.ets:4:2",
@@ -82,8 +108,30 @@ describe("useUsagesController", () => {
     expect(result.current.usageSearch.message).toBe("Find Usages unavailable");
   });
 
+  it("preserves unavailable from the semantic usage API", async () => {
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useUsagesController(options({
+      workspaceApi: workspaceApi({
+        findUsages: vi.fn(async () => ({
+          availability: "unavailable" as const,
+          items: [],
+          message: "Semantic worker is restarting",
+        })),
+      }),
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.findUsagesFromEditor();
+    });
+
+    expect(result.current.usageSearch.status).toBe("unavailable");
+    expect(result.current.usageSearch.message).toBe("Semantic worker is restarting");
+    expect(onStatusChange).toHaveBeenCalledWith("Find Usages unavailable: Semantic worker is restarting");
+  });
+
   it("skips legacy usage search for oversized requests without indexed query support", async () => {
-    const findUsages = vi.fn(async () => [usage({ line: 4 })]);
+    const findUsages = vi.fn(async () => ({ availability: "ready" as const, items: [usage({ line: 4 })] }));
     const onStatusChange = vi.fn();
     const { result } = renderHook(() => useUsagesController(options({
       getActiveContent: () => "x".repeat(LANGUAGE_QUERY_OVERSIZED_CONTENT_THRESHOLD),
@@ -172,7 +220,7 @@ describe("useUsagesController", () => {
 function options(overrides: Partial<Parameters<typeof useUsagesController>[0]> = {}) {
   return {
     workspaceApi: workspaceApi({
-      findUsages: vi.fn(async () => []),
+      findUsages: vi.fn(async () => ({ availability: "ready", items: [] })),
     }),
     workspace: workspace(),
     activePath: "/workspace/A.ets",

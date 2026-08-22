@@ -2606,34 +2606,106 @@ describe("App shell", () => {
     }));
   });
 
-  it("filters F2 to rename code actions", async () => {
+  it("opens a version-protected workspace edit preview for an inline Quick Fix", async () => {
     const user = userEvent.setup();
-    const inspectLanguageService = vi.fn(async () => semanticLanguageServiceReport("renameSymbol", "codeActions"));
-    const listCodeActions = vi.fn(async () => [
-      {
-        id: "arkts.generate-page",
-        title: "Generate ArkTS Page",
-        kind: "source" as const,
-        provider: "arkts" as const,
-        safety: "needsPreview" as const,
+    const runValidation = vi.fn(async (path: string) => [{
+      source: "format" as const,
+      severity: "warning" as const,
+      path,
+      line: 1,
+      column: 1,
+      message: "Remove the entry decorator",
+      fix: {
+        title: "Remove @Entry",
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 7,
+        replacement: "",
       },
-      {
-        id: "arkts.rename-file",
-        title: "Rename File",
-        kind: "refactor.rewrite" as const,
-        provider: "arkts" as const,
-        safety: "needsPreview" as const,
-      },
-    ]);
+    }]);
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: plan.affectedFiles,
+      summary: ["Remove @Entry"],
+    }));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ inspectLanguageService, listCodeActions })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ runValidation, previewWorkspaceEdit })} />);
+
+    const editor = await openMainEditor(user);
+    await waitFor(() => expect(runValidation).toHaveBeenCalled());
+    await user.keyboard("{Control>}{Home}{/Control}");
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    expect(await screen.findByRole("dialog", { name: "Workspace Edit Preview" })).toBeVisible();
+    expect(editor).toHaveTextContent("@Entry");
+    expect(previewWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan: expect.objectContaining({
+        title: "Remove @Entry",
+        requiresPreview: true,
+        operations: [expect.objectContaining({
+          kind: "text",
+          path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 7 },
+          newText: "",
+          expectedContentVersion: "fnv1a64:db36f34702eda9e3",
+        })],
+      }),
+    });
+  });
+
+  it("opens a semantic Rename Symbol dialog and previews its versioned workspace edit", async () => {
+    const user = userEvent.setup();
+    const inspectLanguageService = vi.fn(async () => semanticLanguageServiceReport("renameSymbol"));
+    const syncSemanticDocument = vi.fn(async () => undefined);
+    const plan: WorkspaceEditPlan = {
+      id: "semantic.rename.Index.DisplayName",
+      title: "Rename Index to DisplayName",
+      operations: [{
+        kind: "text",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        range: { startLine: 3, startColumn: 8, endLine: 3, endColumn: 13 },
+        newText: "DisplayName",
+        expectedContentVersion: "fnv1a64:1234567890abcdef",
+      }],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo rename Index to DisplayName",
+      requiresPreview: true,
+    };
+    const renameSymbol = vi.fn(async () => ({ availability: "ready" as const, resolution: plan }));
+    const previewWorkspaceEdit = vi.fn(async ({ plan: requestedPlan }) => ({
+      plan: requestedPlan,
+      conflicts: [],
+      affectedFiles: requestedPlan.affectedFiles,
+      summary: ["Rename symbol in main.ets"],
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      inspectLanguageService,
+      syncSemanticDocument,
+      renameSymbol,
+      previewWorkspaceEdit,
+    })} />);
 
     await openMainEditor(user);
     await user.keyboard("{F2}");
+    const dialog = await screen.findByRole("dialog", { name: "Rename Symbol" });
+    await user.type(within(dialog).getByLabelText("New Symbol Name"), "DisplayName");
+    await user.click(within(dialog).getByRole("button", { name: "Preview" }));
 
-    const results = await screen.findByRole("listbox", { name: "Code Actions" });
-    expect(within(results).getByRole("option", { name: /Rename File/ })).toBeVisible();
-    expect(within(results).queryByRole("option", { name: /Generate ArkTS Page/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(renameSymbol).toHaveBeenCalledWith(expect.objectContaining({
+      path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+      newName: "DisplayName",
+      documentVersion: expect.any(Number),
+    })));
+    expect(previewWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan,
+    });
+    expect(await screen.findByRole("dialog", { name: "Workspace Edit Preview" })).toBeVisible();
     expect(inspectLanguageService).toHaveBeenCalled();
   });
 
@@ -2808,6 +2880,51 @@ describe("App shell", () => {
     }));
     expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
     expect(await screen.findByText("Workspace edit applied: 1 file changed")).toBeVisible();
+  });
+
+  it("offers one version-guarded undo after applying a text workspace edit", async () => {
+    const user = userEvent.setup();
+    const plan: WorkspaceEditPlan = {
+      id: "semantic.rename.Index.DisplayName",
+      title: "Rename Index to DisplayName",
+      operations: [{ kind: "text", path: "C:/samples/DemoWorkspace/src/main.ets", range: { startLine: 3, startColumn: 8, endLine: 3, endColumn: 13 }, newText: "DisplayName" }],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo rename Index to DisplayName",
+      requiresPreview: true,
+    };
+    const undoPlan: WorkspaceEditPlan = {
+      id: `${plan.id}.undo`,
+      title: plan.undoLabel,
+      operations: [{ kind: "text", path: "C:/samples/DemoWorkspace/src/main.ets", range: { startLine: 1, startColumn: 1, endLine: 3, endColumn: 20 }, newText: "@Entry\n@Component\nstruct Index {}", expectedContentVersion: "fnv1a64:after" }],
+      conflicts: [],
+      affectedFiles: plan.affectedFiles,
+      undoLabel: "Redo Rename Index to DisplayName",
+      requiresPreview: false,
+    };
+    const previewWorkspaceEdit = vi.fn(async () => ({ plan, conflicts: [], affectedFiles: plan.affectedFiles, summary: ["Rename Index"] }));
+    const applyWorkspaceEdit = vi.fn()
+      .mockResolvedValueOnce({ applied: true, conflicts: [], changedFiles: plan.affectedFiles, undoPlan })
+      .mockResolvedValueOnce({ applied: true, conflicts: [], changedFiles: plan.affectedFiles });
+    const resolveCodeAction = vi.fn(async () => plan);
+    const listCodeActions = vi.fn(async () => [{ id: "rename", title: "Rename Symbol", kind: "refactor.rewrite" as const, provider: "arkts" as const, safety: "needsPreview" as const }]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
+
+    const preview = await screen.findByRole("dialog", { name: "Workspace Edit Preview" });
+    await user.click(within(preview).getByRole("button", { name: "Undo Workspace Edit" }));
+
+    await waitFor(() => expect(applyWorkspaceEdit).toHaveBeenNthCalledWith(2, {
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan: undoPlan,
+    }));
+    expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Workspace edit undone: 1 file changed")).toBeVisible();
   });
 
   it("cancels a workspace edit preview without applying edits", async () => {
@@ -3069,7 +3186,7 @@ describe("App shell", () => {
     render(<AppShell workspaceApi={createWorkspaceApi({ inspectLanguageService, listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
 
     await openMainEditor(user);
-    await user.keyboard("{F2}");
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
     await screen.findByRole("dialog", { name: "Code Actions" });
     await user.keyboard("{Enter}");
     await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
@@ -5400,9 +5517,53 @@ describe("App shell", () => {
     expect(workspaceApi.saveFile).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace\\src\\main.ets",
       expect.stringContaining("!"),
+      "@Entry\n@Component\nstruct Index {}",
     );
     expect(await screen.findByText("Expected trailing semicolon")).toBeVisible();
     expect(screen.getByText("File is not formatted")).toBeVisible();
+  });
+
+  it("blocks save when an open dirty file changes outside the editor", async () => {
+    const user = userEvent.setup();
+    let diskContent = "@Entry\n@Component\nstruct Index {}";
+    let publishFileChange: ((event: {
+      rootPath: string;
+      path: string;
+      kind: "modified";
+    }) => void) | null = null;
+    const saveFile = vi.fn(async () => undefined);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: vi.fn(async () => diskContent),
+      saveFile,
+      watchWorkspaceFileChanges: async (_rootPath, onChange) => {
+        publishFileChange = onChange;
+        return () => undefined;
+      },
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    const editor = await openMainEditor(user);
+    await user.click(editor);
+    await user.keyboard("!");
+
+    diskContent = "@Entry\n@Component\nstruct ExternalEdit {}";
+    await act(async () => {
+      publishFileChange?.({
+        rootPath: "C:/samples/DemoWorkspace",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        kind: "modified",
+      });
+    });
+    await user.keyboard("{Control>}s{/Control}");
+
+    await waitFor(() => expect(screen.getByText("Save blocked: main.ets changed on disk")).toBeVisible());
+    expect(saveFile).not.toHaveBeenCalled();
   });
 
   it("loads diff content into the central preview", async () => {

@@ -45,6 +45,31 @@ describe("useProblemsController", () => {
     expect(onStatusChange).toHaveBeenCalledWith("Lint complete");
   });
 
+  it("does not publish validation produced for older active content", async () => {
+    let activeContent = "const oldValue = 1";
+    let resolveValidation!: (problems: ProblemItem[]) => void;
+    const runValidation = vi.fn(() => new Promise<ProblemItem[]>((resolve) => {
+      resolveValidation = resolve;
+    }));
+    const staleProblem = problem({ message: "Old diagnostic" });
+    const { result } = renderHarness({
+      getActiveContent: () => activeContent,
+      workspaceApi: workspaceApi({ runValidation }),
+    });
+
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refreshProblems("/project/main.ets", activeContent);
+    });
+    activeContent = "const newValue = 1";
+    await act(async () => {
+      resolveValidation([staleProblem]);
+      await refresh;
+    });
+
+    expect(result.current.problems).toEqual([]);
+  });
+
   it("accepts live validation only for the active document and preserves build diagnostics", () => {
     const buildProblem = problem({ source: "build", message: "Build failed" });
     const liveProblem = problem({ source: "lint", message: "Unsaved warning" });
@@ -94,7 +119,7 @@ function renderHarness(overrides: Partial<HarnessOptions> = {}) {
   return renderHook(() => useProblemsController({
     workspaceApi: overrides.workspaceApi ?? workspaceApi({}),
     activePath: "activePath" in overrides ? overrides.activePath ?? null : "/project/main.ets",
-    getActiveContent: () => overrides.activeContent ?? "content",
+    getActiveContent: overrides.getActiveContent ?? (() => overrides.activeContent ?? "content"),
     showProblems: overrides.showProblems ?? vi.fn(),
     onStatusChange: overrides.onStatusChange ?? vi.fn(),
   }));
@@ -104,6 +129,7 @@ type HarnessOptions = {
   workspaceApi: WorkspaceApi;
   activePath: string | null;
   activeContent: string;
+  getActiveContent: () => string;
   showProblems: () => void;
   onStatusChange: (message: string) => void;
 };

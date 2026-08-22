@@ -121,16 +121,16 @@ mod workspace_discovery_store_service_tests;
 pub(crate) mod workspace_discovery_task_service;
 #[cfg(test)]
 mod workspace_discovery_task_service_tests;
-#[cfg(test)]
-mod workspace_edit_file_ops_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_edit_file_ops_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_edit_directory_transaction_tests;
 pub(crate) mod workspace_edit_path_service;
 pub(crate) mod workspace_edit_relationship_service;
-#[cfg(test)]
-mod workspace_edit_safety_tests;
+#[rustfmt::skip] #[cfg(test)] mod workspace_edit_safety_tests;
 pub mod workspace_edit_service;
 pub(crate) mod workspace_edit_summary_service;
 #[cfg(test)]
 mod workspace_edit_test_fixture_service;
+#[rustfmt::skip] #[cfg(test)] mod workspace_edit_transaction_tests;
 pub mod workspace_file_fingerprint_service;
 pub(crate) mod workspace_file_index_policy_service;
 #[rustfmt::skip] #[cfg(test)] mod workspace_file_fingerprint_service_tests;

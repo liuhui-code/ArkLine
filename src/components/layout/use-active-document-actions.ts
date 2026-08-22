@@ -9,7 +9,7 @@ export type UseActiveDocumentActionsOptions = {
   activePath: string | null;
   documentsRef: MutableRefObject<DocumentStore>;
   syncTabs: () => void;
-  saveFile: (path: string, content: string) => Promise<void>;
+  saveFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   getFormatOnSave: () => boolean;
   refreshProblems: (path: string, content: string) => Promise<void>;
   showProblems: () => void;
@@ -55,7 +55,15 @@ export function useActiveDocumentActions({
       ? formatArkTsDocument(currentContent)
       : currentContent;
     if (content !== currentContent) documentsRef.current.updateDocument(activePath, content);
-    await saveFile(activePath, content);
+    try {
+      await saveFile(activePath, content, document?.originalContent ?? "");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      onStatusChange(message.toLowerCase().includes("changed on disk")
+        ? `Save blocked: ${getPathBasename(activePath)} changed on disk`
+        : `Save failed: ${message}`);
+      return;
+    }
     documentsRef.current.saveDocument(activePath);
     syncTabs();
     refreshBlame();

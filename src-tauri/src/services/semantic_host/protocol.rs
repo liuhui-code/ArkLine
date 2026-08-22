@@ -48,6 +48,8 @@ pub struct SemanticRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completion: Option<CompletionItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub documents: Option<Vec<SemanticReplayDocument>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub document: Option<SemanticDocumentSync>,
@@ -71,6 +73,35 @@ impl SemanticRequest {
             }),
             action: None,
             completion: None,
+            new_name: None,
+            documents: None,
+            document: None,
+            document_path: None,
+        }
+    }
+
+    pub fn rename_symbol(
+        id: String,
+        path: String,
+        line: u32,
+        column: u32,
+        new_name: String,
+        document_version: Option<u64>,
+    ) -> Self {
+        Self {
+            id,
+            method: "rename".to_string(),
+            position: Some(SemanticDocumentPosition {
+                path,
+                line,
+                column,
+                content: None,
+                content_generation: None,
+                document_version,
+            }),
+            action: None,
+            completion: None,
+            new_name: Some(new_name),
             documents: None,
             document: None,
             document_path: None,
@@ -160,5 +191,23 @@ mod tests {
         assert!(definition_json.contains("\"method\":\"gotoDefinition\""));
         assert!(completion_json.contains("\"completion\""));
         assert!(candidates_json.contains("\"definitionCandidates\""));
+    }
+
+    #[test]
+    fn semantic_host_protocol_serializes_versioned_rename_request() {
+        let rename = SemanticRequest::rename_symbol(
+            "req-rename".to_string(),
+            "/workspace/Model.ts".to_string(),
+            4,
+            9,
+            "displayName".to_string(),
+            Some(12),
+        );
+
+        let value = serde_json::to_value(rename).unwrap();
+
+        assert_eq!(value["method"], "rename");
+        assert_eq!(value["newName"], "displayName");
+        assert_eq!(value["position"]["documentVersion"], 12);
     }
 }

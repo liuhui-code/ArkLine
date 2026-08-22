@@ -5,7 +5,11 @@ import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
-import type { EditorValidationRequest, EditorValidationResultHandler } from "@/editor/editor-validation-lint";
+import type {
+  EditorDiagnosticFixRequestHandler,
+  EditorValidationRequest,
+  EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 import type { Text } from "@codemirror/state";
 
 const ArkTsEditor = lazy(async () => {
@@ -36,6 +40,7 @@ type LazyArkTsEditorProps = {
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   onValidationRequest?: EditorValidationRequest;
   onValidationResult?: EditorValidationResultHandler;
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
@@ -82,6 +87,10 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
     (path, problems) => callbacksRef.current.onValidationResult?.(path, problems),
     [],
   );
+  const onDiagnosticFixRequest = useCallback<EditorDiagnosticFixRequestHandler>(
+    (request) => callbacksRef.current.onDiagnosticFixRequest?.(request),
+    [],
+  );
   const onContextMenu = useCallback((request: EditorContextMenuRequest) => {
     callbacksRef.current.onContextMenu?.(request);
   }, []);
@@ -103,6 +112,7 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
         onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
         onValidationRequest={props.onValidationRequest ? onValidationRequest : undefined}
         onValidationResult={props.onValidationResult ? onValidationResult : undefined}
+        onDiagnosticFixRequest={props.onDiagnosticFixRequest ? onDiagnosticFixRequest : undefined}
         onContextMenu={props.onContextMenu ? onContextMenu : undefined}
         onGitTraceLineClick={props.onGitTraceLineClick ? onGitTraceLineClick : undefined}
       />

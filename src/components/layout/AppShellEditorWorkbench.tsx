@@ -14,7 +14,11 @@ import { recordRenderPressure } from "@/features/performance/use-ui-latency-moni
 import type { Text } from "@codemirror/state";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
-import type { EditorValidationRequest, EditorValidationResultHandler } from "@/editor/editor-validation-lint";
+import type {
+  EditorDiagnosticFixRequestHandler,
+  EditorValidationRequest,
+  EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 
 export type AppShellEditorWorkbenchProps = {
   queryPanelVisible: boolean;
@@ -43,6 +47,7 @@ export type AppShellEditorWorkbenchProps = {
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   onValidationRequest?: EditorValidationRequest;
   onValidationResult?: EditorValidationResultHandler;
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   blameAttributions: GitBlameAttribution[];
   gitBlameVisible: boolean;
   selectedBlameLine: number | null;
@@ -92,6 +97,9 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
   ) => {
     props.onValidationResult?.(path, problems);
   });
+  const onDiagnosticFixRequest = useLatestCallback((request: Parameters<EditorDiagnosticFixRequestHandler>[0]) => {
+    props.onDiagnosticFixRequest?.(request);
+  });
   const onGitTraceLineClick = useLatestCallback(props.onGitTraceLineClick);
   const onSelectTab = useLatestCallback(props.onSelectTab);
   const onCloseTab = useLatestCallback(props.onCloseTab);
@@ -136,6 +144,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
         onValidationRequest={props.onValidationRequest}
         onValidationResult={props.onValidationResult ? onValidationResult : undefined}
+        onDiagnosticFixRequest={props.onDiagnosticFixRequest ? onDiagnosticFixRequest : undefined}
         blameAttributions={props.blameAttributions}
         gitBlameVisible={props.gitBlameVisible}
         selectedBlameLine={props.selectedBlameLine}
