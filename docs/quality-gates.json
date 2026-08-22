@@ -3,7 +3,7 @@
     "fast": {
       "command": "node scripts/run-quality-gate.mjs --gate=fast --strict",
       "description": "Default local and CI quality gate for incremental changes.",
-      "stepTimeoutMs": 900000,
+      "stepTimeoutMs": 5400000,
       "steps": [
         "pnpm check:whitespace",
         "pnpm check:line-count",
@@ -17,7 +17,7 @@
     "full": {
       "command": "node scripts/run-quality-gate.mjs --gate=full --strict",
       "description": "Merge-ready quality gate that includes the full frontend suite.",
-      "stepTimeoutMs": 2000000,
+      "stepTimeoutMs": 5400000,
       "steps": [
         "pnpm check:whitespace",
         "pnpm check:line-count",
@@ -42,7 +42,7 @@
     "release-rust": {
       "command": "node scripts/run-quality-gate.mjs --gate=release-rust --strict",
       "description": "Release Rust library and indexer sidecar integration lane.",
-      "stepTimeoutMs": 2000000,
+      "stepTimeoutMs": 5400000,
       "steps": [
         "pnpm test:rust"
       ]

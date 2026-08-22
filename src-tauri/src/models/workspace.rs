@@ -293,6 +293,14 @@ pub struct WorkspaceIndexRefreshResult {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceFileChangeEvent {
+    pub root_path: String,
+    pub path: String,
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceIndexTaskStatus {
     pub task_id: String,
     pub root_path: String,

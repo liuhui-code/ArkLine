@@ -5,7 +5,7 @@ use tauri::{AppHandle, State};
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
-    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageQueryResult,
 };
 use crate::services::language_client_runtime_service::{
     run_language_request, LanguageClientRequest, LanguageClientSource,
@@ -141,7 +141,7 @@ pub async fn find_usages(
     app: AppHandle,
     runtime: State<'_, LanguageRuntime>,
     request: LanguageQueryRequest,
-) -> Result<Vec<UsageResult>, String> {
+) -> Result<UsageQueryResult, String> {
     run_language_request(
         language_request(LanguageClientSource::Usages, None),
         find_usages_blocking(app, runtime.inner().clone(), request),

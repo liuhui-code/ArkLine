@@ -15,6 +15,12 @@ describe("semantic golden corpus", () => {
 
     expect(report.failedCases).toEqual([])
     expect(report.definition).toEqual({ exact: 5, total: 5 })
+    expect(report.usages).toEqual({
+      cases: 1,
+      exactMatches: 1,
+      totalExpected: 1,
+      unexpected: 0,
+    })
     expect(report.completion).toEqual({
       cases: 7,
       forbiddenViolations: 0,
@@ -40,10 +46,12 @@ describe("semantic golden corpus", () => {
       "sdk",
       "sdk-member",
       "source-map",
+      "symbol-identity",
       "system-api",
       "this-receiver",
       "typed-receiver",
       "typescript",
+      "usages",
       "virtual-document",
     ])
   })

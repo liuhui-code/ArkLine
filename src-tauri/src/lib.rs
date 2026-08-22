@@ -32,6 +32,7 @@ mod models {
     pub mod diagnostics;
     pub mod git;
     pub mod language;
+    pub mod semantic_availability;
     pub mod terminal;
     pub mod workspace;
     pub mod workspace_edit;
@@ -155,6 +156,7 @@ pub fn run() {
             commands::language::close_language_document,
             commands::code_actions::list_code_actions,
             commands::code_actions::resolve_code_action,
+            commands::code_actions::rename_symbol,
             commands::code_actions::preview_workspace_edit,
             commands::code_actions::apply_workspace_edit,
             commands::git_trace::get_file_blame,

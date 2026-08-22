@@ -18,7 +18,7 @@ export type UsageCaller = {
 };
 
 export type UsageSearchState = {
-  status: "idle" | "loading" | "ready" | "empty" | "error";
+  status: "idle" | "loading" | "ready" | "partial" | "empty" | "unavailable" | "error";
   items: UsageResult[];
   requestedSymbol?: {
     path: string;

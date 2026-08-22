@@ -26,6 +26,8 @@ import type {
   HoverResponse,
   LanguageCompletionItem,
   LanguageServiceReport,
+  RenameSymbolResult,
+  UsageQueryResult,
   ValidationProblem,
   WorkspaceApi,
   WorkspaceDirectoryEntry,
@@ -142,9 +144,9 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         ? invoke<string>("open_text_document", { path }, telemetry)
         : loadMockDocumentContent(path);
     },
-    async saveFile(path, content) {
+    async saveFile(path, content, expectedContent) {
       if (hasTauriRuntime()) {
-        await invoke("save_text_document", { path, content });
+        await invoke("save_text_document", { path, content, expectedContent });
       }
     },
     async syncSemanticDocument(request) {
@@ -280,14 +282,24 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
     },
     async findUsages(request) {
       if (hasTauriRuntime()) {
-        return invoke<UsageResult[]>("find_usages", { request });
+        return invoke<UsageQueryResult>("find_usages", { request });
       }
-      if (!isDemoWorkspacePath(request.path)) return [];
+      if (!isDemoWorkspacePath(request.path)) {
+        return {
+          availability: "unavailable",
+          items: [],
+          message: "Find Usages is unavailable outside the demo workspace",
+        };
+      }
 
-      return [
-        { path: normalizePath(request.path), line: 1, column: 1, preview: "@Entry", kind: "fallback", confidence: "fallback" },
-        { path: normalizePath(request.path), line: 3, column: 8, preview: "struct Index {}", kind: "fallback", confidence: "fallback" },
-      ];
+      return {
+        availability: "partial",
+        items: [
+          { path: normalizePath(request.path), line: 1, column: 1, preview: "@Entry", kind: "fallback", confidence: "fallback" },
+          { path: normalizePath(request.path), line: 3, column: 8, preview: "struct Index {}", kind: "fallback", confidence: "fallback" },
+        ],
+        message: "Fallback usage search is limited to the demo document",
+      };
     },
     async listCodeActions(request) {
       if (hasTauriRuntime()) {
@@ -309,6 +321,16 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       return {
         status: "unsupported",
         reason: `Resolving code action '${request.id}' is not implemented in the mock workspace API.`,
+      };
+    },
+    async renameSymbol(request) {
+      if (hasTauriRuntime()) {
+        return invoke<RenameSymbolResult>("rename_symbol", { request });
+      }
+
+      return {
+        availability: "unavailable",
+        message: "Rename Symbol is only available in the Tauri semantic runtime.",
       };
     },
     async previewWorkspaceEdit(request) {

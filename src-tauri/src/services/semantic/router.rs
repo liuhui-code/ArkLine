@@ -82,7 +82,7 @@ impl SemanticProvider for CompositeSemanticProvider {
             }
         }
         report.detail = format!(
-            "{}; fallback remains active for hover, document symbols, and usages",
+            "{}; fallback remains active for hover and document symbols",
             report.detail
         );
         report
@@ -187,8 +187,8 @@ impl SemanticProvider for CompositeSemanticProvider {
     fn usages(
         &self,
         request: &crate::models::language::LanguageQueryRequest,
-    ) -> Vec<crate::models::language::UsageResult> {
-        self.fallback.usages(request)
+    ) -> crate::models::language::UsageQueryResult {
+        self.semantic.usages(request)
     }
 
     fn code_actions(
@@ -208,6 +208,16 @@ impl SemanticProvider for CompositeSemanticProvider {
         request: &crate::models::language::CodeActionResolveRequest,
     ) -> crate::models::language::CodeActionResolution {
         self.semantic.resolve_code_action(request)
+    }
+
+    fn rename_symbol(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+        new_name: &str,
+        document_version: Option<u64>,
+    ) -> crate::models::language::RenameSymbolResult {
+        self.semantic
+            .rename_symbol(request, new_name, document_version)
     }
 
     fn sync_document(

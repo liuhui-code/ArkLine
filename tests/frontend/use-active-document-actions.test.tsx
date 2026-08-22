@@ -72,7 +72,7 @@ describe("useActiveDocumentActions", () => {
     });
 
     const saved = result.current.documents.documentsRef.current.getDocument("/workspace/A.ets")?.currentContent;
-    expect(saveFile).toHaveBeenCalledWith("/workspace/A.ets", saved);
+    expect(saveFile).toHaveBeenCalledWith("/workspace/A.ets", saved, "const  a=1");
     expect(result.current.documents.documentsRef.current.getDocument("/workspace/A.ets")?.isDirty).toBe(false);
     expect(refreshBlame).toHaveBeenCalledTimes(1);
     expect(onStatusChange).toHaveBeenCalledWith("Saved A.ets");
@@ -108,6 +108,40 @@ describe("useActiveDocumentActions", () => {
     await act(async () => result.current.actions.saveActiveDocument());
 
     expect(saveFile).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenLastCalledWith("Save blocked: A.ets changed on disk");
+  });
+
+  it("keeps the document dirty when the guarded disk save detects a race", async () => {
+    const saveFile = vi.fn(async () => {
+      throw new Error("Document changed on disk: /workspace/A.ets");
+    });
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => {
+      const documents = useEditorDocuments();
+      const actions = useActiveDocumentActions({
+        activePath: documents.activePath,
+        documentsRef: documents.documentsRef,
+        syncTabs: documents.syncTabs,
+        saveFile,
+        getFormatOnSave: () => false,
+        refreshProblems: vi.fn(),
+        showProblems: vi.fn(),
+        refreshBlame: vi.fn(),
+        onStatusChange,
+      });
+      return { documents, actions };
+    });
+    act(() => {
+      const store = result.current.documents.documentsRef.current;
+      store.openDocument("/workspace/A.ets", "before");
+      store.updateDocument("/workspace/A.ets", "local edit");
+      result.current.documents.tabsRef.current.openTab("/workspace/A.ets");
+      result.current.documents.setActiveDocument("/workspace/A.ets");
+    });
+
+    await act(async () => result.current.actions.saveActiveDocument());
+
+    expect(result.current.documents.documentsRef.current.getDocument("/workspace/A.ets")?.isDirty).toBe(true);
     expect(onStatusChange).toHaveBeenLastCalledWith("Save blocked: A.ets changed on disk");
   });
 });

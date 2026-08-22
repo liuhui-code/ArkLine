@@ -18,7 +18,9 @@ export function useProblemsController({
   onStatusChange,
 }: UseProblemsControllerOptions) {
   const problemsRef = useRef(createProblemsStore());
+  const activeDocumentRef = useRef({ path: activePath, getContent: getActiveContent });
   const [problems, setProblems] = useState<ProblemItem[]>([]);
+  activeDocumentRef.current = { path: activePath, getContent: getActiveContent };
 
   function commitProblems(items: ProblemItem[]) {
     problemsRef.current.replace(items);
@@ -31,6 +33,8 @@ export function useProblemsController({
 
   async function refreshProblems(path: string, content: string) {
     const validationProblems = await workspaceApi.runValidation(path, content);
+    const activeDocument = activeDocumentRef.current;
+    if (activeDocument.path !== path || activeDocument.getContent() !== content) return;
     commitProblems([
       ...problemsRef.current.state.items.filter((item) => item.source === "build"),
       ...validationProblems,

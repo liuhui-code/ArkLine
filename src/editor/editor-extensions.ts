@@ -36,6 +36,7 @@ import { createCodeMirrorCompletionSources, type CodeMirrorCompletionBroker, typ
 import { createCodeMirrorSignatureHelpExtension, type CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 import {
   createEditorValidationExtensions,
+  type EditorDiagnosticFixRequestHandler,
   type EditorValidationRequest,
   type EditorValidationResultHandler,
 } from "@/editor/editor-validation-lint";
@@ -136,6 +137,7 @@ export function createEditorExtensions(
   isCodeMirrorCompletionEnabled?: () => boolean,
   onValidationRequest?: EditorValidationRequest,
   onValidationResult?: EditorValidationResultHandler,
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler,
 ): Extension[] {
   const deferDocumentExtensions = reducedPerformanceMode || deferEnhancements;
   const keymaps = reducedPerformanceMode
@@ -189,7 +191,7 @@ export function createEditorExtensions(
       ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)]
       : []),
     ...(!reducedPerformanceMode && onValidationRequest
-      ? createEditorValidationExtensions(getActivePath, onValidationRequest, onValidationResult)
+      ? createEditorValidationExtensions(getActivePath, onValidationRequest, onValidationResult, onDiagnosticFixRequest)
       : []),
     ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,

@@ -4,9 +4,10 @@ import type { WorkspaceEditPreview as WorkspaceEditPreviewModel } from "@/featur
 
 type WorkspaceEditPreviewProps = {
   preview: WorkspaceEditPreviewModel;
-  applyState: "idle" | "applying" | "error";
+  applyState: "idle" | "applying" | "error" | "applied" | "undoing";
   message?: string;
   onApply: () => void;
+  onUndo: () => void;
   onClose: () => void;
 };
 
@@ -15,13 +16,15 @@ export function WorkspaceEditPreview({
   applyState,
   message,
   onApply,
+  onUndo,
   onClose,
 }: WorkspaceEditPreviewProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [selectedFile, setSelectedFile] = useState(preview.affectedFiles[0] ?? preview.plan.affectedFiles[0] ?? "");
-  const applying = applyState === "applying";
+  const applying = applyState === "applying" || applyState === "undoing";
+  const applied = applyState === "applied" || applyState === "undoing";
   const conflicts = preview.conflicts.length > 0 ? preview.conflicts : preview.plan.conflicts;
-  const canApply = !applying && conflicts.length === 0;
+  const canApply = !applying && !applied && conflicts.length === 0;
   const summary = useMemo(() => {
     if (preview.summary.length > 0) {
       return preview.summary;
@@ -138,20 +141,20 @@ export function WorkspaceEditPreview({
           <button
             type="button"
             className="button button--secondary"
-            aria-label="Cancel Workspace Edit"
+            aria-label={applied ? "Close Workspace Edit" : "Cancel Workspace Edit"}
             disabled={applying}
             onClick={requestClose}
           >
-            Cancel
+            {applied ? "Close" : "Cancel"}
           </button>
           <button
             type="button"
             className="button button--primary"
-            aria-label="Apply Workspace Edit"
-            disabled={!canApply}
-            onClick={onApply}
+            aria-label={applied ? "Undo Workspace Edit" : "Apply Workspace Edit"}
+            disabled={applied ? applying : !canApply}
+            onClick={applied ? onUndo : onApply}
           >
-            {applying ? "Applying..." : "Apply"}
+            {applyState === "undoing" ? "Undoing..." : applyState === "applying" ? "Applying..." : applied ? preview.plan.undoLabel : "Apply"}
           </button>
         </footer>
       </div>

@@ -7,7 +7,11 @@ import type {
   EditorContextMenuRequest,
   EditorLineColumn,
 } from "@/editor/editor-events";
-import type { EditorValidationRequest, EditorValidationResultHandler } from "@/editor/editor-validation-lint";
+import type {
+  EditorDiagnosticFixRequestHandler,
+  EditorValidationRequest,
+  EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 import type { Text } from "@codemirror/state";
@@ -34,6 +38,7 @@ export type ArkTsEditorProps = {
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
   onValidationRequest?: EditorValidationRequest;
   onValidationResult?: EditorValidationResultHandler;
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;

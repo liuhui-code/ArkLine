@@ -81,6 +81,79 @@ describe("incremental semantic type engine", () => {
     expect(response.payload).toEqual({ path: modelPath, line: 2, column: 3 })
   })
 
+  it("finds typed property usages across files without matching unrelated names", () => {
+    const root = createRoot("usages")
+    const modelPath = createFile(
+      root,
+      "Model.ts",
+      "export interface User {\n  name: string\n}\n",
+    )
+    const indexPath = createFile(
+      root,
+      "Index.ts",
+      "import type { User } from './Model'\nconst user = {} as User\nuser.name\n",
+    )
+    const unrelatedPath = createFile(root, "Unrelated.ts", "const name = 'not-a-user-property'\n")
+
+    const response = new SemanticWorkerSession().handle({
+      id: "type-usages",
+      method: "findUsages",
+      position: { path: modelPath, line: 2, column: 3 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual([
+      expect.objectContaining({ path: indexPath, line: 3, column: 6, confidence: "exact" }),
+    ])
+    expect(response.payload).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: unrelatedPath }),
+    ]))
+  })
+
+  it("builds a versioned cross-file rename plan without writing files", () => {
+    const root = createRoot("rename")
+    const modelPath = createFile(
+      root,
+      "Model.ts",
+      "export interface User {\n  name: string\n}\n",
+    )
+    const indexPath = createFile(
+      root,
+      "Index.ts",
+      "import type { User } from './Model'\nconst user = {} as User\nuser.name\n",
+    )
+    const beforeModel = fs.readFileSync(modelPath, "utf8")
+    const beforeIndex = fs.readFileSync(indexPath, "utf8")
+
+    const response = new SemanticWorkerSession().handle({
+      id: "type-rename",
+      method: "rename",
+      position: { path: modelPath, line: 2, column: 3, workspaceRoot: root },
+      newName: "displayName",
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.payload).toEqual(expect.objectContaining({
+      title: "Rename name to displayName",
+      affectedFiles: [indexPath, modelPath],
+      requiresPreview: true,
+      operations: expect.arrayContaining([
+        expect.objectContaining({ kind: "text", path: modelPath, newText: "displayName" }),
+        expect.objectContaining({ kind: "text", path: indexPath, newText: "displayName" }),
+      ]),
+    }))
+    const payload = response.payload
+    const operations = payload && "operations" in payload
+      ? payload.operations
+      : []
+    expect(operations).toHaveLength(2)
+    expect(operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ expectedContentVersion: expect.stringMatching(/^fnv1a64:/) }),
+    ]))
+    expect(fs.readFileSync(modelPath, "utf8")).toBe(beforeModel)
+    expect(fs.readFileSync(indexPath, "utf8")).toBe(beforeIndex)
+  })
+
   it("returns TypeScript signature help with the active argument", () => {
     const root = createRoot("signature-help")
     const filePath = createFile(
@@ -213,7 +286,7 @@ describe("incremental semantic type engine", () => {
       id: "arkts-auto-import-resolve",
       method: "resolveCompletion",
       position,
-      completion: item,
+      completion: item && "label" in item ? item : undefined,
     })
 
     expect(resolved.payload).toEqual(expect.objectContaining({

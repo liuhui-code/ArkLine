@@ -17,6 +17,7 @@ export type WorkspaceEditOperation =
       range: TextRange;
       newText: string;
       expectedVersion?: number;
+      expectedContentVersion?: string;
     }
   | {
       kind: "createFile";

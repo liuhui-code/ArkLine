@@ -54,3 +54,5 @@ export type LanguageServiceCapability =
   | "generateCode"
   | "renameSymbol"
   | "refactor";
+
+export type SemanticAvailability = "ready" | "partial" | "unavailable";

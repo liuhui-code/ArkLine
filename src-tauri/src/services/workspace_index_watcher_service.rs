@@ -5,13 +5,14 @@ use std::sync::Mutex;
 use notify::{recommended_watcher, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::models::workspace::WorkspaceIndexRefreshResult;
+use crate::models::workspace::{WorkspaceFileChangeEvent, WorkspaceIndexRefreshResult};
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_service::normalize_path;
 use crate::services::workspace_service::should_exclude;
 
 pub const WORKSPACE_INDEX_CHANGED_EVENT: &str = "workspace-index-changed";
+pub const WORKSPACE_FILE_CHANGED_EVENT: &str = "workspace-file-changed";
 
 #[derive(Debug, Default)]
 pub struct WorkspaceIndexWatcherRuntime {
@@ -42,6 +43,12 @@ impl WorkspaceIndexWatcherRuntime {
                 );
                 if changed_paths.is_empty() {
                     return;
+                }
+
+                for change in
+                    workspace_file_changes_for_event(&callback_root, &event.kind, &event.paths)
+                {
+                    let _ = callback_app.emit(WORKSPACE_FILE_CHANGED_EVENT, change);
                 }
 
                 let index_manager = callback_app.state::<WorkspaceIndexManagerRuntime>();
@@ -123,6 +130,25 @@ pub fn workspace_index_changed_paths_for_event(
     changed_paths
 }
 
+pub fn workspace_file_changes_for_event(
+    root_path: &Path,
+    event_kind: &EventKind,
+    paths: &[PathBuf],
+) -> Vec<WorkspaceFileChangeEvent> {
+    if !matches!(event_kind, EventKind::Create(_) | EventKind::Modify(_)) {
+        return Vec::new();
+    }
+
+    workspace_index_changed_paths_for_event(root_path, event_kind, paths)
+        .into_iter()
+        .map(|path| WorkspaceFileChangeEvent {
+            root_path: root_path.to_string_lossy().to_string(),
+            path,
+            kind: "modified".to_string(),
+        })
+        .collect()
+}
+
 fn is_workspace_file_event_path(root_path: &Path, path: &Path) -> bool {
     let Ok(relative_path) = path.strip_prefix(root_path) else {
         return false;
@@ -137,9 +163,10 @@ fn is_workspace_file_event_path(root_path: &Path, path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        should_refresh_workspace_index_for_paths, workspace_index_changed_paths_for_event,
+        should_refresh_workspace_index_for_paths, workspace_file_changes_for_event,
+        workspace_index_changed_paths_for_event,
     };
-    use notify::event::AccessKind;
+    use notify::event::{AccessKind, ModifyKind};
     use notify::EventKind;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -160,6 +187,23 @@ mod tests {
             root,
             &[Path::new("/tmp/ArkDemo/entry/src/main/ets/pages/Index.ets").to_path_buf()],
         ));
+    }
+
+    #[test]
+    fn creates_editor_file_change_for_modified_source_path() {
+        let root = Path::new("/tmp/ArkDemo");
+        let source = root.join("entry/src/main/ets/pages/Index.ets");
+
+        let changes = workspace_file_changes_for_event(
+            root,
+            &EventKind::Modify(ModifyKind::Any),
+            std::slice::from_ref(&source),
+        );
+
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].root_path, root.to_string_lossy());
+        assert_eq!(changes[0].path, source.to_string_lossy());
+        assert_eq!(changes[0].kind, "modified");
     }
 
     #[test]

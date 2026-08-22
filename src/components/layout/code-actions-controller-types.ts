@@ -3,6 +3,7 @@ import type {
   WorkspaceApi,
   WorkspaceViewModel,
 } from "@/features/workspace/workspace-api";
+import type { SemanticDocumentSnapshot } from "@/features/semantic/semantic-document-sync";
 
 export type DocumentStoreRef = MutableRefObject<{
   getDocument(path: string): { currentContent: string; isDirty: boolean } | undefined;
@@ -25,6 +26,7 @@ export type UseCodeActionsWorkspaceEditControllerOptions = {
   editorSelection: { line: number; column: number };
   settingsApplying: boolean;
   getActiveContent: () => string;
+  ensureSemanticDocument?: (path: string, snapshot: SemanticDocumentSnapshot) => Promise<number | null>;
   documentsRef: DocumentStoreRef;
   tabsRef: TabsStoreRef;
   setWorkspace: Dispatch<SetStateAction<WorkspaceViewModel | null>>;

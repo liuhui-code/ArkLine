@@ -1,7 +1,6 @@
 import {
   listCodeActions,
   prepareRename,
-  rename,
   resolveCodeAction,
 } from "./features/code-actions.js"
 import { resolveCompletion } from "./features/completion.js"
@@ -44,7 +43,7 @@ export class SemanticWorkerSession {
           payload: {
             status: discoverHarmonySdk().ready ? "ready" : "ready",
             protocolVersion: SEMANTIC_PROTOCOL_VERSION,
-            capabilities: ["completion", "completionResolve", "definition", "signatureHelp", "codeActions", "generateCode", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
+            capabilities: ["completion", "completionResolve", "definition", "findUsages", "signatureHelp", "codeActions", "renameSymbol", "generateCode", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
           },
         }
       case "restoreDocuments":
@@ -85,6 +84,8 @@ export class SemanticWorkerSession {
         return this.prepareDocument(request)
       case "gotoDefinition":
         return this.handleSemanticQuery(request, "gotoDefinition")
+      case "findUsages":
+        return this.handleSemanticQuery(request, "findUsages")
       case "completion":
         return this.handleSemanticQuery(request, "completion")
       case "resolveCompletion":
@@ -110,11 +111,7 @@ export class SemanticWorkerSession {
           payload: prepareRename(),
         }
       case "rename":
-        return {
-          id: request.id,
-          ok: true,
-          payload: rename(),
-        }
+        return this.rename(request)
       default:
         return {
           id: request.id,
@@ -127,12 +124,18 @@ export class SemanticWorkerSession {
 
   private handleSemanticQuery(
     request: SemanticRequest,
-    method: "gotoDefinition" | "completion" | "signatureHelp",
+    method: "gotoDefinition" | "findUsages" | "completion" | "signatureHelp",
   ): SemanticResponse {
     if (!request.position) {
+      if (method === "findUsages") {
+        return { id: request.id, ok: false, payload: null, error: "findUsages requires a position" }
+      }
       return { id: request.id, ok: true, payload: method === "completion" ? [] : null }
     }
-    const { workspace, typeEngine } = this.prepareWorkspace(request.position)
+    const { workspace, typeEngine } = this.prepareWorkspace(
+      request.position,
+      method === "findUsages",
+    )
     const key = semanticQueryCacheKey(
       method,
       workspace.state,
@@ -186,9 +189,23 @@ export class SemanticWorkerSession {
     return { id: request.id, ok: true, payload, state: workspace.state }
   }
 
-  private prepareWorkspace(position: NonNullable<SemanticRequest["position"]>) {
+  private rename(request: SemanticRequest): SemanticResponse {
+    if (!request.position || !request.newName) {
+      return { id: request.id, ok: false, payload: null, error: "rename requires position and newName" }
+    }
+    const { workspace, typeEngine } = this.prepareWorkspace(request.position, true)
+    const started = performance.now()
+    const payload = typeEngine.rename(request.position, request.newName)
+    this.latencies.record("rename", performance.now() - started)
+    return { id: request.id, ok: true, payload, state: workspace.state }
+  }
+
+  private prepareWorkspace(
+    position: NonNullable<SemanticRequest["position"]>,
+    includeWorkspaceFiles = false,
+  ) {
     const workspaceStarted = performance.now()
-    const baseWorkspace = this.documents.prepare(position)
+    const baseWorkspace = this.documents.prepare(position, includeWorkspaceFiles)
     this.latencies.record("workspacePrepare", performance.now() - workspaceStarted)
     const typeStarted = performance.now()
     const typeEngine = this.typeEngines.prepare(baseWorkspace)
@@ -207,7 +224,7 @@ export class SemanticWorkerSession {
   }
 
   private resolveSemanticPayload(
-    method: "gotoDefinition" | "completion" | "signatureHelp",
+    method: "gotoDefinition" | "findUsages" | "completion" | "signatureHelp",
     request: SemanticRequest,
     workspace: SemanticWorkspaceView,
     typeEngine: SemanticTypeQueryContext,
@@ -215,6 +232,7 @@ export class SemanticWorkerSession {
     const position = request.position
     if (!position) return method === "completion" ? [] : null
     if (method === "completion") return resolveCompletion(position, workspace, typeEngine)
+    if (method === "findUsages") return typeEngine.usages(position)
     if (method === "signatureHelp") return resolveSignatureHelp(position, workspace, typeEngine)
     return resolveDefinition(position, workspace, typeEngine)
   }

@@ -4,7 +4,7 @@ use tauri::AppHandle;
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
-    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageResult,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp, UsageQueryResult,
 };
 use crate::services::language_service::{
     complete_symbol, complete_symbol_with_document_version, find_usages, goto_definition,
@@ -168,7 +168,7 @@ pub async fn find_usages_blocking(
     app: AppHandle,
     runtime: LanguageRuntime,
     request: LanguageQueryRequest,
-) -> Result<Vec<UsageResult>, String> {
+) -> Result<UsageQueryResult, String> {
     spawn_blocking(move || {
         let settings = load_settings_for_app(&app)?;
         Ok(find_usages(&runtime, &settings, &request))

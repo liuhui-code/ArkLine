@@ -15,6 +15,8 @@ import type {
   WorkspaceSdkIndexSummary,
 } from "@/features/workspace/workspace-index-api-types";
 import type {
+  WorkspaceFileChangeEvent,
+  WorkspaceFileChangeWatcher,
   WorkspaceIndexRefreshResult,
   WorkspaceIndexWatcher,
 } from "@/features/workspace/workspace-api-contract";
@@ -57,6 +59,7 @@ export type WorkspaceIndexManagementApi = {
   refreshWorkspaceIndex(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
+  watchWorkspaceFileChanges(rootPath: string, onChange: WorkspaceFileChangeWatcher): Promise<() => void>;
 };
 
 export function createWorkspaceIndexManagementApi(deps: WorkspaceIndexManagementApiDependencies): WorkspaceIndexManagementApi {
@@ -84,6 +87,7 @@ export function createWorkspaceIndexManagementApi(deps: WorkspaceIndexManagement
     refreshWorkspaceIndex: (rootPath) => refreshWorkspaceIndex(deps, rootPath),
     refreshWorkspaceIndexWithChanges: (rootPath) => refreshWorkspaceIndexWithChanges(deps, rootPath),
     watchWorkspaceIndex: (rootPath, onChange) => watchWorkspaceIndex(deps, rootPath, onChange),
+    watchWorkspaceFileChanges: (rootPath, onChange) => watchWorkspaceFileChanges(deps, rootPath, onChange),
   };
 }
 
@@ -381,6 +385,27 @@ async function watchWorkspaceIndex(
   return () => {
     unlisten();
     void deps.invoke("unwatch_workspace_index", { rootPath });
+  };
+}
+
+async function watchWorkspaceFileChanges(
+  deps: WorkspaceIndexManagementApiDependencies,
+  rootPath: string,
+  onChange: WorkspaceFileChangeWatcher,
+) {
+  if (!deps.hasTauriRuntime()) {
+    return () => undefined;
+  }
+
+  const unlisten = await deps.listen<WorkspaceFileChangeEvent>("workspace-file-changed", (event) => {
+    if (deps.normalizePath(event.payload.rootPath) !== deps.normalizePath(rootPath)) {
+      return;
+    }
+    onChange(event.payload);
+  });
+
+  return () => {
+    unlisten();
   };
 }
 

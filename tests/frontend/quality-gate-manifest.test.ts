@@ -59,8 +59,9 @@ describe("quality gate manifest", () => {
     );
     expect(manifest.gates["release-frontend"].steps).not.toContain("pnpm test:rust");
     expect(manifest.gates["release-rust"].steps).toEqual(["pnpm test:rust"]);
-    expect(manifest.gates.fast.stepTimeoutMs).toBe(900000);
-    expect(manifest.gates.full.stepTimeoutMs).toBe(2000000);
+    expect(manifest.gates.fast.stepTimeoutMs).toBe(5400000);
+    expect(manifest.gates.full.stepTimeoutMs).toBe(5400000);
+    expect(manifest.gates["release-rust"].stepTimeoutMs).toBe(5400000);
     expect(scripts["check:fast"]).toBe(manifest.gates.fast.command);
     expect(scripts.check).toBe(manifest.gates.full.command);
     expect(scripts["check:release:frontend"]).toBe(

@@ -10,7 +10,7 @@ export function UsagesPanel({ state, onOpenUsage }: UsagesPanelProps) {
     return <div aria-label="Usages Panel">Finding usages...</div>;
   }
 
-  if (state.status === "error") {
+  if (state.status === "error" || state.status === "unavailable") {
     return <div aria-label="Usages Panel">{state.message ?? "Usage query failed"}</div>;
   }
 

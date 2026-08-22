@@ -9,8 +9,12 @@ pub async fn open_text_document(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn save_text_document(path: String, content: String) -> Result<(), String> {
-    save_text_document_blocking(path, content).await
+pub async fn save_text_document(
+    path: String,
+    content: String,
+    expected_content: Option<String>,
+) -> Result<(), String> {
+    save_text_document_blocking(path, content, expected_content).await
 }
 
 #[tauri::command]

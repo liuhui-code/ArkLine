@@ -4,8 +4,9 @@ use std::sync::Arc;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentPrepareRequest,
-    SemanticDocumentSyncRequest, SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, RenameSymbolResult, SemanticDocumentCloseRequest,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp,
+    UnsupportedCodeActionResolution, UsageQueryResult,
 };
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::launcher::{
@@ -116,12 +117,14 @@ impl SemanticProvider for ArkTsLspProvider {
             definition: true,
             completion: true,
             document_symbols: false,
-            find_usages: false,
+            find_usages: true,
             capabilities: vec![
                 "definition".to_string(),
+                "findUsages".to_string(),
                 "completion".to_string(),
                 "signatureHelp".to_string(),
                 "codeActions".to_string(),
+                "renameSymbol".to_string(),
                 "generateCode".to_string(),
             ],
             detail: format!(
@@ -214,8 +217,10 @@ impl SemanticProvider for ArkTsLspProvider {
         Vec::new()
     }
 
-    fn usages(&self, _request: &LanguageQueryRequest) -> Vec<UsageResult> {
-        Vec::new()
+    fn usages(&self, request: &LanguageQueryRequest) -> UsageQueryResult {
+        self.manager
+            .request_interactive(|session| session.usages(request))
+            .unwrap_or_else(UsageQueryResult::unavailable)
     }
 
     fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction> {
@@ -233,6 +238,19 @@ impl SemanticProvider for ArkTsLspProvider {
                     reason: error,
                 })
             })
+    }
+
+    fn rename_symbol(
+        &self,
+        request: &LanguageQueryRequest,
+        new_name: &str,
+        document_version: Option<u64>,
+    ) -> RenameSymbolResult {
+        self.manager
+            .request_interactive(|session| {
+                session.rename_symbol(request, new_name, document_version)
+            })
+            .unwrap_or_else(RenameSymbolResult::unavailable)
     }
 
     fn sync_document(&self, request: &SemanticDocumentSyncRequest) -> Result<(), String> {

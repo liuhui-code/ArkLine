@@ -52,6 +52,7 @@ export function ArkTsEditor({
   onCodeMirrorSignatureHelpRequest,
   onValidationRequest,
   onValidationResult,
+  onDiagnosticFixRequest,
   onContextMenu,
   blameAttributions = [],
   gitBlameVisible = false,
@@ -83,6 +84,7 @@ export function ArkTsEditor({
   const onCodeMirrorSignatureHelpRequestRef = useRef(onCodeMirrorSignatureHelpRequest);
   const onValidationRequestRef = useRef(onValidationRequest);
   const onValidationResultRef = useRef(onValidationResult);
+  const onDiagnosticFixRequestRef = useRef(onDiagnosticFixRequest);
   const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
   const sessionRestoreFrameRef = useRef<number | null>(null);
@@ -133,6 +135,7 @@ export function ArkTsEditor({
   onCodeMirrorSignatureHelpRequestRef.current = onCodeMirrorSignatureHelpRequest;
   onValidationRequestRef.current = onValidationRequest;
   onValidationResultRef.current = onValidationResult;
+  onDiagnosticFixRequestRef.current = onDiagnosticFixRequest;
   onContextMenuRef.current = onContextMenu;
 
   function createState(documentPath: string, content: string | Text, reducedMode: boolean) {
@@ -188,6 +191,9 @@ export function ArkTsEditor({
           : undefined,
         onValidationResult
           ? (documentPath, problems) => onValidationResultRef.current?.(documentPath, problems)
+          : undefined,
+        onDiagnosticFixRequest
+          ? (request) => onDiagnosticFixRequestRef.current?.(request)
           : undefined,
       ),
     });

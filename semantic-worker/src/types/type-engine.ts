@@ -3,6 +3,9 @@ import type {
   SemanticDefinitionCandidate,
   SemanticDocumentPosition,
   SemanticSignatureHelp,
+  SemanticUsageResult,
+  SemanticWorkspaceEditPlan,
+  SemanticUnsupportedResult,
 } from "../protocol.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
 import { TypeScriptLanguageServiceEngine } from "./typescript-language-service.js"
@@ -23,6 +26,8 @@ export interface SemanticTypeQueryContext {
   complete(position: SemanticDocumentPosition): SemanticCompletionItem[]
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
+  usages(position: SemanticDocumentPosition): SemanticUsageResult[]
+  rename(position: SemanticDocumentPosition, newName: string): SemanticWorkspaceEditPlan | SemanticUnsupportedResult
   signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null
 }
 
@@ -52,6 +57,8 @@ export class SemanticTypeEngineRegistry {
       complete: (position) => entry.engine.complete(position),
       resolveCompletion: (position, item) => entry.engine.resolveCompletion(position, item),
       define: (position) => entry.engine.define(position),
+      usages: (position) => entry.engine.usages(position),
+      rename: (position, newName) => entry.engine.rename(position, newName),
       signatureHelp: (position) => entry.engine.signatureHelp(position),
     }
   }

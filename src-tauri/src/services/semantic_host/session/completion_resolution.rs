@@ -36,6 +36,7 @@ impl SemanticWorkerSession {
             }),
             action: None,
             completion: Some(item.clone()),
+            new_name: None,
             documents: None,
             document: None,
             document_path: None,

@@ -64,6 +64,7 @@ export type SemanticRequestMethod =
   | "didClose"
   | "prepareDocument"
   | "gotoDefinition"
+  | "findUsages"
   | "completion"
   | "resolveCompletion"
   | "signatureHelp"
@@ -139,6 +140,12 @@ export interface SemanticTextRange {
 
 export interface SemanticDefinitionCandidate extends SemanticDefinitionTarget {}
 
+export interface SemanticUsageResult extends SemanticDefinitionTarget {
+  preview: string
+  kind: "semantic"
+  confidence: "exact"
+}
+
 export type SemanticCodeActionKind =
   | "quickfix"
   | "refactor.extract"
@@ -182,6 +189,7 @@ export type SemanticWorkspaceEditOperation =
       range: SemanticTextRange
       newText: string
       expectedVersion?: number
+      expectedContentVersion?: string
     }
   | { kind: "createFile"; path: string; content: string; overwrite: boolean }
   | { kind: "renameFile"; oldPath: string; newPath: string; overwrite: boolean }
@@ -214,6 +222,7 @@ export type SemanticResponsePayload =
   | { status: "closed"; path: string }
   | { restoredDocumentCount: number }
   | SemanticDefinitionTarget
+  | SemanticUsageResult[]
   | { definition: SemanticDefinitionTarget | null; definitionCandidates?: SemanticDefinitionCandidate[] }
   | SemanticCompletionItem[]
   | SemanticCompletionItem

@@ -8,7 +8,7 @@ import {
 } from "@codemirror/lint";
 import { Prec, type Text } from "@codemirror/state";
 import { keymap, type EditorView } from "@codemirror/view";
-import type { ValidationProblem } from "@/features/workspace/workspace-api";
+import type { ValidationFix, ValidationProblem } from "@/features/workspace/workspace-api";
 
 export type EditorValidationRequest = (
   path: string,
@@ -20,10 +20,19 @@ export type EditorValidationResultHandler = (
   problems: ValidationProblem[],
 ) => void;
 
+export type EditorDiagnosticFixRequest = {
+  path: string;
+  content: string;
+  fix: ValidationFix;
+};
+
+export type EditorDiagnosticFixRequestHandler = (request: EditorDiagnosticFixRequest) => void;
+
 export function createEditorValidationExtensions(
   getActivePath: () => string,
   validate: EditorValidationRequest,
   onResult?: EditorValidationResultHandler,
+  onFixRequest?: EditorDiagnosticFixRequestHandler,
 ) {
   let requestGeneration = 0;
   const source: LintSource = async (view) => {
@@ -43,7 +52,7 @@ export function createEditorValidationExtensions(
 
     const currentProblems = problems.filter((problem) => problem.path === path);
     onResult?.(path, currentProblems);
-    return currentProblems.map((problem) => toDiagnostic(document, problem));
+    return currentProblems.map((problem) => toDiagnostic(document, problem, path, onFixRequest));
   };
 
   return [
@@ -80,7 +89,12 @@ function applyDiagnosticFixAtSelection(view: EditorView) {
   return true;
 }
 
-function toDiagnostic(document: Text, problem: ValidationProblem): Diagnostic {
+function toDiagnostic(
+  document: Text,
+  problem: ValidationProblem,
+  path: string,
+  onFixRequest?: EditorDiagnosticFixRequestHandler,
+): Diagnostic {
   const range = problem.fix
     ? textRange(document, problem.fix.startLine, problem.fix.startColumn, problem.fix.endLine, problem.fix.endColumn)
     : textRange(document, problem.line, problem.column, problem.line, problem.column + 1);
@@ -94,6 +108,10 @@ function toDiagnostic(document: Text, problem: ValidationProblem): Diagnostic {
     actions: problem.fix ? [{
       name: problem.fix.title,
       apply(view, from, to) {
+        if (problem.fix && onFixRequest) {
+          onFixRequest({ path, content: document.toString(), fix: problem.fix });
+          return;
+        }
         view.dispatch({ changes: { from, to, insert: problem.fix?.replacement ?? "" } });
       },
     }] : undefined,
