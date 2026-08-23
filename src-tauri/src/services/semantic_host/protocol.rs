@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::models::language::{CodeActionResolveRequest, CompletionItem};
 
-pub const SEMANTIC_PROTOCOL_VERSION: u64 = 5;
+pub const SEMANTIC_PROTOCOL_VERSION: u64 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

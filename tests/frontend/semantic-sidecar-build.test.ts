@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolvePkgTarget,
   semanticSidecarOutput,
+  validateSemanticHealth,
 } from "../../scripts/build-semantic-sidecar.mjs";
 // @ts-ignore Node ESM build utility intentionally has no declaration file.
 import {
@@ -31,6 +32,19 @@ describe("semantic sidecar build targets", () => {
   it("rejects unsupported targets instead of producing a mislabeled binary", () => {
     expect(() => resolvePkgTarget("wasm32-unknown-unknown")).toThrow("Unsupported semantic sidecar target");
   });
+
+  it("accepts only the current semantic worker protocol", () => {
+    const response = {
+      id: "standalone-health",
+      ok: true,
+      payload: { status: "ready", protocolVersion: 6 },
+    };
+    expect(validateSemanticHealth(response)).toBe(true);
+    expect(validateSemanticHealth({
+      ...response,
+      payload: { ...response.payload, protocolVersion: 5 },
+    })).toBe(false);
+  });
 });
 
 describe("indexer sidecar build targets", () => {
@@ -55,7 +69,7 @@ describe("indexer sidecar build targets", () => {
       ok: true,
       payload: {
         status: "ready",
-        protocolVersion: 5,
+        protocolVersion: 6,
         capabilities: [
           "health",
           "discoveryChunk",
@@ -80,7 +94,7 @@ describe("indexer sidecar build targets", () => {
       ok: true,
       payload: {
         status: "ready",
-        protocolVersion: 5,
+        protocolVersion: 6,
         capabilities: ["health", "contentRefreshChunk"],
       },
     })).toBe(false);

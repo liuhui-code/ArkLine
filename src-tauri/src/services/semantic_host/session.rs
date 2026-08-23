@@ -13,15 +13,17 @@ use super::response_state::{
     publish_response_readiness, validate_response_generation, RawSemanticResponseState,
 };
 use super::transport::{DirectSemanticWorkerTransport, SemanticWorkerTransport};
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, LanguageQueryRequest, SemanticRequestActorSnapshot,
-    SemanticWorkerRuntime, SignatureHelp, UsageQueryResult, UsageResult,
+    SemanticWorkerRuntime, SignatureHelp, UsageQueryResult,
 };
 
 mod completion_resolution;
 mod definition;
 mod document_sync;
+pub(super) mod query_results;
 mod rename;
 
 #[cfg(not(test))]
@@ -183,7 +185,10 @@ impl SemanticWorkerSession {
         let items = payload
             .as_array()
             .ok_or_else(|| "Semantic worker usages response was not an array".to_string())?;
-        let items = items.iter().filter_map(parse_usage_result).collect();
+        let items = items
+            .iter()
+            .filter_map(query_results::parse_usage_result)
+            .collect();
         Ok(
             match response
                 .state
@@ -200,6 +205,14 @@ impl SemanticWorkerSession {
                 ),
             },
         )
+    }
+
+    pub fn diagnostics(
+        &self,
+        request: &LanguageQueryRequest,
+    ) -> Result<ValidationQueryResult, String> {
+        let response = self.send_request("diagnostics", Some(request))?;
+        query_results::parse_diagnostics_response(&response)
     }
 
     pub fn list_code_actions(
@@ -302,6 +315,7 @@ impl SemanticWorkerSession {
             "completion"
                 | "gotoDefinition"
                 | "findUsages"
+                | "diagnostics"
                 | "signatureHelp"
                 | "prepareDocument"
                 | "rename"
@@ -468,18 +482,6 @@ pub(super) fn parse_completion_item(item: &Value) -> Option<CompletionItem> {
             .and_then(|value| parse_definition_target(value).ok()),
         additional_text_edits: completion_resolution::parse_completion_text_edits(item),
         data: item.get("data").cloned(),
-    })
-}
-
-pub(super) fn parse_usage_result(item: &Value) -> Option<UsageResult> {
-    Some(UsageResult {
-        path: item.get("path")?.as_str()?.to_string(),
-        line: item.get("line")?.as_u64()? as u32,
-        column: item.get("column")?.as_u64()? as u32,
-        preview: item.get("preview")?.as_str()?.to_string(),
-        kind: item.get("kind")?.as_str()?.to_string(),
-        confidence: item.get("confidence")?.as_str()?.to_string(),
-        caller: None,
     })
 }
 

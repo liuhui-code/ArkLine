@@ -191,6 +191,13 @@ impl SemanticProvider for CompositeSemanticProvider {
         self.semantic.usages(request)
     }
 
+    fn diagnostics(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+    ) -> crate::models::diagnostics::ValidationQueryResult {
+        self.semantic.diagnostics(request)
+    }
+
     fn code_actions(
         &self,
         request: &crate::models::language::LanguageQueryRequest,

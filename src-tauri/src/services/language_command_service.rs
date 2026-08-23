@@ -1,6 +1,7 @@
 use tauri::async_runtime::spawn_blocking;
 use tauri::AppHandle;
 
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CompletionItem, DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse,
     LanguageQueryRequest, LanguageServiceReport, SemanticDocumentCloseRequest,
@@ -9,9 +10,22 @@ use crate::models::language::{
 use crate::services::language_service::{
     complete_symbol, complete_symbol_with_document_version, find_usages, goto_definition,
     goto_definition_candidates, goto_definition_candidates_with_document_version, hover_symbol,
-    inspect_runtime, list_document_symbols, LanguageRuntime,
+    inspect_runtime, list_document_symbols, validate_document, LanguageRuntime,
 };
 use crate::services::settings_store::load_settings_for_app;
+
+pub async fn validate_document_blocking(
+    app: AppHandle,
+    runtime: LanguageRuntime,
+    request: LanguageQueryRequest,
+) -> Result<ValidationQueryResult, String> {
+    spawn_blocking(move || {
+        let settings = load_settings_for_app(&app)?;
+        Ok(validate_document(&runtime, &settings, &request))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
 
 pub async fn inspect_language_service_blocking(
     app: AppHandle,

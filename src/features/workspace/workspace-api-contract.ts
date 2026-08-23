@@ -3,7 +3,7 @@ import type { BuildEnvironmentRequest } from "@/features/build/build-environment
 import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
 import type { LanguageServiceReport, SemanticAvailability } from "@/features/workspace/workspace-language-api-types";
-import type { ValidationProblem } from "@/features/workspace/workspace-validation-api-types";
+import type { ValidationQueryResult } from "@/features/workspace/workspace-validation-api-types";
 export type * from "@/features/workspace/workspace-language-api-types";
 export type * from "@/features/workspace/workspace-validation-api-types";
 import type {
@@ -424,7 +424,7 @@ type WorkspaceCoreApi = {
   syncSemanticDocument?(request: SemanticDocumentSyncRequest): Promise<void>;
   prepareSemanticDocument?(request: SemanticDocumentPrepareRequest): Promise<void>;
   closeSemanticDocument?(request: SemanticDocumentCloseRequest): Promise<void>;
-  runValidation(path: string, content: string): Promise<ValidationProblem[]>;
+  runValidation(path: string, content: string): Promise<ValidationQueryResult>;
   loadDiff(rootPath: string | null): Promise<string>;
   inspectEnvironment(): Promise<EnvironmentReport>;
   inspectLanguageService?(): Promise<LanguageServiceReport>;

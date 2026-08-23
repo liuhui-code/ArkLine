@@ -50,6 +50,7 @@ export type LanguageServiceCapability =
   | "signatureHelp"
   | "documentSymbols"
   | "findUsages"
+  | "diagnostics"
   | "codeActions"
   | "generateCode"
   | "renameSymbol"

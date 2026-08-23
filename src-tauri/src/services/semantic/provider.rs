@@ -1,3 +1,4 @@
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
@@ -41,6 +42,9 @@ pub trait SemanticProvider: Send + Sync {
     }
     fn document_symbols(&self, request: &LanguageQueryRequest) -> Vec<DocumentSymbol>;
     fn usages(&self, request: &LanguageQueryRequest) -> UsageQueryResult;
+    fn diagnostics(&self, _request: &LanguageQueryRequest) -> ValidationQueryResult {
+        ValidationQueryResult::unavailable("Semantic diagnostics require the semantic provider.")
+    }
     fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction>;
     fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution;
     fn rename_symbol(
@@ -237,6 +241,12 @@ impl SemanticProvider for FallbackProvider {
         UsageQueryResult::partial(
             items,
             "Fallback usage search is limited to the active document",
+        )
+    }
+
+    fn diagnostics(&self, _request: &LanguageQueryRequest) -> ValidationQueryResult {
+        ValidationQueryResult::unavailable(
+            "Semantic diagnostics are unavailable while the fallback provider is active",
         )
     }
 

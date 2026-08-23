@@ -80,7 +80,11 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
     [],
   );
   const onValidationRequest = useCallback<EditorValidationRequest>(
-    (path, content) => callbacksRef.current.onValidationRequest?.(path, content) ?? Promise.resolve([]),
+    (path, content) => callbacksRef.current.onValidationRequest?.(path, content) ?? Promise.resolve({
+      availability: "unavailable",
+      items: [],
+      message: "Diagnostics are unavailable",
+    }),
     [],
   );
   const onValidationResult = useCallback<EditorValidationResultHandler>(
