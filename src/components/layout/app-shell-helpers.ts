@@ -1,6 +1,16 @@
 import { buildCommandPaletteItems } from "@/components/layout/search-overlay-model";
 import { getShellCommandShortcut } from "@/components/layout/shell-keymap";
 
+const nativeContextMenuInputTypes = new Set(["date", "datetime-local", "email", "month", "number", "password", "search", "tel", "text", "time", "url", "week"]);
+
+export function hasNativeEditingContextMenu(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  const editable = target.closest("input, textarea, [contenteditable]");
+  if (editable instanceof HTMLInputElement) return nativeContextMenuInputTypes.has(editable.type);
+  if (editable instanceof HTMLTextAreaElement) return true;
+  return editable !== null && editable.getAttribute("contenteditable") !== "false";
+}
+
 export function parseGoToLineQuery(query: string) {
   const match = query.trim().match(/^(\d+)(?::(\d+))?$/);
   if (!match) {
@@ -83,7 +93,11 @@ type CommandPaletteAction = {
   closeGitBlame: () => void;
 };
 
-export function buildAppShellCommandPaletteItems(query: string, actions: CommandPaletteAction) {
+export function buildAppShellCommandPaletteItems(
+  query: string,
+  actions: CommandPaletteAction,
+  semanticCommands: { renameSymbol: boolean; generateCode: boolean; refactor: boolean },
+) {
   return buildCommandPaletteItems(query, [
     { id: "open-project", label: "Open Project", action: actions.openProject },
     { id: "open-demo", label: "Open Demo Workspace", action: actions.openDemoWorkspace },
@@ -97,9 +111,15 @@ export function buildAppShellCommandPaletteItems(query: string, actions: Command
     { id: "find-usages", label: "Find Usages", shortcut: getShellCommandShortcut("findUsages"), action: actions.findUsages },
     { id: "current-class-methods", label: "Show Current Class Methods", shortcut: getShellCommandShortcut("showCurrentClassMethods"), action: actions.showCurrentClassMethods },
     { id: "show-code-actions", label: "Show Code Actions", shortcut: getShellCommandShortcut("showCodeActions"), action: actions.showCodeActions },
-    { id: "rename-symbol", label: "Rename Symbol", shortcut: getShellCommandShortcut("renameSymbol"), action: actions.renameSymbol },
-    { id: "generate-code", label: "Generate Code", shortcut: getShellCommandShortcut("generateCode"), action: actions.generateCode },
-    { id: "refactor-this", label: "Refactor This", shortcut: getShellCommandShortcut("refactorThis"), action: actions.refactorThis },
+    ...(semanticCommands.renameSymbol
+      ? [{ id: "rename-symbol", label: "Rename Symbol", shortcut: getShellCommandShortcut("renameSymbol"), action: actions.renameSymbol }]
+      : []),
+    ...(semanticCommands.generateCode
+      ? [{ id: "generate-code", label: "Generate Code", shortcut: getShellCommandShortcut("generateCode"), action: actions.generateCode }]
+      : []),
+    ...(semanticCommands.refactor
+      ? [{ id: "refactor-this", label: "Refactor This", shortcut: getShellCommandShortcut("refactorThis"), action: actions.refactorThis }]
+      : []),
     { id: "completion", label: "Code Completion", shortcut: getShellCommandShortcut("openCompletion"), action: actions.openCompletion },
     { id: "run-validation", label: "Run Lint", action: actions.runLint },
     { id: "format-active-document", label: "Format Active Document", action: actions.formatActiveDocument },

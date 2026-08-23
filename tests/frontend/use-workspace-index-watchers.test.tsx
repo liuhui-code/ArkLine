@@ -6,6 +6,7 @@ import type {
   WorkspaceApi,
   WorkspaceIndexEvent,
   WorkspaceIndexRefreshResult,
+  WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
 
 describe("useWorkspaceIndexWatchers", () => {
@@ -88,6 +89,83 @@ describe("useWorkspaceIndexWatchers", () => {
 
     expect(teardown).toHaveBeenCalledTimes(1);
   });
+
+  it("does not replay the latest refresh result when callback identities change", async () => {
+    const rootPath = "/workspace";
+    const firstApply = vi.fn();
+    const secondApply = vi.fn();
+    let onChange: ((result: WorkspaceIndexRefreshResult) => void) | null = null;
+    const watchWorkspaceIndex = vi.fn(async (
+      _rootPath: string,
+      next: (result: WorkspaceIndexRefreshResult) => void,
+    ) => {
+      onChange = next;
+      return vi.fn();
+    });
+    const workspaceApi = { watchWorkspaceIndex } as unknown as WorkspaceApi;
+
+    const { rerender } = renderHook(
+      ({ apply, onStatusChange }) => useWorkspaceIndexWatchers({
+        rootPath,
+        workspaceApi,
+        applyWorkspaceIndexRefreshResult: apply,
+        refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+        recordWorkspaceIndexTaskStatus: vi.fn(),
+        onStatusChange,
+      }),
+      {
+        initialProps: {
+          apply: firstApply,
+          onStatusChange: vi.fn(),
+        },
+      },
+    );
+
+    await waitFor(() => expect(watchWorkspaceIndex).toHaveBeenCalledTimes(1));
+    act(() => {
+      onChange?.(indexRefreshResult(rootPath));
+    });
+    await waitFor(() => expect(firstApply).toHaveBeenCalledTimes(1));
+
+    rerender({ apply: secondApply, onStatusChange: vi.fn() });
+
+    expect(secondApply).not.toHaveBeenCalled();
+    expect(watchWorkspaceIndex).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not refetch workspace state from task status notifications", async () => {
+    const rootPath = "/workspace";
+    const applyWorkspaceIndexRefreshResult = vi.fn();
+    let onTaskStatus: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
+    const getWorkspaceIndexState = vi.fn(async () => indexRefreshResult(rootPath).state);
+    const watchWorkspaceIndexTaskStatuses = vi.fn(async (
+      _rootPath: string,
+      next: (status: WorkspaceIndexTaskStatus) => void,
+    ) => {
+      onTaskStatus = next;
+      return vi.fn();
+    });
+
+    renderHook(() => useWorkspaceIndexWatchers({
+      rootPath,
+      workspaceApi: {
+        getWorkspaceIndexState,
+        watchWorkspaceIndexTaskStatuses,
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult,
+      refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    await waitFor(() => expect(watchWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(1));
+    act(() => {
+      onTaskStatus?.(indexTaskStatus({ status: "ready" }));
+    });
+
+    expect(getWorkspaceIndexState).not.toHaveBeenCalled();
+    expect(applyWorkspaceIndexRefreshResult).not.toHaveBeenCalled();
+  });
 });
 
 function indexRefreshResult(rootPath: string): WorkspaceIndexRefreshResult {
@@ -118,6 +196,29 @@ function indexEvent(overrides: Partial<WorkspaceIndexEvent> = {}): WorkspaceInde
     generation: 1,
     payloadJson: "{}",
     createdAt: 1,
+    ...overrides,
+  };
+}
+
+function indexTaskStatus(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {
+  return {
+    taskId: "1:changed-paths",
+    rootPath: "/workspace",
+    kind: "changed-paths",
+    status: "partial",
+    reason: "full-refresh-deep:background-refresh-after-open",
+    generation: 1,
+    progressCurrent: 1,
+    progressTotal: 1,
+    targetPaths: [],
+    targetPathCount: null,
+    startedAt: 1,
+    lastHeartbeatAt: 1,
+    stalled: false,
+    finishedAt: 1,
+    symbolCount: null,
+    message: "Deep refresh catalog complete",
+    error: null,
     ...overrides,
   };
 }

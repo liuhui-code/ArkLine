@@ -351,6 +351,11 @@ impl WorkspaceIndexConnectionManager {
             })
             .unwrap_or_default()
     }
+
+    #[cfg(test)]
+    pub(crate) fn pooled_writer_count(&self) -> usize {
+        self.writer_connections.len()
+    }
 }
 
 pub(crate) struct WorkspaceIndexReader<'a> {

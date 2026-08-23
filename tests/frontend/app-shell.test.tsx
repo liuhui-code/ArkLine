@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "@/App";
 import { AppShell } from "@/components/layout/AppShell";
-import type { LanguageCompletionItem, WorkspaceApi, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
+import type { LanguageCompletionItem, LanguageServiceCapability, WorkspaceApi, WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 import type { WorkspaceEditPlan } from "@/features/code-actions/workspace-edit-model";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 import { defaultSettings } from "@/features/settings/settings-store";
@@ -62,7 +62,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
       ? "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}"
       : "@Entry\n@Component\nstruct Index {}",
     saveFile: async () => undefined,
-    runValidation: async () => [],
+    runValidation: async () => ({ availability: "ready", items: [] }),
     loadDiff: async () => "",
     inspectEnvironment: async () => ({ tools: [] }),
     inspectLanguageService: async () => ({
@@ -115,6 +115,21 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     }),
     startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
     stopDeviceLogStream: async () => undefined,
+  };
+}
+
+function semanticLanguageServiceReport(...capabilities: LanguageServiceCapability[]) {
+  return {
+    provider: "arkts-semantic",
+    mode: "semantic" as const,
+    running: true,
+    hover: true,
+    definition: true,
+    completion: true,
+    documentSymbols: true,
+    findUsages: true,
+    capabilities,
+    detail: "ready",
   };
 }
 
@@ -767,7 +782,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
@@ -1056,6 +1071,49 @@ describe("App shell", () => {
     await user.click(screen.getByRole("menuitem", { name: "Format Document" }));
 
     expect(await screen.findByText("Formatted main.ets")).toBeVisible();
+  });
+
+  it("suppresses unrelated context menus on app regions without actions", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByRole("tab", { name: "Problems" }),
+    });
+    expect(screen.getByRole("menu", { name: "Problems tool window actions" })).toBeVisible();
+
+    const statusBar = screen.getByLabelText("Status Bar");
+    const contextMenuEvent = createEvent.contextMenu(statusBar, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 40,
+      clientY: 40,
+    });
+
+    fireEvent.pointerDown(statusBar);
+    fireEvent(statusBar, contextMenuEvent);
+
+    expect(contextMenuEvent.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("keeps native editing context menus available on text inputs", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+    await user.click(screen.getByRole("button", { name: "File" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Open Project..." }));
+    const projectPath = await screen.findByLabelText("Project Path");
+    const contextMenuEvent = createEvent.contextMenu(projectPath, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 40,
+      clientY: 40,
+    });
+
+    fireEvent(projectPath, contextMenuEvent);
+
+    expect(contextMenuEvent.defaultPrevented).toBe(false);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("opens quick open from the keyboard and filters workspace paths", async () => {
@@ -2548,33 +2606,110 @@ describe("App shell", () => {
     }));
   });
 
-  it("filters F2 to rename code actions", async () => {
+  it("opens a version-protected workspace edit preview for an inline Quick Fix", async () => {
     const user = userEvent.setup();
-    const listCodeActions = vi.fn(async () => [
-      {
-        id: "arkts.generate-page",
-        title: "Generate ArkTS Page",
-        kind: "source" as const,
-        provider: "arkts" as const,
-        safety: "needsPreview" as const,
-      },
-      {
-        id: "arkts.rename-file",
-        title: "Rename File",
-        kind: "refactor.rewrite" as const,
-        provider: "arkts" as const,
-        safety: "needsPreview" as const,
-      },
-    ]);
+    const runValidation = vi.fn(async (path: string) => ({
+      availability: "ready" as const,
+      items: [{
+        source: "format" as const,
+        severity: "warning" as const,
+        path,
+        line: 1,
+        column: 1,
+        message: "Remove the entry decorator",
+        fix: {
+          title: "Remove @Entry",
+          startLine: 1,
+          startColumn: 1,
+          endLine: 1,
+          endColumn: 7,
+          replacement: "",
+        },
+      }],
+    }));
+    const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
+      plan,
+      conflicts: [],
+      affectedFiles: plan.affectedFiles,
+      summary: ["Remove @Entry"],
+    }));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ runValidation, previewWorkspaceEdit })} />);
+
+    const editor = await openMainEditor(user);
+    await waitFor(() => expect(runValidation).toHaveBeenCalled());
+    await user.keyboard("{Control>}{Home}{/Control}");
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+
+    expect(await screen.findByRole("dialog", { name: "Workspace Edit Preview" })).toBeVisible();
+    expect(editor).toHaveTextContent("@Entry");
+    expect(previewWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan: expect.objectContaining({
+        title: "Remove @Entry",
+        requiresPreview: true,
+        operations: [expect.objectContaining({
+          kind: "text",
+          path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+          range: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 7 },
+          newText: "",
+          expectedContentVersion: "fnv1a64:db36f34702eda9e3",
+        })],
+      }),
+    });
+  });
+
+  it("opens a semantic Rename Symbol dialog and previews its versioned workspace edit", async () => {
+    const user = userEvent.setup();
+    const inspectLanguageService = vi.fn(async () => semanticLanguageServiceReport("renameSymbol"));
+    const syncSemanticDocument = vi.fn(async () => undefined);
+    const plan: WorkspaceEditPlan = {
+      id: "semantic.rename.Index.DisplayName",
+      title: "Rename Index to DisplayName",
+      operations: [{
+        kind: "text",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        range: { startLine: 3, startColumn: 8, endLine: 3, endColumn: 13 },
+        newText: "DisplayName",
+        expectedContentVersion: "fnv1a64:1234567890abcdef",
+      }],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo rename Index to DisplayName",
+      requiresPreview: true,
+    };
+    const renameSymbol = vi.fn(async () => ({ availability: "ready" as const, resolution: plan }));
+    const previewWorkspaceEdit = vi.fn(async ({ plan: requestedPlan }) => ({
+      plan: requestedPlan,
+      conflicts: [],
+      affectedFiles: requestedPlan.affectedFiles,
+      summary: ["Rename symbol in main.ets"],
+    }));
+
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      inspectLanguageService,
+      syncSemanticDocument,
+      renameSymbol,
+      previewWorkspaceEdit,
+    })} />);
 
     await openMainEditor(user);
     await user.keyboard("{F2}");
+    const dialog = await screen.findByRole("dialog", { name: "Rename Symbol" });
+    await user.type(within(dialog).getByLabelText("New Symbol Name"), "DisplayName");
+    await user.click(within(dialog).getByRole("button", { name: "Preview" }));
 
-    const results = await screen.findByRole("listbox", { name: "Code Actions" });
-    expect(within(results).getByRole("option", { name: /Rename File/ })).toBeVisible();
-    expect(within(results).queryByRole("option", { name: /Generate ArkTS Page/ })).not.toBeInTheDocument();
+    await waitFor(() => expect(renameSymbol).toHaveBeenCalledWith(expect.objectContaining({
+      path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+      newName: "DisplayName",
+      documentVersion: expect.any(Number),
+    })));
+    expect(previewWorkspaceEdit).toHaveBeenCalledWith({
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan,
+    });
+    expect(await screen.findByRole("dialog", { name: "Workspace Edit Preview" })).toBeVisible();
+    expect(inspectLanguageService).toHaveBeenCalled();
   });
 
   it("ignores stale code action resolutions after the palette closes", async () => {
@@ -2748,6 +2883,51 @@ describe("App shell", () => {
     }));
     expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
     expect(await screen.findByText("Workspace edit applied: 1 file changed")).toBeVisible();
+  });
+
+  it("offers one version-guarded undo after applying a text workspace edit", async () => {
+    const user = userEvent.setup();
+    const plan: WorkspaceEditPlan = {
+      id: "semantic.rename.Index.DisplayName",
+      title: "Rename Index to DisplayName",
+      operations: [{ kind: "text", path: "C:/samples/DemoWorkspace/src/main.ets", range: { startLine: 3, startColumn: 8, endLine: 3, endColumn: 13 }, newText: "DisplayName" }],
+      conflicts: [],
+      affectedFiles: ["C:/samples/DemoWorkspace/src/main.ets"],
+      undoLabel: "Undo rename Index to DisplayName",
+      requiresPreview: true,
+    };
+    const undoPlan: WorkspaceEditPlan = {
+      id: `${plan.id}.undo`,
+      title: plan.undoLabel,
+      operations: [{ kind: "text", path: "C:/samples/DemoWorkspace/src/main.ets", range: { startLine: 1, startColumn: 1, endLine: 3, endColumn: 20 }, newText: "@Entry\n@Component\nstruct Index {}", expectedContentVersion: "fnv1a64:after" }],
+      conflicts: [],
+      affectedFiles: plan.affectedFiles,
+      undoLabel: "Redo Rename Index to DisplayName",
+      requiresPreview: false,
+    };
+    const previewWorkspaceEdit = vi.fn(async () => ({ plan, conflicts: [], affectedFiles: plan.affectedFiles, summary: ["Rename Index"] }));
+    const applyWorkspaceEdit = vi.fn()
+      .mockResolvedValueOnce({ applied: true, conflicts: [], changedFiles: plan.affectedFiles, undoPlan })
+      .mockResolvedValueOnce({ applied: true, conflicts: [], changedFiles: plan.affectedFiles });
+    const resolveCodeAction = vi.fn(async () => plan);
+    const listCodeActions = vi.fn(async () => [{ id: "rename", title: "Rename Symbol", kind: "refactor.rewrite" as const, provider: "arkts" as const, safety: "needsPreview" as const }]);
+
+    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+    await openMainEditor(user);
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
+    await screen.findByRole("dialog", { name: "Code Actions" });
+    await user.keyboard("{Enter}");
+    await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
+
+    const preview = await screen.findByRole("dialog", { name: "Workspace Edit Preview" });
+    await user.click(within(preview).getByRole("button", { name: "Undo Workspace Edit" }));
+
+    await waitFor(() => expect(applyWorkspaceEdit).toHaveBeenNthCalledWith(2, {
+      workspaceRoot: "C:\\samples\\DemoWorkspace",
+      plan: undoPlan,
+    }));
+    expect(screen.queryByRole("dialog", { name: "Workspace Edit Preview" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Workspace edit undone: 1 file changed")).toBeVisible();
   });
 
   it("cancels a workspace edit preview without applying edits", async () => {
@@ -2963,6 +3143,7 @@ describe("App shell", () => {
 
   it("applies Rename File from the IDE and updates the file tree", async () => {
     const user = userEvent.setup();
+    const inspectLanguageService = vi.fn(async () => semanticLanguageServiceReport("renameSymbol", "codeActions"));
     const listCodeActions = vi.fn(async () => [
       {
         id: "workspace.renameFile",
@@ -3005,10 +3186,10 @@ describe("App shell", () => {
       changedFiles: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/src/Home.ets"],
     }));
 
-    render(<AppShell workspaceApi={createWorkspaceApi({ listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
+    render(<AppShell workspaceApi={createWorkspaceApi({ inspectLanguageService, listCodeActions, resolveCodeAction, previewWorkspaceEdit, applyWorkspaceEdit })} />);
 
     await openMainEditor(user);
-    await user.keyboard("{F2}");
+    await user.keyboard("{Alt>}{Enter}{/Alt}");
     await screen.findByRole("dialog", { name: "Code Actions" });
     await user.keyboard("{Enter}");
     await user.click(await screen.findByRole("button", { name: "Apply Workspace Edit" }));
@@ -3107,7 +3288,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => ({
@@ -3205,7 +3386,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "const value = missingTarget;\n",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => null),
@@ -3381,7 +3562,7 @@ describe("App shell", () => {
         ? "declare class CommonMethod<T> {\n  width(value: Length): T;\n}"
         : "@Entry\n@Component\nstruct Index {\n  build() {\n    Column() {}\n      .width(100)\n  }\n}"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => ({
@@ -3435,7 +3616,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -3505,7 +3686,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -3520,12 +3701,13 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}{Enter}ind");
     await user.keyboard("{Control>} {/Control}");
 
     await waitFor(() => expect(queryWorkspaceFileSymbolsWithReadiness).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace",
       "C:\\samples\\DemoWorkspace\\src\\main.ets",
-      "",
+      "ind",
       80,
     ));
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -3561,7 +3743,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       queryWorkspaceFileSymbolsWithReadiness,
@@ -3576,6 +3758,7 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content");
     await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}{Enter}ind");
     await user.keyboard("{Control>} {/Control}");
 
     expect(await screen.findByRole("listbox", { name: "Code Completion" })).toBeVisible();
@@ -3618,7 +3801,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -3669,7 +3852,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async (): Promise<LanguageCompletionItem[]> => [{
@@ -3692,6 +3875,7 @@ describe("App shell", () => {
     await user.click(await screen.findByRole("button", { name: "main.ets" }));
     const editor = await screen.findByLabelText("Editor Content", {}, { timeout: 10_000 });
     await user.click(editor);
+    await user.keyboard("{Control>}{End}{/Control}{Enter}wid");
     await user.keyboard("{Control>} {/Control}");
 
     const popup = await screen.findByRole("listbox", { name: "Code Completion" });
@@ -3716,7 +3900,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async (): Promise<LanguageCompletionItem[]> => [{
@@ -3782,7 +3966,7 @@ describe("App shell", () => {
           "    .wi",
         ].join("\n"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -3840,7 +4024,7 @@ describe("App shell", () => {
       }),
       openFile: async () => ["@Entry", "@Component", "struct Index {", "  build() {", "    .wi"].join("\n"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -3889,7 +4073,7 @@ describe("App shell", () => {
       }),
       openFile: async () => ["@Entry", "@Component", "struct Index {", "  build() {", "    .wi"].join("\n"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -3938,7 +4122,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4053,7 +4237,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4138,7 +4322,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -4176,7 +4360,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -4268,7 +4452,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol,
@@ -4318,7 +4502,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol,
@@ -4356,7 +4540,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4398,7 +4582,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4440,7 +4624,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4482,7 +4666,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4523,7 +4707,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4571,7 +4755,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4631,7 +4815,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => completionItems),
@@ -4681,7 +4865,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4725,7 +4909,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4783,7 +4967,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4827,7 +5011,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4880,7 +5064,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4934,7 +5118,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4993,7 +5177,7 @@ describe("App shell", () => {
         ? "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}"
         : "@Entry\n@Component\nstruct Index {}"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       findUsages: vi.fn(async () => [
@@ -5121,7 +5305,7 @@ describe("App shell", () => {
         return "";
       }),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => null),
@@ -5202,7 +5386,7 @@ describe("App shell", () => {
         return "";
       }),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => null),
@@ -5299,7 +5483,9 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: vi.fn(async () => undefined),
-      runValidation: async () => [
+      runValidation: async () => ({
+        availability: "ready",
+        items: [
         {
           source: "lint",
           severity: "error",
@@ -5316,7 +5502,8 @@ describe("App shell", () => {
           column: 1,
           message: "File is not formatted",
         },
-      ],
+        ],
+      }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
@@ -5336,9 +5523,53 @@ describe("App shell", () => {
     expect(workspaceApi.saveFile).toHaveBeenCalledWith(
       "C:\\samples\\DemoWorkspace\\src\\main.ets",
       expect.stringContaining("!"),
+      "@Entry\n@Component\nstruct Index {}",
     );
     expect(await screen.findByText("Expected trailing semicolon")).toBeVisible();
     expect(screen.getByText("File is not formatted")).toBeVisible();
+  });
+
+  it("blocks save when an open dirty file changes outside the editor", async () => {
+    const user = userEvent.setup();
+    let diskContent = "@Entry\n@Component\nstruct Index {}";
+    let publishFileChange: ((event: {
+      rootPath: string;
+      path: string;
+      kind: "modified";
+    }) => void) | null = null;
+    const saveFile = vi.fn(async () => undefined);
+    const workspaceApi = createWorkspaceApi({
+      openWorkspace: async () => ({
+        rootName: "DemoWorkspace",
+        rootPath: "C:/samples/DemoWorkspace",
+        files: ["C:/samples/DemoWorkspace/src/main.ets"],
+      }),
+      openFile: vi.fn(async () => diskContent),
+      saveFile,
+      watchWorkspaceFileChanges: async (_rootPath, onChange) => {
+        publishFileChange = onChange;
+        return () => undefined;
+      },
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    const editor = await openMainEditor(user);
+    await user.click(editor);
+    await user.keyboard("!");
+
+    diskContent = "@Entry\n@Component\nstruct ExternalEdit {}";
+    await act(async () => {
+      publishFileChange?.({
+        rootPath: "C:/samples/DemoWorkspace",
+        path: "C:/samples/DemoWorkspace/src/main.ets",
+        kind: "modified",
+      });
+    });
+    await user.keyboard("{Control>}s{/Control}");
+
+    await waitFor(() => expect(screen.getByText("Save blocked: main.ets changed on disk")).toBeVisible());
+    expect(saveFile).not.toHaveBeenCalled();
   });
 
   it("loads diff content into the central preview", async () => {
@@ -5356,7 +5587,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => `diff --git a/src/main.ets b/src/main.ets
 --- a/src/main.ets
 +++ b/src/main.ets
@@ -6113,7 +6344,7 @@ describe("App shell", () => {
             message: "Replace tabs with spaces",
           });
         }
-        return problems;
+        return { availability: "ready", items: problems };
       },
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
@@ -6541,7 +6772,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => ({
@@ -6642,7 +6873,7 @@ describe("App shell", () => {
         return "{\n  \"app\": {}\n}";
       },
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => `diff --git a/entry/src/main/ets/pages/Index.ets b/entry/src/main/ets/pages/Index.ets
 --- a/entry/src/main/ets/pages/Index.ets
 +++ b/entry/src/main/ets/pages/Index.ets
@@ -6716,7 +6947,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),

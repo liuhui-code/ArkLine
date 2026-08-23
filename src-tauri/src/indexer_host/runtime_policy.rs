@@ -10,9 +10,22 @@ pub(super) fn indexer_enabled(explicit: Option<&str>, release_build: bool) -> bo
     }
 }
 
+pub(super) fn terminal_unavailability_message(
+    enabled: bool,
+    executable_missing: bool,
+    consecutive_failure_count: u32,
+    last_error: Option<String>,
+) -> Option<String> {
+    const MAX_CONSECUTIVE_FAILURES: u32 = 3;
+    if !enabled || (!executable_missing && consecutive_failure_count < MAX_CONSECUTIVE_FAILURES) {
+        return None;
+    }
+    Some(last_error.unwrap_or_else(|| "Indexer executable is missing".to_string()))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::indexer_enabled;
+    use super::{indexer_enabled, terminal_unavailability_message};
 
     #[test]
     fn release_build_enables_indexer_without_an_override() {
@@ -35,5 +48,19 @@ mod tests {
         for value in ["0", "false", "OFF", "no"] {
             assert!(!indexer_enabled(Some(value), true));
         }
+    }
+
+    #[test]
+    fn permanent_sidecar_unavailability_is_terminal() {
+        assert_eq!(
+            terminal_unavailability_message(true, true, 0, None),
+            Some("Indexer executable is missing".to_string())
+        );
+        assert_eq!(
+            terminal_unavailability_message(true, false, 3, Some("crashed".to_string())),
+            Some("crashed".to_string())
+        );
+        assert_eq!(terminal_unavailability_message(true, false, 2, None), None);
+        assert_eq!(terminal_unavailability_message(false, true, 9, None), None);
     }
 }

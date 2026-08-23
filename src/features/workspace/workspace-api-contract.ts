@@ -2,6 +2,10 @@ import type { BuildConfiguration, BuildEnvironmentResolution, BuildTarget, Harmo
 import type { BuildEnvironmentRequest } from "@/features/build/build-environment-request";
 import type { CodeAction, EditConflict, WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import type { DeviceFaultLogFetchResult } from "@/features/device-log/device-fault-log-model";
+import type { LanguageServiceReport, SemanticAvailability } from "@/features/workspace/workspace-language-api-types";
+import type { ValidationQueryResult } from "@/features/workspace/workspace-validation-api-types";
+export type * from "@/features/workspace/workspace-language-api-types";
+export type * from "@/features/workspace/workspace-validation-api-types";
 import type {
   WorkspaceTextSearchResult,
   WorkspaceTextSearchStreamEvent,
@@ -145,6 +149,14 @@ export type WorkspaceIndexRefreshResult = {
 
 export type WorkspaceIndexWatcher = (result: WorkspaceIndexRefreshResult) => void;
 
+export type WorkspaceFileChangeEvent = {
+  rootPath: string;
+  path: string;
+  kind: "modified";
+};
+
+export type WorkspaceFileChangeWatcher = (event: WorkspaceFileChangeEvent) => void;
+
 export type PathPickOptions = {
   directory?: boolean;
   title: string;
@@ -154,15 +166,6 @@ export type PathSaveOptions = {
   defaultPath?: string;
   filters?: Array<{ name: string; extensions: string[] }>;
   title: string;
-};
-
-export type ValidationProblem = {
-  source: "lint" | "format" | "language" | "build";
-  severity: "error" | "warning";
-  path: string;
-  line: number;
-  column: number;
-  message: string;
 };
 
 export type EnvironmentTool = {
@@ -198,50 +201,6 @@ export type SemanticDocumentCloseRequest = {
 export type SemanticDocumentPrepareRequest = {
   path: string;
   documentVersion: number;
-};
-
-export type SemanticSupervisorSnapshot = {
-  status: string;
-  restartCount: number;
-  restoredDocumentCount: number;
-  consecutiveFailures: number;
-  lastHeartbeatEpochMs: number | null;
-  retryAfterMs: number;
-  lastError: string | null;
-  runtime: {
-    rssBytes: number;
-    heapUsedBytes: number;
-    heapTotalBytes: number;
-    externalBytes: number;
-    uptimeMs: number;
-    providerLatencies?: Record<string, {
-      count: number;
-      p50Us: number;
-      p95Us: number;
-      maxUs: number;
-    }>;
-  } | null;
-  memoryBudgetBytes: number;
-  requestActor?: {
-    running: boolean;
-    queued: number;
-    completed: number;
-    superseded: number;
-    failed: number;
-  };
-};
-
-export type LanguageServiceReport = {
-  provider: string;
-  mode: "semantic" | "fallback" | "unavailable";
-  running: boolean;
-  hover: boolean;
-  definition: boolean;
-  completion: boolean;
-  documentSymbols: boolean;
-  findUsages: boolean;
-  detail: string;
-  supervisor?: SemanticSupervisorSnapshot;
 };
 
 export type HoverResponse = {
@@ -368,6 +327,23 @@ export type UnsupportedCodeActionResolution = {
 
 export type CodeActionResolution = WorkspaceEditPlan | UnsupportedCodeActionResolution;
 
+export type RenameSymbolRequest = LanguageQueryRequest & {
+  newName: string;
+  documentVersion?: number;
+};
+
+export type UsageQueryResult = {
+  availability: SemanticAvailability;
+  items: UsageResult[];
+  message?: string;
+};
+
+export type RenameSymbolResult = {
+  availability: SemanticAvailability;
+  resolution?: CodeActionResolution;
+  message?: string;
+};
+
 export type WorkspaceEditPreviewRequest = {
   workspaceRoot: string;
   plan: WorkspaceEditPlan;
@@ -389,6 +365,7 @@ export type ApplyWorkspaceEditResult = {
   applied: boolean;
   conflicts: EditConflict[];
   changedFiles: string[];
+  undoPlan?: WorkspaceEditPlan;
 };
 
 type WorkspaceCoreApi = {
@@ -432,6 +409,7 @@ type WorkspaceCoreApi = {
   refreshWorkspaceIndex?(rootPath: string): Promise<WorkspaceIndexState>;
   refreshWorkspaceIndexWithChanges?(rootPath: string): Promise<WorkspaceIndexRefreshResult>;
   watchWorkspaceIndex?(rootPath: string, onChange: WorkspaceIndexWatcher): Promise<() => void>;
+  watchWorkspaceFileChanges?(rootPath: string, onChange: WorkspaceFileChangeWatcher): Promise<() => void>;
   searchWorkspaceText?(request: WorkspaceTextSearchRequest): Promise<WorkspaceTextSearchResult>;
   streamWorkspaceText?(
     request: WorkspaceTextSearchRequest,
@@ -442,11 +420,11 @@ type WorkspaceCoreApi = {
   getLaunchWorkspacePath?(): Promise<string | null>;
   openDemoWorkspace(): Promise<WorkspaceSnapshot>;
   openFile(path: string, telemetry?: { interactionId?: string }): Promise<string>;
-  saveFile(path: string, content: string): Promise<void>;
+  saveFile(path: string, content: string, expectedContent?: string): Promise<void>;
   syncSemanticDocument?(request: SemanticDocumentSyncRequest): Promise<void>;
   prepareSemanticDocument?(request: SemanticDocumentPrepareRequest): Promise<void>;
   closeSemanticDocument?(request: SemanticDocumentCloseRequest): Promise<void>;
-  runValidation(path: string, content: string): Promise<ValidationProblem[]>;
+  runValidation(path: string, content: string): Promise<ValidationQueryResult>;
   loadDiff(rootPath: string | null): Promise<string>;
   inspectEnvironment(): Promise<EnvironmentReport>;
   inspectLanguageService?(): Promise<LanguageServiceReport>;
@@ -457,9 +435,10 @@ type WorkspaceCoreApi = {
   resolveCompletion?(request: LanguageQueryRequest, item: LanguageCompletionItem, documentVersion?: number): Promise<LanguageCompletionItem>;
   signatureHelp?(request: LanguageQueryRequest): Promise<LanguageSignatureHelp | null>;
   documentSymbols?(request: LanguageQueryRequest): Promise<DocumentSymbol[]>;
-  findUsages?(request: LanguageQueryRequest): Promise<UsageResult[]>;
+  findUsages?(request: LanguageQueryRequest): Promise<UsageQueryResult>;
   listCodeActions?(request: LanguageQueryRequest): Promise<CodeAction[]>;
   resolveCodeAction?(request: CodeActionResolveRequest): Promise<CodeActionResolution>;
+  renameSymbol?(request: RenameSymbolRequest): Promise<RenameSymbolResult>;
   previewWorkspaceEdit?(request: WorkspaceEditPreviewRequest): Promise<WorkspaceEditPreview>;
   applyWorkspaceEdit?(request: ApplyWorkspaceEditRequest): Promise<ApplyWorkspaceEditResult>;
   loadSettings(): Promise<AppSettings>;

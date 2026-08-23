@@ -32,6 +32,10 @@ type QualityGateManifest = {
   frontendQualityTests: string[];
 };
 
+type CapabilityRegistry = {
+  alwaysRunTests: string[];
+};
+
 async function readJson<T>(relativePath: string) {
   return JSON.parse(
     await readFile(path.join(process.cwd(), relativePath), "utf8"),
@@ -44,6 +48,7 @@ describe("quality gate manifest", () => {
       "docs/quality-gates.json",
     );
     const packageJson = await readJson<PackageJson>("package.json");
+    const registry = await readJson<CapabilityRegistry>("docs/quality/capabilities.json");
     const scripts = packageJson.scripts ?? {};
 
     expect(manifest.gates.fast.command).toBe(
@@ -54,8 +59,9 @@ describe("quality gate manifest", () => {
     );
     expect(manifest.gates["release-frontend"].steps).not.toContain("pnpm test:rust");
     expect(manifest.gates["release-rust"].steps).toEqual(["pnpm test:rust"]);
-    expect(manifest.gates.fast.stepTimeoutMs).toBe(900000);
-    expect(manifest.gates.full.stepTimeoutMs).toBe(2000000);
+    expect(manifest.gates.fast.stepTimeoutMs).toBe(5400000);
+    expect(manifest.gates.full.stepTimeoutMs).toBe(5400000);
+    expect(manifest.gates["release-rust"].stepTimeoutMs).toBe(5400000);
     expect(scripts["check:fast"]).toBe(manifest.gates.fast.command);
     expect(scripts.check).toBe(manifest.gates.full.command);
     expect(scripts["check:release:frontend"]).toBe(
@@ -67,5 +73,9 @@ describe("quality gate manifest", () => {
     expect(scripts["test:frontend:quality"]).toBe(
       `vitest run ${manifest.frontendQualityTests.join(" ")}`,
     );
+    expect(manifest.frontendQualityTests).toContain(
+      "tests/frontend/tdd-enforcement.test.ts",
+    );
+    expect(manifest.frontendQualityTests).toEqual(expect.arrayContaining(registry.alwaysRunTests));
   });
 });

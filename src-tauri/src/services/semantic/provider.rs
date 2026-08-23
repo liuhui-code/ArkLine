@@ -1,8 +1,10 @@
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
-    LanguageServiceReport, SemanticDocumentCloseRequest, SemanticDocumentPrepareRequest,
-    SemanticDocumentSyncRequest, SignatureHelp, UnsupportedCodeActionResolution, UsageResult,
+    LanguageServiceReport, RenameSymbolResult, SemanticDocumentCloseRequest,
+    SemanticDocumentPrepareRequest, SemanticDocumentSyncRequest, SignatureHelp,
+    UnsupportedCodeActionResolution, UsageQueryResult, UsageResult,
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;
@@ -39,9 +41,20 @@ pub trait SemanticProvider: Send + Sync {
         self.completion(request)
     }
     fn document_symbols(&self, request: &LanguageQueryRequest) -> Vec<DocumentSymbol>;
-    fn usages(&self, request: &LanguageQueryRequest) -> Vec<UsageResult>;
+    fn usages(&self, request: &LanguageQueryRequest) -> UsageQueryResult;
+    fn diagnostics(&self, _request: &LanguageQueryRequest) -> ValidationQueryResult {
+        ValidationQueryResult::unavailable("Semantic diagnostics require the semantic provider.")
+    }
     fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction>;
     fn resolve_code_action(&self, request: &CodeActionResolveRequest) -> CodeActionResolution;
+    fn rename_symbol(
+        &self,
+        _request: &LanguageQueryRequest,
+        _new_name: &str,
+        _document_version: Option<u64>,
+    ) -> RenameSymbolResult {
+        RenameSymbolResult::unavailable("Rename Symbol requires the semantic provider.")
+    }
     fn sync_document(&self, request: &SemanticDocumentSyncRequest) -> Result<(), String>;
     fn prepare_document(&self, _request: &SemanticDocumentPrepareRequest) -> Result<(), String> {
         Ok(())
@@ -79,6 +92,12 @@ impl SemanticProvider for FallbackProvider {
             completion: true,
             document_symbols: true,
             find_usages: true,
+            capabilities: vec![
+                "definition".to_string(),
+                "completion".to_string(),
+                "documentSymbols".to_string(),
+                "findUsages".to_string(),
+            ],
             detail: self.detail.clone(),
             supervisor: None,
         }
@@ -197,15 +216,17 @@ impl SemanticProvider for FallbackProvider {
         collect_document_symbols(&content)
     }
 
-    fn usages(&self, request: &LanguageQueryRequest) -> Vec<UsageResult> {
+    fn usages(&self, request: &LanguageQueryRequest) -> UsageQueryResult {
         let Some(content) = load_document_content(&request.path) else {
-            return Vec::new();
+            return UsageQueryResult::unavailable("Find Usages could not read the active document");
         };
         let Some(symbol) = symbol_at_position(&content, request) else {
-            return Vec::new();
+            return UsageQueryResult::unavailable(
+                "Find Usages could not resolve a symbol at the cursor",
+            );
         };
 
-        collect_symbol_occurrences(&content, &symbol)
+        let items = collect_symbol_occurrences(&content, &symbol)
             .into_iter()
             .map(|(line, column, preview)| UsageResult {
                 path: request.path.clone(),
@@ -216,7 +237,17 @@ impl SemanticProvider for FallbackProvider {
                 confidence: "fallback".to_string(),
                 caller: None,
             })
-            .collect()
+            .collect();
+        UsageQueryResult::partial(
+            items,
+            "Fallback usage search is limited to the active document",
+        )
+    }
+
+    fn diagnostics(&self, _request: &LanguageQueryRequest) -> ValidationQueryResult {
+        ValidationQueryResult::unavailable(
+            "Semantic diagnostics are unavailable while the fallback provider is active",
+        )
     }
 
     fn code_actions(&self, _request: &LanguageQueryRequest) -> Vec<CodeAction> {

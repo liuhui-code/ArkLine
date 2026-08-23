@@ -33,6 +33,40 @@ dependency caches:
 
 <https://docs.github.com/en/actions/concepts/workflows-and-actions/workflow-artifacts>
 
+## TDD control plane
+
+The quality gate consumes two separate contracts. `docs/quality/capabilities.json`
+maps product behavior to source and test patterns; `docs/quality/tdd-policy.md`
+defines RED/GREEN evidence, test sizes, boundary mocking, and exception rules.
+`pnpm test:inventory` measures the current test portfolio. On every branch and
+pull request, `pnpm test:impact:advisory` records changed files, affected
+capabilities, selected tests, selection rate, execution results, and any
+fail-safe full-suite reason.
+
+Stage 2 executes selected Frontend and semantic-worker tests plus conservative
+Rust test groups as a non-blocking advisory before the normal fast gate. Rust
+tests compile once, run by bounded domain filters, and fail closed if a filter
+matches zero tests. Fail-safe full-suite plans remain delegated to
+`pnpm check:fast`, which is authoritative. Afterward, CI reconciles both reports
+at gate-step precision and records potential false negatives and false positives.
+Unknown production files, global contracts, or an unavailable Git diff select
+the full suite. Advisory execution may become blocking only after historical
+eligible samples and injected failures demonstrate zero known false negatives.
+Stage 3 assigns each GitHub run attempt a stable sample identity, extracts failed
+test identities from Vitest and Rust runner output when available, and retains
+the evidence for 90 days. The offline history aggregator deduplicates downloaded
+artifacts and enforces the promotion thresholds defined by the TDD policy.
+Stage 4 adds the independent `test-impact-evidence` workflow. It runs weekly or
+on manual dispatch, downloads retained `windows-ci` and calibration evidence,
+executes an identity-bearing controlled failure, aggregates the result, and
+uploads the current calibration plus summary as separate 90-day artifacts.
+Controlled samples have their own sample kind and do not count toward production
+coverage.
+Stage 5 converts the aggregate into a JSON and Markdown promotion review. The
+scheduled workflow publishes the Markdown through `GITHUB_STEP_SUMMARY` and
+retains both formats with the history artifact. Threshold qualification produces
+`review-required`, never an automatic required check or blocking decision.
+
 ## Gate layers
 
 | Layer | Trigger | Purpose | Blocking result |
@@ -41,6 +75,8 @@ dependency caches:
 | Full | manual release candidate | complete frontend suite, Rust tests, build, strict interaction performance | blocks release creation |
 | Windows package | every branch after fast | native Windows package and bundle shape verification | blocks Windows target |
 | Packaged soak | manual release evidence | real packaged executable, index workload, search/navigation responsiveness, memory and queue health | blocks release claim when strict |
+| Impact evidence | weekly or manual | historical advisory reconciliation and controlled-failure calibration | evidence only; does not block product CI |
+| Impact promotion review | after evidence aggregation | auditable threshold status and human-review recommendation | never authorizes enforcement automatically |
 
 The fast and full gates share one manifest and one Node runner. A failed stage
 stops later stages, writes the failing command and exit information, and exits
@@ -71,7 +107,8 @@ settings and reviewed when workflow job names change.
 
 ## Failure evidence
 
-Every CI gate uploads `artifacts/quality-gate-*.json` and the existing frontend,
+Every CI gate uploads `artifacts/quality-gate-*.json`, TDD inventory, impact,
+Rust selection, and reconciliation reports, plus the existing frontend,
 packaged smoke, and packaged soak reports with `if: always()`. The report
 contains schema version, gate name, start/end time, total duration, every stage,
 exit code, signal, timeout, and the first failed stage. A green gate without a
@@ -79,13 +116,16 @@ report is a workflow defect.
 
 ## Long-term evolution
 
-1. Keep the manifest as the contract and add a schema test before changing a
+1. Accumulate 100 production samples and 5 identity-bearing failure samples, then
+   review every false-negative and false-positive classification recorded by the
+   promotion report before proposing a blocking affected-test gate.
+2. Keep the manifest as the contract and add a schema test before changing a
    stage or required check name.
-2. Add coverage and static analysis only when the project has a stable tool and
+3. Add changed-code coverage and static analysis only when the project has a stable tool and
    a useful baseline; do not turn warning churn into an opaque merge blocker.
-3. Promote packaged soak from manual to scheduled/nightly evidence before making
+4. Promote packaged soak from manual to scheduled/nightly evidence before making
    it a required PR check. Its runtime and platform cost are inappropriate for
    every keystroke-sized change.
-4. Add signed release attestations and dependency review when release trust or
+5. Add signed release attestations and dependency review when release trust or
    supply-chain requirements justify them. Keep those concerns separate from
    application correctness gates.

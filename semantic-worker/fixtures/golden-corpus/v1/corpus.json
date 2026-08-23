@@ -70,6 +70,21 @@
       }
     },
     {
+      "id": "usages.imported-property",
+      "capability": "usages",
+      "coverage": ["usages", "cross-file", "symbol-identity", "negative-candidates"],
+      "query": {
+        "file": "Model.ts",
+        "marker": "usages.imported-property.query"
+      },
+      "expected": [
+        {
+          "file": "Definition.ts",
+          "marker": "usages.imported-property.expected"
+        }
+      ]
+    },
+    {
       "id": "completion.typed-receiver",
       "capability": "completion",
       "coverage": ["completion", "member", "typed-receiver", "typescript"],

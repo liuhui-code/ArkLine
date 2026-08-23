@@ -4,14 +4,15 @@ use tauri::{AppHandle, State};
 
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, LanguageQueryRequest,
+    RenameSymbolRequest, RenameSymbolResult,
 };
 use crate::models::workspace_edit::{
     ApplyWorkspaceEditRequest, ApplyWorkspaceEditResult, WorkspaceEditPreview,
     WorkspaceEditPreviewRequest,
 };
 use crate::services::language_service::{
-    list_code_actions as list_code_actions_impl, resolve_code_action as resolve_code_action_impl,
-    LanguageRuntime,
+    list_code_actions as list_code_actions_impl, rename_symbol as rename_symbol_impl,
+    resolve_code_action as resolve_code_action_impl, LanguageRuntime,
 };
 use crate::services::settings_store::load_settings_for_app;
 use crate::services::workspace_edit_service::{
@@ -44,6 +45,16 @@ pub fn resolve_code_action(
 }
 
 #[tauri::command]
+pub fn rename_symbol(
+    app: AppHandle,
+    runtime: State<LanguageRuntime>,
+    request: RenameSymbolRequest,
+) -> Result<RenameSymbolResult, String> {
+    let settings = load_settings_for_app(&app)?;
+    Ok(rename_symbol_impl(runtime.inner(), &settings, &request))
+}
+
+#[tauri::command]
 pub fn preview_workspace_edit(
     request: WorkspaceEditPreviewRequest,
 ) -> Result<WorkspaceEditPreview, String> {
@@ -60,7 +71,8 @@ pub fn apply_workspace_edit(
 #[cfg(test)]
 mod tests {
     use crate::models::language::{
-        CodeActionResolution, CodeActionResolveRequest, UnsupportedCodeActionResolution,
+        CodeActionResolution, CodeActionResolveRequest, RenameSymbolResult,
+        UnsupportedCodeActionResolution,
     };
 
     #[test]
@@ -83,5 +95,15 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("workspace.renameFile"));
+    }
+
+    #[test]
+    fn rename_symbol_unavailable_is_not_an_unsupported_edit_disguised_as_success() {
+        let result = RenameSymbolResult::unavailable("Semantic worker is restarting");
+        let json = serde_json::to_value(result).unwrap();
+
+        assert_eq!(json["availability"], "unavailable");
+        assert!(json.get("resolution").is_none());
+        assert_eq!(json["message"], "Semantic worker is restarting");
     }
 }

@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::models::language::LanguageQueryRequest;
 use crate::services::language_service::{
     complete_symbol, find_usages, goto_definition, goto_definition_candidates, hover_symbol,
-    inspect_runtime, list_document_symbols, LanguageRuntime,
+    inspect_runtime, list_document_symbols, validate_document, LanguageRuntime,
 };
 use crate::services::semantic_host::sdk::HARMONY_SDK_PATH_ENV;
 use crate::services::settings_store::default_settings;
@@ -79,7 +79,7 @@ rl.on("line", (line) => {{
   const request = JSON.parse(line);
   let payload = {{}};
   if (request.method === "health") {{
-    payload = {{ health: {{ status: "ok", protocolVersion: 5 }} }};
+    payload = {{ health: {{ status: "ok", protocolVersion: 6 }} }};
   }} else if (request.method === "gotoDefinition") {{
     const definition = definitionPath ? {{ path: definitionPath, line: 1, column: 17 }} : null;
     payload = {{ definition, definitionCandidates: definition ? [definition] : [] }};
@@ -181,6 +181,14 @@ fn reports_skeleton_language_runtime() {
         assert!(report.completion);
         assert!(report.document_symbols);
         assert!(report.find_usages);
+        assert!(report
+            .capabilities
+            .iter()
+            .any(|capability| capability == "generateCode"));
+        assert!(report
+            .capabilities
+            .iter()
+            .any(|capability| capability == "renameSymbol"));
         assert!(report.detail.contains("independent semantic worker"));
     });
 }
@@ -247,29 +255,32 @@ fn resolves_same_file_semantic_queries_without_sdk() {
                 },
             ]
         );
-        assert_eq!(
-            find_usages(&runtime, &settings, &request(&path_text, 5, 4)),
-            vec![
-                crate::models::language::UsageResult {
-                    path: path_text.clone(),
-                    line: 3,
-                    column: 8,
-                    preview: "struct Index {}".to_string(),
-                    kind: "fallback".to_string(),
-                    confidence: "fallback".to_string(),
-                    caller: None,
-                },
-                crate::models::language::UsageResult {
-                    path: path_text.clone(),
-                    line: 5,
-                    column: 3,
-                    preview: "Index;".to_string(),
-                    kind: "fallback".to_string(),
-                    confidence: "fallback".to_string(),
-                    caller: None,
-                },
-            ]
-        );
+        let usages =
+            serde_json::to_value(find_usages(&runtime, &settings, &request(&path_text, 5, 4)))
+                .unwrap();
+        assert_eq!(usages["availability"], "unavailable");
+        assert_eq!(usages["items"], serde_json::json!([]));
+        assert!(usages["message"]
+            .as_str()
+            .unwrap()
+            .contains("response was not an array"));
+        let diagnostics = serde_json::to_value(validate_document(
+            &runtime,
+            &settings,
+            &LanguageQueryRequest {
+                path: path_text.clone(),
+                line: 1,
+                column: 1,
+                content: Some(fs::read_to_string(&path).unwrap()),
+            },
+        ))
+        .unwrap();
+        assert_eq!(diagnostics["availability"], "unavailable");
+        assert_eq!(diagnostics["items"], serde_json::json!([]));
+        assert!(!diagnostics["message"]
+            .as_str()
+            .unwrap_or_default()
+            .is_empty());
 
         fs::remove_file(path).unwrap();
     });

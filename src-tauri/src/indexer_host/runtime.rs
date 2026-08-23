@@ -8,7 +8,7 @@ use crate::indexer_host::{discover_indexer_executable, IndexerHostSession};
 use crate::models::workspace_index_diagnostics::WorkspaceIndexerHostSnapshot;
 use crate::services::workspace_index_writer_actor_service::WorkspaceIndexWriterActor;
 
-use super::runtime_policy::indexer_enabled;
+use super::runtime_policy::{indexer_enabled, terminal_unavailability_message};
 use super::runtime_state::{validate_capabilities, IndexerHostState, IndexerRequestKind};
 
 pub const ARKLINE_INDEXER_ENABLED_ENV: &str = "ARKLINE_INDEXER_ENABLED";
@@ -187,6 +187,18 @@ impl IndexerHostRuntime {
 
     pub(crate) fn requires_process_isolation(&self) -> bool {
         self.enabled
+    }
+
+    pub(crate) fn terminal_unavailability_message(&self) -> Option<String> {
+        let snapshot = self.snapshot();
+        terminal_unavailability_message(
+            self.enabled,
+            self.executable_path
+                .as_ref()
+                .is_none_or(|path| !path.is_file()),
+            snapshot.consecutive_failure_count,
+            snapshot.last_error,
+        )
     }
 
     pub(crate) fn degraded_message(&self, operation: &str) -> String {

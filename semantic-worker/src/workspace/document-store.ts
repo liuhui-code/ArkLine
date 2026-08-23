@@ -116,7 +116,7 @@ export class SemanticDocumentStore {
     this.cachedBytes -= Buffer.byteLength(cached.content)
   }
 
-  prepare(position: SemanticDocumentPosition): SemanticWorkspaceView {
+  prepare(position: SemanticDocumentPosition, includeWorkspaceFiles = false): SemanticWorkspaceView {
     const currentPath = path.resolve(position.path)
     const rootPath = position.workspaceRoot
       ? path.resolve(position.workspaceRoot)
@@ -126,6 +126,20 @@ export class SemanticDocumentStore {
     const closureResult = this.collectDependencyClosure(current, previousCurrent === current)
     const closure = closureResult.entries
     const documentCacheHit = closure.every(({ cacheHit }) => cacheHit)
+    if (includeWorkspaceFiles) {
+      const loadedPaths = new Set(closure.map(({ record }) => record.path))
+      let totalBytes = closure.reduce((total, { record }) => total + Buffer.byteLength(record.content), 0)
+      for (const sourcePath of listWorkspaceSourcePaths(rootPath)) {
+        if (loadedPaths.has(sourcePath) || closure.length >= MAX_CLOSURE_DOCUMENTS) continue
+        const before = this.documents.get(sourcePath)
+        const record = this.loadFromDisk(sourcePath, before)
+        const bytes = Buffer.byteLength(record.content)
+        if (!record.available || totalBytes + bytes > MAX_CLOSURE_BYTES) continue
+        closure.push({ record, cacheHit: before === record })
+        loadedPaths.add(sourcePath)
+        totalBytes += bytes
+      }
+    }
     const documents = closure.map(({ record }) => ({ path: record.path, content: record.content }))
     const dependencyGeneration = this.updateDependencyGeneration(rootPath, closure)
     this.evict(currentPath, new Set(documents.map((document) => document.path)))
@@ -341,6 +355,30 @@ export class SemanticDocumentStore {
       this.cachedBytes -= Buffer.byteLength(record.content)
     }
   }
+}
+
+function listWorkspaceSourcePaths(rootPath: string): string[] {
+  const paths: string[] = []
+  const pending = [rootPath]
+  while (pending.length > 0 && paths.length < MAX_CLOSURE_DOCUMENTS) {
+    const directory = pending.pop()
+    if (!directory) break
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (entry.name === ".arkline" || entry.name === ".git" || entry.name === "build"
+        || entry.name === "node_modules" || entry.name === "oh_modules") continue
+      const entryPath = path.resolve(directory, entry.name)
+      if (entry.isDirectory()) pending.push(entryPath)
+      else if (entry.isFile() && SOURCE_EXTENSIONS.includes(path.extname(entry.name))) paths.push(entryPath)
+      if (paths.length >= MAX_CLOSURE_DOCUMENTS) break
+    }
+  }
+  return paths.sort()
 }
 
 function resolveRelativeImports(

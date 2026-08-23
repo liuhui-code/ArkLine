@@ -1,0 +1,45 @@
+name: tdd-enforcement
+
+on:
+  pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arkline-tdd-${{ github.event.pull_request.head.repo.full_name }}-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    name: TDD Evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Verify executable TDD evidence
+        env:
+          ARKLINE_PR_BODY: ${{ github.event.pull_request.body }}
+          ARKLINE_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          ARKLINE_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm test:tdd:evidence -- --base="$ARKLINE_BASE_SHA" --head="$ARKLINE_HEAD_SHA"

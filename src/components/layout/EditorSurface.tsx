@@ -11,6 +11,11 @@ import type { EditorAppearance } from "@/types/editor";
 import type { Text } from "@codemirror/state";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import type {
+  EditorDiagnosticFixRequestHandler,
+  EditorValidationRequest,
+  EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 
 export type EditorSelectionTarget = {
   line: number;
@@ -57,6 +62,9 @@ type EditorSurfaceProps = {
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
   onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
+  onValidationRequest?: EditorValidationRequest;
+  onValidationResult?: EditorValidationResultHandler;
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
@@ -94,6 +102,9 @@ export function EditorSurface({
   onCodeMirrorCompletionRequest,
   onCodeMirrorCompletionResolve,
   onCodeMirrorSignatureHelpRequest,
+  onValidationRequest,
+  onValidationResult,
+  onDiagnosticFixRequest,
   blameAttributions = [],
   gitBlameVisible = false,
   selectedBlameLine = null,
@@ -209,6 +220,9 @@ export function EditorSurface({
             onCodeMirrorCompletionRequest={onCodeMirrorCompletionRequest}
             onCodeMirrorCompletionResolve={onCodeMirrorCompletionResolve}
             onCodeMirrorSignatureHelpRequest={onCodeMirrorSignatureHelpRequest}
+            onValidationRequest={onValidationRequest}
+            onValidationResult={onValidationResult}
+            onDiagnosticFixRequest={onDiagnosticFixRequest}
             onContextMenu={openEditorContextMenu}
             blameAttributions={blameAttributions}
             gitBlameVisible={gitBlameVisible}

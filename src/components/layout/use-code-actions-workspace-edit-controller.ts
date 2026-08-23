@@ -16,9 +16,7 @@ import {
 import type { UseCodeActionsWorkspaceEditControllerOptions } from "@/components/layout/code-actions-controller-types";
 import { requiresPreview, type CodeAction, type WorkspaceEditPlan } from "@/features/code-actions/code-action-model";
 import { createNewDirectoryPlan, createNewFilePlan } from "@/features/workspace/workspace-mutation-plans";
-import type {
-  WorkspaceEditPreview as WorkspaceEditPreviewModel,
-} from "@/features/workspace/workspace-api";
+import type { WorkspaceEditPreview as WorkspaceEditPreviewModel } from "@/features/workspace/workspace-api";
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 export function useCodeActionsWorkspaceEditController({
@@ -28,6 +26,7 @@ export function useCodeActionsWorkspaceEditController({
   editorSelection,
   settingsApplying,
   getActiveContent,
+  ensureSemanticDocument,
   documentsRef,
   tabsRef,
   setWorkspace,
@@ -48,14 +47,16 @@ export function useCodeActionsWorkspaceEditController({
   const [codeActionsMessage, setCodeActionsMessage] = useState<string | undefined>();
   const [codeActionsSelectedIndex, setCodeActionsSelectedIndex] = useState(0);
   const [workspaceEditPreview, setWorkspaceEditPreview] = useState<WorkspaceEditPreviewModel | null>(null);
-  const [workspaceEditApplyState, setWorkspaceEditApplyState] = useState<"idle" | "applying" | "error">("idle");
+  const [workspaceEditApplyState, setWorkspaceEditApplyState] = useState<"idle" | "applying" | "error" | "applied" | "undoing">("idle");
   const [workspaceEditMessage, setWorkspaceEditMessage] = useState<string | undefined>();
+  const [workspaceEditUndoPlan, setWorkspaceEditUndoPlan] = useState<WorkspaceEditPlan | null>(null);
   const [projectMutationDialog, setProjectMutationDialog] = useState<ProjectMutationDialogState | null>(null);
-
+  const [renameSymbolDialog, setRenameSymbolDialog] = useState<{ name: string; pending: boolean; message?: string } | null>(null);
   function resetWorkspaceEdit() {
     setWorkspaceEditPreview(null);
     setWorkspaceEditApplyState("idle");
     setWorkspaceEditMessage(undefined);
+    setWorkspaceEditUndoPlan(null);
   }
 
   function resetCodeActions() {
@@ -76,12 +77,75 @@ export function useCodeActionsWorkspaceEditController({
   }
 
   function closeWorkspaceEditPreview() {
-    if (workspaceEditApplyState === "applying") {
+    if (workspaceEditApplyState === "applying" || workspaceEditApplyState === "undoing") {
       return;
     }
 
     resetWorkspaceEdit();
     focusEditorSoon();
+  }
+
+  function openRenameSymbolDialog() {
+    if (settingsApplying || !activePath || !workspace?.rootPath || !workspaceApi.renameSymbol) {
+      onStatusChange("Rename Symbol unavailable");
+      return;
+    }
+    closeCompletion();
+    closeOverlay();
+    hideCurrentClassMethods();
+    resetCodeActions();
+    resetWorkspaceEdit();
+    setRenameSymbolDialog({ name: "", pending: false });
+    onStatusChange("Rename Symbol");
+  }
+
+  function closeRenameSymbolDialog() {
+    if (renameSymbolDialog?.pending) return;
+    setRenameSymbolDialog(null);
+    focusEditorSoon();
+  }
+
+  async function submitRenameSymbol() {
+    if (!renameSymbolDialog || renameSymbolDialog.pending || !activePath || !workspace?.rootPath
+      || !workspaceApi.renameSymbol || !workspaceApi.previewWorkspaceEdit) return;
+    const newName = renameSymbolDialog.name.trim();
+    if (!newName) return;
+    setRenameSymbolDialog({ ...renameSymbolDialog, pending: true, message: undefined });
+    const snapshot = buildCodeActionsEditorSnapshot({ activePath, editorSelection, getActiveContent });
+    try {
+      const documentVersion = ensureSemanticDocument
+        ? await ensureSemanticDocument(activePath, getActiveContent())
+        : null;
+      const result = await workspaceApi.renameSymbol({
+        ...snapshot.request,
+        content: documentVersion === null ? snapshot.request.content : undefined,
+        newName,
+        ...(documentVersion === null ? {} : { documentVersion }),
+      });
+      if (result.availability !== "ready") {
+        const message = result.message ?? "Semantic rename is not authoritative";
+        setRenameSymbolDialog({ name: newName, pending: false, message });
+        onStatusChange(`Rename Symbol unavailable: ${message}`);
+        return;
+      }
+      const resolution = result.resolution;
+      if (!resolution || !isWorkspaceEditPlan(resolution)) {
+        const message = resolution?.reason ?? result.message ?? "Rename Symbol unavailable";
+        setRenameSymbolDialog({ name: newName, pending: false, message });
+        onStatusChange(`Rename Symbol unavailable: ${message}`);
+        return;
+      }
+      const preview = await workspaceApi.previewWorkspaceEdit({ workspaceRoot: workspace.rootPath, plan: resolution });
+      setRenameSymbolDialog(null);
+      setWorkspaceEditPreview(preview);
+      setWorkspaceEditApplyState("idle");
+      setWorkspaceEditMessage(undefined);
+      onStatusChange(`Preview ready: ${resolution.title}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setRenameSymbolDialog({ name: newName, pending: false, message });
+      onStatusChange(`Rename Symbol failed: ${message}`);
+    }
   }
 
   async function refreshAppliedWorkspaceEditFiles(changedFiles: string[], plan: WorkspaceEditPlan) {
@@ -206,14 +270,51 @@ export function useCodeActionsWorkspaceEditController({
       updateWorkspaceFilesForAppliedEdit(workspaceEditPreview.plan);
       await updateOpenTabsForAppliedEdit(workspaceEditPreview.plan);
       await refreshAppliedWorkspaceEditFiles(result.changedFiles, workspaceEditPreview.plan);
-      resetWorkspaceEdit();
-      onStatusChange(`Workspace edit applied: ${result.changedFiles.length} file${result.changedFiles.length === 1 ? "" : "s"} changed`);
-      focusEditorSoon();
+      const appliedMessage = `Workspace edit applied: ${result.changedFiles.length} file${result.changedFiles.length === 1 ? "" : "s"} changed`;
+      if (result.undoPlan) {
+        setWorkspaceEditUndoPlan(result.undoPlan);
+        setWorkspaceEditApplyState("applied");
+        setWorkspaceEditMessage("Applied. One safe undo is available.");
+        onStatusChange(appliedMessage);
+      } else {
+        resetWorkspaceEdit();
+        onStatusChange(appliedMessage);
+        focusEditorSoon();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setWorkspaceEditApplyState("error");
       setWorkspaceEditMessage(message);
       onStatusChange(`Workspace edit failed: ${message}`);
+    }
+  }
+
+  async function undoWorkspaceEdit() {
+    if (!workspaceEditUndoPlan || !workspace?.rootPath || !workspaceApi.applyWorkspaceEdit
+      || workspaceEditApplyState === "undoing") return;
+    setWorkspaceEditApplyState("undoing");
+    setWorkspaceEditMessage(undefined);
+    try {
+      const result = await workspaceApi.applyWorkspaceEdit({ workspaceRoot: workspace.rootPath, plan: workspaceEditUndoPlan });
+      if (!result.applied || result.conflicts.length > 0) {
+        const message = result.conflicts[0]?.message ?? "Workspace edit could not be undone.";
+        setWorkspaceEditApplyState("applied");
+        setWorkspaceEditMessage(message);
+        onStatusChange(`Workspace edit undo blocked: ${message}`);
+        return;
+      }
+      updateWorkspaceFilesForAppliedEdit(workspaceEditUndoPlan);
+      await updateOpenTabsForAppliedEdit(workspaceEditUndoPlan);
+      await refreshAppliedWorkspaceEditFiles(result.changedFiles, workspaceEditUndoPlan);
+      const message = `Workspace edit undone: ${result.changedFiles.length} file${result.changedFiles.length === 1 ? "" : "s"} changed`;
+      resetWorkspaceEdit();
+      onStatusChange(message);
+      focusEditorSoon();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setWorkspaceEditApplyState("applied");
+      setWorkspaceEditMessage(message);
+      onStatusChange(`Workspace edit undo failed: ${message}`);
     }
   }
 
@@ -377,15 +478,22 @@ export function useCodeActionsWorkspaceEditController({
     workspaceEditMessage,
     projectMutationDialog,
     setProjectMutationDialog,
+    renameSymbolDialog,
+    setRenameSymbolDialog,
     resetCodeActions,
     resetWorkspaceEdit,
     resetCodeActionSession,
     closeCodeActionsPalette,
     closeWorkspaceEditPreview,
     applyWorkspaceEditPreview,
+    undoWorkspaceEdit,
+    openRenameSymbolDialog,
+    closeRenameSymbolDialog,
+    submitRenameSymbol,
     openProjectMutationDialog,
     openRootProjectMutationDialog,
     submitProjectMutationDialog,
+    previewWorkspaceMutationPlan,
     showCodeActionsFromEditor,
     resolveCodeActionFromPalette,
   };

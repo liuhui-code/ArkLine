@@ -20,6 +20,9 @@ use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity_and_indexer;
 use crate::services::workspace_service::scan_workspace;
 
+#[path = "workspace_index_worker_sidecar_terminal_tests.rs"]
+mod terminal;
+
 #[test]
 fn unavailable_sidecar_falls_back_to_local_discovery_without_losing_the_task() {
     let root = unique_temp_dir("indexer-sidecar-fallback");
@@ -119,7 +122,7 @@ fn explicit_local_compatibility_mode_still_indexes_content_and_stubs() {
 }
 
 #[test]
-fn unavailable_sidecar_degrades_without_local_background_content_or_stub_refresh() {
+fn missing_sidecar_terminates_background_refresh_with_actionable_degraded_state() {
     let root = unique_temp_dir("indexer-stub-sidecar-fallback");
     fs::create_dir_all(&root).unwrap();
     let source = root.join("Entry.ets");
@@ -168,9 +171,20 @@ fn unavailable_sidecar_degrades_without_local_background_content_or_stub_refresh
         )
         .unwrap();
     let snapshot = indexer.snapshot();
+    let state = runtime.get_index_state(&root_path).unwrap();
 
     assert_eq!(results.len(), 1);
-    assert_eq!(results[0].status, "partial");
+    assert_eq!(results[0].status, "failed");
+    assert!(results[0]
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Failed to launch indexer"));
+    assert!(state
+        .partial_reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Indexer sidecar"));
     assert_eq!(content_count, 0);
     assert_eq!(declaration_count, 0);
     assert_eq!(snapshot.fallback_count, 0);
@@ -186,7 +200,7 @@ fn unavailable_sidecar_degrades_without_local_background_content_or_stub_refresh
 }
 
 #[test]
-fn degraded_sidecar_preserves_newer_persisted_layer_generation() {
+fn terminal_sidecar_failure_preserves_newer_persisted_layer_generation() {
     let root = unique_temp_dir("indexer-sidecar-generation-rebase");
     fs::create_dir_all(&root).unwrap();
     let source = root.join("Entry.ets");
@@ -230,7 +244,7 @@ fn degraded_sidecar_preserves_newer_persisted_layer_generation() {
     )
     .unwrap();
 
-    assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Deferred(_)));
+    assert!(matches!(outcome, WorkspaceDeepLayerUpdate::Failed(_)));
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -338,7 +352,7 @@ fn cancelled_deep_refresh_does_not_publish_or_fall_back_locally() {
 }
 
 #[test]
-fn watcher_delta_degrades_without_host_deep_refresh_or_root_rescan() {
+fn watcher_delta_fails_terminally_without_host_deep_refresh_or_root_rescan() {
     let root = unique_temp_dir("indexer-watcher-delta-fallback");
     fs::create_dir_all(&root).unwrap();
     let changed = root.join("Changed.ets");
@@ -376,7 +390,7 @@ fn watcher_delta_degrades_without_host_deep_refresh_or_root_rescan() {
     )
     .unwrap();
 
-    assert_eq!(results[0].status, "partial");
+    assert_eq!(results[0].status, "failed");
     assert_eq!(indexer.snapshot().fallback_count, 0);
     assert_eq!(indexer.snapshot().degraded_count, 1);
     let connection =

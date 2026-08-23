@@ -13,15 +13,18 @@ use super::response_state::{
     publish_response_readiness, validate_response_generation, RawSemanticResponseState,
 };
 use super::transport::{DirectSemanticWorkerTransport, SemanticWorkerTransport};
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, LanguageQueryRequest, SemanticRequestActorSnapshot,
-    SemanticWorkerRuntime, SignatureHelp,
+    SemanticWorkerRuntime, SignatureHelp, UsageQueryResult,
 };
 
 mod completion_resolution;
 mod definition;
 mod document_sync;
+pub(super) mod query_results;
+mod rename;
 
 #[cfg(not(test))]
 const SEMANTIC_WORKER_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
@@ -104,6 +107,7 @@ impl SemanticWorkerSession {
                 position: None,
                 action: None,
                 completion: None,
+                new_name: None,
                 documents: Some(documents),
                 document: None,
                 document_path: None,
@@ -173,6 +177,42 @@ impl SemanticWorkerSession {
         serde_json::from_value(payload.clone())
             .map(Some)
             .map_err(|error| format!("Failed to parse semantic worker signature help: {error}"))
+    }
+
+    pub fn usages(&self, request: &LanguageQueryRequest) -> Result<UsageQueryResult, String> {
+        let response = self.send_request("findUsages", Some(request))?;
+        let payload = extract_payload(&response.payload, "findUsages");
+        let items = payload
+            .as_array()
+            .ok_or_else(|| "Semantic worker usages response was not an array".to_string())?;
+        let items = items
+            .iter()
+            .filter_map(query_results::parse_usage_result)
+            .collect();
+        Ok(
+            match response
+                .state
+                .as_ref()
+                .and_then(|state| state.type_status.as_deref())
+            {
+                Some("ready") => UsageQueryResult::ready(items),
+                Some("partial") => UsageQueryResult::partial(
+                    items,
+                    "Semantic type evidence is partial; usages may be incomplete",
+                ),
+                _ => UsageQueryResult::unavailable(
+                    "Semantic worker could not provide authoritative usage evidence",
+                ),
+            },
+        )
+    }
+
+    pub fn diagnostics(
+        &self,
+        request: &LanguageQueryRequest,
+    ) -> Result<ValidationQueryResult, String> {
+        let response = self.send_request("diagnostics", Some(request))?;
+        query_results::parse_diagnostics_response(&response)
     }
 
     pub fn list_code_actions(
@@ -265,13 +305,20 @@ impl SemanticWorkerSession {
             }),
             action: action.cloned(),
             completion: None,
+            new_name: None,
             documents: None,
             document: None,
             document_path: None,
         };
         let expected_response_generation = matches!(
             method,
-            "completion" | "gotoDefinition" | "signatureHelp" | "prepareDocument"
+            "completion"
+                | "gotoDefinition"
+                | "findUsages"
+                | "diagnostics"
+                | "signatureHelp"
+                | "prepareDocument"
+                | "rename"
         )
         .then_some(content_generation)
         .flatten();

@@ -1,6 +1,7 @@
 import {
   DIAGNOSTICS_SCRIPT,
   INTERACTION_START_SCRIPT,
+  TERMINAL_INDEX_READINESS_SCRIPT,
   UI_READINESS_SCRIPT,
 } from "./packaged-soak-telemetry.mjs";
 
@@ -36,6 +37,21 @@ export async function waitForCoreIndexReady(driver, rootPath, timeoutMs) {
     timeoutMs,
     isCoreWorkspaceIndexReady,
     "Workspace index did not become ready",
+  );
+}
+
+export async function waitForTerminalIndexReady(driver, rootPath, timeoutMs) {
+  return waitForIndexState(
+    driver,
+    rootPath,
+    timeoutMs,
+    isTerminalWorkspaceIndexReady,
+    "Workspace index did not reach a terminal state",
+    null,
+    {
+      script: TERMINAL_INDEX_READINESS_SCRIPT,
+      args: [rootPath],
+    },
   );
 }
 
@@ -84,6 +100,12 @@ export function isCoreWorkspaceIndexReady(value) {
       + (contentFreshness?.skippedCount ?? 0) >= value.fileCount
     && (contentReadiness?.indexedCount ?? 0)
       + (contentFreshness?.skippedCount ?? 0) >= value.fileCount;
+}
+
+export function isTerminalWorkspaceIndexReady(value) {
+  return ["ready", "empty"].includes(value.workspaceState?.status)
+    && value.workspaceState?.partialReason == null
+    && value.queuePressure?.workspacePendingTaskCount === 0;
 }
 
 export async function waitForSearchResult(
@@ -143,17 +165,29 @@ async function waitForIndexState(
   isReady,
   timeoutMessage,
   currentFilePath = null,
+  probe = null,
 ) {
   let latest = null;
   await pollUntil(async () => {
-    const response = await driver.executeAsync(
-      DIAGNOSTICS_SCRIPT,
-      [rootPath, currentFilePath],
-    );
+    let response;
+    try {
+      response = await driver.executeAsync(
+        probe?.script ?? DIAGNOSTICS_SCRIPT,
+        probe?.args ?? [rootPath, currentFilePath],
+      );
+    } catch (error) {
+      if (!isRetryableReadinessProbeError(error)) throw error;
+      latest = { error: error instanceof Error ? error.message : String(error) };
+      return false;
+    }
     latest = response?.ok ? response.value : response;
     return response?.ok && isReady(response.value);
   }, timeoutMs, () => `${timeoutMessage}: ${JSON.stringify(latest)}`);
   return latest;
+}
+
+function isRetryableReadinessProbeError(error) {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 async function pollUntil(operation, timeoutMs, timeoutMessage) {

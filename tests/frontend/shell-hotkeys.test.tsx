@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppShell } from "@/components/layout/AppShell";
 
@@ -41,6 +41,36 @@ describe("Shell hotkeys", () => {
     expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
 
+  it("closes the focused Quick Open with Ctrl+W without closing the editor tab", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}p{/Control}");
+    expect(await screen.findByLabelText("Quick Open Overlay")).toBeVisible();
+
+    await user.keyboard("{Control>}w{/Control}");
+
+    expect(screen.queryByLabelText("Quick Open Overlay")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
+  });
+
+  it("closes a focused project dialog with Ctrl+W without closing the editor tab", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await openEditor(user);
+    const filesPane = screen.getByRole("region", { name: "Files" });
+    await user.click(within(filesPane).getByRole("button", { name: "New File" }));
+    expect(await screen.findByRole("dialog", { name: "New File" })).toBeVisible();
+
+    await user.keyboard("{Control>}w{/Control}");
+
+    expect(screen.queryByRole("dialog", { name: "New File" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+  });
+
   it("hides the focused bottom tool window with Shift+Escape", async () => {
     const user = userEvent.setup();
     render(<AppShell />);
@@ -55,6 +85,36 @@ describe("Shell hotkeys", () => {
     expect(screen.getByLabelText("Bottom Tool Window")).toBeVisible();
     expect(screen.getByLabelText("Terminal Panel")).not.toBeVisible();
     expect(screen.getByRole("tab", { name: "Terminal" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
+  });
+
+  it("hides the focused bottom tool window with Ctrl+W without closing the editor tab", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await openEditor(user);
+    await user.click(screen.getByRole("tab", { name: "Terminal" }));
+    expect(screen.getByLabelText("Terminal Panel")).toBeVisible();
+
+    await user.keyboard("{Control>}w{/Control}");
+
+    expect(screen.getByLabelText("Terminal Panel")).not.toBeVisible();
+    expect(screen.getByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
+  });
+
+  it("hides the focused project tool window with Ctrl+W without closing the editor tab", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await openEditor(user);
+    const filesPane = screen.getByRole("region", { name: "Files" });
+    within(filesPane).getByRole("button", { name: "main.ets" }).focus();
+
+    await user.keyboard("{Control>}w{/Control}");
+
+    expect(screen.queryByRole("region", { name: "Files" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "main.ets", pressed: true })).toBeVisible();
     expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
 
@@ -150,15 +210,14 @@ describe("Shell hotkeys", () => {
     expect(await screen.findByRole("option", { name: /Generate ArkTS Page.*Generate/ })).toBeVisible();
   });
 
-  it("shows Rename Symbol Generate Code and Refactor This command palette entries", async () => {
+  it("only shows semantic commands that the active language service reports as supported", async () => {
     const user = userEvent.setup();
     render(<AppShell />);
 
     await user.click(await openEditor(user));
     await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
     await user.type(await screen.findByLabelText("Find Action Query"), "rename");
-    expect(await screen.findByRole("button", { name: "Rename Symbol" })).toBeVisible();
-    expect(screen.getByText("F2")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Rename Symbol" })).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Find Action Query"));
     await user.type(screen.getByLabelText("Find Action Query"), "generate");
@@ -167,8 +226,19 @@ describe("Shell hotkeys", () => {
 
     await user.clear(screen.getByLabelText("Find Action Query"));
     await user.type(screen.getByLabelText("Find Action Query"), "refactor");
-    expect(await screen.findByRole("button", { name: "Refactor This" })).toBeVisible();
-    expect(screen.getByText("Ctrl+Alt+Shift+T")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Refactor This" })).not.toBeInTheDocument();
+  });
+
+  it("does not intercept the rename shortcut when semantic rename is unsupported", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{F2}");
+
+    expect(screen.queryByRole("dialog", { name: "Rename Symbol" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Code Actions" })).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
 
   it("closes the active editor tab with Ctrl+W instead of closing the window", async () => {

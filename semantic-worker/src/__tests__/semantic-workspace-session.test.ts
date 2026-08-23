@@ -45,6 +45,16 @@ afterEach(() => {
 })
 
 describe("semantic workspace session", () => {
+  it("rejects usage queries without a position instead of reporting an authoritative empty result", () => {
+    const response = new SemanticWorkerSession().handle({
+      id: "missing-usage-position",
+      method: "findUsages",
+    })
+
+    expect(response.ok).toBe(false)
+    expect(response.error).toBe("findUsages requires a position")
+  })
+
   it("keeps the latest overlay and rejects out-of-order editor versions", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "arkline-semantic-sync-"))
     tempRoots.push(root)

@@ -14,6 +14,11 @@ import { recordRenderPressure } from "@/features/performance/use-ui-latency-moni
 import type { Text } from "@codemirror/state";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import type {
+  EditorDiagnosticFixRequestHandler,
+  EditorValidationRequest,
+  EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 
 export type AppShellEditorWorkbenchProps = {
   queryPanelVisible: boolean;
@@ -40,6 +45,9 @@ export type AppShellEditorWorkbenchProps = {
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
   onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
+  onValidationRequest?: EditorValidationRequest;
+  onValidationResult?: EditorValidationResultHandler;
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   blameAttributions: GitBlameAttribution[];
   gitBlameVisible: boolean;
   selectedBlameLine: number | null;
@@ -83,6 +91,15 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
   const onCodeMirrorSignatureHelpRequest = useLatestCallback((request: Parameters<CodeMirrorSignatureHelpBroker>[0], signal: AbortSignal) => (
     props.onCodeMirrorSignatureHelpRequest?.(request, signal) ?? Promise.resolve(null)
   ));
+  const onValidationResult: EditorValidationResultHandler = useLatestCallback((
+    path: string,
+    problems: Parameters<EditorValidationResultHandler>[1],
+  ) => {
+    props.onValidationResult?.(path, problems);
+  });
+  const onDiagnosticFixRequest = useLatestCallback((request: Parameters<EditorDiagnosticFixRequestHandler>[0]) => {
+    props.onDiagnosticFixRequest?.(request);
+  });
   const onGitTraceLineClick = useLatestCallback(props.onGitTraceLineClick);
   const onSelectTab = useLatestCallback(props.onSelectTab);
   const onCloseTab = useLatestCallback(props.onCloseTab);
@@ -125,6 +142,9 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onCodeMirrorCompletionRequest={props.onCodeMirrorCompletionRequest ? onCodeMirrorCompletionRequest : undefined}
         onCodeMirrorCompletionResolve={props.onCodeMirrorCompletionResolve ? onCodeMirrorCompletionResolve : undefined}
         onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
+        onValidationRequest={props.onValidationRequest}
+        onValidationResult={props.onValidationResult ? onValidationResult : undefined}
+        onDiagnosticFixRequest={props.onDiagnosticFixRequest ? onDiagnosticFixRequest : undefined}
         blameAttributions={props.blameAttributions}
         gitBlameVisible={props.gitBlameVisible}
         selectedBlameLine={props.selectedBlameLine}

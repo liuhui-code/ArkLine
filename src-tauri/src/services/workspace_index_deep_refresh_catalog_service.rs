@@ -2,10 +2,12 @@ use std::path::Path;
 
 use rusqlite::{params, OptionalExtension};
 
+use crate::models::workspace::WorkspaceIndexState;
 use crate::services::workspace_file_identity_service::ensure_workspace_file_id;
 use crate::services::workspace_index_connection_service::{
     open_existing_workspace_index_reader, with_workspace_index_transaction,
 };
+use crate::services::workspace_index_entity_persistence_service::persist_metadata_row;
 use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -294,19 +296,35 @@ pub(crate) fn supersede_deep_refresh_catalog(
 pub(crate) fn complete_deep_refresh_catalog(
     root_path: &str,
     catalog_generation: u64,
+    task_key: &str,
+    state: &WorkspaceIndexState,
 ) -> Result<(), String> {
     if !Path::new(root_path).is_dir() {
         return Ok(());
     }
     with_workspace_index_transaction(root_path, ensure_workspace_index_schema, |transaction| {
-        transaction
+        let root_key = normalize_root_path(root_path);
+        let completed = transaction
             .execute(
                 "update workspace_index_deep_refresh_catalogs
                  set state = 'complete'
                  where root_path = ?1 and catalog_generation = ?2 and state = 'active'",
-                params![normalize_root_path(root_path), catalog_generation as i64],
+                params![root_key, catalog_generation as i64],
             )
             .map_err(|error| error.to_string())?;
+        if completed != 1 {
+            return Err(format!(
+                "Deep refresh catalog generation {catalog_generation} was superseded before completion"
+            ));
+        }
+        transaction
+            .execute(
+                "delete from workspace_index_deep_refresh_checkpoints
+                 where root_path = ?1 and task_key = ?2",
+                params![root_key, task_key],
+            )
+            .map_err(|error| error.to_string())?;
+        persist_metadata_row(transaction, &root_key, state)?;
         Ok(())
     })
 }
@@ -328,7 +346,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        create_deep_refresh_catalog, is_deep_refresh_catalog_active,
+        complete_deep_refresh_catalog, create_deep_refresh_catalog, is_deep_refresh_catalog_active,
         load_deep_refresh_catalog_batch, load_deep_refresh_catalog_lifecycle,
         load_deep_refresh_catalog_page, prune_terminal_deep_refresh_catalogs,
         supersede_deep_refresh_catalog,
@@ -369,9 +387,19 @@ mod tests {
         create_deep_refresh_catalog(&root_path, 7, &["a.ets".to_string()]).unwrap();
         supersede_deep_refresh_catalog(&root_path, 7).unwrap();
 
+        let state = crate::models::workspace::WorkspaceIndexState {
+            status: crate::models::workspace::WorkspaceIndexStatus::Ready,
+            root_path: Some(root_path.clone()),
+            file_paths: vec!["a.ets".to_string()],
+            symbols: Vec::new(),
+            indexed_at: Some(7),
+            partial_reason: None,
+        };
+
         assert!(load_deep_refresh_catalog_page(&root_path, 7, None, 1)
             .unwrap()
             .is_none());
+        assert!(complete_deep_refresh_catalog(&root_path, 7, "superseded", &state).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 

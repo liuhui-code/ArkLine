@@ -29,6 +29,8 @@ pub enum WorkspaceEditOperation {
         new_text: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         expected_version: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expected_content_version: Option<String>,
     },
     CreateFile {
         path: String,
@@ -82,6 +84,8 @@ pub struct ApplyWorkspaceEditResult {
     pub conflicts: Vec<EditConflict>,
     #[serde(default)]
     pub changed_files: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub undo_plan: Option<WorkspaceEditPlan>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

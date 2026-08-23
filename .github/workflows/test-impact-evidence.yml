@@ -1,0 +1,89 @@
+name: test-impact-evidence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "27 3 * * 1"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: arkline-test-impact-evidence
+  cancel-in-progress: true
+
+jobs:
+  aggregate:
+    name: TDD Impact / Evidence Calibration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.12.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download historical impact evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p artifacts/test-impact-history
+
+          gh run list --workflow=test-impact-evidence.yml --branch=main --status=success --limit=10 --json=databaseId --jq='.[].databaseId' > "$RUNNER_TEMP/arkline-calibration-run-ids"
+          while IFS= read -r run_id; do
+            [[ -z "$run_id" ]] && continue
+            gh run download "$run_id" --name=arkline-test-impact-calibration --dir="artifacts/test-impact-history/calibration-run-$run_id" || true
+          done < "$RUNNER_TEMP/arkline-calibration-run-ids"
+
+          gh run list --workflow=windows-ci.yml --branch=main --status=completed --limit=100 --json=databaseId --jq='.[].databaseId' > "$RUNNER_TEMP/arkline-quality-run-ids"
+          while IFS= read -r run_id; do
+            [[ -z "$run_id" ]] && continue
+            gh run download "$run_id" --name=arkline-quality-gate --dir="artifacts/test-impact-history/run-$run_id" || true
+          done < "$RUNNER_TEMP/arkline-quality-run-ids"
+
+      - name: Run controlled failure calibration
+        run: pnpm test:impact:calibration
+
+      - name: Aggregate test-impact history
+        run: pnpm test:impact:history -- --dir=artifacts/test-impact-history
+
+      - name: Generate promotion review
+        run: pnpm test:impact:review
+
+      - name: Publish promotion review summary
+        shell: bash
+        run: cat artifacts/test-impact-promotion-review.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload current calibration evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-test-impact-calibration
+          path: artifacts/test-impact-history/calibration/test-impact-reconciliation.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload test-impact history
+        uses: actions/upload-artifact@v4
+        with:
+          name: arkline-test-impact-history
+          path: |
+            artifacts/test-impact-history.json
+            artifacts/test-impact-promotion-review.json
+            artifacts/test-impact-promotion-review.md
+          if-no-files-found: error
+          retention-days: 90

@@ -201,7 +201,7 @@ import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const request = JSON.parse(line);
-  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 5 } } : {};
+  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 6 } } : {};
   process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, error: null })}\n`);
 });
 "#,
@@ -225,7 +225,7 @@ const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.P
 rl.on("line", (line) => {{
   const request = JSON.parse(line);
   if (request.method === "health") {{
-    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ok", protocolVersion: 5 }}, error: null }})}}\n`);
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ok", protocolVersion: 6 }}, error: null }})}}\n`);
   }} else if (!fs.existsSync(marker)) {{
     fs.writeFileSync(marker, "crashed");
     process.exit(7);
@@ -252,7 +252,7 @@ const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.PO
 rl.on("line", (line) => {
   const request = JSON.parse(line);
   if (request.method === "health") {
-    process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload: { status: "ok", protocolVersion: 5 }, error: null })}\n`);
+    process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload: { status: "ok", protocolVersion: 6 }, error: null })}\n`);
   } else {
     process.exit(9);
   }
@@ -272,7 +272,7 @@ import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const request = JSON.parse(line);
-  const payload = { status: "ok", protocolVersion: 5 };
+  const payload = { status: "ok", protocolVersion: 6 };
   const runtime = { rssBytes: 101, heapUsedBytes: 50, heapTotalBytes: 80, externalBytes: 1, uptimeMs: 5 };
   process.stdout.write(`${JSON.stringify({ id: request.id, ok: true, payload, runtime, error: null })}\n`);
 });

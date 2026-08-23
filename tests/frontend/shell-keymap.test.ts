@@ -6,6 +6,10 @@ function keyboardEvent(init: KeyboardEventInit) {
 }
 
 describe("shell keymap", () => {
+  it("maps Ctrl+W to close the focused context", () => {
+    expect(resolveShellCommand(keyboardEvent({ key: "w", ctrlKey: true }))).toBe("closeFocusedContext");
+  });
+
   it("maps Ctrl+Alt+L to format document", () => {
     expect(resolveShellCommand(keyboardEvent({ key: "l", ctrlKey: true, altKey: true }))).toBe("formatDocument");
   });

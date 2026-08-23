@@ -26,6 +26,10 @@ export function useWorkspaceIndexWatchers({
   onStatusChange,
 }: UseWorkspaceIndexWatchersOptions) {
   const appliedRefreshEventRef = useRef(0);
+  const applyWorkspaceIndexRefreshResultRef = useRef(applyWorkspaceIndexRefreshResult);
+  const onStatusChangeRef = useRef(onStatusChange);
+  applyWorkspaceIndexRefreshResultRef.current = applyWorkspaceIndexRefreshResult;
+  onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
     function applyLatestRefreshResult() {
@@ -40,14 +44,14 @@ export function useWorkspaceIndexWatchers({
         return;
       }
       appliedRefreshEventRef.current = indexProjection.refreshEventCount;
-      applyWorkspaceIndexRefreshResult(result);
-      onStatusChange(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
+      applyWorkspaceIndexRefreshResultRef.current(result);
+      onStatusChangeRef.current(`Workspace index refreshed: +${result.addedPaths.length} -${result.removedPaths.length}`);
     }
 
     appliedRefreshEventRef.current = 0;
     applyLatestRefreshResult();
     return workspaceIndexProjectionStore.subscribe(applyLatestRefreshResult);
-  }, [applyWorkspaceIndexRefreshResult, onStatusChange, rootPath]);
+  }, [rootPath]);
 
   useEffect(() => {
     if (!rootPath) {

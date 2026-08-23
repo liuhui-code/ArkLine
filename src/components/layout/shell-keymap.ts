@@ -7,7 +7,7 @@ import {
 
 export type ShellCommand =
   | "closeTransientUi"
-  | "closeActiveFile"
+  | "closeFocusedContext"
   | "hideActiveToolWindow"
   | "navigateBack"
   | "toggleEditorOnly"
@@ -37,7 +37,7 @@ export type ShellCommand =
 export const shellCommandDescriptors: CommandDescriptor<ShellCommand>[] = [
   { id: "hideActiveToolWindow", title: "Hide Active Tool Window", category: "Window", defaultKeybindings: [{ shift: true, key: "Escape" }] },
   { id: "closeTransientUi", title: "Close", category: "Window", defaultKeybindings: [{ key: "Escape" }] },
-  { id: "closeActiveFile", title: "Close Active File", category: "File", defaultKeybindings: [{ mod: true, key: "w" }] },
+  { id: "closeFocusedContext", title: "Close Focused Context", category: "Window", defaultKeybindings: [{ mod: true, key: "w" }] },
   { id: "navigateBack", title: "Navigate Back", category: "Navigation", defaultKeybindings: [{ mod: true, alt: true, key: "ArrowLeft" }] },
   { id: "findUsages", title: "Find Usages", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F7" }] },
   { id: "showCurrentClassMethods", title: "Show Current Class Methods", category: "Navigation", defaultKeybindings: [{ ctrl: true, key: "F12" }] },

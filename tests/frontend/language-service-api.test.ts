@@ -11,8 +11,10 @@ describe("language service api skeleton", () => {
   const gotoDefinitionCandidates = defaultWorkspaceApi.gotoDefinitionCandidates!;
   const completeSymbol = defaultWorkspaceApi.completeSymbol!;
   const findUsages = defaultWorkspaceApi.findUsages!;
+  const runValidation = defaultWorkspaceApi.runValidation;
   const listCodeActions = defaultWorkspaceApi.listCodeActions!;
   const resolveCodeAction = defaultWorkspaceApi.resolveCodeAction!;
+  const renameSymbol = defaultWorkspaceApi.renameSymbol!;
   const previewWorkspaceEdit = defaultWorkspaceApi.previewWorkspaceEdit!;
   const applyWorkspaceEdit = defaultWorkspaceApi.applyWorkspaceEdit!;
   const getFileBlame = defaultWorkspaceApi.getFileBlame!;
@@ -34,6 +36,15 @@ describe("language service api skeleton", () => {
       completion: true,
       documentSymbols: true,
       findUsages: true,
+      capabilities: [
+        "hover",
+        "definition",
+        "completion",
+        "documentSymbols",
+        "findUsages",
+        "codeActions",
+        "generateCode",
+      ],
       detail: "Mock fallback ArkTS language service for demo and integration-shell wiring",
     });
   });
@@ -57,24 +68,28 @@ describe("language service api skeleton", () => {
       path: "C:/samples/DemoWorkspace/src/main.ets",
       line: 1,
       column: 7,
-    })).resolves.toEqual([
-      {
-        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
-        line: 1,
-        column: 1,
-        preview: "@Entry",
-        kind: "fallback",
-        confidence: "fallback",
-      },
-      {
-        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
-        line: 3,
-        column: 8,
-        preview: "struct Index {}",
-        kind: "fallback",
-        confidence: "fallback",
-      },
-    ]);
+    })).resolves.toEqual({
+      availability: "partial",
+      items: [
+        {
+          path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+          line: 1,
+          column: 1,
+          preview: "@Entry",
+          kind: "fallback",
+          confidence: "fallback",
+        },
+        {
+          path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+          line: 3,
+          column: 8,
+          preview: "struct Index {}",
+          kind: "fallback",
+          confidence: "fallback",
+        },
+      ],
+      message: "Fallback usage search is limited to the demo document",
+    });
   });
 
   it("returns empty semantic results for unknown workspaces in the mock path", async () => {
@@ -88,12 +103,31 @@ describe("language service api skeleton", () => {
     await expect(gotoDefinition(unknown)).resolves.toBeNull();
     await expect(gotoDefinitionCandidates(unknown)).resolves.toEqual([]);
     await expect(completeSymbol(unknown)).resolves.toEqual([]);
-    await expect(findUsages(unknown)).resolves.toEqual([]);
+    await expect(findUsages(unknown)).resolves.toEqual({
+      availability: "unavailable",
+      items: [],
+      message: "Find Usages is unavailable outside the demo workspace",
+    });
+  });
+
+  it("marks browser-only validation partial instead of claiming complete semantic diagnostics", async () => {
+    await expect(runValidation(
+      "C:/samples/DemoWorkspace/src/main.ts",
+      "console.log('x')\n",
+    )).resolves.toEqual({
+      availability: "partial",
+      items: [expect.objectContaining({
+        source: "lint",
+        message: "Remove console.log before committing",
+      })],
+      message: "Semantic diagnostics are unavailable outside the desktop runtime",
+    });
   });
 
   it("exposes code action and workspace edit APIs", async () => {
     expect(listCodeActions).toEqual(expect.any(Function));
     expect(resolveCodeAction).toEqual(expect.any(Function));
+    expect(renameSymbol).toEqual(expect.any(Function));
     expect(previewWorkspaceEdit).toEqual(expect.any(Function));
     expect(applyWorkspaceEdit).toEqual(expect.any(Function));
   });

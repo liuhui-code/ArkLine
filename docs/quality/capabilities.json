@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "coreDomains": [
+    "build",
+    "indexing",
+    "git",
+    "workspace",
+    "editor",
+    "search-navigation",
+    "semantic",
+    "terminal",
+    "device-log",
+    "release",
+    "change-loop"
+  ],
+  "alwaysRunTests": [
+    "tests/frontend/tdd-capability-registry.test.ts",
+    "tests/frontend/tdd-test-inventory.test.ts",
+    "tests/frontend/tdd-test-impact.test.ts",
+    "tests/frontend/tdd-rust-impact.test.ts",
+    "tests/frontend/tdd-test-impact-reconciliation.test.ts",
+    "tests/frontend/tdd-test-impact-history.test.ts",
+    "tests/frontend/tdd-test-impact-calibration.test.ts",
+    "tests/frontend/tdd-test-impact-promotion-review.test.ts",
+    "tests/frontend/tdd-enforcement.test.ts",
+    "tests/frontend/tdd-governance.test.ts"
+  ],
+  "fullSuitePatterns": [
+    "tests/frontend/**/*.test.ts",
+    "tests/frontend/**/*.test.tsx",
+    "semantic-worker/src/__tests__/**/*.test.ts",
+    "src-tauri/src/**/*_tests.rs",
+    "src-tauri/tests/**/*.rs"
+  ],
+  "globalFallbackPatterns": [
+    "package.json",
+    "pnpm-lock.yaml",
+    "vitest.config.ts",
+    "tests/frontend/setup.ts",
+    "src/components/layout/AppShell.tsx",
+    "src/features/workspace/workspace-api-contract.ts",
+    "src-tauri/Cargo.toml",
+    "src-tauri/src/lib.rs",
+    "src-tauri/src/services/mod.rs",
+    ".github/workflows/**",
+    "scripts/run-*.mjs",
+    "docs/quality/capabilities.json"
+  ],
+  "capabilities": [
+    {
+      "id": "trustworthy-code-change-loop",
+      "domain": "change-loop",
+      "risk": "critical",
+      "owner": "ide-workbench",
+      "behavior": "A Harmony project user can edit current unsaved code, receive truthful language feedback, apply previewed atomic changes, verify them, review the Git diff, and recover without data loss.",
+      "sourcePatterns": ["src/editor/**", "src/features/documents/**", "src/features/semantic/**", "src/features/build/**", "src/features/git/**", "src/features/code-actions/**", "src/features/workspace/workspace-default-core-api.ts", "src/components/layout/AppShellEditorWorkbench.tsx", "src/components/layout/EditorSurface.tsx", "src/components/layout/app-shell-helpers.ts", "src/components/layout/use-app-shell-commands.ts", "src/components/layout/use-code-actions-workspace-edit-controller.ts", "src/components/layout/use-problems-controller.ts", "src/components/layout/useShellHotkeys.ts", "semantic-worker/src/**", "src-tauri/src/models/diagnostics.rs", "src-tauri/src/models/language.rs", "src-tauri/src/services/language_*", "src-tauri/src/services/semantic/**", "src-tauri/src/services/validation_service.rs", "src-tauri/src/services/workspace_edit*"],
+      "testPatterns": ["tests/frontend/editor-inline-diagnostics.test.tsx", "tests/frontend/editor-search.test.tsx", "tests/frontend/language-service-api.test.ts", "tests/frontend/shell-hotkeys.test.tsx", "tests/frontend/use-problems-controller.test.tsx", "tests/frontend/use-build-controller-state.test.tsx", "tests/frontend/use-code-actions-workspace-edit-controller.test.tsx", "tests/frontend/workspace-edit-application-model.test.ts", "tests/frontend/workspace-edit-model.test.ts", "tests/frontend/git-tool-window.test.tsx", "tests/frontend/source-control-tool-window.test.tsx", "semantic-worker/src/__tests__/definition.test.ts", "src-tauri/src/services/language_service_tests.rs", "src-tauri/src/services/validation_service.rs", "src-tauri/src/services/workspace_edit*_tests.rs", "tests/frontend/packaged-soak-webdriver.test.ts"],
+      "testLevels": ["small", "medium", "product"]
+    },
+    {
+      "id": "real-project-build",
+      "domain": "build",
+      "risk": "critical",
+      "owner": "build-system",
+      "behavior": "A selected Harmony project builds from its detected root and may produce a usable unsigned artifact when signing is absent.",
+      "sourcePatterns": ["src/features/build/**", "src/components/layout/*build*", "src-tauri/src/commands/build_*", "src-tauri/src/services/build_*", "scripts/package-*.mjs"],
+      "testPatterns": ["tests/frontend/*build*.test.*", "src-tauri/src/services/build_*_tests.rs", "tests/frontend/packaged-soak-*.test.ts"],
+      "testLevels": ["small", "medium", "product"]
+    },
+    {
+      "id": "project-open-index-readiness",
+      "domain": "indexing",
+      "risk": "critical",
+      "owner": "indexing",
+      "behavior": "Opening a project schedules visible files, makes readiness progress observable, and eventually enables indexed navigation.",
+      "sourcePatterns": ["src/components/layout/*index*", "src/components/layout/use-workspace-*", "src/features/workspace/workspace-index-*", "src-tauri/src/commands/workspace_index*", "src-tauri/src/services/workspace_index*", "src-tauri/src/indexer_*"],
+      "testPatterns": ["tests/frontend/*index*.test.*", "tests/frontend/use-workspace-*.test.*", "src-tauri/src/**/*index*_tests.rs", "src-tauri/src/services/workspace_index_writer_connection_pool_service.rs", "src-tauri/tests/indexer_*.rs", "tests/frontend/packaged-soak-*.test.ts"],
+      "testLevels": ["small", "medium", "large", "product"]
+    },
+    {
+      "id": "git-core-workflow",
+      "domain": "git",
+      "risk": "critical",
+      "owner": "source-control",
+      "behavior": "A repository user can inspect changes, stage, commit, synchronize, and recover from failures without losing editor state.",
+      "sourcePatterns": ["src/features/git/**", "src/components/layout/*git*", "src/components/layout/*source-control*", "src-tauri/src/commands/git_*", "src-tauri/src/services/git_*"],
+      "testPatterns": ["tests/frontend/*git*.test.*", "tests/frontend/*source-control*.test.*", "src-tauri/src/services/git_*_tests.rs", "tests/frontend/packaged-soak-*.test.ts"],
+      "testLevels": ["small", "medium", "product"]
+    },
+    {
+      "id": "workspace-open-and-restore",
+      "domain": "workspace",
+      "risk": "high",
+      "owner": "workspace",
+      "behavior": "A user can open the correct project directory and restore its files and session without selecting an invalid parent or module root.",
+      "sourcePatterns": ["src/features/workspace/**", "src/components/layout/use-workspace-*", "src-tauri/src/commands/workspace*", "src-tauri/src/services/workspace_*"],
+      "testPatterns": ["tests/frontend/*workspace*.test.*", "tests/frontend/app-shell*.test.*", "src-tauri/src/**/*workspace*_tests.rs"],
+      "testLevels": ["small", "medium"]
+    },
+    {
+      "id": "editor-core-loop",
+      "domain": "editor",
+      "risk": "high",
+      "owner": "editor",
+      "behavior": "A user can open, edit, save, undo, search, and switch files while document state remains isolated and recoverable.",
+      "sourcePatterns": ["src/editor/**", "src/features/editor/**", "src/features/documents/**", "src/components/layout/*editor*"],
+      "testPatterns": ["tests/frontend/*editor*.test.*", "tests/frontend/*document*.test.*", "tests/frontend/app-shell*.test.*"],
+      "testLevels": ["small", "medium"]
+    },
+    {
+      "id": "search-and-navigation",
+      "domain": "search-navigation",
+      "risk": "high",
+      "owner": "navigation",
+      "behavior": "Search, definition, usages, and quick-open return current results and navigate to the correct file and position.",
+      "sourcePatterns": ["src/features/search/**", "src/features/navigation/**", "src/components/layout/*search*", "src/components/layout/*navigation*"],
+      "testPatterns": ["tests/frontend/*search*.test.*", "tests/frontend/*navigation*.test.*", "tests/frontend/*definition*.test.*", "tests/frontend/*quick-open*.test.*"],
+      "testLevels": ["small", "medium"]
+    },
+    {
+      "id": "semantic-language-features",
+      "domain": "semantic",
+      "risk": "high",
+      "owner": "language-services",
+      "behavior": "ArkTS completion, definition, code actions, and workspace sessions return receiver-aware results through the semantic worker protocol.",
+      "sourcePatterns": ["src/features/semantic/**", "src/features/language/**", "semantic-worker/src/**", "src-tauri/src/services/language_*", "src-tauri/src/services/semantic*"],
+      "testPatterns": ["semantic-worker/src/__tests__/**/*.test.ts", "tests/frontend/*semantic*.test.*", "tests/frontend/*completion*.test.*", "src-tauri/src/services/language_*_tests.rs"],
+      "testLevels": ["small", "medium"]
+    },
+    {
+      "id": "terminal-sessions",
+      "domain": "terminal",
+      "risk": "normal",
+      "owner": "terminal",
+      "behavior": "A user can create, interact with, resize, stop, and restore terminal sessions without leaking processes between workspaces.",
+      "sourcePatterns": ["src/features/terminal/**", "src/components/layout/*terminal*", "src-tauri/src/commands/terminal*", "src-tauri/src/services/terminal_*"],
+      "testPatterns": ["tests/frontend/*terminal*.test.*", "src-tauri/src/services/terminal_*_tests.rs"],
+      "testLevels": ["small", "medium"]
+    },
+    {
+      "id": "device-log-workflow",
+      "domain": "device-log",
+      "risk": "normal",
+      "owner": "device-tools",
+      "behavior": "A user can stream, filter, inspect, export, and recover device logs while bounded storage and cancellation remain observable.",
+      "sourcePatterns": ["src/features/device-log/**", "src/components/layout/*device-log*", "src-tauri/src/services/device_*"],
+      "testPatterns": ["tests/frontend/*device-log*.test.*", "src-tauri/src/services/device_*_tests.rs"],
+      "testLevels": ["small", "medium"]
+    },
+    {
+      "id": "verified-windows-release",
+      "domain": "release",
+      "risk": "high",
+      "owner": "release-engineering",
+      "behavior": "The exact Windows artifact that passes package verification and real-project smoke is the artifact eligible for immutable publication.",
+      "sourcePatterns": [".github/workflows/**", "scripts/package-*.mjs", "scripts/run-windows-*.mjs", "scripts/packaged-soak-*.mjs", "src-tauri/tauri.conf.json"],
+      "testPatterns": ["tests/frontend/*ci-workflow*.test.*", "tests/frontend/*package*.test.*", "tests/frontend/packaged-soak-*.test.ts", "tests/frontend/*test-impact*.test.ts", "tests/frontend/*tdd*.test.ts"],
+      "testLevels": ["small", "product"]
+    }
+  ]
+}

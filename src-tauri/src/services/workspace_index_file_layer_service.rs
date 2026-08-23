@@ -7,11 +7,77 @@ use crate::services::workspace_file_fingerprint_service::{
     remove_file_fingerprints, update_file_catalog_fingerprints,
 };
 use crate::services::workspace_file_search_index_service::WorkspaceFileSearchIndex;
-use crate::services::workspace_index_persistence_service::persist_incremental_file_symbol_state;
+use crate::services::workspace_index_deep_refresh_catalog_service::complete_deep_refresh_catalog;
+use crate::services::workspace_index_persistence_service::{
+    persist_incremental_file_symbol_state, persist_index_metadata,
+};
 use crate::services::workspace_index_service::{IndexedWorkspace, WorkspaceIndexRuntime};
 use crate::services::workspace_symbol_index_service::update_workspace_symbols_with_delta;
 
 impl WorkspaceIndexRuntime {
+    pub fn degrade_workspace_deep_layer(
+        &self,
+        root_path: &str,
+        reason: &str,
+    ) -> Result<WorkspaceIndexState, String> {
+        let normalized_root = normalize_index_path(root_path);
+        let existing_workspace = {
+            let workspaces = self
+                .workspaces
+                .lock()
+                .map_err(|_| "Workspace index lock poisoned".to_string())?;
+            workspaces.get(&normalized_root).cloned()
+        };
+        let mut workspace = if let Some(workspace) = existing_workspace {
+            workspace
+        } else {
+            restore_minimal_workspace(self, root_path)?
+        };
+
+        workspace.state.status = WorkspaceIndexStatus::Partial;
+        workspace.state.partial_reason = Some(reason.to_string());
+        persist_index_metadata(root_path, &workspace.state)?;
+        self.workspaces
+            .lock()
+            .map_err(|_| "Workspace index lock poisoned".to_string())?
+            .insert(normalized_root, workspace.clone());
+        Ok(workspace.state)
+    }
+
+    pub fn complete_workspace_deep_layer(
+        &self,
+        root_path: &str,
+        catalog_generation: u64,
+        task_key: &str,
+    ) -> Result<WorkspaceIndexState, String> {
+        let normalized_root = normalize_index_path(root_path);
+        let existing_workspace = {
+            let workspaces = self
+                .workspaces
+                .lock()
+                .map_err(|_| "Workspace index lock poisoned".to_string())?;
+            workspaces.get(&normalized_root).cloned()
+        };
+        let mut workspace = if let Some(workspace) = existing_workspace {
+            workspace
+        } else {
+            restore_minimal_workspace(self, root_path)?
+        };
+
+        workspace.state.status = if workspace.state.file_paths.is_empty() {
+            WorkspaceIndexStatus::Empty
+        } else {
+            WorkspaceIndexStatus::Ready
+        };
+        workspace.state.partial_reason = None;
+        complete_deep_refresh_catalog(root_path, catalog_generation, task_key, &workspace.state)?;
+        self.workspaces
+            .lock()
+            .map_err(|_| "Workspace index lock poisoned".to_string())?
+            .insert(normalized_root, workspace.clone());
+        Ok(workspace.state)
+    }
+
     pub fn update_workspace_file_symbol_layer(
         &self,
         root_path: &str,

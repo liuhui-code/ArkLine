@@ -34,6 +34,12 @@ import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance, EditorDocumentKind } from "@/types/editor";
 import { createCodeMirrorCompletionSources, type CodeMirrorCompletionBroker, type CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import { createCodeMirrorSignatureHelpExtension, type CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import {
+  createEditorValidationExtensions,
+  type EditorDiagnosticFixRequestHandler,
+  type EditorValidationRequest,
+  type EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 
 export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
@@ -82,11 +88,7 @@ export function detectDocumentKind(path: string): EditorDocumentKind {
   return "plain";
 }
 
-export function languageExtensionForPath(path: string, largeDocumentMode = false): Extension {
-  if (largeDocumentMode) {
-    return [];
-  }
-
+export function languageExtensionForPath(path: string): Extension {
   const kind = detectDocumentKind(path);
 
   if (kind === "arkts" || kind === "typescript") {
@@ -133,6 +135,9 @@ export function createEditorExtensions(
   deferEnhancements = false,
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker,
   isCodeMirrorCompletionEnabled?: () => boolean,
+  onValidationRequest?: EditorValidationRequest,
+  onValidationResult?: EditorValidationResultHandler,
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler,
 ): Extension[] {
   const deferDocumentExtensions = reducedPerformanceMode || deferEnhancements;
   const keymaps = reducedPerformanceMode
@@ -185,11 +190,14 @@ export function createEditorExtensions(
     ...(!reducedPerformanceMode && onTypingCompletionTrigger && !onCodeMirrorCompletionRequest
       ? [createTypingCompletionTriggerListener(onTypingCompletionTrigger)]
       : []),
+    ...(!reducedPerformanceMode && onValidationRequest
+      ? createEditorValidationExtensions(getActivePath, onValidationRequest, onValidationResult, onDiagnosticFixRequest)
+      : []),
     ...(onContextMenu ? [createEditorContextMenuHandler(onContextMenu)] : []),
     arkLineSyntaxTheme,
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
     editorStructureCompartment.of(structureExtensionForDocument(deferDocumentExtensions)),
-    languageCompartment.of(languageExtensionForPath(path, deferDocumentExtensions)),
+    languageCompartment.of(languageExtensionForPath(path)),
     gitTraceCompartment.of(gitTrace && !reducedPerformanceMode ? createGitTraceGutter(gitTrace) : []),
   ];
 }

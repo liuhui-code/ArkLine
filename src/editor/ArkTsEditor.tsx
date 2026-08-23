@@ -1,4 +1,3 @@
-import type { EditorCompletionTarget, EditorInsertTextTarget, EditorSelectionTarget } from "@/components/layout/EditorSurface";
 import { useEffect, useMemo, useRef } from "react";
 import { closeCompletion, startCompletion } from "@codemirror/autocomplete";
 import { EditorSelection, EditorState, Transaction, type Text } from "@codemirror/state";
@@ -18,50 +17,16 @@ import {
   readCaretRect,
   resolveDefinitionTokenRange,
   setJumpRevealEffect,
-  type DefinitionHoverState,
-  type EditorCaretRect,
-  type EditorContextMenuRequest,
-  type EditorLineColumn,
 } from "@/editor/editor-events";
+import type { ArkTsEditorProps } from "@/editor/arkts-editor-props";
 import { isEditorReducedPerformanceDocument } from "@/editor/editor-document-budget";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
-import type { GitBlameAttribution } from "@/features/git/git-trace-model";
-import type { EditorAppearance } from "@/types/editor";
-import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
-import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 import { createEditorDocumentSessionRegistry } from "@/editor/editor-document-session-registry";
 import { scheduleEditorEnhancement } from "@/editor/editor-enhancement-scheduler";
 import { beginInteractionTrace, type InteractionTraceHandle } from "@/features/performance/interaction-trace-store";
 import { createEditorInputTraceRuntime } from "@/features/performance/editor-input-trace-runtime";
 import { getPathBasename } from "@/features/workspace/workspace-store";
-type ArkTsEditorProps = {
-  focusToken?: number;
-  completionTarget?: EditorCompletionTarget | null;
-  completionEnabled?: boolean;
-  path: string;
-  value?: string;
-  document?: Text;
-  appearance: EditorAppearance;
-  selectionTarget?: EditorSelectionTarget | null;
-  insertTextTarget?: EditorInsertTextTarget | null;
-  onChange: (value: string) => void;
-  onDocumentChange?: (document: Text) => void;
-  onSelectionChange?: (selection: { line: number; column: number; selectedText?: string }) => void;
-  onCaretRectChange?: (rect: EditorCaretRect) => void;
-  onDefinitionTrigger?: (selection?: EditorLineColumn) => void;
-  onDefinitionHoverChange?: (state: DefinitionHoverState) => void;
-  onTypingCompletionTrigger?: (selection: EditorLineColumn) => void;
-  onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
-  onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
-  onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
-  onContextMenu?: (request: EditorContextMenuRequest) => void;
-  blameAttributions?: GitBlameAttribution[];
-  gitBlameVisible?: boolean;
-  selectedBlameLine?: number | null;
-  onGitTraceLineClick?: (line: number) => void;
-  transientPreview?: boolean;
-};
 
 const FULL_EDITOR_ENHANCEMENT_DWELL_MS = 1_500;
 
@@ -85,6 +50,9 @@ export function ArkTsEditor({
   onCodeMirrorCompletionRequest,
   onCodeMirrorCompletionResolve,
   onCodeMirrorSignatureHelpRequest,
+  onValidationRequest,
+  onValidationResult,
+  onDiagnosticFixRequest,
   onContextMenu,
   blameAttributions = [],
   gitBlameVisible = false,
@@ -114,6 +82,9 @@ export function ArkTsEditor({
   const onCodeMirrorCompletionResolveRef = useRef(onCodeMirrorCompletionResolve);
   const completionEnabledRef = useRef(completionEnabled);
   const onCodeMirrorSignatureHelpRequestRef = useRef(onCodeMirrorSignatureHelpRequest);
+  const onValidationRequestRef = useRef(onValidationRequest);
+  const onValidationResultRef = useRef(onValidationResult);
+  const onDiagnosticFixRequestRef = useRef(onDiagnosticFixRequest);
   const onContextMenuRef = useRef(onContextMenu);
   const jumpRevealTimeoutRef = useRef<number | null>(null);
   const sessionRestoreFrameRef = useRef<number | null>(null);
@@ -162,6 +133,9 @@ export function ArkTsEditor({
   onCodeMirrorCompletionResolveRef.current = onCodeMirrorCompletionResolve;
   completionEnabledRef.current = completionEnabled;
   onCodeMirrorSignatureHelpRequestRef.current = onCodeMirrorSignatureHelpRequest;
+  onValidationRequestRef.current = onValidationRequest;
+  onValidationResultRef.current = onValidationResult;
+  onDiagnosticFixRequestRef.current = onDiagnosticFixRequest;
   onContextMenuRef.current = onContextMenu;
 
   function createState(documentPath: string, content: string | Text, reducedMode: boolean) {
@@ -212,6 +186,19 @@ export function ArkTsEditor({
           ? (request, signal) => onCodeMirrorSignatureHelpRequestRef.current?.(request, signal) ?? Promise.resolve(null)
           : undefined,
         () => completionEnabledRef.current,
+        onValidationRequest
+          ? (documentPath, content) => onValidationRequestRef.current?.(documentPath, content) ?? Promise.resolve({
+              availability: "unavailable",
+              items: [],
+              message: "Diagnostics are unavailable",
+            })
+          : undefined,
+        onValidationResult
+          ? (documentPath, problems) => onValidationResultRef.current?.(documentPath, problems)
+          : undefined,
+        onDiagnosticFixRequest
+          ? (request) => onDiagnosticFixRequestRef.current?.(request)
+          : undefined,
       ),
     });
   }
@@ -308,7 +295,7 @@ export function ArkTsEditor({
       annotations: [editorDocumentReplacement.of(true), Transaction.addToHistory.of(false)],
       effects: [
         editorStructureCompartment.reconfigure(structureExtensionForDocument(deferEnhancements)),
-        languageCompartment.reconfigure(languageExtensionForPath(path, deferEnhancements)),
+        languageCompartment.reconfigure(languageExtensionForPath(path)),
       ],
     });
     publishSessionStats();
@@ -371,7 +358,7 @@ export function ArkTsEditor({
       view.dispatch({
         effects: [
           editorStructureCompartment.reconfigure(structureExtensionForDocument(false)),
-          languageCompartment.reconfigure(languageExtensionForPath(scheduledPath, false)),
+          languageCompartment.reconfigure(languageExtensionForPath(scheduledPath)),
         ],
       });
       activeEnhancedRef.current = true;

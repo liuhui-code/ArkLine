@@ -241,6 +241,76 @@ fn workspace_edit_rejects_text_and_rename_on_same_file() {
 }
 
 #[test]
+fn workspace_edit_rejects_mixed_file_and_directory_operations_before_writing() {
+    let root = unique_temp_dir("mixed-file-directory-operations");
+    fs::create_dir_all(&root).unwrap();
+    let directory = root.join("generated");
+    let file = root.join("main.ets");
+
+    let result = apply_workspace_edit(
+        &root,
+        &plan(vec![
+            WorkspaceEditOperation::CreateDirectory {
+                path: directory.to_string_lossy().to_string(),
+            },
+            WorkspaceEditOperation::CreateFile {
+                path: file.to_string_lossy().to_string(),
+                content: "created".to_string(),
+                overwrite: false,
+            },
+        ]),
+    )
+    .unwrap();
+
+    assert!(!result.applied);
+    assert!(result.conflicts.iter().any(|conflict| {
+        conflict
+            .message
+            .contains("cannot mix file and directory operations atomically")
+    }));
+    assert!(!directory.exists());
+    assert!(!file.exists());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn workspace_edit_rejects_overlapping_parent_and_child_directory_operations() {
+    let root = unique_temp_dir("overlapping-directory-operations");
+    let parent = root.join("generated");
+    let child = parent.join("nested");
+    fs::create_dir_all(&child).unwrap();
+    fs::write(child.join("main.ets"), "original").unwrap();
+
+    let result = apply_workspace_edit(
+        &root,
+        &plan(vec![
+            WorkspaceEditOperation::DeleteDirectory {
+                path: parent.to_string_lossy().to_string(),
+                recursive: true,
+            },
+            WorkspaceEditOperation::DeleteDirectory {
+                path: child.to_string_lossy().to_string(),
+                recursive: true,
+            },
+        ]),
+    )
+    .expect("overlapping operations should be rejected during preflight");
+
+    assert!(!result.applied);
+    assert!(result
+        .conflicts
+        .iter()
+        .any(|conflict| { conflict.message.contains("parent or child paths") }));
+    assert_eq!(
+        fs::read_to_string(child.join("main.ets")).unwrap(),
+        "original"
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn workspace_edit_rejects_expected_version_until_document_versions_are_supported() {
     let root = unique_temp_dir("expected-version");
     fs::create_dir_all(&root).unwrap();
@@ -259,6 +329,7 @@ fn workspace_edit_rejects_expected_version_until_document_versions_are_supported
             },
             new_text: "changed".to_string(),
             expected_version: Some(1),
+            expected_content_version: None,
         }]),
     )
     .unwrap();
@@ -269,6 +340,40 @@ fn workspace_edit_rejects_expected_version_until_document_versions_are_supported
         .iter()
         .any(|conflict| conflict.message.contains("expectedVersion")));
     assert_eq!(fs::read_to_string(&file).unwrap(), "original");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn workspace_edit_rejects_stale_content_version_before_writing() {
+    let root = unique_temp_dir("stale-content-version");
+    fs::create_dir_all(&root).unwrap();
+    let file = root.join("main.ets");
+    fs::write(&file, "external change").unwrap();
+
+    let result = apply_workspace_edit(
+        &root,
+        &plan(vec![WorkspaceEditOperation::Text {
+            path: file.to_string_lossy().to_string(),
+            range: TextRange {
+                start_line: 1,
+                start_column: 1,
+                end_line: 1,
+                end_column: 9,
+            },
+            new_text: "renamed".to_string(),
+            expected_version: None,
+            expected_content_version: Some("fnv1a64:0000000000000000".to_string()),
+        }]),
+    )
+    .unwrap();
+
+    assert!(!result.applied);
+    assert!(result
+        .conflicts
+        .iter()
+        .any(|conflict| conflict.message.contains("expectedContentVersion")));
+    assert_eq!(fs::read_to_string(&file).unwrap(), "external change");
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -297,6 +402,66 @@ fn workspace_edit_uses_utf16_columns_for_text_ranges() {
 
     assert!(result.applied);
     assert_eq!(fs::read_to_string(&file).unwrap(), "😀height\n");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn text_workspace_edit_returns_one_version_guarded_undo_plan() {
+    let root = unique_temp_dir("single-undo");
+    fs::create_dir_all(&root).unwrap();
+    let first = root.join("Model.ts");
+    let second = root.join("View.ts");
+    fs::write(&first, "export const name = 'Ada';\n").unwrap();
+    fs::write(&second, "console.log(name);\n").unwrap();
+
+    let result = apply_workspace_edit(
+        &root,
+        &plan(vec![
+            text_edit(
+                first.clone(),
+                TextRange {
+                    start_line: 1,
+                    start_column: 14,
+                    end_line: 1,
+                    end_column: 18,
+                },
+                "displayName",
+            ),
+            text_edit(
+                second.clone(),
+                TextRange {
+                    start_line: 1,
+                    start_column: 13,
+                    end_line: 1,
+                    end_column: 17,
+                },
+                "displayName",
+            ),
+        ]),
+    )
+    .unwrap();
+
+    assert!(result.applied);
+    let undo = result
+        .undo_plan
+        .expect("text edit should return a single undo plan");
+    assert_eq!(undo.operations.len(), 2);
+    assert!(undo.operations.iter().all(|operation| matches!(
+        operation,
+        WorkspaceEditOperation::Text {
+            expected_content_version: Some(_),
+            ..
+        }
+    )));
+
+    let undone = apply_workspace_edit(&root, &undo).unwrap();
+    assert!(undone.applied);
+    assert_eq!(
+        fs::read_to_string(&first).unwrap(),
+        "export const name = 'Ada';\n"
+    );
+    assert_eq!(fs::read_to_string(&second).unwrap(), "console.log(name);\n");
 
     fs::remove_dir_all(root).unwrap();
 }

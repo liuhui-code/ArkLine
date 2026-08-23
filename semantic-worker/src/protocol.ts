@@ -54,7 +54,7 @@ export interface SemanticRuntimeState {
   providerLatencies: Record<string, SemanticLatencySummary>
 }
 
-export const SEMANTIC_PROTOCOL_VERSION = 5
+export const SEMANTIC_PROTOCOL_VERSION = 6
 
 export type SemanticRequestMethod =
   | "health"
@@ -64,6 +64,8 @@ export type SemanticRequestMethod =
   | "didClose"
   | "prepareDocument"
   | "gotoDefinition"
+  | "findUsages"
+  | "diagnostics"
   | "completion"
   | "resolveCompletion"
   | "signatureHelp"
@@ -139,6 +141,21 @@ export interface SemanticTextRange {
 
 export interface SemanticDefinitionCandidate extends SemanticDefinitionTarget {}
 
+export interface SemanticUsageResult extends SemanticDefinitionTarget {
+  preview: string
+  kind: "semantic"
+  confidence: "exact"
+}
+
+export interface SemanticDiagnostic {
+  source: "language"
+  severity: "error" | "warning"
+  path: string
+  line: number
+  column: number
+  message: string
+}
+
 export type SemanticCodeActionKind =
   | "quickfix"
   | "refactor.extract"
@@ -182,6 +199,7 @@ export type SemanticWorkspaceEditOperation =
       range: SemanticTextRange
       newText: string
       expectedVersion?: number
+      expectedContentVersion?: string
     }
   | { kind: "createFile"; path: string; content: string; overwrite: boolean }
   | { kind: "renameFile"; oldPath: string; newPath: string; overwrite: boolean }
@@ -214,6 +232,8 @@ export type SemanticResponsePayload =
   | { status: "closed"; path: string }
   | { restoredDocumentCount: number }
   | SemanticDefinitionTarget
+  | SemanticUsageResult[]
+  | SemanticDiagnostic[]
   | { definition: SemanticDefinitionTarget | null; definitionCandidates?: SemanticDefinitionCandidate[] }
   | SemanticCompletionItem[]
   | SemanticCompletionItem

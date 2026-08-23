@@ -171,6 +171,7 @@ fn refresh_incremental_watcher_chunk(
     )? {
         WorkspaceDeepLayerUpdate::Applied(state) => state,
         WorkspaceDeepLayerUpdate::Deferred(state) => state,
+        WorkspaceDeepLayerUpdate::Failed(error) => return Err(error),
         WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
     };
     let mut added_paths = content_paths

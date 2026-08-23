@@ -5,6 +5,11 @@ import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import type {
+  EditorDiagnosticFixRequestHandler,
+  EditorValidationRequest,
+  EditorValidationResultHandler,
+} from "@/editor/editor-validation-lint";
 import type { Text } from "@codemirror/state";
 
 const ArkTsEditor = lazy(async () => {
@@ -33,6 +38,9 @@ type LazyArkTsEditorProps = {
   onCodeMirrorCompletionRequest?: CodeMirrorCompletionBroker;
   onCodeMirrorCompletionResolve?: CodeMirrorCompletionResolver;
   onCodeMirrorSignatureHelpRequest?: CodeMirrorSignatureHelpBroker;
+  onValidationRequest?: EditorValidationRequest;
+  onValidationResult?: EditorValidationResultHandler;
+  onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
@@ -71,6 +79,22 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
     (request, signal) => callbacksRef.current.onCodeMirrorSignatureHelpRequest?.(request, signal) ?? Promise.resolve(null),
     [],
   );
+  const onValidationRequest = useCallback<EditorValidationRequest>(
+    (path, content) => callbacksRef.current.onValidationRequest?.(path, content) ?? Promise.resolve({
+      availability: "unavailable",
+      items: [],
+      message: "Diagnostics are unavailable",
+    }),
+    [],
+  );
+  const onValidationResult = useCallback<EditorValidationResultHandler>(
+    (path, problems) => callbacksRef.current.onValidationResult?.(path, problems),
+    [],
+  );
+  const onDiagnosticFixRequest = useCallback<EditorDiagnosticFixRequestHandler>(
+    (request) => callbacksRef.current.onDiagnosticFixRequest?.(request),
+    [],
+  );
   const onContextMenu = useCallback((request: EditorContextMenuRequest) => {
     callbacksRef.current.onContextMenu?.(request);
   }, []);
@@ -90,6 +114,9 @@ export function LazyArkTsEditor(props: LazyArkTsEditorProps) {
         onCodeMirrorCompletionRequest={props.onCodeMirrorCompletionRequest ? onCodeMirrorCompletionRequest : undefined}
         onCodeMirrorCompletionResolve={props.onCodeMirrorCompletionResolve ? onCodeMirrorCompletionResolve : undefined}
         onCodeMirrorSignatureHelpRequest={props.onCodeMirrorSignatureHelpRequest ? onCodeMirrorSignatureHelpRequest : undefined}
+        onValidationRequest={props.onValidationRequest ? onValidationRequest : undefined}
+        onValidationResult={props.onValidationResult ? onValidationResult : undefined}
+        onDiagnosticFixRequest={props.onDiagnosticFixRequest ? onDiagnosticFixRequest : undefined}
         onContextMenu={props.onContextMenu ? onContextMenu : undefined}
         onGitTraceLineClick={props.onGitTraceLineClick ? onGitTraceLineClick : undefined}
       />

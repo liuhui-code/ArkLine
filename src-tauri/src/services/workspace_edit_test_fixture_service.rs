@@ -29,5 +29,6 @@ pub(crate) fn text_edit(path: PathBuf, range: TextRange, new_text: &str) -> Work
         range,
         new_text: new_text.to_string(),
         expected_version: None,
+        expected_content_version: None,
     }
 }

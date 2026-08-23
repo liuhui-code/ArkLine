@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub use super::semantic_availability::{RenameSymbolResult, UsageQueryResult};
+
 use crate::models::workspace::{WorkspaceIndexQueryCapability, WorkspaceIndexReadiness};
 use crate::models::workspace_edit::WorkspaceEditPlan;
 
@@ -17,6 +19,7 @@ pub struct LanguageServiceReport {
     pub completion: bool,
     pub document_symbols: bool,
     pub find_usages: bool,
+    pub capabilities: Vec<String>,
     pub detail: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supervisor: Option<SemanticSupervisorSnapshot>,
@@ -76,6 +79,28 @@ pub struct LanguageQueryRequest {
     pub line: u32,
     pub column: u32,
     pub content: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameSymbolRequest {
+    pub path: String,
+    pub line: u32,
+    pub column: u32,
+    pub content: Option<String>,
+    pub new_name: String,
+    pub document_version: Option<u64>,
+}
+
+impl RenameSymbolRequest {
+    pub fn query(&self) -> LanguageQueryRequest {
+        LanguageQueryRequest {
+            path: self.path.clone(),
+            line: self.line,
+            column: self.column,
+            content: self.content.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

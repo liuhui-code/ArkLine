@@ -301,6 +301,37 @@ describe("app shell model", () => {
 
     expect(derived.workspacePartialNotice).toBe("Index still building");
   });
+
+  it("does not show a workspace pending notice when the active query is ready", () => {
+    const derived = getAppShellDerivedState({
+      workspace: workspace({ truncated: false }),
+      workspaceIndex: createWorkspaceIndexStore(),
+      workspaceIndexState: indexState({
+        status: "partial",
+        partialReason: "File catalog is ready; background content and semantic indexing is pending",
+        queryReadiness: {
+          state: "ready",
+          reason: null,
+          rootPath: "/workspace",
+          requestedGeneration: 2,
+          servedGeneration: 2,
+          retryable: false,
+        },
+      }),
+      workspaceIndexStatusSummary: {
+        workspaceIndexText: "Index: Partial",
+        sdkIndexText: null,
+      },
+      quickOpenQuery: "EntryPage",
+      recentFiles: [],
+      recentProjects: [],
+      activeOverlay: "quickOpen",
+      semanticState: semanticState(),
+      settingsApplyState: "idle",
+    });
+
+    expect(derived.workspacePartialNotice).toBeNull();
+  });
 });
 
 function codeAction(action: Partial<CodeAction>): CodeAction {

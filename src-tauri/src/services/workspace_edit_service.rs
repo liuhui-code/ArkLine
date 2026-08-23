@@ -17,6 +17,15 @@ use crate::services::workspace_edit_summary_service::{
     collect_affected_files, summarize_operation,
 };
 
+mod directory_transaction;
+mod file_transaction;
+mod transaction;
+mod undo;
+mod version;
+
+pub use transaction::recover_workspace_edit_transactions;
+use version::content_version;
+
 pub fn preview_workspace_edit(
     workspace_root: &Path,
     plan: &WorkspaceEditPlan,
@@ -54,6 +63,10 @@ pub fn preview_workspace_edit(
         }
     }
     conflicts.extend(validate_operation_relationships(&validated_operations));
+    conflicts.extend(validate_transaction_scope(
+        &workspace_root,
+        &validated_operations,
+    ));
 
     Ok(WorkspaceEditPreview {
         plan: plan.clone(),
@@ -67,15 +80,20 @@ pub fn apply_workspace_edit(
     workspace_root: &Path,
     plan: &WorkspaceEditPlan,
 ) -> Result<ApplyWorkspaceEditResult, String> {
+    let workspace_root = normalize_workspace_root(workspace_root)?;
+    let _guard = transaction::lock_workspace_edits()?;
+    transaction::recover_pending(&workspace_root)?;
+    directory_transaction::recover_pending(&workspace_root)?;
+
     if !plan.conflicts.is_empty() {
         return Ok(ApplyWorkspaceEditResult {
             applied: false,
             conflicts: plan.conflicts.clone(),
             changed_files: Vec::new(),
+            undo_plan: None,
         });
     }
 
-    let workspace_root = normalize_workspace_root(workspace_root)?;
     let mut conflicts = Vec::new();
     let mut validated_operations = Vec::new();
     let mut text_edits_by_file: BTreeMap<PathBuf, Vec<ValidatedTextEdit>> = BTreeMap::new();
@@ -108,14 +126,21 @@ pub fn apply_workspace_edit(
         }
     }
     conflicts.extend(validate_operation_relationships(&validated_operations));
+    conflicts.extend(validate_transaction_scope(
+        &workspace_root,
+        &validated_operations,
+    ));
 
     if !conflicts.is_empty() {
         return Ok(ApplyWorkspaceEditResult {
             applied: false,
             conflicts,
             changed_files: Vec::new(),
+            undo_plan: None,
         });
     }
+
+    let original_file_contents = file_contents.clone();
 
     for (path, edits) in &mut text_edits_by_file {
         let content = file_contents
@@ -129,84 +154,59 @@ pub fn apply_workspace_edit(
     }
 
     let mut changed_files = BTreeSet::new();
-    for operation in &validated_operations {
-        match operation {
-            ValidatedOperation::Text(_) => {}
-            ValidatedOperation::CreateFile { path, content } => {
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                fs::write(path, content).map_err(|error| error.to_string())?;
-                changed_files.insert(normalize_path(path));
-            }
-            ValidatedOperation::CreateDirectory { path } => {
-                fs::create_dir_all(path).map_err(|error| error.to_string())?;
-                changed_files.insert(normalize_path(path));
-            }
-            ValidatedOperation::RenameFile {
-                old_path,
-                new_path,
-                overwrite,
-            } => {
-                if let Some(parent) = new_path.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                if *overwrite && new_path.exists() {
-                    fs::remove_file(new_path).map_err(|error| error.to_string())?;
-                }
-                fs::rename(old_path, new_path).map_err(|error| error.to_string())?;
-                changed_files.insert(normalize_path(old_path));
-                changed_files.insert(normalize_path(new_path));
-            }
-            ValidatedOperation::RenameDirectory {
-                old_path,
-                new_path,
-                overwrite,
-            } => {
-                if let Some(parent) = new_path.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                if *overwrite && new_path.exists() {
-                    fs::remove_dir_all(new_path).map_err(|error| error.to_string())?;
-                }
-                fs::rename(old_path, new_path).map_err(|error| error.to_string())?;
-                changed_files.insert(normalize_path(old_path));
-                changed_files.insert(normalize_path(new_path));
-            }
-            ValidatedOperation::DeleteFile { path, recursive } => {
-                if path.is_dir() {
-                    if *recursive {
-                        fs::remove_dir_all(path).map_err(|error| error.to_string())?;
-                    }
-                } else {
-                    fs::remove_file(path).map_err(|error| error.to_string())?;
-                }
-                changed_files.insert(normalize_path(path));
-            }
-            ValidatedOperation::DeleteDirectory { path, recursive } => {
-                if *recursive {
-                    fs::remove_dir_all(path).map_err(|error| error.to_string())?;
-                } else {
-                    fs::remove_dir(path).map_err(|error| error.to_string())?;
-                }
-                changed_files.insert(normalize_path(path));
-            }
-        }
+    if file_transaction::supports(&validated_operations) {
+        changed_files.extend(file_transaction::apply(
+            &workspace_root,
+            &original_file_contents,
+            &file_contents,
+            &validated_operations,
+        )?);
+    } else if directory_transaction::supports(&validated_operations) {
+        changed_files.extend(directory_transaction::apply(
+            &workspace_root,
+            &validated_operations,
+        )?);
+    } else if !validated_operations.is_empty() {
+        return Err("Workspace edit has no crash-safe transaction strategy".to_string());
     }
 
-    for (path, content) in file_contents {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-        }
-        fs::write(&path, content).map_err(|error| error.to_string())?;
-        changed_files.insert(normalize_path(&path));
-    }
+    let undo_plan = undo::build_text_undo_plan(plan, &original_file_contents, &file_contents);
 
     Ok(ApplyWorkspaceEditResult {
         applied: true,
         conflicts: Vec::new(),
         changed_files: changed_files.into_iter().collect(),
+        undo_plan,
     })
+}
+
+fn validate_transaction_scope(
+    workspace_root: &Path,
+    operations: &[ValidatedOperation],
+) -> Vec<EditConflict> {
+    let has_file_operations = operations.iter().any(|operation| match operation {
+        ValidatedOperation::Text(_)
+        | ValidatedOperation::CreateFile { .. }
+        | ValidatedOperation::RenameFile { .. } => true,
+        ValidatedOperation::DeleteFile { path, .. } => path.is_file(),
+        _ => false,
+    });
+    let has_directory_operations = operations.iter().any(|operation| match operation {
+        ValidatedOperation::CreateDirectory { .. }
+        | ValidatedOperation::RenameDirectory { .. }
+        | ValidatedOperation::DeleteDirectory { .. } => true,
+        ValidatedOperation::DeleteFile { path, .. } => path.is_dir(),
+        _ => false,
+    });
+    if has_file_operations && has_directory_operations {
+        vec![EditConflict {
+            path: normalize_path(workspace_root),
+            message: "Workspace edit cannot mix file and directory operations atomically"
+                .to_string(),
+        }]
+    } else {
+        Vec::new()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -258,6 +258,7 @@ fn validate_operation(
             range,
             new_text,
             expected_version,
+            expected_content_version,
         } => {
             let path = validate_workspace_path(workspace_root, path)?;
             if expected_version.is_some() {
@@ -282,6 +283,17 @@ fn validate_operation(
             let content = file_contents
                 .get(&path)
                 .expect("content should be loaded before range validation");
+            if let Some(expected) = expected_content_version {
+                let actual = content_version(content);
+                if &actual != expected {
+                    return Err(conflict(
+                        &path,
+                        format!(
+                            "expectedContentVersion mismatch: expected {expected}, received {actual}"
+                        ),
+                    ));
+                }
+            }
             let (start, end) = text_range_to_byte_offsets(content, range)
                 .map_err(|message| conflict(&path, message))?;
 

@@ -26,7 +26,10 @@ import type {
   HoverResponse,
   LanguageCompletionItem,
   LanguageServiceReport,
+  RenameSymbolResult,
+  UsageQueryResult,
   ValidationProblem,
+  ValidationQueryResult,
   WorkspaceApi,
   WorkspaceDirectoryEntry,
   WorkspaceEditPreview,
@@ -142,9 +145,9 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         ? invoke<string>("open_text_document", { path }, telemetry)
         : loadMockDocumentContent(path);
     },
-    async saveFile(path, content) {
+    async saveFile(path, content, expectedContent) {
       if (hasTauriRuntime()) {
-        await invoke("save_text_document", { path, content });
+        await invoke("save_text_document", { path, content, expectedContent });
       }
     },
     async syncSemanticDocument(request) {
@@ -164,9 +167,13 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
     },
     async runValidation(path, content) {
       if (hasTauriRuntime()) {
-        return invoke<ValidationProblem[]>("validate_text_document", { path, content });
+        return invoke<ValidationQueryResult>("validate_text_document", { path, content });
       }
-      return validateBrowserDocument(path, content);
+      return {
+        availability: "partial",
+        items: validateBrowserDocument(path, content),
+        message: "Semantic diagnostics are unavailable outside the desktop runtime",
+      };
     },
     async loadDiff(rootPath) {
       if (hasTauriRuntime()) {
@@ -212,6 +219,15 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
         completion: true,
         documentSymbols: true,
         findUsages: true,
+        capabilities: [
+          "hover",
+          "definition",
+          "completion",
+          "documentSymbols",
+          "findUsages",
+          "codeActions",
+          "generateCode",
+        ],
         detail: "Mock fallback ArkTS language service for demo and integration-shell wiring",
       };
     },
@@ -271,14 +287,24 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
     },
     async findUsages(request) {
       if (hasTauriRuntime()) {
-        return invoke<UsageResult[]>("find_usages", { request });
+        return invoke<UsageQueryResult>("find_usages", { request });
       }
-      if (!isDemoWorkspacePath(request.path)) return [];
+      if (!isDemoWorkspacePath(request.path)) {
+        return {
+          availability: "unavailable",
+          items: [],
+          message: "Find Usages is unavailable outside the demo workspace",
+        };
+      }
 
-      return [
-        { path: normalizePath(request.path), line: 1, column: 1, preview: "@Entry", kind: "fallback", confidence: "fallback" },
-        { path: normalizePath(request.path), line: 3, column: 8, preview: "struct Index {}", kind: "fallback", confidence: "fallback" },
-      ];
+      return {
+        availability: "partial",
+        items: [
+          { path: normalizePath(request.path), line: 1, column: 1, preview: "@Entry", kind: "fallback", confidence: "fallback" },
+          { path: normalizePath(request.path), line: 3, column: 8, preview: "struct Index {}", kind: "fallback", confidence: "fallback" },
+        ],
+        message: "Fallback usage search is limited to the demo document",
+      };
     },
     async listCodeActions(request) {
       if (hasTauriRuntime()) {
@@ -300,6 +326,16 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
       return {
         status: "unsupported",
         reason: `Resolving code action '${request.id}' is not implemented in the mock workspace API.`,
+      };
+    },
+    async renameSymbol(request) {
+      if (hasTauriRuntime()) {
+        return invoke<RenameSymbolResult>("rename_symbol", { request });
+      }
+
+      return {
+        availability: "unavailable",
+        message: "Rename Symbol is only available in the Tauri semantic runtime.",
       };
     },
     async previewWorkspaceEdit(request) {
@@ -353,6 +389,14 @@ function validateBrowserDocument(path: string, content: string): ValidationProbl
         line: index + 1,
         column: line.indexOf("\t") + 1,
         message: "Replace tabs with spaces",
+        fix: {
+          title: "Replace tab with spaces",
+          startLine: index + 1,
+          startColumn: line.indexOf("\t") + 1,
+          endLine: index + 1,
+          endColumn: line.indexOf("\t") + 2,
+          replacement: "  ",
+        },
       });
     }
 
