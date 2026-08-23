@@ -354,12 +354,17 @@ fn reports_missing_signing_config_and_material_files() {
 }
 
 #[test]
-#[ignore = "requires ARKLINE_REAL_BUILD_ROOT and a local DevEco Studio toolchain"]
 fn builds_a_real_unsigned_project_through_native_services() {
-    let root = PathBuf::from(
-        std::env::var("ARKLINE_REAL_BUILD_ROOT")
-            .expect("ARKLINE_REAL_BUILD_ROOT must point to a disposable HarmonyOS project"),
-    );
+    let Some(root) = std::env::var("ARKLINE_REAL_BUILD_ROOT")
+        .ok()
+        .map(PathBuf::from)
+    else {
+        if std::env::var("ARKLINE_REAL_BUILD_REQUIRED").as_deref() == Ok("1") {
+            panic!("ARKLINE_REAL_BUILD_ROOT is required");
+        }
+        eprintln!("ARKLINE_REAL_BUILD_ROOT is not set; skipping native real-project smoke");
+        return;
+    };
     let active_file = root.join("entry/src/main/ets/pages/Index.ets");
     let inspection_path = if active_file.is_file() {
         active_file
@@ -370,7 +375,6 @@ fn builds_a_real_unsigned_project_through_native_services() {
     assert_eq!(PathBuf::from(&project.root_path), root);
     assert_eq!(project.default_module.as_deref(), Some("entry"));
     assert_eq!(project.default_product.as_deref(), Some("default"));
-
     let environment = resolve_build_environment(&BuildEnvironmentRequest {
         root_path: project.root_path.clone(),
         harmony_sdk_path: String::new(),
@@ -382,7 +386,6 @@ fn builds_a_real_unsigned_project_through_native_services() {
         "environment checks failed: {:?}",
         environment.checks
     );
-
     let runtime = TerminalRuntime::default();
     if environment.dependency_restore_required {
         let ohpm = environment
@@ -399,7 +402,6 @@ fn builds_a_real_unsigned_project_through_native_services() {
         let result = run_command(&runtime, &restore).unwrap();
         assert_native_command_succeeded(&result);
     }
-
     let hvigor = environment
         .hvigor_command
         .as_ref()
