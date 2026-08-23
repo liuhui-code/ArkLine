@@ -40,6 +40,16 @@ describe("CI quality gates", () => {
     expect(workflow).not.toContain("run: pnpm perf:runtime");
   });
 
+  it("installs Linux desktop dependencies once through the bounded shared script", async () => {
+    const workflow = await readWorkflow("windows-ci.yml");
+    const qualityIndex = workflow.indexOf("  quality:");
+    const packageIndex = workflow.indexOf("  package:");
+    const qualityJob = workflow.slice(qualityIndex, packageIndex);
+
+    expect(qualityJob).toContain("run: bash scripts/install-tauri-linux-deps.sh");
+    expect(qualityJob).not.toContain("sudo apt-get");
+  });
+
   it("validates and builds a Windows release before creating its tag", async () => {
     const workflow = await readWorkflow("windows-exe-release.yml");
     const qualityIndex = workflow.indexOf("  quality:");
