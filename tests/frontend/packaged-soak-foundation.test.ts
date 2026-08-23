@@ -11,6 +11,7 @@ import {
 import {
   evaluateSoakReport,
   evaluateSmokeReport,
+  PACKAGED_SOAK_LIMITS,
   parsePackagedSoakArguments,
   summarizeSamples,
 } from "../../scripts/packaged-soak-model.mjs";
@@ -276,6 +277,33 @@ describe("packaged Windows soak foundation", () => {
         "no-process-tree-evidence",
       ]),
     });
+  });
+
+  it("does not treat one smoke cycle as semantic latency percentile evidence", () => {
+    expect(evaluateSmokeReport({
+      crashCount: 0,
+      unresponsiveCount: 0,
+      staleApplyCount: 0,
+      successfulSearchCount: 1,
+      successfulJumpCount: 1,
+      successfulEditorInputCount: 1,
+      successfulEditorScrollCount: 1,
+      editorInteractionFailureCount: 0,
+      eventTimingSupported: true,
+      longAnimationFrameSupported: true,
+      processTreeSampleCount: 1,
+      causalTraceCount: 3,
+      causalTraceErrorCount: 0,
+      causalTraceRunningCount: 0,
+      causalTraceKindCount: 3,
+      semanticRequired: true,
+      definitionMissCount: 0,
+      completionMissCount: 0,
+      successfulDefinitionCount: 1,
+      successfulCompletionCount: 1,
+      rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
+      rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
+    })).toMatchObject({ passed: true, failures: [] });
   });
 
   it("captures bounded query UI evidence for native smoke failures", () => {

@@ -33,11 +33,15 @@ describe("packaged core editing loop verdict", () => {
       successfulCompletionCount: 0,
       definitionMissCount: 1,
       completionMissCount: 1,
+      rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
+      rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
     })).failures).toEqual(expect.arrayContaining([
       "definition-result-miss",
       "completion-result-miss",
       "no-definition-evidence",
       "no-member-completion-evidence",
+      "renderer-definition-p95",
+      "renderer-completion-p95",
     ]));
   });
 
