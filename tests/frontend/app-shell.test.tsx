@@ -62,7 +62,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
       ? "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}"
       : "@Entry\n@Component\nstruct Index {}",
     saveFile: async () => undefined,
-    runValidation: async () => [],
+    runValidation: async () => ({ availability: "ready", items: [] }),
     loadDiff: async () => "",
     inspectEnvironment: async () => ({ tools: [] }),
     inspectLanguageService: async () => ({
@@ -782,7 +782,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
@@ -2608,22 +2608,25 @@ describe("App shell", () => {
 
   it("opens a version-protected workspace edit preview for an inline Quick Fix", async () => {
     const user = userEvent.setup();
-    const runValidation = vi.fn(async (path: string) => [{
-      source: "format" as const,
-      severity: "warning" as const,
-      path,
-      line: 1,
-      column: 1,
-      message: "Remove the entry decorator",
-      fix: {
-        title: "Remove @Entry",
-        startLine: 1,
-        startColumn: 1,
-        endLine: 1,
-        endColumn: 7,
-        replacement: "",
-      },
-    }]);
+    const runValidation = vi.fn(async (path: string) => ({
+      availability: "ready" as const,
+      items: [{
+        source: "format" as const,
+        severity: "warning" as const,
+        path,
+        line: 1,
+        column: 1,
+        message: "Remove the entry decorator",
+        fix: {
+          title: "Remove @Entry",
+          startLine: 1,
+          startColumn: 1,
+          endLine: 1,
+          endColumn: 7,
+          replacement: "",
+        },
+      }],
+    }));
     const previewWorkspaceEdit = vi.fn(async ({ plan }) => ({
       plan,
       conflicts: [],
@@ -3285,7 +3288,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => ({
@@ -3383,7 +3386,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "const value = missingTarget;\n",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => null),
@@ -3559,7 +3562,7 @@ describe("App shell", () => {
         ? "declare class CommonMethod<T> {\n  width(value: Length): T;\n}"
         : "@Entry\n@Component\nstruct Index {\n  build() {\n    Column() {}\n      .width(100)\n  }\n}"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => ({
@@ -3613,7 +3616,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -3683,7 +3686,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -3740,7 +3743,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       queryWorkspaceFileSymbolsWithReadiness,
@@ -3798,7 +3801,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -3849,7 +3852,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async (): Promise<LanguageCompletionItem[]> => [{
@@ -3897,7 +3900,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async (): Promise<LanguageCompletionItem[]> => [{
@@ -3963,7 +3966,7 @@ describe("App shell", () => {
           "    .wi",
         ].join("\n"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4021,7 +4024,7 @@ describe("App shell", () => {
       }),
       openFile: async () => ["@Entry", "@Component", "struct Index {", "  build() {", "    .wi"].join("\n"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4070,7 +4073,7 @@ describe("App shell", () => {
       }),
       openFile: async () => ["@Entry", "@Component", "struct Index {", "  build() {", "    .wi"].join("\n"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4119,7 +4122,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4234,7 +4237,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4319,7 +4322,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -4357,7 +4360,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => []),
@@ -4449,7 +4452,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol,
@@ -4499,7 +4502,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol,
@@ -4537,7 +4540,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4579,7 +4582,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4621,7 +4624,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4663,7 +4666,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4704,7 +4707,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4752,7 +4755,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4812,7 +4815,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => completionItems),
@@ -4862,7 +4865,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4906,7 +4909,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -4964,7 +4967,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -5008,7 +5011,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -5061,7 +5064,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -5115,7 +5118,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       completeSymbol: vi.fn(async () => [
@@ -5174,7 +5177,7 @@ describe("App shell", () => {
         ? "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}"
         : "@Entry\n@Component\nstruct Index {}"),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       findUsages: vi.fn(async () => [
@@ -5302,7 +5305,7 @@ describe("App shell", () => {
         return "";
       }),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => null),
@@ -5383,7 +5386,7 @@ describe("App shell", () => {
         return "";
       }),
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       gotoDefinition: vi.fn(async () => null),
@@ -5480,7 +5483,9 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: vi.fn(async () => undefined),
-      runValidation: async () => [
+      runValidation: async () => ({
+        availability: "ready",
+        items: [
         {
           source: "lint",
           severity: "error",
@@ -5497,7 +5502,8 @@ describe("App shell", () => {
           column: 1,
           message: "File is not formatted",
         },
-      ],
+        ],
+      }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),
@@ -5581,7 +5587,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "@Entry\n@Component\nstruct Index {}",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => `diff --git a/src/main.ets b/src/main.ets
 --- a/src/main.ets
 +++ b/src/main.ets
@@ -6338,7 +6344,7 @@ describe("App shell", () => {
             message: "Replace tabs with spaces",
           });
         }
-        return problems;
+        return { availability: "ready", items: problems };
       },
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
@@ -6766,7 +6772,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => ({
@@ -6867,7 +6873,7 @@ describe("App shell", () => {
         return "{\n  \"app\": {}\n}";
       },
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => `diff --git a/entry/src/main/ets/pages/Index.ets b/entry/src/main/ets/pages/Index.ets
 --- a/entry/src/main/ets/pages/Index.ets
 +++ b/entry/src/main/ets/pages/Index.ets
@@ -6941,7 +6947,7 @@ describe("App shell", () => {
       }),
       openFile: async () => "",
       saveFile: async () => undefined,
-      runValidation: async () => [],
+      runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
       loadSettings: async () => defaultSettings(),

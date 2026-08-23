@@ -110,6 +110,29 @@ describe("incremental semantic type engine", () => {
     ]))
   })
 
+  it("returns source-mapped TypeScript diagnostics through the worker protocol", () => {
+    const root = createRoot("diagnostics")
+    const filePath = createFile(root, "Index.ts", "const value: string = 42\n")
+
+    const response = new SemanticWorkerSession().handle({
+      id: "type-diagnostics",
+      method: "diagnostics",
+      position: { path: filePath, line: 1, column: 1 },
+    })
+
+    expect(response.ok).toBe(true)
+    expect(response.state?.typeStatus).toBe("ready")
+    expect(response.payload).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: "language",
+        severity: "error",
+        path: filePath,
+        line: 1,
+        message: expect.stringContaining("not assignable to type 'string'"),
+      }),
+    ]))
+  })
+
   it("builds a versioned cross-file rename plan without writing files", () => {
     const root = createRoot("rename")
     const modelPath = createFile(

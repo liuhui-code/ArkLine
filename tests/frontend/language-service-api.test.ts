@@ -11,6 +11,7 @@ describe("language service api skeleton", () => {
   const gotoDefinitionCandidates = defaultWorkspaceApi.gotoDefinitionCandidates!;
   const completeSymbol = defaultWorkspaceApi.completeSymbol!;
   const findUsages = defaultWorkspaceApi.findUsages!;
+  const runValidation = defaultWorkspaceApi.runValidation;
   const listCodeActions = defaultWorkspaceApi.listCodeActions!;
   const resolveCodeAction = defaultWorkspaceApi.resolveCodeAction!;
   const renameSymbol = defaultWorkspaceApi.renameSymbol!;
@@ -106,6 +107,20 @@ describe("language service api skeleton", () => {
       availability: "unavailable",
       items: [],
       message: "Find Usages is unavailable outside the demo workspace",
+    });
+  });
+
+  it("marks browser-only validation partial instead of claiming complete semantic diagnostics", async () => {
+    await expect(runValidation(
+      "C:/samples/DemoWorkspace/src/main.ts",
+      "console.log('x')\n",
+    )).resolves.toEqual({
+      availability: "partial",
+      items: [expect.objectContaining({
+        source: "lint",
+        message: "Remove console.log before committing",
+      })],
+      message: "Semantic diagnostics are unavailable outside the desktop runtime",
     });
   });
 

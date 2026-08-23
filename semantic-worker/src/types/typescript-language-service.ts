@@ -8,6 +8,7 @@ import type {
   SemanticCompletionItem,
   SemanticCompletionTextEdit,
   SemanticDefinitionCandidate,
+  SemanticDiagnostic,
   SemanticDocumentPosition,
   SemanticSignatureHelp,
   SemanticUnsupportedResult,
@@ -17,7 +18,8 @@ import type {
 import { resolveHarmonySdkModule } from "../sdk/module-resolver.js"
 import { createArktsVirtualDocument, type ArktsVirtualDocument } from "../virtual/arkts-virtual-document.js"
 import type { SemanticWorkspaceView } from "../workspace/document-store.js"
-import type { SemanticTypeEngineState, SemanticTypeStatus } from "./type-engine.js"
+import type { SemanticTypeEngineState } from "./type-engine.js"
+import { mapTypescriptDiagnostics, typescriptTypeDetail, typescriptTypeStatus } from "./typescript-language-helpers.js"
 import { lineColumnToOffset, offsetToLineColumn } from "./text-position.js"
 
 const MAX_SCRIPTS = 512
@@ -67,7 +69,7 @@ export class TypeScriptLanguageServiceEngine {
     }
     this.evict(protectedPaths)
     return {
-      status: workspace.state.syntaxReady ? typeStatus(workspace.state.path) : "unsupported",
+      status: workspace.state.syntaxReady ? typescriptTypeStatus(workspace.state.path) : "unsupported",
       engine: "typescript-language-service",
       version: ENGINE_VERSION,
       generation: this.generation,
@@ -96,7 +98,7 @@ export class TypeScriptLanguageServiceEngine {
       .slice(0, MAX_COMPLETIONS)
       .map((entry) => ({
       label: entry.name,
-      detail: typeDetail(entry),
+      detail: typescriptTypeDetail(entry),
       kind: completionKind(entry.kind),
       insertText: entry.insertText,
       filterText: entry.filterText,
@@ -211,6 +213,19 @@ export class TypeScriptLanguageServiceEngine {
         confidence: "exact" as const,
       }]
     })
+  }
+
+  diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[] {
+    const filePath = path.resolve(position.path)
+    const script = this.scripts.get(filePath)
+    if (!script) return []
+    script.lastAccess = ++this.accessClock
+    return mapTypescriptDiagnostics(
+      filePath,
+      script.virtualDocument,
+      this.service.getSyntacticDiagnostics(filePath),
+      this.service.getSemanticDiagnostics(filePath),
+    )
   }
 
   rename(
@@ -415,12 +430,6 @@ export class TypeScriptLanguageServiceEngine {
   }
 }
 
-function typeStatus(filePath: string): SemanticTypeStatus {
-  if (filePath.endsWith(".ets")) return "partial"
-  if (filePath.endsWith(".ts")) return "ready"
-  return "unsupported"
-}
-
 function hasCompletionPrefix(content: string, position: SemanticDocumentPosition): boolean {
   const offset = lineColumnToOffset(content, position.line, position.column)
   const before = content.slice(0, offset)
@@ -441,11 +450,6 @@ function completionKind(kind: ts.ScriptElementKind): string {
   if (kind === ts.ScriptElementKind.keyword) return "keyword"
   if (kind === ts.ScriptElementKind.constElement || kind === ts.ScriptElementKind.letElement) return "variable"
   return "property"
-}
-
-function typeDetail(entry: ts.CompletionEntry): string {
-  const modifiers = entry.kindModifiers ? ` ${entry.kindModifiers}` : ""
-  return `TypeScript ${entry.kind}${modifiers}`
 }
 
 function optionalDisplayParts(parts: ts.SymbolDisplayPart[]) {

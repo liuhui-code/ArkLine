@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { useProblemsController } from "@/components/layout/use-problems-controller";
 import type { ProblemItem } from "@/features/problems/problems-store";
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
+import type { ValidationQueryResult } from "@/features/workspace/workspace-api";
 
 describe("useProblemsController", () => {
   it("preserves build diagnostics while replacing validation problems", async () => {
     const buildProblem = problem({ source: "build", message: "Build failed" });
     const lintProblem = problem({ source: "lint", message: "Unused import", line: 2 });
-    const runValidation = vi.fn(async () => [lintProblem]);
+    const runValidation = vi.fn(async () => validation([lintProblem]));
     const { result } = renderHarness({ workspaceApi: workspaceApi({ runValidation }) });
 
     act(() => {
@@ -24,7 +25,7 @@ describe("useProblemsController", () => {
 
   it("runs lint for the active document and opens the problems tool", async () => {
     const lintProblem = problem({ source: "lint", message: "Missing semicolon" });
-    const runValidation = vi.fn(async () => [lintProblem]);
+    const runValidation = vi.fn(async () => validation([lintProblem]));
     const showProblems = vi.fn();
     const onStatusChange = vi.fn();
     const { result } = renderHarness({
@@ -42,13 +43,37 @@ describe("useProblemsController", () => {
     expect(runValidation).toHaveBeenCalledWith("/project/main.ets", "let value = 1");
     expect(result.current.problems).toEqual([lintProblem]);
     expect(showProblems).toHaveBeenCalledTimes(1);
-    expect(onStatusChange).toHaveBeenCalledWith("Lint complete");
+    expect(onStatusChange).toHaveBeenCalledWith("Diagnostics complete");
+  });
+
+  it("publishes reliable items and reports when semantic diagnostics are partial", async () => {
+    const lintProblem = problem({ source: "lint", message: "Unused import" });
+    const runValidation = vi.fn(async () => ({
+      availability: "partial" as const,
+      items: [lintProblem],
+      message: "Semantic worker is restarting",
+    }));
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      activePath: "/project/main.ets",
+      workspaceApi: workspaceApi({ runValidation }),
+      onStatusChange,
+    });
+
+    await act(async () => {
+      await result.current.runLint();
+    });
+
+    expect(result.current.problems).toEqual([lintProblem]);
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "Diagnostics partial: Semantic worker is restarting",
+    );
   });
 
   it("does not publish validation produced for older active content", async () => {
     let activeContent = "const oldValue = 1";
-    let resolveValidation!: (problems: ProblemItem[]) => void;
-    const runValidation = vi.fn(() => new Promise<ProblemItem[]>((resolve) => {
+    let resolveValidation!: (result: ValidationQueryResult) => void;
+    const runValidation = vi.fn(() => new Promise<ValidationQueryResult>((resolve) => {
       resolveValidation = resolve;
     }));
     const staleProblem = problem({ message: "Old diagnostic" });
@@ -63,7 +88,7 @@ describe("useProblemsController", () => {
     });
     activeContent = "const newValue = 1";
     await act(async () => {
-      resolveValidation([staleProblem]);
+      resolveValidation(validation([staleProblem]));
       await refresh;
     });
 
@@ -77,21 +102,43 @@ describe("useProblemsController", () => {
 
     act(() => {
       result.current.replaceBuildProblems([buildProblem]);
-      result.current.replaceLiveValidationProblems("/project/old.ets", [
+      result.current.replaceLiveValidationProblems("/project/old.ets", validation([
         problem({ path: "/project/old.ets", message: "Stale warning" }),
-      ]);
+      ]));
     });
     expect(result.current.problems).toEqual([buildProblem]);
 
     act(() => {
-      result.current.replaceLiveValidationProblems("/project/main.ets", [liveProblem]);
+      result.current.replaceLiveValidationProblems("/project/main.ets", validation([liveProblem]));
     });
     expect(result.current.problems).toEqual([buildProblem, liveProblem]);
   });
 
+  it("reports partial live diagnostics without dropping their reliable items", () => {
+    const liveProblem = problem({ source: "language", message: "Type mismatch" });
+    const onStatusChange = vi.fn();
+    const { result } = renderHarness({
+      activePath: "/project/main.ets",
+      onStatusChange,
+    });
+
+    act(() => {
+      result.current.replaceLiveValidationProblems("/project/main.ets", {
+        availability: "partial",
+        items: [liveProblem],
+        message: "ArkTS semantic diagnostics are partial",
+      });
+    });
+
+    expect(result.current.problems).toEqual([liveProblem]);
+    expect(onStatusChange).toHaveBeenCalledWith(
+      "Diagnostics partial: ArkTS semantic diagnostics are partial",
+    );
+  });
+
   it("ignores lint when no document is active and resets problems", async () => {
     const buildProblem = problem({ source: "build", message: "Build failed" });
-    const runValidation = vi.fn(async () => [problem({ source: "lint" })]);
+    const runValidation = vi.fn(async () => validation([problem({ source: "lint" })]));
     const showProblems = vi.fn();
     const { result } = renderHarness({
       activePath: null,
@@ -140,7 +187,7 @@ function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
     openWorkspace: vi.fn(),
     openFile: vi.fn(),
     saveFile: vi.fn(),
-    runValidation: vi.fn(async () => []),
+    runValidation: vi.fn(async () => validation([])),
     loadDiff: vi.fn(),
     ...overrides,
   } as unknown as WorkspaceApi;
@@ -156,4 +203,8 @@ function problem(overrides: Partial<ProblemItem> = {}): ProblemItem {
     message: "Problem",
     ...overrides,
   };
+}
+
+function validation(items: ProblemItem[]): ValidationQueryResult {
+  return { availability: "ready", items };
 }

@@ -43,7 +43,7 @@ export class SemanticWorkerSession {
           payload: {
             status: discoverHarmonySdk().ready ? "ready" : "ready",
             protocolVersion: SEMANTIC_PROTOCOL_VERSION,
-            capabilities: ["completion", "completionResolve", "definition", "findUsages", "signatureHelp", "codeActions", "renameSymbol", "generateCode", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
+            capabilities: ["completion", "completionResolve", "definition", "findUsages", "diagnostics", "signatureHelp", "codeActions", "renameSymbol", "generateCode", "typeReadiness", "generations", "documentReplay", "documentSync", "prepareDocument", "virtualDocuments"],
           },
         }
       case "restoreDocuments":
@@ -86,6 +86,8 @@ export class SemanticWorkerSession {
         return this.handleSemanticQuery(request, "gotoDefinition")
       case "findUsages":
         return this.handleSemanticQuery(request, "findUsages")
+      case "diagnostics":
+        return this.handleSemanticQuery(request, "diagnostics")
       case "completion":
         return this.handleSemanticQuery(request, "completion")
       case "resolveCompletion":
@@ -124,7 +126,7 @@ export class SemanticWorkerSession {
 
   private handleSemanticQuery(
     request: SemanticRequest,
-    method: "gotoDefinition" | "findUsages" | "completion" | "signatureHelp",
+    method: "gotoDefinition" | "findUsages" | "diagnostics" | "completion" | "signatureHelp",
   ): SemanticResponse {
     if (!request.position) {
       if (method === "findUsages") {
@@ -224,7 +226,7 @@ export class SemanticWorkerSession {
   }
 
   private resolveSemanticPayload(
-    method: "gotoDefinition" | "findUsages" | "completion" | "signatureHelp",
+    method: "gotoDefinition" | "findUsages" | "diagnostics" | "completion" | "signatureHelp",
     request: SemanticRequest,
     workspace: SemanticWorkspaceView,
     typeEngine: SemanticTypeQueryContext,
@@ -233,6 +235,7 @@ export class SemanticWorkerSession {
     if (!position) return method === "completion" ? [] : null
     if (method === "completion") return resolveCompletion(position, workspace, typeEngine)
     if (method === "findUsages") return typeEngine.usages(position)
+    if (method === "diagnostics") return typeEngine.diagnostics(position)
     if (method === "signatureHelp") return resolveSignatureHelp(position, workspace, typeEngine)
     return resolveDefinition(position, workspace, typeEngine)
   }

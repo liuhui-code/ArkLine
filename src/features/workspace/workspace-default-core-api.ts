@@ -29,6 +29,7 @@ import type {
   RenameSymbolResult,
   UsageQueryResult,
   ValidationProblem,
+  ValidationQueryResult,
   WorkspaceApi,
   WorkspaceDirectoryEntry,
   WorkspaceEditPreview,
@@ -166,9 +167,13 @@ export function createWorkspaceCoreApi(): Partial<WorkspaceApi> {
     },
     async runValidation(path, content) {
       if (hasTauriRuntime()) {
-        return invoke<ValidationProblem[]>("validate_text_document", { path, content });
+        return invoke<ValidationQueryResult>("validate_text_document", { path, content });
       }
-      return validateBrowserDocument(path, content);
+      return {
+        availability: "partial",
+        items: validateBrowserDocument(path, content),
+        message: "Semantic diagnostics are unavailable outside the desktop runtime",
+      };
     },
     async loadDiff(rootPath) {
       if (hasTauriRuntime()) {

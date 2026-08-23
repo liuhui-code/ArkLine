@@ -8,16 +8,16 @@ import {
 } from "@codemirror/lint";
 import { Prec, type Text } from "@codemirror/state";
 import { keymap, type EditorView } from "@codemirror/view";
-import type { ValidationFix, ValidationProblem } from "@/features/workspace/workspace-api";
+import type { ValidationFix, ValidationProblem, ValidationQueryResult } from "@/features/workspace/workspace-api";
 
 export type EditorValidationRequest = (
   path: string,
   content: string,
-) => Promise<ValidationProblem[]>;
+) => Promise<ValidationQueryResult>;
 
 export type EditorValidationResultHandler = (
   path: string,
-  problems: ValidationProblem[],
+  result: ValidationQueryResult,
 ) => void;
 
 export type EditorDiagnosticFixRequest = {
@@ -40,7 +40,7 @@ export function createEditorValidationExtensions(
     requestGeneration = generation;
     const path = getActivePath();
     const document = view.state.doc;
-    const problems = await validate(path, document.toString());
+    const result = await validate(path, document.toString());
 
     if (
       generation !== requestGeneration
@@ -50,8 +50,8 @@ export function createEditorValidationExtensions(
       return [];
     }
 
-    const currentProblems = problems.filter((problem) => problem.path === path);
-    onResult?.(path, currentProblems);
+    const currentProblems = result.items.filter((problem) => problem.path === path);
+    onResult?.(path, { ...result, items: currentProblems });
     return currentProblems.map((problem) => toDiagnostic(document, problem, path, onFixRequest));
   };
 

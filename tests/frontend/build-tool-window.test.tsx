@@ -39,7 +39,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     }),
     openFile: async () => "",
     saveFile: async () => undefined,
-    runValidation: async () => [],
+    runValidation: async () => ({ availability: "ready", items: [] }),
     loadDiff: async () => "",
     inspectEnvironment: async () => ({ tools: [] }),
     loadSettings: async () => defaultSettings(),

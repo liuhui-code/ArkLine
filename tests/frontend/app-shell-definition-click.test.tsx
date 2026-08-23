@@ -31,7 +31,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
       "submitForm();",
     ].join("\n"),
     saveFile: async () => undefined,
-    runValidation: async () => [],
+    runValidation: async () => ({ availability: "ready", items: [] }),
     loadDiff: async () => "",
     inspectEnvironment: async () => ({ tools: [] }),
     loadSettings: async () => defaultSettings(),

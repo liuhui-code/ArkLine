@@ -1,6 +1,7 @@
 import type {
   SemanticCompletionItem,
   SemanticDefinitionCandidate,
+  SemanticDiagnostic,
   SemanticDocumentPosition,
   SemanticSignatureHelp,
   SemanticUsageResult,
@@ -27,6 +28,7 @@ export interface SemanticTypeQueryContext {
   resolveCompletion(position: SemanticDocumentPosition, item: SemanticCompletionItem): SemanticCompletionItem
   define(position: SemanticDocumentPosition): SemanticDefinitionCandidate[]
   usages(position: SemanticDocumentPosition): SemanticUsageResult[]
+  diagnostics(position: SemanticDocumentPosition): SemanticDiagnostic[]
   rename(position: SemanticDocumentPosition, newName: string): SemanticWorkspaceEditPlan | SemanticUnsupportedResult
   signatureHelp(position: SemanticDocumentPosition): SemanticSignatureHelp | null
 }
@@ -58,6 +60,7 @@ export class SemanticTypeEngineRegistry {
       resolveCompletion: (position, item) => entry.engine.resolveCompletion(position, item),
       define: (position) => entry.engine.define(position),
       usages: (position) => entry.engine.usages(position),
+      diagnostics: (position) => entry.engine.diagnostics(position),
       rename: (position, newName) => entry.engine.rename(position, newName),
       signatureHelp: (position) => entry.engine.signatureHelp(position),
     }

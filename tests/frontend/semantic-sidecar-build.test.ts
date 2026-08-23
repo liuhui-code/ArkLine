@@ -55,7 +55,7 @@ describe("indexer sidecar build targets", () => {
       ok: true,
       payload: {
         status: "ready",
-        protocolVersion: 5,
+        protocolVersion: 6,
         capabilities: [
           "health",
           "discoveryChunk",
@@ -80,7 +80,7 @@ describe("indexer sidecar build targets", () => {
       ok: true,
       payload: {
         status: "ready",
-        protocolVersion: 5,
+        protocolVersion: 6,
         capabilities: ["health", "contentRefreshChunk"],
       },
     })).toBe(false);

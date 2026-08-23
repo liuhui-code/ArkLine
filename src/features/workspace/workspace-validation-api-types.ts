@@ -8,6 +8,14 @@ export type ValidationProblem = {
   fix?: ValidationFix;
 };
 
+export type ValidationAvailability = "ready" | "partial" | "unavailable";
+
+export type ValidationQueryResult = {
+  availability: ValidationAvailability;
+  items: ValidationProblem[];
+  message?: string;
+};
+
 export type ValidationFix = {
   title: string;
   startLine: number;

@@ -9,8 +9,9 @@ use crate::models::language::LanguageQueryRequest;
 use crate::services::process_command_service::hidden_command;
 use crate::services::semantic_host::config::SemanticHostConfig;
 use crate::services::semantic_host::process::SemanticWorkerProcessSpec;
+use crate::services::semantic_host::session::query_results::parse_usage_result;
 use crate::services::semantic_host::session::{
-    parse_completion_item, parse_usage_result, IdleHealthProbe, SemanticWorkerSession,
+    parse_completion_item, IdleHealthProbe, SemanticWorkerSession,
 };
 
 fn unique_temp_path(name: &str, extension: &str) -> PathBuf {
@@ -31,7 +32,7 @@ import readline from "node:readline";
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
 rl.on("line", (line) => {
   const request = JSON.parse(line);
-  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 5 } } : {};
+  const payload = request.method === "health" ? { health: { status: "ok", protocolVersion: 6 } } : {};
   const runtime = {
     rssBytes: 104857600,
     heapUsedBytes: 40,
@@ -128,6 +129,34 @@ rl.on("line", (line) => {
     path
 }
 
+fn unsupported_diagnostics_worker_entry() -> PathBuf {
+    let path = unique_temp_path("unsupported-diagnostics-semantic-worker", "mjs");
+    fs::write(
+        &path,
+        r#"
+import readline from "node:readline";
+
+const rl = readline.createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+rl.on("line", (line) => {
+  const request = JSON.parse(line);
+  process.stdout.write(`${JSON.stringify({
+    id: request.id,
+    ok: true,
+    payload: [],
+    state: {
+      path: request.position.path,
+      contentGeneration: request.position.contentGeneration,
+      syntaxReady: true,
+      typeStatus: "unsupported",
+    },
+  })}\n`);
+});
+"#,
+    )
+    .unwrap();
+    path
+}
+
 fn slow_query_worker_entry(marker: &PathBuf) -> PathBuf {
     let path = unique_temp_path("slow-query-semantic-worker", "mjs");
     let marker = serde_json::to_string(&marker.to_string_lossy()).unwrap();
@@ -143,7 +172,7 @@ const rl = readline.createInterface({{ input: process.stdin, crlfDelay: Number.P
 rl.on("line", (line) => {{
   const request = JSON.parse(line);
   if (request.method === "health") {{
-    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 5 }} }})}}\n`);
+    process.stdout.write(`${{JSON.stringify({{ id: request.id, ok: true, payload: {{ status: "ready", protocolVersion: 6 }} }})}}\n`);
     return;
   }}
   fs.writeFileSync(marker, "query-started");
@@ -260,6 +289,36 @@ fn parses_exact_semantic_usage_results() {
     assert_eq!(parsed.line, 3);
     assert_eq!(parsed.column, 6);
     assert_eq!(parsed.confidence, "exact");
+}
+
+#[test]
+fn semantic_diagnostics_report_unavailable_when_type_evidence_is_unsupported() {
+    let entry_path = unsupported_diagnostics_worker_entry();
+    let spec = SemanticWorkerProcessSpec::discover_with_config(&SemanticHostConfig {
+        semantic_worker_path: Some(entry_path.to_string_lossy().to_string()),
+        ..SemanticHostConfig::default()
+    })
+    .expect("worker spec should be discoverable");
+    let session = SemanticWorkerSession::start(&spec).expect("worker session should start");
+    let result = session
+        .diagnostics(&LanguageQueryRequest {
+            path: "/workspace/notes.txt".to_string(),
+            line: 1,
+            column: 1,
+            content: Some("plain text".to_string()),
+        })
+        .expect("unsupported evidence should be represented by the result envelope");
+    let value = serde_json::to_value(result).expect("diagnostic result should serialize");
+
+    assert_eq!(value["availability"], "unavailable");
+    assert_eq!(value["items"], serde_json::json!([]));
+    assert!(value["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("authoritative diagnostic evidence"));
+
+    drop(session);
+    fs::remove_file(entry_path).unwrap();
 }
 
 #[test]

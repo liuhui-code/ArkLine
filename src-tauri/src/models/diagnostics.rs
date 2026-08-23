@@ -1,6 +1,8 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+use super::semantic_availability::SemanticAvailability;
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationProblem {
     pub source: String,
@@ -13,7 +15,7 @@ pub struct ValidationProblem {
     pub fix: Option<ValidationFix>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ValidationFix {
     pub title: String,
@@ -22,4 +24,39 @@ pub struct ValidationFix {
     pub end_line: usize,
     pub end_column: usize,
     pub replacement: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationQueryResult {
+    pub availability: SemanticAvailability,
+    pub items: Vec<ValidationProblem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+impl ValidationQueryResult {
+    pub fn ready(items: Vec<ValidationProblem>) -> Self {
+        Self {
+            availability: SemanticAvailability::Ready,
+            items,
+            message: None,
+        }
+    }
+
+    pub fn partial(items: Vec<ValidationProblem>, message: impl Into<String>) -> Self {
+        Self {
+            availability: SemanticAvailability::Partial,
+            items,
+            message: Some(message.into()),
+        }
+    }
+
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self {
+            availability: SemanticAvailability::Unavailable,
+            items: Vec::new(),
+            message: Some(message.into()),
+        }
+    }
 }

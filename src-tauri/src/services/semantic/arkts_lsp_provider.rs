@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
@@ -121,6 +122,7 @@ impl SemanticProvider for ArkTsLspProvider {
             capabilities: vec![
                 "definition".to_string(),
                 "findUsages".to_string(),
+                "diagnostics".to_string(),
                 "completion".to_string(),
                 "signatureHelp".to_string(),
                 "codeActions".to_string(),
@@ -221,6 +223,12 @@ impl SemanticProvider for ArkTsLspProvider {
         self.manager
             .request_interactive(|session| session.usages(request))
             .unwrap_or_else(UsageQueryResult::unavailable)
+    }
+
+    fn diagnostics(&self, request: &LanguageQueryRequest) -> ValidationQueryResult {
+        self.manager
+            .request_interactive(|session| session.diagnostics(request))
+            .unwrap_or_else(ValidationQueryResult::unavailable)
     }
 
     fn code_actions(&self, request: &LanguageQueryRequest) -> Vec<CodeAction> {

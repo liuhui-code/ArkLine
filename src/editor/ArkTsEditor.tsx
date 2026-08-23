@@ -187,7 +187,11 @@ export function ArkTsEditor({
           : undefined,
         () => completionEnabledRef.current,
         onValidationRequest
-          ? (documentPath, content) => onValidationRequestRef.current?.(documentPath, content) ?? Promise.resolve([])
+          ? (documentPath, content) => onValidationRequestRef.current?.(documentPath, content) ?? Promise.resolve({
+              availability: "unavailable",
+              items: [],
+              message: "Diagnostics are unavailable",
+            })
           : undefined,
         onValidationResult
           ? (documentPath, problems) => onValidationResultRef.current?.(documentPath, problems)

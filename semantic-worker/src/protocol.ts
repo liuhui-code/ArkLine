@@ -54,7 +54,7 @@ export interface SemanticRuntimeState {
   providerLatencies: Record<string, SemanticLatencySummary>
 }
 
-export const SEMANTIC_PROTOCOL_VERSION = 5
+export const SEMANTIC_PROTOCOL_VERSION = 6
 
 export type SemanticRequestMethod =
   | "health"
@@ -65,6 +65,7 @@ export type SemanticRequestMethod =
   | "prepareDocument"
   | "gotoDefinition"
   | "findUsages"
+  | "diagnostics"
   | "completion"
   | "resolveCompletion"
   | "signatureHelp"
@@ -146,6 +147,15 @@ export interface SemanticUsageResult extends SemanticDefinitionTarget {
   confidence: "exact"
 }
 
+export interface SemanticDiagnostic {
+  source: "language"
+  severity: "error" | "warning"
+  path: string
+  line: number
+  column: number
+  message: string
+}
+
 export type SemanticCodeActionKind =
   | "quickfix"
   | "refactor.extract"
@@ -223,6 +233,7 @@ export type SemanticResponsePayload =
   | { restoredDocumentCount: number }
   | SemanticDefinitionTarget
   | SemanticUsageResult[]
+  | SemanticDiagnostic[]
   | { definition: SemanticDefinitionTarget | null; definitionCandidates?: SemanticDefinitionCandidate[] }
   | SemanticCompletionItem[]
   | SemanticCompletionItem

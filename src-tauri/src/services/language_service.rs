@@ -1,3 +1,4 @@
+use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
     CodeAction, CodeActionResolution, CodeActionResolveRequest, CompletionItem,
     DefinitionCandidate, DefinitionTarget, DocumentSymbol, HoverResponse, LanguageQueryRequest,
@@ -221,6 +222,14 @@ pub fn find_usages(
     request: &LanguageQueryRequest,
 ) -> UsageQueryResult {
     runtime.with_router(settings, |router| router.active().usages(request))
+}
+
+pub fn validate_document(
+    runtime: &LanguageRuntime,
+    settings: &AppSettings,
+    request: &LanguageQueryRequest,
+) -> ValidationQueryResult {
+    runtime.with_router(settings, |router| router.active().diagnostics(request))
 }
 
 pub fn list_code_actions(
