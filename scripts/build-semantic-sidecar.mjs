@@ -14,6 +14,13 @@ const TARGETS = new Map([
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+export function validateSemanticHealth(response) {
+  return response?.id === "standalone-health"
+    && response.ok === true
+    && response.payload?.status === "ready"
+    && response.payload?.protocolVersion === 6;
+}
+
 export function resolvePkgTarget(targetTriple) {
   const target = TARGETS.get(targetTriple);
   if (!target) throw new Error(`Unsupported semantic sidecar target: ${targetTriple}`);
@@ -76,7 +83,7 @@ export function smokeSemanticSidecar(outputPath) {
     throw new Error(result.error?.message || result.stderr.trim() || "Semantic sidecar failed health check");
   }
   const response = JSON.parse(result.stdout.split(/\r?\n/, 1)[0] || "null");
-  if (response?.id !== "standalone-health" || !response.ok || response.payload?.protocolVersion !== 5) {
+  if (!validateSemanticHealth(response)) {
     throw new Error(`Unexpected semantic sidecar response: ${result.stdout.trim()}`);
   }
 }
