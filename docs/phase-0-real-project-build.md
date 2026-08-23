@@ -55,25 +55,80 @@ completed successfully and reported `UP-TO-DATE` tasks, proving the ordinary
 incremental path.
 
 The initial artifact was unsigned because the sample has no signing
-configuration. ArkLine now reports that condition during preflight and no
-longer treats an unsigned HAP, APP, or HSP as a successful installable build.
+configuration. ArkLine reports that condition as a non-blocking preflight
+warning and records the artifact as unsigned. The build itself succeeds, while
+install and launch workflows can still require a signed artifact.
 
-## Signing Acceptance Gate
+### Controller-layer unsigned acceptance run
+
+On 2026-08-15, the opt-in real-project controller test started from a fresh
+copy with no package artifacts and exercised ArkLine's frontend build controller
+for both `runBuild(true)` and `runBuild(false)`. It runs the real DevEco Hvigor
+commands, while native project inspection, environment resolution, terminal IPC,
+and artifact discovery are supplied by the test harness. This is controller and
+command-contract evidence, not a native production-path test.
+
+The clean path completed in 38.988 seconds. The incremental path completed in
+8.420 seconds and reported `UP-TO-DATE`. Both runs verified the same non-empty
+artifact receipt:
+
+```text
+entry/build/default/outputs/default/entry-default-unsigned.hap
+size: 502305 bytes
+sha256: 8336d92ae5f1a2e93996a364df17f0360b7ca9a0d0fdfbec6b9fb6bfefe7237b
+signature: unsigned
+```
+
+The acceptance test is skipped by default because it requires a local HarmonyOS
+project and DevEco Studio. Run it explicitly with:
+
+```text
+ARKLINE_REAL_BUILD_ROOT=<fresh-project-copy> \
+ARKLINE_REAL_HVIGOR=<DevEco>/Contents/tools/hvigor/bin/hvigorw \
+pnpm exec vitest run tests/frontend/verified-unsigned-build.real.test.tsx
+```
+
+### Native production-service acceptance run
+
+On 2026-08-15, a second opt-in acceptance test exercised the production Rust
+services for project-root inspection, DevEco environment resolution, structured
+terminal execution, and bounded artifact discovery. It used a disposable copy
+of the real project; the original project was not modified. The copy's API 18
+declaration was changed to `6.1.1(24)`, matching the installed HMS SDK metadata.
+
+The native clean build completed in 36.222 seconds. The following incremental
+build completed in 9.316 seconds and reported `UP-TO-DATE`. Production artifact
+discovery returned the non-empty unsigned HAP at:
+
+```text
+entry/build/default/outputs/default/entry-default-unsigned.hap
+```
+
+Run the native acceptance test explicitly with a disposable project path:
+
+```text
+ARKLINE_REAL_BUILD_ROOT=<fresh-project-copy> \
+cargo test --manifest-path src-tauri/Cargo.toml --lib \
+  services::build_project_service::tests::builds_a_real_unsigned_project_through_native_services \
+  -- --ignored --exact --nocapture
+```
+
+## Signing Readiness Advisory
 
 For every signable target, ArkLine inspects the selected product in
-`build-profile.json5` before launching Hvigor. The product must reference an
+`build-profile.json5` before launching Hvigor. The product can reference an
 `app.signingConfigs` entry whose type is `HarmonyOS`. Its material must define
 `certpath`, `profile`, `storeFile`, `storePassword`, `keyAlias`, `keyPassword`,
-and `signAlg`; the three referenced files must exist. Relative material paths
-are resolved from the project root.
+and `signAlg`; the three referenced files must exist when signing is enabled.
+Relative material paths are resolved from the project root.
 
 Passwords are checked only for presence. Their values are never returned from
 the native inspection command or written to ArkLine logs.
 
 After Hvigor exits successfully, ArkLine classifies filesystem artifacts using
-Hvigor's output convention. A `-unsigned` or `_unsigned` HAP, APP, or HSP turns
-the run into a failure with a signing-specific message. HAR artifacts remain
-outside this gate because libraries are not application-signed packages.
+Hvigor's output convention. A `-unsigned` or `_unsigned` HAP, APP, or HSP remains
+a successful build artifact with `unsigned` signature metadata. HAR artifacts
+remain `not-applicable` because libraries are not application-signed packages.
 
 Real-device signing material remains project-owned. Configure it through
 DevEco Studio or directly in `build-profile.json5`; ArkLine does not generate,
@@ -97,11 +152,15 @@ copy, or persist private keys.
 
 ## Remaining Limits
 
+- The controller-layer and native production-service acceptance tests cover the
+  two sides of the Tauri IPC boundary. A packaged UI automation run that clicks
+  Build remains release-level evidence rather than a Phase 0 code gate.
 - Windows discovery is covered by a cross-platform installation-shape test, but
   the full signed project build still needs execution on a Windows host with
   DevEco Studio installed.
 - SDK compatibility preflight intentionally handles only explicit numeric API
   prefixes; unknown future version formats remain reported by Hvigor.
 - Device installation and launch verification are outside this Phase 0 baseline.
-- The real application stays outside this repository; deterministic unit tests
-  cover environment selection and artifact verification inside the repository.
+- The real application stays outside this repository. The opt-in acceptance
+  test supplies its path at runtime; deterministic tests cover the same contract
+  without requiring DevEco Studio in ordinary CI.

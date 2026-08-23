@@ -63,11 +63,18 @@ returns one immutable project model containing:
 - modules and the default module;
 - products and the default product parsed from the project-level profile.
 
-Root markers have different strength. A module-level `oh-package.json5` is only
-a fallback candidate; it must never stop the ancestor search before a root that
-owns `hvigorw`, `hvigorfile.ts`, and `build-profile.json5`. The browser-visible
-file detector is provisional UI data only. It cannot start environment discovery
-until the project is confirmed as a Harmony project.
+Project-level `build-profile.json5` is the root authority. Its `modules` entries
+declare module names and `srcPath` locations relative to that root. A module-level
+`build-profile.json5` can repeat `hvigorfile.ts` and other marker names, but it
+does not declare the owning project module graph and must not become the build
+root. Quoted and unquoted JSON5 property names are both supported.
+
+The wrapper and individual marker files remain compatibility evidence for older
+or incomplete projects, not the primary project-model discriminator. A selected
+module directory or source file first resolves to its nearest owning
+project-level profile; only then does the selection choose a module from that
+model. The browser-visible file detector is provisional UI data only. It cannot
+start environment discovery until the project is confirmed as a Harmony project.
 
 All later stages consume `HarmonyBuildProject.rootPath`. Environment detection,
 build configuration persistence, command planning, process `cwd`, and build
@@ -153,9 +160,15 @@ This keeps Build usable while a workspace tree is still loading and avoids
 silently dropping a valid module just because its files are not currently
 visible in the UI.
 
-Native inspection provides product defaults synchronously to `runBuild()`. The
-first Build click therefore does not race the UI effect that opens
-`build-profile.json5`. The frontend parser remains a browser-preview fallback.
+Native inspection provides product defaults synchronously to `runBuild()`. Once
+a native model is available, the UI does not merge or overwrite its modules and
+products with a later frontend profile read. The frontend parser remains a
+browser-preview fallback only.
+
+Artifact discovery resolves the selected Hvigor module name back through the
+project-level `modules[].srcPath` declaration before scanning its `build` tree.
+Nested or aliased module directories therefore use the same module identity for
+selection, command planning, and output verification.
 
 ## Configuration Selection and Persistence
 
@@ -196,24 +209,35 @@ future formats remain Hvigor-owned rather than becoming false ArkLine errors.
 - Keep the realistic DevEco fixture under
   `src-tauri/src/services/fixtures/harmony-project` aligned with root and module
   profile shapes.
+- Keep project-root tests aligned with DevEco's project-level `modules[].srcPath`
+  contract, including projects without a wrapper and module-level profiles that
+  repeat root marker filenames.
 - Keep DevEco fallback explicit in the environment resolution and Build panel;
   never silently select an unrelated global `hvigor` from `PATH`.
 
 Primary references:
 
 - [Huawei Hvigor command examples](https://developer.huawei.com/consumer/en/doc/harmonyos-guides-V14/ide-hvigor-compilation-options-customizing-sample-V14)
+- [Huawei project-level and module-level build-profile.json5](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V5/ide-hvigor-build-profile-V5)
 - [OpenHarmony Stage project structure](https://gitee.com/openharmony/docs/blob/43d836fe05a882d386c6c42e3827221cd2051256/en/application-dev/quick-start/start-with-ets-stage.md)
 
 ## Troubleshooting
 
 When a build is blocked, inspect the Build panel preflight entries. The Node and
 SDK rows show the exact source result. If the SDK row is invalid, configure the
-directory that contains `ets` and `toolchains`, not an individual file. If the
-wrapper is present but still fails, verify that the selected project root is the
-directory containing `hvigorw`, `hvigorfile.ts`, and `build-profile.json5`.
+directory that contains `ets` and `toolchains`, not an individual file. If
+project recognition fails, verify that the owning project-level
+`build-profile.json5` declares at least one module with `name` and `srcPath`. A
+module-level profile next to `entry/src/main` is not the application project
+root, and a project-owned wrapper is optional when DevEco Hvigor is available.
 
-Signing is part of build correctness for HAP, APP, and HSP targets. Native
-project inspection resolves the selected product's signing configuration and
-checks required material without returning password values. Missing
-configuration or material blocks the build. A successful Hvigor exit that only
-produces an `unsigned` package is converted to a failed ArkLine build result.
+Signing is optional for HAP, APP, and HSP compilation. Native project inspection
+resolves the selected product's signing configuration and checks required
+material without returning password values. Missing configuration or material
+is a non-blocking warning. A successful Hvigor exit that produces an `unsigned`
+package remains a successful build result and records its unsigned status so
+install and launch workflows can reject it when signing is actually required.
+The Build tool window keeps the warning visible after completion and renders an
+artifact receipt with package kind, path, and conservative signature state.
+Packages without explicit signing evidence are reported as `unknown`, never
+silently promoted to `signed`.

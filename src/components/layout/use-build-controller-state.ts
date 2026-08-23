@@ -42,19 +42,20 @@ export function useBuildControllerState({
   );
   const [inspectedBuildProject, setInspectedBuildProject] = useState<HarmonyBuildProject | null>(null);
   const [profileModules, setProfileModules] = useState<string[]>([]);
-  const buildInspectionPath = selectedProjectPath ?? workspace?.rootPath ?? null;
-  const baseBuildProject = inspectedBuildProject && isBuildProjectInWorkspace(inspectedBuildProject, workspace)
+  const buildInspectionPath = selectedProjectPath ?? activePath ?? workspace?.rootPath ?? null;
+  const nativeBuildProject = inspectedBuildProject && isBuildProjectInWorkspace(inspectedBuildProject, workspace)
     ? inspectedBuildProject
-    : visibleBuildProject;
+    : null;
+  const baseBuildProject = nativeBuildProject ?? visibleBuildProject;
   const buildProject = useMemo(() => {
-    if (!baseBuildProject || profileModules.length === 0) {
+    if (!baseBuildProject || nativeBuildProject || profileModules.length === 0) {
       return baseBuildProject;
     }
     const modules = Array.from(new Set([...baseBuildProject.modules, ...profileModules])).sort();
     return modules.length === baseBuildProject.modules.length
       ? baseBuildProject
       : { ...baseBuildProject, modules, defaultModule: modules.includes("entry") ? "entry" : modules[0] ?? null };
-  }, [baseBuildProject, profileModules]);
+  }, [baseBuildProject, nativeBuildProject, profileModules]);
   const buildProfilePath = useMemo(
     () => buildProject?.hasBuildProfile ? `${buildProject.rootPath}/build-profile.json5` : null,
     [buildProject],
@@ -164,6 +165,10 @@ export function useBuildControllerState({
   }, [baseBuildProject?.rootPath]);
 
   useEffect(() => {
+    if (nativeBuildProject) {
+      setProfileModules([]);
+      return;
+    }
     if (!buildProfilePath) {
       setProfileModules([]);
       const currentProduct = buildStoreRef.current.state.product.trim() || "default";
@@ -191,7 +196,7 @@ export function useBuildControllerState({
     return () => {
       cancelled = true;
     };
-  }, [buildProfilePath, workspaceApi]);
+  }, [buildProfilePath, nativeBuildProject, workspaceApi]);
 
   function updateBuildState(next: Partial<Pick<BuildState, "lastTarget" | "moduleName" | "product" | "buildMode" | "fastMode">>) {
     buildStoreRef.current.configure(next);
@@ -269,9 +274,19 @@ export function useBuildControllerState({
     }
 
     const projectInspectionPath = selectedProjectPath ?? activePath ?? workspace.rootPath;
-    const project = workspaceApi.inspectHarmonyBuildProject
-      ? await resolveBuildProject(projectInspectionPath)
-      : buildProject;
+    let project: HarmonyBuildProject | null;
+    try {
+      project = workspaceApi.inspectHarmonyBuildProject
+        ? await resolveBuildProject(projectInspectionPath)
+        : buildProject;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      buildStoreRef.current.fail(`Project inspection failed: ${detail}`);
+      syncBuildState();
+      showBuild();
+      onStatusChange("Project inspection failed");
+      return;
+    }
     if (project) {
       const selection = projectBuildSelection(
         project,
@@ -311,7 +326,7 @@ export function useBuildControllerState({
     buildRunCounterRef.current += 1;
     const runId = `build-${buildRunCounterRef.current}`;
 
-    buildStoreRef.current.start({ ...plan, runId });
+    buildStoreRef.current.start({ ...plan, runId }, preflight);
     syncBuildState();
     showBuild();
     onStatusChange(plan.label);
@@ -323,14 +338,14 @@ export function useBuildControllerState({
         runTerminalCommand: workspaceApi.runTerminalCommand,
         settings: sdkSettings,
         toolchain,
-        findBuildArtifacts: workspaceApi.findHarmonyBuildArtifacts
-          ? () => workspaceApi.findHarmonyBuildArtifacts!(
+        findBuildArtifacts: () => workspaceApi.findHarmonyBuildArtifacts
+          ? workspaceApi.findHarmonyBuildArtifacts(
             plan.intent.projectRoot,
             plan.intent.target,
             plan.intent.moduleName,
             plan.intent.product,
           )
-          : undefined,
+          : Promise.resolve([]),
       });
       buildStoreRef.current.finish(buildResult);
       replaceBuildProblems(buildResult.diagnostics);
@@ -358,16 +373,12 @@ export function useBuildControllerState({
     if (!workspaceApi.inspectHarmonyBuildProject) {
       return buildProject;
     }
-    try {
-      const project = await workspaceApi.inspectHarmonyBuildProject(rootPath);
-      if (project.isHarmonyProject || !buildProject?.isHarmonyProject) {
-        setInspectedBuildProject(project);
-        return project;
-      }
-      return buildProject;
-    } catch {
-      return buildProject;
+    const project = await workspaceApi.inspectHarmonyBuildProject(rootPath);
+    if (project.isHarmonyProject || !buildProject?.isHarmonyProject) {
+      setInspectedBuildProject(project);
+      return project;
     }
+    return buildProject;
   }
 
   return {
