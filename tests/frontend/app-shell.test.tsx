@@ -5180,16 +5180,19 @@ describe("App shell", () => {
       runValidation: async () => ({ availability: "ready", items: [] }),
       loadDiff: async () => "",
       inspectEnvironment: async () => ({ tools: [] }),
-      findUsages: vi.fn(async () => [
-        {
-          path: "C:/samples/DemoWorkspace/AppScope/app.json5",
-          line: 2,
-          column: 3,
-          preview: "\"app\": {",
-          kind: "fallback",
-          confidence: "fallback",
-        },
-      ]),
+      findUsages: vi.fn(async () => ({
+        availability: "ready",
+        items: [
+          {
+            path: "C:/samples/DemoWorkspace/AppScope/app.json5",
+            line: 2,
+            column: 3,
+            preview: "\"app\": {",
+            kind: "fallback",
+            confidence: "fallback",
+          },
+        ],
+      })),
       loadSettings: async () => defaultSettings(),
       saveSettings: async () => undefined,
     });
