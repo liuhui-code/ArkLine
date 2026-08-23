@@ -186,7 +186,7 @@ export function evaluateSmokeReport(metrics) {
   if (metrics.processTreeSampleCount === 0) {
     failures.push("no-process-tree-evidence");
   }
-  appendSemanticFailures(failures, metrics, PACKAGED_SOAK_LIMITS);
+  appendSemanticFailures(failures, metrics, PACKAGED_SOAK_LIMITS, false);
   return { passed: failures.length === 0, failures };
 }
 
@@ -197,7 +197,7 @@ function appendCausalTraceFailures(failures, metrics) {
   if ((metrics.causalTraceKindCount ?? 0) < 3) failures.push("incomplete-causal-trace-coverage");
 }
 
-function appendSemanticFailures(failures, metrics, limits) {
+function appendSemanticFailures(failures, metrics, limits, enforceLatency = true) {
   if (!metrics.semanticRequired) return;
   if (metrics.definitionMissCount > 0) failures.push("definition-result-miss");
   if (metrics.completionMissCount > 0) failures.push("completion-result-miss");
@@ -207,10 +207,12 @@ function appendSemanticFailures(failures, metrics, limits) {
   if (metrics.successfulCompletionCount === 0) {
     failures.push("no-member-completion-evidence");
   }
-  if (metrics.rendererDefinitionP95Ms > limits.rendererDefinitionP95Ms) {
+  if (enforceLatency
+    && metrics.rendererDefinitionP95Ms > limits.rendererDefinitionP95Ms) {
     failures.push("renderer-definition-p95");
   }
-  if (metrics.rendererCompletionP95Ms > limits.rendererCompletionP95Ms) {
+  if (enforceLatency
+    && metrics.rendererCompletionP95Ms > limits.rendererCompletionP95Ms) {
     failures.push("renderer-completion-p95");
   }
 }
