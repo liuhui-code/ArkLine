@@ -33,6 +33,7 @@ export function useDeviceLogQueryController({
   const generationRef = useRef(0);
   const queryInFlightRef = useRef(false);
   const queuedQueryRef = useRef<PendingQuery | null>(null);
+  const loadedDeviceIdRef = useRef(deviceId);
 
   async function runForegroundQuery(query: PendingQuery) {
     if (!workspaceApi.queryDeviceLogs) {
@@ -51,12 +52,12 @@ export function useDeviceLogQueryController({
       if (generationRef.current !== query.generation) {
         return;
       }
-      setEntries(response.rows.map((row) => queryRowToDeviceLogEntry(row, deviceId)));
+      const loadedEntries = response.rows.map((row) => queryRowToDeviceLogEntry(row, deviceId));
+      setEntries((current) => mergeLoadedDeviceLogEntries(current, loadedEntries));
       setSummary(formatQuerySummary(response));
       setNextCursor(response.nextCursorSeq);
     } catch (error) {
       if (generationRef.current === query.generation) {
-        setEntries([]);
         setSummary(error instanceof Error ? error.message : "Device log query failed");
         setNextCursor(null);
       }
@@ -74,7 +75,10 @@ export function useDeviceLogQueryController({
 
   useEffect(() => {
     if (!active || !streamId) {
-      reset();
+      generationRef.current += 1;
+      queuedQueryRef.current = null;
+      setQuerying(false);
+      setLoadingOlder(false);
       return;
     }
     const generation = generationRef.current + 1;
@@ -88,6 +92,14 @@ export function useDeviceLogQueryController({
       window.clearTimeout(timer);
     };
   }, [active, deviceId, filter, streamId, workspaceApi]);
+
+  useEffect(() => {
+    if (loadedDeviceIdRef.current === deviceId) {
+      return;
+    }
+    loadedDeviceIdRef.current = deviceId;
+    reset();
+  }, [deviceId]);
 
   function reset() {
     generationRef.current += 1;
@@ -136,6 +148,14 @@ export function useDeviceLogQueryController({
     reset,
     summary,
   };
+}
+
+function mergeLoadedDeviceLogEntries(current: DeviceLogEntry[] | null, incoming: DeviceLogEntry[]) {
+  if (current == null) {
+    return incoming;
+  }
+  const loadedIds = new Set(current.map((entry) => entry.id));
+  return [...current, ...incoming.filter((entry) => !loadedIds.has(entry.id))];
 }
 
 function formatQuerySummary(response: DeviceLogQueryResponse) {

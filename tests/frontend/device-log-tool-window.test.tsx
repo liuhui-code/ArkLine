@@ -117,7 +117,7 @@ describe("Device Log tool window", () => {
     expect(within(panel).getByText(/300 total · 300 matched · \d+ rendered/u)).toBeVisible();
   });
 
-  it("caps the live log window and reports older persisted lines", async () => {
+  it("retains loaded logs until the user clears them and exposes earlier entries through scrolling", async () => {
     const user = userEvent.setup();
     render(<AppShell workspaceApi={createWorkspaceApi()} />);
 
@@ -137,11 +137,23 @@ describe("Device Log tool window", () => {
     );
 
     expect(await within(panel).findByText("load line 10050")).toBeVisible();
+    expect(within(panel).getByText(/10,050 total · 10,050 matched · \d+ rendered/u)).toBeVisible();
+
+    const log = within(panel).getByRole("log", { name: "Device Log Entries" });
+    Object.defineProperty(log, "clientHeight", { configurable: true, value: 52 });
+    Object.defineProperty(log, "scrollHeight", { configurable: true, value: 10_050 * 26 });
+    log.scrollTop = 0;
+    fireEvent.scroll(log);
+
+    expect(await within(panel).findByRole("button", { name: "Follow Tail" })).toBeVisible();
+    expect(await within(panel).findByLabelText("load line 1")).toBeVisible();
+
+    await user.click(within(panel).getByRole("button", { name: "Clear" }));
     expect(within(panel).queryByLabelText("load line 1")).not.toBeInTheDocument();
-    expect(within(panel).getByText(/10,000 live · 50 older persisted · \d+ rendered/u)).toBeVisible();
+    expect(within(panel).getByText("No log entries")).toBeVisible();
   });
 
-  it("filters text queries against the most recent one-minute log window", async () => {
+  it("applies regex filters to every loaded log without evicting older entries", async () => {
     const nowSpy = vi.spyOn(Date, "now");
     nowSpy.mockReturnValue(10_000);
     const user = userEvent.setup();
@@ -170,15 +182,20 @@ describe("Device Log tool window", () => {
         bubbles: true,
         detail: {
           deviceId: "device-1",
-          lines: ["06-25 15:21:48.123  1234  5678 I C03F00/AppTag com.example.demo: fresh width log"],
+          lines: ["06-25 15:21:48.123  1234  5678 I C03F00/AppTag com.example.demo: fresh height log"],
         },
       }),
     );
 
-    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "width" } });
+    await user.click(within(panel).getByRole("checkbox", { name: "Regex" }));
+    fireEvent.change(within(panel).getByLabelText("Filter device logs"), { target: { value: "width log$" } });
 
-    expect(await within(panel).findByLabelText("fresh width log")).toBeVisible();
-    expect(within(panel).queryByText("old width log")).not.toBeInTheDocument();
+    expect(await within(panel).findByLabelText("old width log")).toBeVisible();
+    expect(within(panel).queryByLabelText("fresh height log")).not.toBeInTheDocument();
+
+    await user.click(within(panel).getByRole("button", { name: "Clear Log Filters" }));
+    expect(await within(panel).findByLabelText("fresh height log")).toBeVisible();
+    expect(within(panel).getByLabelText("old width log")).toBeVisible();
     nowSpy.mockRestore();
   });
 

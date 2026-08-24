@@ -11,7 +11,7 @@ import {
   createStatsPollingErrorStats,
   mergeDeviceLogSnapshotWithLive,
 } from "@/components/layout/device-log-panel-model";
-import { applyDeviceLogFilter, compileDeviceLogFilter, hasActiveDeviceLogFilter } from "@/features/device-log/device-log-filter";
+import { applyDeviceLogFilter, compileDeviceLogFilter } from "@/features/device-log/device-log-filter";
 import type { DeviceLogEntry, DeviceLogFilterState, DeviceLogStreamStatus } from "@/features/device-log/device-log-model";
 import { createDeviceLogStore } from "@/features/device-log/device-log-store";
 import { useDeviceLogAutoRetry } from "@/features/device-log/use-device-log-auto-retry";
@@ -24,8 +24,6 @@ import { useDeviceLogQueryWorkerStats } from "@/features/device-log/use-device-l
 import type { DeviceLogRuntimeStats, WorkspaceApi } from "@/features/workspace/workspace-api";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 
-const QUERY_RECENT_WINDOW_MS = 60_000;
-const LIVE_VIEW_CAPACITY = 10_000;
 const LOG_ROW_HEIGHT = 26;
 const LOG_ROW_OVERSCAN = 8;
 
@@ -59,7 +57,7 @@ export function DeviceHiLogPanel({
   const [streamId, setStreamId] = useState<string | null>(null);
   const [streamStatus, setStreamStatus] = useState<DeviceLogStreamStatus>("idle");
   const [filter, setFilter] = useState(initialFilter);
-  const store = useMemo(() => createDeviceLogStore({ capacity: LIVE_VIEW_CAPACITY }), []);
+  const store = useMemo(() => createDeviceLogStore(), []);
   const currentDeviceIdRef = useRef(deviceId);
   const previousDeviceIdRef = useRef(deviceId);
   const streamIdRef = useRef<string | null>(null);
@@ -88,7 +86,6 @@ export function DeviceHiLogPanel({
     storeState,
   } = useDeviceLogLiveBuffer({ deviceId, store });
   const compiledFilter = useMemo(() => compileDeviceLogFilter(filter), [filter]);
-  const queryActive = hasActiveDeviceLogFilter(filter);
   const backendQueryActive = active
     && streamStatus === "running"
     && streamId != null
@@ -103,15 +100,16 @@ export function DeviceHiLogPanel({
     workspaceApi,
   });
   const queryEntries = query.entries;
-  const liveSourceEntries = useMemo(() => (
-    queryActive ? store.getRecentEntries(QUERY_RECENT_WINDOW_MS) : stateEntries
-  ), [queryActive, stateEntries, store]);
+  const liveSourceEntries = stateEntries;
   const filteredLiveEntries = useMemo(() => (
     liveSourceEntries.filter((entry) => applyDeviceLogFilter(entry, compiledFilter))
   ), [compiledFilter, liveSourceEntries]);
+  const filteredQueryEntries = useMemo(() => (
+    queryEntries?.filter((entry) => applyDeviceLogFilter(entry, compiledFilter)) ?? null
+  ), [compiledFilter, queryEntries]);
   const visibleEntries = useMemo(
-    () => mergeDeviceLogSnapshotWithLive(queryEntries, filteredLiveEntries),
-    [filteredLiveEntries, queryEntries],
+    () => mergeDeviceLogSnapshotWithLive(filteredQueryEntries, filteredLiveEntries),
+    [filteredLiveEntries, filteredQueryEntries],
   );
   const sourceEntries = queryEntries ?? liveSourceEntries;
   const renderWindow = buildDeviceLogRenderWindow({
@@ -376,7 +374,6 @@ export function DeviceHiLogPanel({
     const nextFilter = { ...filter, ...patch };
     setFilter(nextFilter);
     store.setFilter(nextFilter);
-    query.reset();
     refreshLiveView();
   }
 
@@ -447,6 +444,7 @@ export function DeviceHiLogPanel({
         exporting={exporting}
         onClear={() => {
           store.clear();
+          query.reset();
           refreshLiveView();
           onStatusChange("HiLog view cleared");
         }}
