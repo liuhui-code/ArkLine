@@ -46,6 +46,7 @@ export type SearchRunActionsOptions = {
   reportTextMiss: SearchMissReporters["reportTextMiss"];
   onStreamError?: (message: string) => void;
   runFallback: (query: string, dirty: boolean, generation: number) => Promise<WorkspaceTextSearchResult>;
+  getSearchSnapshot?: () => SearchSessionSnapshot;
 };
 
 export function createSearchRunActions(options: SearchRunActionsOptions) {
@@ -91,6 +92,7 @@ export function createSearchRunActions(options: SearchRunActionsOptions) {
         scheduleSelectedPreview: options.scheduleSelectedPreview,
         reportMiss: options.reportTextMiss,
         onStreamError: options.onStreamError,
+        getSearchSnapshot: options.getSearchSnapshot,
       });
     },
   };

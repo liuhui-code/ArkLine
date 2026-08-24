@@ -79,7 +79,7 @@ export function useShellLayoutState({
     setActiveLeftTool(tool);
     if (tool === "git") {
       setFilesVisible(true);
-      onStatusChange("Source Control");
+      onStatusChange("Commit");
       return;
     }
     showBottomTool("problems");

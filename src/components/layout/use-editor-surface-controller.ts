@@ -48,6 +48,7 @@ export type UseEditorSurfaceControllerOptions = {
   setQuickOpenQuery: (query: string) => void;
   bumpEditorFocusToken: () => void;
   rememberCurrentLocation: () => void;
+  commitDirectNavigation?: (location: { path: string; line: number; column: number }) => void;
   focusEditorSoon: () => void;
   onStatusChange: (message: string) => void;
   documentLoadCoordinator?: DocumentLoadCoordinator;
@@ -82,6 +83,7 @@ export function useEditorSurfaceController({
   setQuickOpenQuery,
   bumpEditorFocusToken,
   rememberCurrentLocation,
+  commitDirectNavigation = () => undefined,
   focusEditorSoon,
   onStatusChange,
   documentLoadCoordinator,
@@ -223,6 +225,7 @@ export function useEditorSurfaceController({
     }
 
     rememberCurrentLocation();
+    commitDirectNavigation({ path: activePath, ...nextTarget });
     setSelectionTarget({
       ...nextTarget,
       nonce: Date.now(),

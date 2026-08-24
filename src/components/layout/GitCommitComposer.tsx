@@ -33,8 +33,8 @@ export function GitCommitComposer(props: GitCommitComposerProps) {
   }, [menuOpen]);
 
   useEffect(() => {
-    if (props.focusToken) messageRef.current?.focus();
-  }, [props.focusToken]);
+    if (props.focusToken && !props.disabled) messageRef.current?.focus();
+  }, [props.disabled, props.focusToken]);
 
   return (
     <section className="git-commit-composer" aria-label="Commit changes">

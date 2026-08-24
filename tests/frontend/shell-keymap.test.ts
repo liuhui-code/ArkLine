@@ -20,6 +20,11 @@ describe("shell keymap", () => {
     expect(resolveShellCommand(keyboardEvent({ key: "k", metaKey: true }))).toBe("commitChanges");
   });
 
+  it("maps paired navigation history shortcuts", () => {
+    expect(resolveShellCommand(keyboardEvent({ key: "ArrowLeft", ctrlKey: true, altKey: true }))).toBe("navigateBack");
+    expect(resolveShellCommand(keyboardEvent({ key: "ArrowRight", ctrlKey: true, altKey: true }))).toBe("navigateForward");
+  });
+
   it("does not format while modal UI is active", () => {
     const event = keyboardEvent({ key: "l", ctrlKey: true, altKey: true });
 

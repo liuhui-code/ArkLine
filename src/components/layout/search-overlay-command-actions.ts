@@ -24,14 +24,23 @@ export type SearchOverlayCommandActionsOptions = {
   setQuickOpenQuery: (query: string) => void;
   setActiveOverlay: Dispatch<SetStateAction<OverlayKey>>;
   setSearchEverywhereOptions: Dispatch<SetStateAction<WorkspaceTextSearchOptions>>;
+  getRestoredQuery?: (mode: SearchEverywhereMode) => string;
+  rememberQuery?: (mode: SearchEverywhereMode, query: string) => void;
 };
 
 export function createSearchOverlayCommandActions(options: SearchOverlayCommandActionsOptions) {
   return {
-    openSearchOverlay(mode: SearchEverywhereMode) {
-      openSearchOverlayAction({ ...options, mode });
+    openSearchOverlay(mode: SearchEverywhereMode, explicitQuery?: string) {
+      const query = openSearchOverlayAction({
+        ...options,
+        mode,
+        restoredQuery: options.getRestoredQuery?.(mode) ?? "",
+        explicitQuery,
+      });
+      options.rememberQuery?.(mode, query);
     },
     handleOverlayQueryChange(value: string) {
+      options.rememberQuery?.(options.mode, value);
       handleSearchOverlayQueryChangeAction({
         value,
         invalidateSearchSession: options.invalidateSearchSession,

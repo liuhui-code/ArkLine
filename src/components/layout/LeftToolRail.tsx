@@ -7,7 +7,7 @@ type LeftToolRailProps = {
 
 const toolLabels: Record<LeftToolKey, string> = {
   project: "Project",
-  git: "Git",
+  git: "Commit",
   problems: "Problems"
 };
 

@@ -57,6 +57,19 @@ describe("search result application", () => {
     expect(result.previewIndex).toBe(0);
     expect(result.missReport).toMatchObject({ mode: "find", query: "width", suppressMissExplain: false });
   });
+
+  it("keeps the selected match when refreshed results still contain it", () => {
+    const refreshed = textResult(["first", "selected", "last"]);
+    const result = buildTextSearchApplication({
+      mode: "find",
+      query: "width",
+      result: { result: refreshed, suppressMissExplain: false },
+      selectionAnchor: refreshed.matches[1],
+    });
+
+    expect(result.patch.selectedIndex).toBe(1);
+    expect(result.previewIndex).toBe(1);
+  });
 });
 
 function candidate(source: SearchCandidate["source"], title: string): SearchCandidate {
