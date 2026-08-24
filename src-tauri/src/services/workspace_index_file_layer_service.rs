@@ -8,6 +8,9 @@ use crate::services::workspace_file_fingerprint_service::{
 };
 use crate::services::workspace_file_search_index_service::WorkspaceFileSearchIndex;
 use crate::services::workspace_index_deep_refresh_catalog_service::complete_deep_refresh_catalog;
+use crate::services::workspace_index_layer_readiness_store_service::{
+    count_rows, with_layer_readiness_store,
+};
 use crate::services::workspace_index_persistence_service::{
     persist_incremental_file_symbol_state, persist_index_metadata,
 };
@@ -64,12 +67,22 @@ impl WorkspaceIndexRuntime {
             restore_minimal_workspace(self, root_path)?
         };
 
-        workspace.state.status = if workspace.state.file_paths.is_empty() {
-            WorkspaceIndexStatus::Empty
+        let parser_error_count = with_layer_readiness_store(root_path, |connection| {
+            count_rows(connection, "workspace_stub_parse_errors", &normalized_root)
+        })?;
+        if workspace.state.file_paths.is_empty() {
+            workspace.state.status = WorkspaceIndexStatus::Empty;
+            workspace.state.partial_reason = None;
+        } else if parser_error_count > 0 {
+            workspace.state.status = WorkspaceIndexStatus::Partial;
+            let suffix = if parser_error_count == 1 { "" } else { "s" };
+            workspace.state.partial_reason = Some(format!(
+                "Project indexing completed with {parser_error_count} parser error{suffix}; results for affected files may be incomplete"
+            ));
         } else {
-            WorkspaceIndexStatus::Ready
-        };
-        workspace.state.partial_reason = None;
+            workspace.state.status = WorkspaceIndexStatus::Ready;
+            workspace.state.partial_reason = None;
+        }
         complete_deep_refresh_catalog(root_path, catalog_generation, task_key, &workspace.state)?;
         self.workspaces
             .lock()
@@ -157,6 +170,7 @@ impl WorkspaceIndexRuntime {
 
         Ok(workspace.state)
     }
+
 }
 
 fn restore_minimal_workspace(

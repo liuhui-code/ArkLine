@@ -13,6 +13,8 @@ use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
 #[path = "workspace_index_readiness_completion_tests.rs"]
 mod readiness_completion;
+#[path = "workspace_index_final_readiness_tests.rs"]
+mod final_readiness;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
