@@ -56,7 +56,6 @@ import { createCodeMirrorSignatureHelpBroker } from "@/components/layout/codemir
 import { createCodeMirrorCompletionBroker, createCodeMirrorCompletionResolver, createCodeMirrorCompletionResultReporter } from "@/components/layout/codemirror-completion-broker";
 import { hasNativeEditingContextMenu } from "@/components/layout/app-shell-helpers";
 type AppShellProps = { workspaceApi?: WorkspaceApi };
-
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
   useAppZoom();
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -72,7 +71,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const documentLoadCoordinatorRef = useRef(createDocumentLoadCoordinator());
   const semanticDocumentSyncRef = useRef(createSemanticDocumentSyncQueue(workspaceApi));
   const editorSelection = editorSelectionRuntimeRef.current.selection;
-
   function requestEditorCompletion(action: "open" | "close") {
     setEditorCompletionTarget((current) => ({ action, nonce: (current?.nonce ?? 0) + 1 }));
   }
