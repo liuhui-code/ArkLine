@@ -1,7 +1,21 @@
 import { fireEvent, render, renderHook, waitFor } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAppZoom } from "@/components/layout/use-app-zoom";
+
+const appZoomStorage = new Map<string, string>();
+
+beforeEach(() => {
+  appZoomStorage.clear();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      clear: () => appZoomStorage.clear(),
+      getItem: (key: string) => appZoomStorage.get(key) ?? null,
+      setItem: (key: string, value: string) => appZoomStorage.set(key, value),
+    },
+  });
+});
 
 afterEach(() => {
   window.localStorage.clear();
