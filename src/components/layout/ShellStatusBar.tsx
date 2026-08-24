@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 import { getIndexDiagnosticsStatusTarget } from "@/components/layout/app-shell-model";
+import type { BackgroundTask } from "@/components/layout/background-task-model";
+import { BackgroundTaskProgress } from "@/components/layout/BackgroundTaskProgress";
 import { SemanticCapabilityBadge } from "@/components/layout/SemanticCapabilityBadge";
 import { SemanticModeBadge } from "@/components/layout/SemanticModeBadge";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
@@ -34,6 +36,8 @@ type ShellStatusBarProps = {
   onCloseGitBlame: () => void;
   onOpenIndexDiagnostics: (sectionTarget?: string) => void;
   onOpenGitBranchPicker?: () => void;
+  backgroundTasks?: BackgroundTask[];
+  onCancelBackgroundTask?: (taskId: string) => void;
 };
 
 export function ShellStatusBar({
@@ -62,6 +66,8 @@ export function ShellStatusBar({
   onCloseGitBlame,
   onOpenIndexDiagnostics,
   onOpenGitBranchPicker = () => undefined,
+  backgroundTasks = [],
+  onCancelBackgroundTask,
 }: ShellStatusBarProps) {
   return (
     <footer aria-label="Status Bar" className="status-bar">
@@ -100,6 +106,7 @@ export function ShellStatusBar({
         <span aria-label="Build Status" className="status-pill">{buildMessage}</span>
       </div>
       <div aria-label="Status Bar Right" className="status-bar__group status-bar__group--right">
+        <BackgroundTaskProgress tasks={backgroundTasks} onCancelTask={onCancelBackgroundTask} />
         {currentLineBlame ? <span className="status-pill status-pill--blame">{currentLineBlame}</span> : null}
         <div className="status-blame-menu">
           <button

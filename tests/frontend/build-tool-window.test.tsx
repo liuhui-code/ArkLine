@@ -182,6 +182,41 @@ describe("build tool window", () => {
     });
   });
 
+  it("surfaces a running build in background tasks and stops it there", async () => {
+    const user = userEvent.setup();
+    let resolveRun: ((value: Awaited<ReturnType<WorkspaceApi["runTerminalCommand"]>>) => void) | null = null;
+    const stopTerminalCommand = vi.fn(async () => undefined);
+    render(<AppShell workspaceApi={createWorkspaceApi({
+      runTerminalCommand: (request) => new Promise((resolve) => {
+        resolveRun = resolve;
+        void request;
+      }),
+      stopTerminalCommand,
+    })} />);
+
+    await openProject(user);
+    await user.click(screen.getByRole("button", { name: "Run Build" }));
+    const taskControl = await screen.findByRole("button", { name: "Background Tasks: 1 running" });
+    await user.click(taskControl);
+
+    const taskCenter = screen.getByRole("dialog", { name: "Background Tasks" });
+    expect(within(taskCenter).getByRole("progressbar", { name: "Building project progress" })).not.toHaveAttribute("value");
+    await user.click(within(taskCenter).getByRole("button", { name: "Cancel Building project" }));
+    expect(stopTerminalCommand).toHaveBeenCalledWith("build-1");
+
+    await act(async () => {
+      resolveRun?.({
+        runId: "build-1",
+        command: "",
+        stdout: "",
+        stderr: "",
+        exitCode: null,
+        durationMs: 10,
+        stopped: true,
+      });
+    });
+  });
+
   it("shows build pipeline stages while a build is running", async () => {
     const user = userEvent.setup();
     let resolveRun: ((value: Awaited<ReturnType<WorkspaceApi["runTerminalCommand"]>>) => void) | null = null;
