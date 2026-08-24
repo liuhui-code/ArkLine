@@ -33,6 +33,17 @@
   white-space: nowrap;
 }
 
+.source-control__inclusion {
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 46%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
 .source-control--commit .source-control__groups--commit {
   min-height: 100px;
 }
