@@ -133,11 +133,13 @@ describe("useWorkspaceIndexWatchers", () => {
     expect(watchWorkspaceIndex).toHaveBeenCalledTimes(1);
   });
 
-  it("does not refetch workspace state from task status notifications", async () => {
+  it("synchronizes workspace state when an index task reaches a terminal status", async () => {
     const rootPath = "/workspace";
     const applyWorkspaceIndexRefreshResult = vi.fn();
+    const applyWorkspaceIndexState = vi.fn();
     let onTaskStatus: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
-    const getWorkspaceIndexState = vi.fn(async () => indexRefreshResult(rootPath).state);
+    const readyState = indexRefreshResult(rootPath).state;
+    const getWorkspaceIndexState = vi.fn(async () => readyState);
     const watchWorkspaceIndexTaskStatuses = vi.fn(async (
       _rootPath: string,
       next: (status: WorkspaceIndexTaskStatus) => void,
@@ -153,6 +155,7 @@ describe("useWorkspaceIndexWatchers", () => {
         watchWorkspaceIndexTaskStatuses,
       } as unknown as WorkspaceApi,
       applyWorkspaceIndexRefreshResult,
+      applyWorkspaceIndexState,
       refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
       recordWorkspaceIndexTaskStatus: vi.fn(),
       onStatusChange: vi.fn(),
@@ -163,7 +166,8 @@ describe("useWorkspaceIndexWatchers", () => {
       onTaskStatus?.(indexTaskStatus({ status: "ready" }));
     });
 
-    expect(getWorkspaceIndexState).not.toHaveBeenCalled();
+    await waitFor(() => expect(getWorkspaceIndexState).toHaveBeenCalledWith(rootPath));
+    expect(applyWorkspaceIndexState).toHaveBeenCalledWith(readyState);
     expect(applyWorkspaceIndexRefreshResult).not.toHaveBeenCalled();
   });
 });

@@ -63,6 +63,10 @@ export function useWorkspaceSession({
     });
   }
 
+  function applyWorkspaceIndexState(state: WorkspaceIndexState) {
+    onReplaceWorkspaceIndexState(state);
+  }
+
   function applyWorkspaceSnapshot(snapshot: WorkspaceViewModel) {
     setWorkspace(snapshot);
     syncWorkspaceIndex(snapshot);
@@ -122,6 +126,7 @@ export function useWorkspaceSession({
     syncWorkspaceIndex,
     scheduleVisibleFilesIndex,
     applyWorkspaceIndexRefreshResult,
+    applyWorkspaceIndexState,
     applyWorkspaceSnapshot,
     includeVisibleWorkspaceFile,
   };

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { WORKSPACE_INDEX_WATCH_INTERVAL_MS } from "@/components/layout/app-shell-constants";
+import { isTerminalProjectIndexTaskStatus } from "@/components/layout/index-diagnostics-controller-model";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
 import type {
   WorkspaceApi,
@@ -7,11 +8,13 @@ import type {
   WorkspaceIndexRefreshResult,
   WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-api";
+import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
 export type UseWorkspaceIndexWatchersOptions = {
   rootPath: string | null;
   workspaceApi: WorkspaceApi;
   applyWorkspaceIndexRefreshResult: (result: WorkspaceIndexRefreshResult) => void;
+  applyWorkspaceIndexState?: (state: WorkspaceIndexState) => void;
   refreshWorkspaceIndexTaskStatuses: (rootPath: string) => Promise<void>;
   recordWorkspaceIndexTaskStatus: (status: WorkspaceIndexTaskStatus) => void;
   onStatusChange: (message: string) => void;
@@ -21,14 +24,17 @@ export function useWorkspaceIndexWatchers({
   rootPath,
   workspaceApi,
   applyWorkspaceIndexRefreshResult,
+  applyWorkspaceIndexState,
   refreshWorkspaceIndexTaskStatuses,
   recordWorkspaceIndexTaskStatus,
   onStatusChange,
 }: UseWorkspaceIndexWatchersOptions) {
   const appliedRefreshEventRef = useRef(0);
   const applyWorkspaceIndexRefreshResultRef = useRef(applyWorkspaceIndexRefreshResult);
+  const applyWorkspaceIndexStateRef = useRef(applyWorkspaceIndexState);
   const onStatusChangeRef = useRef(onStatusChange);
   applyWorkspaceIndexRefreshResultRef.current = applyWorkspaceIndexRefreshResult;
+  applyWorkspaceIndexStateRef.current = applyWorkspaceIndexState;
   onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
@@ -172,8 +178,32 @@ export function useWorkspaceIndexWatchers({
     }
 
     let disposed = false;
+    let stateSyncSequence = 0;
     const watchedRootPath = rootPath;
     let teardownWatcher: (() => void) | null = null;
+
+    async function synchronizeWorkspaceIndexState(status: WorkspaceIndexTaskStatus) {
+      if (
+        !isTerminalProjectIndexTaskStatus(status)
+        || !workspaceApi.getWorkspaceIndexState
+        || !applyWorkspaceIndexStateRef.current
+      ) {
+        return;
+      }
+
+      const sequence = ++stateSyncSequence;
+      try {
+        const state = await workspaceApi.getWorkspaceIndexState(watchedRootPath);
+        if (!disposed && sequence === stateSyncSequence) {
+          applyWorkspaceIndexStateRef.current?.(state);
+        }
+      } catch (error) {
+        if (!disposed && sequence === stateSyncSequence) {
+          onStatusChangeRef.current(`Workspace index state sync failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+
     void refreshWorkspaceIndexTaskStatuses(watchedRootPath);
     void workspaceApi.watchWorkspaceIndexTaskStatuses(watchedRootPath, (status) => {
       if (disposed) {
@@ -181,6 +211,7 @@ export function useWorkspaceIndexWatchers({
       }
 
       recordWorkspaceIndexTaskStatus(status);
+      void synchronizeWorkspaceIndexState(status);
     })
       .then((teardown) => {
         if (disposed) {

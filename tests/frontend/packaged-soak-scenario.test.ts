@@ -35,6 +35,7 @@ describe("packaged soak scenario", () => {
         license: "MIT",
       },
       findQueries: ["@Entry", "build()"],
+      searchEverywhereClass: "EntryAbility",
       quickOpenTargets: [
         {
           query: "EntryAbility",
@@ -63,6 +64,7 @@ describe("packaged soak scenario", () => {
         kind: "real-workspace",
         revision: "0123456789abcdef",
         sdkIdentity: "OpenHarmony-6.0/API-20",
+        searchEverywhereClass: "EntryAbility",
       });
       expect(findQueryForCycle(scenario, 3)).toBe("build()");
       expect(quickOpenTargetForCycle(scenario, 3)).toEqual({

@@ -121,27 +121,29 @@ pub(crate) fn query_posted_symbols(
         .saturating_mul(8)
         .min(SYMBOL_POSTING_CANDIDATE_LIMIT);
 
+    let mut symbols = Vec::new();
+    let mut has_any_postings = false;
     if has_postings(connection, root_key, "stub")? {
-        return query_stub_postings(
+        has_any_postings = true;
+        symbols.extend(query_stub_postings(
             connection,
             root_key,
             &normalized_query,
             source,
             candidate_limit,
-        )
-        .map(Some);
+        )?);
     }
     if has_postings(connection, root_key, "entity")? {
-        return query_entity_postings(
+        has_any_postings = true;
+        symbols.extend(query_entity_postings(
             connection,
             root_key,
             &normalized_query,
             source,
             candidate_limit,
-        )
-        .map(Some);
+        )?);
     }
-    Ok(None)
+    Ok(has_any_postings.then_some(symbols))
 }
 
 fn has_postings(connection: &Connection, root_key: &str, origin: &str) -> Result<bool, String> {

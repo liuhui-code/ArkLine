@@ -123,6 +123,20 @@ export async function waitForSearchResult(
   throw new Error(`${resultsLabel} did not render results`);
 }
 
+export async function waitForSearchEverywhereClass(
+  driver,
+  expectedClass,
+  timeoutMs,
+) {
+  const snapshot = await driver.executeAsync(
+    SEARCH_EVERYWHERE_CLASS_READINESS_SCRIPT,
+    [expectedClass, timeoutMs],
+    timeoutMs + 1_000,
+  );
+  if (snapshot) return snapshot;
+  throw new Error(`Search Everywhere did not render class ${expectedClass}`);
+}
+
 export async function waitForActiveTab(driver, pageName, timeoutMs) {
   return pollUntil(async () => {
     const snapshot = await driver.execute(UI_READINESS_SCRIPT, ["activeTab"]);
@@ -253,6 +267,39 @@ export const SEARCH_RESULT_READINESS_SCRIPT = `
       attributes: true,
       attributeFilter: ["data-query"]
     });
+    timer = setTimeout(() => finish(null), timeoutMs);
+  }
+`;
+
+export const SEARCH_EVERYWHERE_CLASS_READINESS_SCRIPT = `
+  const expectedClass = arguments[0];
+  const timeoutMs = arguments[1];
+  const done = arguments[arguments.length - 1];
+  let observer;
+  let timer;
+  let finished = false;
+  const finish = (value) => {
+    if (finished) return;
+    finished = true;
+    observer?.disconnect();
+    clearTimeout(timer);
+    done(value);
+  };
+  const inspect = () => {
+    const query = document.querySelector('[aria-label="Search Everywhere Query"]')?.value || "";
+    const results = document.querySelector('[aria-label="Search Everywhere Results"]');
+    const classButton = [...(results?.querySelectorAll("button") || [])].find((button) => {
+      const label = button.getAttribute("aria-label") || button.innerText || "";
+      return label.toLowerCase().includes("class") && label.includes(expectedClass);
+    });
+    if (query === expectedClass && classButton) {
+      finish({ at: performance.now(), query, className: expectedClass });
+    }
+  };
+  inspect();
+  if (!finished) {
+    observer = new MutationObserver(inspect);
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     timer = setTimeout(() => finish(null), timeoutMs);
   }
 `;

@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::Connection;
 
+use crate::models::workspace::WorkspaceIndexReadinessState;
+use crate::services::workspace_index_facade_service::query_facade_search_everywhere_with_readiness;
 use crate::services::workspace_index_query_service::{
     query_workspace_candidates, WorkspaceIndexQueryScope,
 };
@@ -281,6 +283,95 @@ fn query_facade_falls_back_to_symbol_entities_when_stub_rows_are_missing() {
 
     assert_eq!(method.source, "symbol");
     assert!(method.subtitle.starts_with("EntityQueryController"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn query_facade_keeps_new_classes_searchable_while_stub_refresh_is_pending() {
+    let root = unique_temp_dir("workspace-query-facade-partial-stubs");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("Existing.ets"),
+        "class ExistingController {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let pending_path = source_dir.join("Pending.ets");
+    fs::write(&pending_path, "class PendingController {}\n").unwrap();
+    let state = runtime
+        .update_workspace_file_symbol_layer(
+            &root_path,
+            &[pending_path.to_string_lossy().to_string()],
+            &[],
+        )
+        .unwrap();
+
+    let envelope = query_facade_search_everywhere_with_readiness(
+        &runtime,
+        &root_path,
+        "pending",
+        WorkspaceIndexQueryScope::Classes,
+        8,
+    )
+    .unwrap();
+
+    assert_eq!(state.status.to_string(), "partial");
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert!(envelope.items.iter().any(|candidate| {
+        candidate.source == "class" && candidate.title == "PendingController"
+    }));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn query_facade_uses_entity_fallback_when_stub_layer_lags_ready_metadata() {
+    let root = unique_temp_dir("workspace-query-facade-ready-metadata-partial-stubs");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        source_dir.join("Existing.ets"),
+        "class ExistingController {}\n",
+    )
+    .unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let pending_path = source_dir.join("Pending.ets");
+    fs::write(&pending_path, "class PendingController {}\n").unwrap();
+    runtime
+        .update_workspace_file_symbol_layer(
+            &root_path,
+            &[pending_path.to_string_lossy().to_string()],
+            &[],
+        )
+        .unwrap();
+    let state = runtime
+        .complete_workspace_incremental_deep_layer(&root_path)
+        .unwrap();
+
+    let envelope = query_facade_search_everywhere_with_readiness(
+        &runtime,
+        &root_path,
+        "pending",
+        WorkspaceIndexQueryScope::Classes,
+        8,
+    )
+    .unwrap();
+
+    assert_eq!(state.status.to_string(), "ready");
+    assert!(envelope.items.iter().any(|candidate| {
+        candidate.source == "class" && candidate.title == "PendingController"
+    }));
 
     fs::remove_dir_all(root).unwrap();
 }

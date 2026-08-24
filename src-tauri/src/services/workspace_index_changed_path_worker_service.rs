@@ -122,6 +122,11 @@ fn refresh_incremental_watcher_chunk(
     changed_paths: &[String],
 ) -> Result<Option<WorkspaceIndexRefreshResult>, String> {
     let previous_state = index_runtime.get_index_state(&task.root_path)?;
+    let restore_terminal_state = matches!(
+        previous_state.status,
+        WorkspaceIndexStatus::Ready | WorkspaceIndexStatus::Empty
+    );
+    let previous_partial_reason = previous_state.partial_reason.clone();
     let previous_paths = previous_state
         .file_paths
         .iter()
@@ -169,7 +174,15 @@ fn refresh_incremental_watcher_chunk(
         false,
         &|| false,
     )? {
-        WorkspaceDeepLayerUpdate::Applied(state) => state,
+        WorkspaceDeepLayerUpdate::Applied(state) => {
+            if restore_terminal_state {
+                index_runtime.complete_workspace_incremental_deep_layer(&task.root_path)?
+            } else if let Some(reason) = previous_partial_reason {
+                index_runtime.degrade_workspace_deep_layer(&task.root_path, &reason)?
+            } else {
+                state
+            }
+        }
         WorkspaceDeepLayerUpdate::Deferred(state) => state,
         WorkspaceDeepLayerUpdate::Failed(error) => return Err(error),
         WorkspaceDeepLayerUpdate::Cancelled => return Ok(None),
