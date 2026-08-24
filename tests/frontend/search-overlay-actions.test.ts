@@ -54,6 +54,40 @@ describe("search overlay actions", () => {
     expect(setActiveOverlay).toHaveBeenCalledWith("searchEverywhere");
   });
 
+  it("restores the previous query when the editor has no selection", () => {
+    const setQuickOpenQuery = vi.fn();
+
+    const query = openSearchOverlayAction({
+      mode: "find",
+      restoredQuery: "previous query",
+      getEditorSelectedText: () => "",
+      setSearchEverywhereMode: vi.fn(),
+      setSearchEverywhereScope: vi.fn(),
+      setQuickOpenQuery,
+      setActiveOverlay: vi.fn(),
+    });
+
+    expect(query).toBe("previous query");
+    expect(setQuickOpenQuery).toHaveBeenCalledWith("previous query");
+  });
+
+  it("prefers an explicit query over selection and restored state", () => {
+    const setQuickOpenQuery = vi.fn();
+
+    openSearchOverlayAction({
+      mode: "searchEverywhere",
+      explicitQuery: "retry query",
+      restoredQuery: "previous query",
+      getEditorSelectedText: () => "selected text",
+      setSearchEverywhereMode: vi.fn(),
+      setSearchEverywhereScope: vi.fn(),
+      setQuickOpenQuery,
+      setActiveOverlay: vi.fn(),
+    });
+
+    expect(setQuickOpenQuery).toHaveBeenCalledWith("retry query");
+  });
+
   it("invalidates current search before applying overlay query changes", () => {
     const events: string[] = [];
 

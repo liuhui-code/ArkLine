@@ -11,7 +11,7 @@ import {
   type InteractionTraceHandle,
 } from "@/features/performance/interaction-trace-store";
 
-export type NavigationStatusPrefix = "Back" | "Definition" | "Usage" | "Line";
+export type NavigationStatusPrefix = "Back" | "Forward" | "Definition" | "Usage" | "Line";
 
 export type UseEditorNavigationOptions = {
   activePath: string | null;
@@ -43,7 +43,9 @@ export function useEditorNavigation({
   beginTrace = beginInteractionTrace,
   scheduleVisibleCommit = scheduleAfterStableFrame,
 }: UseEditorNavigationOptions) {
-  const navigationHistoryRef = useRef<NavigationLocation[]>([]);
+  const backHistoryRef = useRef<NavigationLocation[]>([]);
+  const forwardHistoryRef = useRef<NavigationLocation[]>([]);
+  const pendingOriginRef = useRef<NavigationLocation | null>(null);
   const navigationRequestRef = useRef(0);
   const activeTraceRef = useRef<InteractionTraceHandle | null>(null);
   const cancelVisibleCommitRef = useRef<(() => void) | null>(null);
@@ -77,25 +79,27 @@ export function useEditorNavigation({
   }
 
   function rememberCurrentLocation() {
-    if (!activePath) return;
-    const next = {
+    pendingOriginRef.current = currentLocation();
+  }
+
+  function commitDirectNavigation(location: NavigationLocation) {
+    const origin = pendingOriginRef.current ?? currentLocation();
+    pendingOriginRef.current = null;
+    if (!origin || sameLocation(origin, location)) return;
+    pushDistinct(backHistoryRef.current, origin);
+    forwardHistoryRef.current = [];
+  }
+
+  function currentLocation(): NavigationLocation | null {
+    if (!activePath) return null;
+    return {
       path: activePath,
       line: editorSelection.line,
       column: editorSelection.column,
     };
-    const previous = navigationHistoryRef.current.at(-1);
-    if (
-      previous &&
-      normalizePath(previous.path) === normalizePath(next.path) &&
-      previous.line === next.line &&
-      previous.column === next.column
-    ) {
-      return;
-    }
-    navigationHistoryRef.current.push(next);
   }
 
-  async function navigateToLocation(
+  async function performNavigation(
     location: NavigationLocation,
     statusPrefix: NavigationStatusPrefix = "Definition",
   ) {
@@ -122,7 +126,7 @@ export function useEditorNavigation({
           onStatusChange(`${statusPrefix} failed: ${targetName} ${message}`);
         }
         trace.finish("error");
-        return;
+        return false;
       }
       if (isFailedOpenResult(openResult)) {
         const superseded = openResult.errorMessage === "superseded";
@@ -131,13 +135,13 @@ export function useEditorNavigation({
           onStatusChange(`${statusPrefix} failed: ${getPathBasename(location.path)} ${openResult.errorMessage}`);
         }
         trace.finish(superseded ? "superseded" : "error");
-        return;
+        return false;
       }
       openPhase.finish();
     }
     if (navigationRequestRef.current !== requestId) {
       trace.finish("superseded");
-      return;
+      return false;
     }
     const selectionPhase = trace.startPhase("applySelection");
     setSelectionTarget({
@@ -162,16 +166,51 @@ export function useEditorNavigation({
         Date.now(),
       );
     });
+    return true;
+  }
+
+  async function navigateToLocation(
+    location: NavigationLocation,
+    statusPrefix: NavigationStatusPrefix = "Definition",
+  ) {
+    const origin = pendingOriginRef.current ?? currentLocation();
+    pendingOriginRef.current = null;
+    const navigated = await performNavigation(location, statusPrefix);
+    if (!navigated || !origin || sameLocation(origin, location)) return;
+    pushDistinct(backHistoryRef.current, origin);
+    forwardHistoryRef.current = [];
   }
 
   async function navigateBackFromHistory() {
-    const target = navigationHistoryRef.current.pop();
+    pendingOriginRef.current = null;
+    const target = backHistoryRef.current.pop();
     if (!target) {
       onStatusChange("Back: no previous location");
       focusEditorSoon();
       return;
     }
-    await navigateToLocation(target, "Back");
+    const origin = currentLocation();
+    if (await performNavigation(target, "Back")) {
+      if (origin && !sameLocation(origin, target)) pushDistinct(forwardHistoryRef.current, origin);
+      return;
+    }
+    pushDistinct(backHistoryRef.current, target);
+  }
+
+  async function navigateForwardFromHistory() {
+    pendingOriginRef.current = null;
+    const target = forwardHistoryRef.current.pop();
+    if (!target) {
+      onStatusChange("Forward: no next location");
+      focusEditorSoon();
+      return;
+    }
+    const origin = currentLocation();
+    if (await performNavigation(target, "Forward")) {
+      if (origin && !sameLocation(origin, target)) pushDistinct(backHistoryRef.current, origin);
+      return;
+    }
+    pushDistinct(forwardHistoryRef.current, target);
   }
 
   return {
@@ -179,9 +218,22 @@ export function useEditorNavigation({
     focusEditorSoon,
     isEditorFocused,
     rememberCurrentLocation,
+    commitDirectNavigation,
     navigateToLocation,
     navigateBackFromHistory,
+    navigateForwardFromHistory,
   };
+}
+
+function sameLocation(left: NavigationLocation, right: NavigationLocation) {
+  return normalizePath(left.path) === normalizePath(right.path)
+    && left.line === right.line
+    && left.column === right.column;
+}
+
+function pushDistinct(history: NavigationLocation[], location: NavigationLocation) {
+  const previous = history.at(-1);
+  if (!previous || !sameLocation(previous, location)) history.push(location);
 }
 
 function scheduleAfterStableFrame(callback: () => void) {

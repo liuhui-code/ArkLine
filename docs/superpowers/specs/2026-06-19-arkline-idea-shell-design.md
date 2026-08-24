@@ -21,6 +21,21 @@ The shell should feel strongly familiar to IntelliJ IDEA New UI rather than to a
 
 ## Reference Baseline
 
+### 2026-08-15 interaction-model update
+
+The visual freeze remains in force. The Git and search ownership model is updated
+to match the implemented modern JetBrains workflow:
+
+- the left `Commit` tool window owns Local Changes, inclusion, diff review, and commit composition;
+- the bottom `Git` tool window owns Log, Stashes, and Line Trace;
+- Search Everywhere remains a transient overlay;
+- Find in Files and Replace in Files reuse the search overlay in Core Loop v1,
+  with single-click preview and explicit Enter/double-click navigation.
+
+This update supersedes the older statements below that placed Local Changes in
+the bottom Git tool window or listed Search as a persistent left-rail tool. It
+does not change the approved IDEA New UI density, colors, or shell geometry.
+
 Approved visual and interaction baseline:
 
 - IntelliJ IDEA New UI (2024 dark)
@@ -79,8 +94,7 @@ The left side consists of:
 Initial rail targets:
 
 - Project
-- Search
-- Git
+- Commit
 - Problems
 
 No additional left-rail entries are required for MVP.
@@ -176,16 +190,15 @@ It should feel like an expected IDE terminal rather than an afterthought:
 
 #### Git
 
-Git is the bottom review tool window.
+Git is the bottom repository-history tool window.
 
 Diff is not a separate first-level tool window.
 
 Git should contain IDEA-like review states such as:
 
-- Local Changes
-- changed-file list
-- diff viewer
-- patch review import path
+- Log
+- Stashes
+- Line Trace
 
 ## Git Tool Window
 
@@ -195,20 +208,25 @@ Git behavior should remain close to IDEA instead of inventing a custom review co
 
 ### Required Git structure
 
-The Git tool window should support:
+The bottom Git tool window should support repository history, stashes, and line
+trace. Local Changes and commit composition belong to the left Commit tool
+window. Diff remains contextual to Commit or Git history rather than becoming a
+separate first-level tool window.
 
-- Local Changes style entry
+The Commit tool window should support:
+
 - changed-file list
 - open selected file diff
 - open selected file in editor
 - rollback / revert style actions
-- stage workflow when present
+- include-in-commit selection
 
 ### Diff placement
 
-Diff belongs inside Git workflows:
+Diff belongs inside Commit and Git workflows:
 
-- selecting a changed file shows its diff in the Git area
+- selecting a changed file shows its diff from the Commit area
+- selecting a historical file shows its diff from the Git area
 - compare views should follow IDEA mental models
 - diff review should not appear as a detached product concept
 
@@ -301,7 +319,7 @@ The sample should be used to verify:
 1. Project tree hierarchy and expansion
 2. Quick Open, Recent Files, and Search Everywhere
 3. bottom Problems / Terminal / Git switching
-4. Git Local Changes to Diff flow
+4. Commit Local Changes to Diff flow and Git history discovery
 5. `Esc`, `Shift+Esc`, and `Ctrl+Shift+F12` exit paths
 
 ## Out of Scope for This Design
@@ -321,7 +339,7 @@ The shell design is successful when:
 
 - an IDEA user can predict where Project, Terminal, Problems, and Git live
 - the bottom tool window behaves like a single tool-window surface, not a custom split dashboard
-- Git review feels like an IDEA-style Local Changes flow
+- Commit review feels like an IDEA-style Local Changes flow, while Git history remains separately discoverable
 - every popup and tool window has a reliable exit path
 - a small ArkTS project is readable and navigable without layout confusion
 
@@ -331,6 +349,6 @@ The next implementation phase should prioritize:
 
 1. restructuring the shell toward the approved IDEA layout
 2. replacing current bottom split behavior with a true tabbed bottom tool window
-3. making Git the owner of diff presentation
+3. keeping diff presentation contextual to Commit and Git history
 4. enforcing the approved keyboard and focus rules
 5. validating the result against the small ArkTS UI demo sample

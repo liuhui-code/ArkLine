@@ -60,6 +60,7 @@ export type SearchTextRunnerInput = {
   scheduleSelectedPreview: (selectedIndex: number) => void;
   reportMiss: TextSearchRequestRunnerInput["reportMiss"];
   onStreamError?: (message: string) => void;
+  getSearchSnapshot?: () => SearchSessionSnapshot;
 };
 
 export function runSearchTextQuery({
@@ -81,8 +82,10 @@ export function runSearchTextQuery({
   scheduleSelectedPreview,
   reportMiss,
   onStreamError,
+  getSearchSnapshot,
 }: SearchTextRunnerInput) {
   if (!rootPath) return;
+  const selectionAnchor = currentSelectionAnchor(getSearchSnapshot?.(), query);
   patchSearchSession({ candidates: [], truncationNotice: null });
   const indexedText = workspaceApi.queryWorkspaceCandidatesWithReadiness;
   const plan = planSearchTextQuery({
@@ -118,6 +121,7 @@ export function runSearchTextQuery({
       reportMiss,
       recordUiInteraction,
       onStreamError,
+      selectionAnchor,
     });
     return;
   }
@@ -152,5 +156,13 @@ export function runSearchTextQuery({
     recordUiInteraction,
     scheduleSelectedPreview,
     reportMiss,
+    selectionAnchor,
   });
+}
+
+function currentSelectionAnchor(snapshot: SearchSessionSnapshot | undefined, query: string) {
+  if (!snapshot || snapshot.result.query.kind !== "text") return null;
+  if (snapshot.result.query.query.trim() !== query.trim()) return null;
+  const selected = snapshot.result.matches[snapshot.selectedIndex];
+  return selected ? { path: selected.path, line: selected.line, column: selected.column } : null;
 }

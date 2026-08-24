@@ -20,8 +20,8 @@ use crate::services::workspace_index_foreground_admission_service::WorkspaceInde
 use crate::services::workspace_index_maintenance_runtime_service::WorkspaceIndexMaintenanceRuntime;
 use crate::services::workspace_index_manager_retry_wait_service::wait_for_sidecar_retry_if_only_background_is_pending;
 use crate::services::workspace_index_manager_status_service::{
-    mark_superseded_results, store_cancelled_statuses, store_pending_statuses_for_root,
-    store_recent_status, store_recent_statuses, store_superseded_statuses,
+    mark_superseded_results, store_cancelled_statuses, store_pending_statuses, store_recent_status,
+    store_recent_statuses, store_superseded_statuses,
 };
 use crate::services::workspace_index_queue_pressure_service::project_queue_pressure;
 use crate::services::workspace_index_resume_service::{
@@ -43,6 +43,7 @@ use crate::services::workspace_index_task_status_service::{
     current_time_millis, task_status_from_publishable_result, task_status_from_task,
     WorkspaceIndexTaskResult,
 };
+use crate::services::workspace_index_worker_ownership_service::relinquish_background_worker;
 use crate::services::workspace_index_worker_service::run_index_tasks_with_cancellation_and_ui_activity_and_indexer;
 
 const BACKGROUND_WORKER_IDLE_RETIRE_MS: u64 = 30_000;
@@ -77,7 +78,7 @@ impl WorkspaceIndexManagerRuntime {
         let summary = schedule_resume_tasks_from_store(&self.scheduler, root_path)?;
         store_superseded_statuses(&self.recent_statuses, summary.superseded_tasks)?;
         for root_path in summary.root_paths {
-            store_pending_statuses_for_root(&self.scheduler, &root_path)?;
+            store_pending_statuses(&self.scheduler, &self.recent_statuses, &root_path)?;
         }
         Ok(())
     }
@@ -168,7 +169,7 @@ impl WorkspaceIndexManagerRuntime {
             &task,
         )?;
         store_superseded_statuses(&self.recent_statuses, schedule_result.superseded_tasks)?;
-        store_pending_statuses_for_root(&self.scheduler, root_path)?;
+        store_pending_statuses(&self.scheduler, &self.recent_statuses, root_path)?;
         self.wake_background_worker()?;
         Ok(true)
     }
@@ -201,7 +202,7 @@ impl WorkspaceIndexManagerRuntime {
             WorkspaceIndexTaskKind::IndexSdk,
         )?;
         store_cancelled_statuses(&self.recent_statuses, cancelled)?;
-        store_pending_statuses_for_root(&self.scheduler, root_path)?;
+        store_pending_statuses(&self.scheduler, &self.recent_statuses, root_path)?;
         self.wake_background_worker()?;
         Ok(())
     }
@@ -283,7 +284,7 @@ impl WorkspaceIndexManagerRuntime {
             kind,
         )?;
         store_superseded_statuses(&self.recent_statuses, superseded)?;
-        store_pending_statuses_for_root(&self.scheduler, root_path)?;
+        store_pending_statuses(&self.scheduler, &self.recent_statuses, root_path)?;
         self.wake_background_worker()?;
         Ok(())
     }
@@ -376,7 +377,7 @@ impl WorkspaceIndexManagerRuntime {
         continuation_summary.root_paths.dedup();
         store_superseded_statuses(&self.recent_statuses, continuation_summary.superseded_tasks)?;
         for root_path in continuation_summary.root_paths {
-            store_pending_statuses_for_root(&self.scheduler, &root_path)?;
+            store_pending_statuses(&self.scheduler, &self.recent_statuses, &root_path)?;
         }
 
         let mut terminal_by_root = BTreeMap::<String, Vec<WorkspaceIndexTaskStatus>>::new();
@@ -424,33 +425,35 @@ impl WorkspaceIndexManagerRuntime {
         let manager = self.clone();
         thread::Builder::new()
             .name("arkline-index-manager".to_string())
-            .spawn(move || {
-                loop {
-                    let results = manager.run_index_worker_once_with_events_and_ui_activity(
-                        &index_runtime,
-                        |status, events| on_status(status, events),
-                        &is_ui_latency_sensitive,
-                    );
-                    if let Ok(results) = results {
-                        let _ = manager.maintenance.run_after_results(&results, || {
-                            is_ui_latency_sensitive() || manager.has_pending_tasks()
-                        });
-                    }
-                    wait_for_sidecar_retry_if_only_background_is_pending(
-                        &manager.scheduler,
-                        manager.indexer.as_ref(),
-                        &manager.worker_signal,
-                    );
-                    if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
-                        let _ = manager.maintenance.run_pending(|| {
-                            is_ui_latency_sensitive() || manager.has_pending_tasks()
-                        });
-                        if !manager.has_pending_tasks() {
-                            break;
+            .spawn(move || loop {
+                let results = manager.run_index_worker_once_with_events_and_ui_activity(
+                    &index_runtime,
+                    |status, events| on_status(status, events),
+                    &is_ui_latency_sensitive,
+                );
+                if let Ok(results) = results {
+                    let _ = manager.maintenance.run_after_results(&results, || {
+                        is_ui_latency_sensitive() || manager.has_pending_tasks()
+                    });
+                }
+                wait_for_sidecar_retry_if_only_background_is_pending(
+                    &manager.scheduler,
+                    manager.indexer.as_ref(),
+                    &manager.worker_signal,
+                );
+                if !manager.has_pending_tasks() && manager.wait_for_worker_wake_timed_out() {
+                    let _ = manager
+                        .maintenance
+                        .run_pending(|| is_ui_latency_sensitive() || manager.has_pending_tasks());
+                    if !manager.has_pending_tasks() {
+                        if relinquish_background_worker(manager.worker_running.as_ref(), || {
+                            manager.has_pending_tasks()
+                        }) {
+                            continue;
                         }
+                        return;
                     }
                 }
-                manager.worker_running.store(false, Ordering::SeqCst);
             })
             .map_err(|error| {
                 self.worker_running.store(false, Ordering::SeqCst);

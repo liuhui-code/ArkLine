@@ -282,4 +282,22 @@ describe("Shell hotkeys", () => {
     });
     expect(await screen.findByLabelText("Editor Content")).toHaveFocus();
   });
+
+  it("navigates forward after returning to the previous editor location", async () => {
+    const user = userEvent.setup();
+    render(<AppShell />);
+
+    await user.click(await openEditor(user));
+    await user.keyboard("{Control>}{Shift>}a{/Shift}{/Control}");
+    await user.type(await screen.findByLabelText("Find Action Query"), "go to line");
+    await user.click(await screen.findByRole("button", { name: "Go to Line..." }));
+    await user.type(await screen.findByLabelText("Go to Line Query"), "3:1");
+    await user.keyboard("{Enter}");
+
+    fireEvent.keyDown(window, { key: "ArrowLeft", ctrlKey: true, altKey: true });
+    await waitFor(() => expect(screen.getByLabelText("Status Bar Right")).toHaveTextContent("Back: main.ets:"));
+
+    fireEvent.keyDown(window, { key: "ArrowRight", ctrlKey: true, altKey: true });
+    await waitFor(() => expect(screen.getByLabelText("Status Bar Right")).toHaveTextContent("Forward: main.ets:3:1"));
+  });
 });

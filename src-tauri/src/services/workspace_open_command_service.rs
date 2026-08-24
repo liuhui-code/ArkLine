@@ -46,6 +46,33 @@ where
     recover_workspace_edit_transactions(&PathBuf::from(root_path))?;
     let snapshot = scan_workspace_for_open(&PathBuf::from(root_path))?;
     index_manager.open_workspace_index(root_path)?;
+    start_workspace_index_worker(index_runtime, index_manager, ui_activity, on_status)?;
+    Ok(snapshot)
+}
+
+pub fn resume_workspace_indexing_through_manager<F>(
+    index_runtime: WorkspaceIndexRuntime,
+    index_manager: WorkspaceIndexManagerRuntime,
+    ui_activity: WorkspaceIndexUiActivityRuntime,
+    root_path: &str,
+    on_status: F,
+) -> Result<(), String>
+where
+    F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
+{
+    index_manager.open_workspace_index(root_path)?;
+    start_workspace_index_worker(index_runtime, index_manager, ui_activity, on_status)
+}
+
+pub(crate) fn start_workspace_index_worker<F>(
+    index_runtime: WorkspaceIndexRuntime,
+    index_manager: WorkspaceIndexManagerRuntime,
+    ui_activity: WorkspaceIndexUiActivityRuntime,
+    on_status: F,
+) -> Result<(), String>
+where
+    F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
+{
     index_manager.start_background_worker_with_events_and_ui_activity(
         index_runtime,
         on_status,
@@ -55,5 +82,5 @@ where
                 .unwrap_or(false)
         },
     )?;
-    Ok(snapshot)
+    Ok(())
 }

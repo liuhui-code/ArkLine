@@ -75,6 +75,9 @@ function validateRealWorkspaceScenario(scenario) {
   if (!validQuickOpenTargets(scenario.quickOpenTargets)) {
     throw new Error("real-workspace scenario quickOpenTargets are invalid");
   }
+  if (typeof scenario.searchEverywhereClass !== "string" || !scenario.searchEverywhereClass.trim()) {
+    throw new Error("real-workspace scenario searchEverywhereClass is required");
+  }
   if (!validDefinitionTargets(scenario.definitionTargets)) {
     throw new Error("real-workspace scenario definitionTargets are invalid");
   }

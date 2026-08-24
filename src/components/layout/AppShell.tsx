@@ -38,6 +38,7 @@ import { useWorkspaceSession } from "@/components/layout/use-workspace-session";
 import { useWorkspaceIndexWatchers } from "@/components/layout/use-workspace-index-watchers";
 import { useOpenDocumentFileChanges } from "@/components/layout/use-open-document-file-changes";
 import { useWorkspaceOpeningController } from "@/components/layout/use-workspace-opening-controller";
+import { useAppZoom } from "@/components/layout/use-app-zoom";
 import { useSemanticState } from "@/features/semantic/use-semantic-state";
 import { createSettingsStore } from "@/features/settings/settings-store";
 import { useDefinitionController } from "@/components/layout/use-definition-controller";
@@ -55,8 +56,8 @@ import { createCodeMirrorSignatureHelpBroker } from "@/components/layout/codemir
 import { createCodeMirrorCompletionBroker, createCodeMirrorCompletionResolver, createCodeMirrorCompletionResultReporter } from "@/components/layout/codemirror-completion-broker";
 import { hasNativeEditingContextMenu } from "@/components/layout/app-shell-helpers";
 type AppShellProps = { workspaceApi?: WorkspaceApi };
-
 export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) {
+  useAppZoom();
   const canUseNativeProjectPicker = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   const statusMessageStore = useMemo(() => createStatusMessageStore("Mode: shell bootstrap"), []);
   const onStatusChange = statusMessageStore.setMessage;
@@ -70,7 +71,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   const documentLoadCoordinatorRef = useRef(createDocumentLoadCoordinator());
   const semanticDocumentSyncRef = useRef(createSemanticDocumentSyncQueue(workspaceApi));
   const editorSelection = editorSelectionRuntimeRef.current.selection;
-
   function requestEditorCompletion(action: "open" | "close") {
     setEditorCompletionTarget((current) => ({ action, nonce: (current?.nonce ?? 0) + 1 }));
   }
@@ -108,7 +108,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   function updateEditorSelection(selection: { line: number; column: number; selectedText?: string }) {
     editorSelectionRuntimeRef.current.update(selection);
   }
-  const { focusEditor, focusEditorSoon, rememberCurrentLocation, navigateToLocation, navigateBackFromHistory } = useEditorNavigation({
+  const { focusEditor, focusEditorSoon, rememberCurrentLocation, commitDirectNavigation, navigateToLocation, navigateBackFromHistory, navigateForwardFromHistory } = useEditorNavigation({
     activePath,
     editorSelection,
     editorSurfaceRef,
@@ -160,7 +160,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     workspaceApi,
     onStatusChange,
   });
-  const { workspace, setWorkspace, recentProjects, setRecentProjects, syncWorkspaceIndex, applyWorkspaceIndexRefreshResult, applyWorkspaceSnapshot: applyWorkspaceSessionSnapshot, includeVisibleWorkspaceFile, scheduleVisibleFilesIndex } = useWorkspaceSession({
+  const { workspace, setWorkspace, recentProjects, setRecentProjects, syncWorkspaceIndex, applyWorkspaceIndexRefreshResult, applyWorkspaceIndexState, applyWorkspaceSnapshot: applyWorkspaceSessionSnapshot, includeVisibleWorkspaceFile, scheduleVisibleFilesIndex } = useWorkspaceSession({
     workspaceApi,
     onOpenWorkspaceIndex: (nextWorkspace) => {
       workspaceIndexRef.current.openWorkspace(nextWorkspace);
@@ -237,6 +237,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     getActiveContent,
     onBeforeShow: () => setActiveOverlay("none"),
     rememberCurrentLocation,
+    commitDirectNavigation,
     setSelectionTarget,
     bumpEditorFocusToken: () => setEditorFocusToken((token) => token + 1),
     focusEditorSoon,
@@ -280,6 +281,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     setQuickOpenQuery,
     bumpEditorFocusToken: () => setEditorFocusToken((token) => token + 1),
     rememberCurrentLocation,
+    commitDirectNavigation,
     focusEditorSoon,
     onStatusChange,
     documentLoadCoordinator: documentLoadCoordinatorRef.current,
@@ -428,13 +430,14 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     rootPath: workspace?.rootPath ?? null,
     workspaceApi,
     applyWorkspaceIndexRefreshResult,
+    applyWorkspaceIndexState,
     refreshWorkspaceIndexTaskStatuses,
     recordWorkspaceIndexTaskStatus,
     onStatusChange,
   });
 
   const derived = getAppShellDerivedState({ workspace, workspaceIndex: workspaceIndexRef.current, workspaceIndexState, workspaceIndexStatusSummary, quickOpenQuery, persistentQuickOpenAvailable: Boolean(workspaceApi.queryWorkspaceCandidatesWithReadiness || workspaceApi.queryWorkspaceQuickOpen), recentFiles: tabsRef.current.state.recentFiles, recentProjects, activeOverlay, semanticState, settingsApplyState });
-  const commandPaletteItems = useAppShellCommands({ quickOpenQuery, activeOverlay, workspaceEditPreviewOpen: Boolean(workspaceEditPreview), codeActionsVisible, currentMethodsVisible, settingsVisible, settingsApplying, semanticCommands: { renameSymbol: derived.semanticCapability.renameSymbol, generateCode: derived.semanticCapability.generateCode, refactor: derived.semanticCapability.refactor }, actions: { closeTransientUi, closeFocusedContext, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode, navigateBack: () => void navigateBackFromHistory(), openQuickOpen: () => searchActionsRef.current.openQuickOpen(), openSearchEverywhere: () => searchActionsRef.current.openSearchOverlay("searchEverywhere"), openFindInFiles: () => searchActionsRef.current.openSearchOverlay("find"), openReplaceInFiles: () => searchActionsRef.current.openSearchOverlay("replace"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: openEditorCompletion, showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => { setGitToolView("log"); showBottomTool("git"); }, commitChanges: () => { showLeftTool("git"); setCommitFocusToken((token) => token + 1); }, pushCommits: pushController.open, showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), showCurrentClassMethods, showCodeActions: () => void showCodeActionsFromEditor(), renameSymbol: openRenameSymbolDialog, generateCode: () => void showCodeActionsFromEditor("generate"), refactorThis: () => void showCodeActionsFromEditor("refactor"), save: () => void saveActiveDocument(), openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), newFile: () => openRootProjectMutationDialog("newFile"), newDirectory: () => openRootProjectMutationDialog("newDirectory"), openGoToLine: () => setOverlay("goToLine"), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), switchGitBranch: () => { setActiveOverlay("none"); gitBranchController.open(); }, openSettings: () => void openSettings(), toggleGitBlame, refreshGitBlame, showCurrentLineBlame, closeGitBlame } });
+  const commandPaletteItems = useAppShellCommands({ quickOpenQuery, activeOverlay, workspaceEditPreviewOpen: Boolean(workspaceEditPreview), codeActionsVisible, currentMethodsVisible, settingsVisible, settingsApplying, semanticCommands: { renameSymbol: derived.semanticCapability.renameSymbol, generateCode: derived.semanticCapability.generateCode, refactor: derived.semanticCapability.refactor }, actions: { closeTransientUi, closeFocusedContext, hideActiveToolWindow, toggleEditorOnly: enterEditorOnlyMode, navigateBack: () => void navigateBackFromHistory(), navigateForward: () => void navigateForwardFromHistory(), openQuickOpen: () => searchActionsRef.current.openQuickOpen(), openSearchEverywhere: () => searchActionsRef.current.openSearchOverlay("searchEverywhere"), openFindInFiles: () => searchActionsRef.current.openSearchOverlay("find"), openReplaceInFiles: () => searchActionsRef.current.openSearchOverlay("replace"), openRecentFiles: () => setOverlay("recentFiles"), openCommandPalette: () => setOverlay("commandPalette"), openCompletion: openEditorCompletion, showProject: () => showLeftTool("project"), showProblems: () => showBottomTool("problems"), showGit: () => { setGitToolView("log"); showBottomTool("git"); }, commitChanges: () => { showLeftTool("git"); setCommitFocusToken((token) => token + 1); }, pushCommits: pushController.open, showTerminal: () => showBottomTool("terminal"), goToDefinition: () => void goToDefinitionFromEditor(), findUsages: () => void findUsagesFromEditor(), showCurrentClassMethods, showCodeActions: () => void showCodeActionsFromEditor(), renameSymbol: openRenameSymbolDialog, generateCode: () => void showCodeActionsFromEditor("generate"), refactorThis: () => void showCodeActionsFromEditor("refactor"), save: () => void saveActiveDocument(), openProject: () => void projectOpening.openProjectPicker(), openDemoWorkspace: () => void openDemoWorkspace(), openRecentProjects: () => setOverlay("recentProjects"), newFile: () => openRootProjectMutationDialog("newFile"), newDirectory: () => openRootProjectMutationDialog("newDirectory"), openGoToLine: () => setOverlay("goToLine"), runLint: () => void runLint(), formatActiveDocument: () => void formatActiveDocument(), loadDiff: () => void loadDiff(), switchGitBranch: () => { setActiveOverlay("none"); gitBranchController.open(); }, openSettings: () => void openSettings(), toggleGitBlame, refreshGitBlame, showCurrentLineBlame, closeGitBlame } });
   return (
     <div
       className="app-shell"
@@ -446,7 +449,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
       }}
     >
       <AppShellMainLayout
-        topBar={{ activeBottomTool, bottomToolVisible: bottomContentVisible, activeOverlay, workspaceName: workspace?.rootName ?? null, settingsOpen: settingsVisible, onOpenProject: () => void projectOpening.openProjectPicker(), onOpenRecentProjects: () => setOverlay("recentProjects"), onNewFile: () => openRootProjectMutationDialog("newFile"), onNewDirectory: () => openRootProjectMutationDialog("newDirectory"), onOpenSearchEverywhere: () => searchActionsRef.current.openSearchOverlay("searchEverywhere"), onOpenFindInFiles: () => searchActionsRef.current.openSearchOverlay("find"), onOpenReplaceInFiles: () => searchActionsRef.current.openSearchOverlay("replace"), onOpenCommandPalette: () => setOverlay("commandPalette"), onRunLint: () => void runLint(), onRunBuild: () => void runBuild(), onLoadDiff: () => showLeftTool("git"), onOpenTerminal: () => showBottomTool("terminal"), onOpenSettings: () => void openSettings(), onToggleEditorOnly: enterEditorOnlyMode }}
+        topBar={{ activeBottomTool, bottomToolVisible: bottomContentVisible, activeOverlay, workspaceName: workspace?.rootName ?? null, settingsOpen: settingsVisible, onOpenProject: () => void projectOpening.openProjectPicker(), onOpenRecentProjects: () => setOverlay("recentProjects"), onNewFile: () => openRootProjectMutationDialog("newFile"), onNewDirectory: () => openRootProjectMutationDialog("newDirectory"), onOpenSearchEverywhere: () => searchActionsRef.current.openSearchOverlay("searchEverywhere"), onOpenFindInFiles: () => searchActionsRef.current.openSearchOverlay("find"), onOpenReplaceInFiles: () => searchActionsRef.current.openSearchOverlay("replace"), onOpenCommandPalette: () => setOverlay("commandPalette"), onRunLint: () => void runLint(), onRunBuild: () => void runBuild(), onOpenCommit: () => { showLeftTool("git"); setCommitFocusToken((token) => token + 1); }, onOpenGit: () => { setGitToolView("log"); showBottomTool("git"); }, onOpenTerminal: () => showBottomTool("terminal"), onOpenSettings: () => void openSettings(), onToggleEditorOnly: enterEditorOnlyMode, onNavigateBack: () => void navigateBackFromHistory(), onNavigateForward: () => void navigateForwardFromHistory() }}
         sidebar={{ activePath, selectedProjectPath, activeTool: activeLeftTool, filesVisible, width: leftSidebarWidth, workspace, useLazyProjectTree: derived.useLazyProjectTree, projectTreeChildren, projectTreeLoadingPaths, filesPaneRef, onOpenFile: (path) => void openFile(path), onSelectProjectPath: setSelectedProjectPath, onLoadProjectDirectory: loadProjectDirectoryForActiveWorkspace, onRequestProjectMutation: (request) => openProjectMutationDialog(request.action, request.parentPath), onResizeWidth: resizeLeftSidebar, onSelectTool: showLeftTool, sourceControlProps: { snapshot: sourceControl.snapshot, selected: sourceControl.selected, selection: commitSelection, commitDraft: sourceControl.commitDraft, commitFocusToken, operation: sourceControl.operation, error: sourceControl.error, loadingMoreChanges: sourceControl.loadingMoreChanges, loadingAmendMessage: sourceControl.loadingAmendMessage, conflict: sourceControl.conflict, discard: sourceControl.discard, dirtyGuard: sourceControl.dirtyGuard, gitRoots: gitRoots.roots, onSelectGitRoot: gitRoots.selectRoot, onChangeCommitMessage: sourceControl.setCommitMessage, onChangeCommitAmend: (amend) => void sourceControl.setCommitAmend(amend), onChangeCommitSignOff: sourceControl.setCommitSignOff, onRefresh: sourceControl.refresh, onLoadMoreChanges: sourceControl.loadMoreChanges, onCommit: (action) => void commitSelection.prepare().then(() => sourceControl.commit(action)).catch(() => undefined), onOpenPush: pushController.open, onOpenDiff: (selection) => void sourceControl.openDiff(selection), onOpenFile: (path) => void openFile(path) } }}
         editor={{ queryPanelVisible, usageSearch, onCloseEditorQueryPanel: closeEditorQueryPanel, onOpenUsage: (item) => void openUsageResult(item), activePath, documentsRef, openTabs, appearance: editorAppearance, focusToken: editorFocusToken, completionTarget: editorCompletionTarget, completionEnabled: !settingsApplying, insertTextTarget, selectionTarget, workspaceName: workspace?.rootName ?? null, surfaceRef: editorSurfaceRef, onChange: handleEditorChange, onDocumentChange: handleEditorDocumentChange, onSelectionChange: handleEditorSelectionChange, onDefinitionTrigger: (selection) => void goToDefinitionFromEditor(selection, "modifierClick"), onCodeMirrorCompletionRequest: workspace ? completionBroker : undefined, onCodeMirrorCompletionResolve: workspace ? completionResolver : undefined, onCodeMirrorSignatureHelpRequest: workspace ? signatureHelpBroker : undefined, onValidationRequest: workspace ? workspaceApi.runValidation : undefined, onValidationResult: replaceLiveValidationProblems, onDiagnosticFixRequest: (request) => void previewWorkspaceMutationPlan(createDiagnosticFixWorkspaceEditPlan(request)), blameAttributions: gitTraceState.blameAttributions, gitBlameVisible, selectedBlameLine: selectedBlameAttribution?.bufferLine ?? gitTraceState.selectedLine, onGitTraceLineClick: selectGitBlameLine, onSelectTab: setActiveDocument, onCloseTab: closeEditorTab, onCloseOtherTabs: closeOtherEditorTabs, onCloseTabsToRight: closeEditorTabsToRight, onCopyTabPath: copyEditorTabPath, onEditorGoToDefinition: (selection) => void goToDefinitionFromEditor(selection, "keyboard"), onEditorFindUsages: () => void findUsagesFromEditor(), onEditorFormatDocument: () => void formatActiveDocument(), onEditorCopyPath: copyActiveEditorPath, onToggleGitBlame: toggleGitBlame, gitDiffPreview: diffPreviewVisible ? { files: diffFiles, comparison: diffComparison, actionContext: diffActionContext, onApplyPartial: sourceControl.applyPartialPatch, onOpenFile: (path) => { resetDiff(); void openFile(path); }, onClose: resetDiff } : null }}
       />

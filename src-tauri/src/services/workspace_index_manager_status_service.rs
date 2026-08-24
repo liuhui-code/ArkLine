@@ -59,24 +59,42 @@ pub(crate) fn store_recent_statuses(
     store_task_statuses_with_events(&first.root_path, statuses)
 }
 
-pub(crate) fn store_pending_statuses_for_root(
+pub(crate) fn store_pending_statuses(
     scheduler: &Arc<Mutex<WorkspaceIndexScheduler>>,
+    recent_statuses: &Arc<Mutex<Vec<WorkspaceIndexTaskStatus>>>,
     root_path: &str,
 ) -> Result<(), String> {
     let tasks = scheduler
         .lock()
         .map_err(|_| "Workspace index scheduler lock poisoned".to_string())?
         .pending_tasks_for_root(root_path);
-    for task in tasks {
-        store_task_status(
-            root_path,
-            &task_status_from_task(
-                &task,
+    let statuses = tasks
+        .iter()
+        .map(|task| {
+            task_status_from_task(
+                task,
                 task_state_label(WorkspaceIndexTaskState::Queued),
                 None,
                 None,
-            ),
-        )?;
+            )
+        })
+        .collect::<Vec<_>>();
+    {
+        let mut recent = recent_statuses
+            .lock()
+            .map_err(|_| "Workspace index status lock poisoned".to_string())?;
+        for status in &statuses {
+            recent.retain(|existing| existing.task_id != status.task_id);
+            recent.push(status.clone());
+        }
+        recent.sort_by(|left, right| left.generation.cmp(&right.generation));
+        if recent.len() > 32 {
+            let overflow = recent.len() - 32;
+            recent.drain(0..overflow);
+        }
+    }
+    for status in statuses {
+        store_task_status(root_path, &status)?;
     }
     Ok(())
 }

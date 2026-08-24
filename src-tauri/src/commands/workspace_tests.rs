@@ -19,7 +19,9 @@ use crate::services::workspace_discovery_store_service::{
 };
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
-use crate::services::workspace_open_command_service::open_workspace_through_manager;
+use crate::services::workspace_open_command_service::{
+    open_workspace_through_manager, resume_workspace_indexing_through_manager,
+};
 use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
 #[test]
@@ -101,6 +103,33 @@ fn reopening_a_durable_index_advances_discovery_generation_and_reaches_terminal_
     remove_temp_dir(&root);
 }
 
+#[test]
+fn resume_workspace_indexing_starts_the_worker_and_reaches_ready() {
+    let root = unique_temp_dir("resume-workspace-background-index");
+    let source_dir = root.join("entry/src/main/ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(source_dir.join("Resume.ets"), "class ResumeController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let index_manager = WorkspaceIndexManagerRuntime::default();
+
+    resume_workspace_indexing_through_manager(
+        index_runtime.clone(),
+        index_manager.clone(),
+        crate::services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime::default(),
+        &root_path,
+        |_, _| {},
+    )
+    .unwrap();
+
+    wait_for_workspace_index_idle(&index_manager, &root_path);
+    let state = index_runtime.get_index_state(&root_path).unwrap();
+    assert_eq!(state.status.to_string(), "ready");
+    assert_eq!(state.partial_reason, None);
+
+    remove_temp_dir(&root);
+}
+
 fn remove_temp_dir(root: &PathBuf) {
     for _ in 0..80 {
         if fs::remove_dir_all(root).is_ok() || !root.exists() {
@@ -118,9 +147,7 @@ fn wait_for_workspace_index_idle(index_manager: &WorkspaceIndexManagerRuntime, r
         let has_active_status = statuses
             .iter()
             .any(|status| matches!(status.status.as_str(), "queued" | "running"));
-        if pressure.pending_task_count == 0
-            && !has_active_status
-        {
+        if pressure.pending_task_count == 0 && !has_active_status {
             return;
         }
         thread::sleep(Duration::from_millis(25));

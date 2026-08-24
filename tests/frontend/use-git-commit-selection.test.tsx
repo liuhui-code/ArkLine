@@ -4,10 +4,35 @@ import type { GitChangeEntry, GitRepositorySnapshot } from "@/features/git/git-s
 import type { WorkspaceApi } from "@/features/workspace/workspace-api";
 
 describe("Git commit selection", () => {
-  it("stages the full contents of an included partially-staged file", async () => {
+  it("preserves the staged portion of a partially included file", async () => {
     const stageGitPaths = vi.fn().mockResolvedValue(undefined);
-    const { result } = renderHook(() => useGitCommitSelection({ rootPath: "/repo", snapshot: snapshot([entry("src/main.ets", { staged: true, unstaged: true })]), workspaceApi: { stageGitPaths } as WorkspaceApi }));
+    const file = entry("src/main.ets", { staged: true, unstaged: true });
+    const { result } = renderHook(() => useGitCommitSelection({ rootPath: "/repo", snapshot: snapshot([file]), workspaceApi: { stageGitPaths } as WorkspaceApi }));
+
+    expect(result.current.partiallyIncludedPaths).toContain(file.relativePath);
     await act(() => result.current.prepare());
+
+    expect(stageGitPaths).not.toHaveBeenCalled();
+  });
+
+  it("expands a partially included file only after the user selects the whole file", async () => {
+    const stageGitPaths = vi.fn().mockResolvedValue(undefined);
+    const file = entry("src/main.ets", { staged: true, unstaged: true });
+    const { result } = renderHook(() => useGitCommitSelection({ rootPath: "/repo", snapshot: snapshot([file]), workspaceApi: { stageGitPaths } as WorkspaceApi }));
+
+    act(() => result.current.toggle(file));
+    await act(() => result.current.prepare());
+
+    expect(stageGitPaths).toHaveBeenCalledWith({ rootPath: "/repo", paths: ["src/main.ets"] });
+  });
+
+  it("stages the full contents of an included unstaged file", async () => {
+    const stageGitPaths = vi.fn().mockResolvedValue(undefined);
+    const file = entry("src/main.ets", { unstaged: true });
+    const { result } = renderHook(() => useGitCommitSelection({ rootPath: "/repo", snapshot: snapshot([file]), workspaceApi: { stageGitPaths } as WorkspaceApi }));
+
+    await act(() => result.current.prepare());
+
     expect(stageGitPaths).toHaveBeenCalledWith({ rootPath: "/repo", paths: ["src/main.ets"] });
   });
 

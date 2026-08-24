@@ -1,6 +1,10 @@
 import { textSearchPartialNotice } from "@/components/layout/search-everywhere-controller-model";
 import type { SearchEverywhereMode } from "@/components/layout/SearchEverywherePanel";
 import type { TextSearchRequestRunnerInput } from "@/components/layout/search-request-runner";
+import {
+  resolveTextSearchSelection,
+  type TextSearchSelectionAnchor,
+} from "@/components/layout/search-result-application";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
 import {
   parseSearchQuery,
@@ -33,6 +37,7 @@ export type StreamingTextSearchRunnerInput = {
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   onStreamError?: (message: string) => void;
   now?: () => number;
+  selectionAnchor?: TextSearchSelectionAnchor | null;
 };
 
 export function runStreamingTextSearch({
@@ -49,12 +54,14 @@ export function runStreamingTextSearch({
   recordUiInteraction,
   onStreamError,
   now = Date.now,
+  selectionAnchor,
 }: StreamingTextSearchRunnerInput) {
   let aggregate = emptyResult(query);
   let firstBatch = true;
   let interactionRecorded = false;
   let nextSequence = 0;
   let terminal = false;
+  let selectedIndex = 0;
   const startedAt = now();
   patchSearchSession({ candidates: [], truncationNotice: null, textPageLoading: true });
 
@@ -109,13 +116,19 @@ export function runStreamingTextSearch({
       }
       nextSequence += 1;
       aggregate = mergeTextSearchResults(aggregate, event.result);
+      const nextSelectedIndex = resolveTextSearchSelection(aggregate, selectionAnchor);
       patchSearchSession({
         result: aggregate,
         textNextCursor: aggregate.nextCursor ?? null,
         textPageLoading: true,
-        ...(firstBatch ? { previewContent: null, selectedIndex: 0 } : {}),
+        ...((firstBatch || nextSelectedIndex !== selectedIndex)
+          ? { previewContent: null, selectedIndex: nextSelectedIndex }
+          : {}),
       });
-      if (firstBatch && aggregate.matches.length > 0) scheduleSelectedPreview(0);
+      if ((firstBatch || nextSelectedIndex !== selectedIndex) && aggregate.matches.length > 0) {
+        scheduleSelectedPreview(nextSelectedIndex);
+      }
+      selectedIndex = nextSelectedIndex;
       firstBatch = false;
       if (!interactionRecorded) {
         recordUiInteraction?.(interactionKind(mode), query.trim(), startedAt, now());

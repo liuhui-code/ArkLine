@@ -13,6 +13,8 @@ use crate::services::workspace_sdk_index_service::query_workspace_sdk_symbols;
 
 #[path = "workspace_index_readiness_completion_tests.rs"]
 mod readiness_completion;
+#[path = "workspace_index_final_readiness_tests.rs"]
+mod final_readiness;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -129,10 +131,45 @@ fn coalesces_watcher_changes_before_refreshing_the_index() {
         context_lines: 0,
     })
     .unwrap();
+    let state = index_runtime.get_index_state(&root_path).unwrap();
 
     assert_eq!(results.len(), 1);
     assert!(results[0].changed);
     assert_eq!(matches.matches.len(), 1);
+    assert_eq!(state.status.to_string(), "ready");
+    assert_eq!(state.partial_reason, None);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn watcher_refresh_does_not_claim_ready_over_an_existing_partial_generation() {
+    let root = unique_temp_dir("workspace-index-manager-preserve-partial");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    fs::create_dir_all(&source_dir).unwrap();
+    let source_file = source_dir.join("Index.ets");
+    fs::write(&source_file, "class ExistingController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let changed_path = source_file.to_string_lossy().to_string();
+    let index_runtime = WorkspaceIndexRuntime::default();
+    let manager = WorkspaceIndexManagerRuntime::default();
+    index_runtime.refresh_workspace_index(&root_path).unwrap();
+    index_runtime
+        .degrade_workspace_deep_layer(&root_path, "Full refresh is still pending")
+        .unwrap();
+
+    fs::write(&source_file, "class UpdatedController {}\n").unwrap();
+    manager
+        .schedule_changed_paths(&root_path, &[changed_path])
+        .unwrap();
+    manager.drain_index_tasks(&index_runtime).unwrap();
+
+    let state = index_runtime.get_index_state(&root_path).unwrap();
+    assert_eq!(state.status.to_string(), "partial");
+    assert_eq!(
+        state.partial_reason.as_deref(),
+        Some("Full refresh is still pending")
+    );
 
     fs::remove_dir_all(root).unwrap();
 }

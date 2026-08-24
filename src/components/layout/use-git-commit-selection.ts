@@ -24,13 +24,22 @@ export function useGitCommitSelection({ rootPath, snapshot, workspaceApi }: Opti
     setOverrides((current) => Object.fromEntries(Object.entries(current).filter(([path]) => paths.has(path))));
   }, [snapshot?.snapshotId]);
 
-  const includedPaths = useMemo(() => new Set(
-    (snapshot?.changes ?? []).filter((entry) => isIncluded(entry, overrides)).map((entry) => entry.relativePath),
+  const inclusionStates = useMemo(() => new Map(
+    (snapshot?.changes ?? []).map((entry) => [entry.relativePath, inclusionState(entry, overrides)]),
   ), [overrides, snapshot]);
+  const includedPaths = useMemo(() => new Set(
+    [...inclusionStates].filter(([, state]) => state !== "excluded").map(([path]) => path),
+  ), [inclusionStates]);
+  const partiallyIncludedPaths = useMemo(() => new Set(
+    [...inclusionStates].filter(([, state]) => state === "partial").map(([path]) => path),
+  ), [inclusionStates]);
 
   function toggle(entry: GitChangeEntry) {
     if (entry.conflicted) return;
-    setOverrides((current) => ({ ...current, [entry.relativePath]: !isIncluded(entry, current) }));
+    setOverrides((current) => ({
+      ...current,
+      [entry.relativePath]: inclusionState(entry, current) !== "included",
+    }));
   }
 
   function setGroup(entries: GitChangeEntry[], included: boolean) {
@@ -40,10 +49,14 @@ export function useGitCommitSelection({ rootPath, snapshot, workspaceApi }: Opti
   async function prepare() {
     if (!rootPath || !snapshot) throw new Error("Open a Git repository before committing.");
     if (snapshot.hasMore) throw new Error("Load the complete change list before committing.");
-    const selected = snapshot.changes.filter((entry) => includedPaths.has(entry.relativePath) && !entry.conflicted);
+    const selected = snapshot.changes.filter((entry) => inclusionStates.get(entry.relativePath) !== "excluded" && !entry.conflicted);
     if (!selected.length) throw new Error("Select at least one change to commit.");
-    const stage = selected.filter((entry) => entry.unstaged).map((entry) => entry.relativePath);
-    const unstage = snapshot.changes.filter((entry) => entry.staged && !includedPaths.has(entry.relativePath)).map((entry) => entry.relativePath);
+    const stage = selected
+      .filter((entry) => entry.unstaged && inclusionStates.get(entry.relativePath) === "included")
+      .map((entry) => entry.relativePath);
+    const unstage = snapshot.changes
+      .filter((entry) => entry.staged && inclusionStates.get(entry.relativePath) === "excluded")
+      .map((entry) => entry.relativePath);
     setPreparing(true);
     setError(null);
     try {
@@ -60,6 +73,7 @@ export function useGitCommitSelection({ rootPath, snapshot, workspaceApi }: Opti
 
   return {
     includedPaths,
+    partiallyIncludedPaths,
     includedCount: includedPaths.size,
     preparing,
     error,
@@ -70,9 +84,14 @@ export function useGitCommitSelection({ rootPath, snapshot, workspaceApi }: Opti
   };
 }
 
-function isIncluded(entry: GitChangeEntry, overrides: Record<string, boolean>) {
-  if (entry.conflicted) return false;
-  return overrides[entry.relativePath] ?? entry.kind !== "untracked";
+type GitCommitInclusionState = "excluded" | "partial" | "included";
+
+function inclusionState(entry: GitChangeEntry, overrides: Record<string, boolean>): GitCommitInclusionState {
+  if (entry.conflicted) return "excluded";
+  const override = overrides[entry.relativePath];
+  if (override !== undefined) return override ? "included" : "excluded";
+  if (entry.staged && entry.unstaged) return "partial";
+  return entry.kind === "untracked" ? "excluded" : "included";
 }
 
 export type GitCommitSelectionController = ReturnType<typeof useGitCommitSelection>;

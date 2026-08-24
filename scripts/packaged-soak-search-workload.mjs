@@ -2,6 +2,7 @@ import {
   rendererInteractionStart,
   waitForActiveTab,
   waitForEditorTarget,
+  waitForSearchEverywhereClass,
   waitForSearchResult,
 } from "./packaged-soak-readiness.mjs";
 import {
@@ -13,6 +14,15 @@ import {
   quickOpenTargetForCycle,
 } from "./packaged-soak-scenario.mjs";
 import { WEBDRIVER_KEYS } from "./packaged-soak-webdriver.mjs";
+
+export async function verifySearchEverywhereClass(driver, className) {
+  await driver.keyChord([WEBDRIVER_KEYS.shift]);
+  await driver.keyChord([WEBDRIVER_KEYS.shift]);
+  await driver.waitForSelectorPresent('[aria-label="Search Everywhere Query"]');
+  await driver.typeText(className);
+  await waitForSearchEverywhereClass(driver, className, 8_000);
+  await driver.keyChord([WEBDRIVER_KEYS.escape]);
+}
 
 export async function exerciseFindInFiles(
   driver,

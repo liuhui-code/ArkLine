@@ -12,6 +12,7 @@
     "aboutToAppear",
     "WindowAdapter"
   ],
+  "searchEverywhereClass": "EntryViewModel",
   "quickOpenTargets": [
     {
       "query": "EntryPage",

@@ -106,6 +106,34 @@ fn reports_content_eligibility_separately_from_policy_skipped_files() {
 }
 
 #[test]
+fn reports_code_layer_freshness_against_source_files_only() {
+    let root = unique_temp_dir("workspace-index-diagnostics-source-policy");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("Entry.ets"), "export class Entry {}\n").unwrap();
+    fs::write(root.join("build-profile.json5"), "{ app: {} }\n").unwrap();
+    fs::write(root.join("app-icon.png"), [0_u8, 1, 2, 3]).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+
+    let diagnostics = inspect_workspace_index(&root_path).unwrap();
+    for layer_name in ["symbol", "stub"] {
+        let layer = diagnostics
+            .freshness_layers
+            .iter()
+            .find(|layer| layer.layer == layer_name)
+            .unwrap();
+        assert_eq!(layer.eligible_count, 1, "{layer_name}");
+        assert_eq!(layer.skipped_count, 2, "{layer_name}");
+        assert_eq!(layer.ready_count, 1, "{layer_name}");
+        assert_eq!(layer.missing_count, 0, "{layer_name}");
+    }
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn reports_freshness_layers_for_stale_index_versions() {
     let root = unique_temp_dir("workspace-index-diagnostics-freshness");
     let source_dir = root.join("entry").join("src").join("main").join("ets");

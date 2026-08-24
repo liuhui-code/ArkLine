@@ -27,6 +27,7 @@ type TextSearchResultItemProps = {
   onSelect: (index: number) => void;
   onMouseDown: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
   onClick: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
+  onDoubleClick: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
   onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>, index: number, item: WorkspaceTextSearchMatch) => void;
 };
 
@@ -82,6 +83,7 @@ export const TextSearchResultItem = memo(function TextSearchResultItem({
   onSelect,
   onMouseDown,
   onClick,
+  onDoubleClick,
   onContextMenu,
 }: TextSearchResultItemProps) {
   const setResultRef = useCallback((node: HTMLButtonElement | null) => {
@@ -98,9 +100,11 @@ export const TextSearchResultItem = memo(function TextSearchResultItem({
       className={`search-result search-result--match${selected ? " search-result--selected" : ""}`}
       aria-label={`${item.relativePath}:${item.line}:${item.column} ${item.summary}`}
       aria-selected={selected}
+      title="Click to preview · Double-click to open"
       onMouseMove={() => onSelect(index)}
       onMouseDown={(event) => onMouseDown(event, index, item)}
       onClick={(event) => onClick(event, index, item)}
+      onDoubleClick={(event) => onDoubleClick(event, index, item)}
       onContextMenu={(event) => onContextMenu(event, index, item)}
     >
       {contextBefore.map((line) => (

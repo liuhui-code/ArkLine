@@ -17,6 +17,7 @@ export type UseCurrentFileSymbolsControllerOptions = {
   getActiveContent: () => string;
   onBeforeShow: () => void;
   rememberCurrentLocation: () => void;
+  commitDirectNavigation?: (location: { path: string; line: number; column: number }) => void;
   setSelectionTarget: (target: { line: number; column: number; nonce: number } | null) => void;
   bumpEditorFocusToken: () => void;
   focusEditorSoon: () => void;
@@ -31,6 +32,7 @@ export function useCurrentFileSymbolsController({
   getActiveContent,
   onBeforeShow,
   rememberCurrentLocation,
+  commitDirectNavigation = () => undefined,
   setSelectionTarget,
   bumpEditorFocusToken,
   focusEditorSoon,
@@ -116,7 +118,9 @@ export function useCurrentFileSymbolsController({
   }
 
   function openCurrentClassMethod(method: CurrentClassMethod) {
+    if (!activePath) return;
     rememberCurrentLocation();
+    commitDirectNavigation({ path: activePath, line: method.line, column: method.column });
     setSelectionTarget({ line: method.line, column: method.column, nonce: Date.now() });
     bumpEditorFocusToken();
     setCurrentMethodsVisible(false);

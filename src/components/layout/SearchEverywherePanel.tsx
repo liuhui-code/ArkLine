@@ -119,13 +119,21 @@ export function SearchEverywherePanel({
   const handleTextMouseDown = useLatestCallback((
     event: ReactMouseEvent<HTMLButtonElement>,
     index: number,
-    item: WorkspaceTextSearchMatch,
-  ) => openByMouseDown(event, index, () => onOpenResult(item)));
+  ) => selectByMouseDown(event, index));
   const handleTextClick = useLatestCallback((
     event: ReactMouseEvent<HTMLButtonElement>,
     index: number,
+  ) => selectByClick(event, index));
+  const handleTextDoubleClick = useLatestCallback((
+    event: ReactMouseEvent<HTMLButtonElement>,
+    index: number,
     item: WorkspaceTextSearchMatch,
-  ) => openByClick(event, index, () => onOpenResult(item)));
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectResult(index);
+    onOpenResult(item);
+  });
   const handleTextContextMenu = useLatestCallback((
     event: ReactMouseEvent<HTMLButtonElement>,
     index: number,
@@ -213,6 +221,16 @@ export function SearchEverywherePanel({
   }
   function openByClick(event: ReactMouseEvent<HTMLButtonElement>, index: number, open: () => void) {
     event.stopPropagation(); if (Date.now() - pointerOpenRef.current < 500) return; onSelectResult(index); open();
+  }
+  function selectByMouseDown(event: ReactMouseEvent<HTMLButtonElement>, index: number) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onSelectResult(index);
+  }
+  function selectByClick(event: ReactMouseEvent<HTMLButtonElement>, index: number) {
+    event.stopPropagation();
+    onSelectResult(index);
   }
 
   return (
@@ -361,6 +379,7 @@ export function SearchEverywherePanel({
                     onSelect={selectResult}
                     onMouseDown={handleTextMouseDown}
                     onClick={handleTextClick}
+                    onDoubleClick={handleTextDoubleClick}
                     onContextMenu={handleTextContextMenu}
                   />
                 ))}

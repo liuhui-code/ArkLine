@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { useEditorNavigation } from "@/components/layout/use-editor-navigation";
 
 describe("useEditorNavigation", () => {
-  it("remembers the current location and navigates back", async () => {
+  it("commits successful navigation to back history", async () => {
     const openFile = vi.fn(async () => undefined);
     const setSelectionTarget = vi.fn();
     const bumpEditorFocusToken = vi.fn();
@@ -22,19 +22,56 @@ describe("useEditorNavigation", () => {
       { initialProps: { activePath: "/workspace/A.ets", line: 4 } },
     );
 
-    act(() => result.current.rememberCurrentLocation());
+    await act(async () => {
+      await result.current.navigateToLocation({ path: "/workspace/B.ets", line: 9, column: 3 }, "Usage");
+    });
     rerender({ activePath: "/workspace/B.ets", line: 9 });
     await act(async () => {
       await result.current.navigateBackFromHistory();
     });
 
-    expect(openFile).toHaveBeenCalledWith(
+    expect(openFile).toHaveBeenLastCalledWith(
       "/workspace/A.ets",
       expect.objectContaining({ parentInteractionId: expect.any(String) }),
     );
     expect(setSelectionTarget).toHaveBeenCalledWith(expect.objectContaining({ line: 4, column: 3 }));
-    expect(bumpEditorFocusToken).toHaveBeenCalledTimes(1);
-    expect(onStatusChange).toHaveBeenCalledWith("Back: A.ets:4:3");
+    expect(bumpEditorFocusToken).toHaveBeenCalledTimes(2);
+    expect(onStatusChange).toHaveBeenLastCalledWith("Back: A.ets:4:3");
+  });
+
+  it("navigates forward after going back", async () => {
+    const openFile = vi.fn(async () => undefined);
+    const onStatusChange = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ activePath, line, column }) => useEditorNavigation({
+        activePath,
+        editorSelection: { line, column },
+        editorSurfaceRef: createRef<HTMLElement>(),
+        openFile,
+        setSelectionTarget: vi.fn(),
+        bumpEditorFocusToken: vi.fn(),
+        onStatusChange,
+      }),
+      { initialProps: { activePath: "/workspace/A.ets", line: 3, column: 2 } },
+    );
+
+    await act(async () => {
+      await result.current.navigateToLocation({ path: "/workspace/B.ets", line: 8, column: 4 }, "Usage");
+    });
+    rerender({ activePath: "/workspace/B.ets", line: 8, column: 4 });
+    await act(async () => {
+      await result.current.navigateBackFromHistory();
+    });
+    rerender({ activePath: "/workspace/A.ets", line: 3, column: 2 });
+    await act(async () => {
+      await result.current.navigateForwardFromHistory();
+    });
+
+    expect(openFile).toHaveBeenLastCalledWith(
+      "/workspace/B.ets",
+      expect.objectContaining({ parentInteractionId: expect.any(String) }),
+    );
+    expect(onStatusChange).toHaveBeenLastCalledWith("Forward: B.ets:8:4");
   });
 
   it("navigates within the active file without reopening it", async () => {
@@ -118,6 +155,26 @@ describe("useEditorNavigation", () => {
 
     expect(setSelectionTarget).not.toHaveBeenCalled();
     expect(onStatusChange).toHaveBeenLastCalledWith("Definition failed: Missing.ets read failed");
+  });
+
+  it("does not add failed navigation to back history", async () => {
+    const onStatusChange = vi.fn();
+    const { result } = renderHook(() => useEditorNavigation({
+      activePath: "/workspace/Current.ets",
+      editorSelection: { line: 1, column: 1 },
+      editorSurfaceRef: createRef<HTMLElement>(),
+      openFile: vi.fn(async () => ({ ok: false, errorMessage: "read failed" })),
+      setSelectionTarget: vi.fn(),
+      bumpEditorFocusToken: vi.fn(),
+      onStatusChange,
+    }));
+
+    await act(async () => {
+      await result.current.navigateToLocation({ path: "/workspace/Missing.ets", line: 9, column: 3 });
+      await result.current.navigateBackFromHistory();
+    });
+
+    expect(onStatusChange).toHaveBeenLastCalledWith("Back: no previous location");
   });
 
   it("reports when back history is empty", async () => {

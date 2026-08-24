@@ -34,10 +34,14 @@ fn load_layer_freshness(
     }
     let sql = format!(
         "select
-            sum(case when fingerprint.path is not null and fingerprint.{column} = ?2 then 1 else 0 end),
-            sum(case when fingerprint.path is not null and fingerprint.{column} != ?2 then 1 else 0 end),
-            sum(case when fingerprint.path is null then 1 else 0 end),
-            count(*)
+            sum(case when (file.path glob '*.ets' or file.path glob '*.ts')
+                and fingerprint.path is not null and fingerprint.{column} = ?2 then 1 else 0 end),
+            sum(case when (file.path glob '*.ets' or file.path glob '*.ts')
+                and fingerprint.path is not null and fingerprint.{column} != ?2 then 1 else 0 end),
+            sum(case when (file.path glob '*.ets' or file.path glob '*.ts')
+                and fingerprint.path is null then 1 else 0 end),
+            sum(case when file.path glob '*.ets' or file.path glob '*.ts' then 1 else 0 end),
+            sum(case when file.path glob '*.ets' or file.path glob '*.ts' then 0 else 1 end)
          from workspace_files file
          left join workspace_file_fingerprints fingerprint
             on fingerprint.root_path = file.root_path and fingerprint.path = file.path
@@ -48,7 +52,7 @@ fn load_layer_freshness(
             Ok(WorkspaceIndexFreshnessLayerSummary {
                 layer: layer.to_string(),
                 eligible_count: row.get::<_, Option<i64>>(3)?.unwrap_or(0),
-                skipped_count: 0,
+                skipped_count: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
                 ready_count: row.get::<_, Option<i64>>(0)?.unwrap_or(0),
                 stale_count: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
                 missing_count: row.get::<_, Option<i64>>(2)?.unwrap_or(0),

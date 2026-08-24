@@ -8,6 +8,7 @@ import {
   buildTextSearchResultPatch,
   type SearchTextQueryExecutionResult,
 } from "@/features/search/search-text-query-session";
+import type { WorkspaceTextSearchMatch, WorkspaceTextSearchResult } from "@/features/search/workspace-text-search";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
 
 export type EntitySearchApplicationInput = {
@@ -25,7 +26,10 @@ export type TextSearchApplicationInput = {
   mode: SearchEverywhereMode;
   query: string;
   result: SearchTextQueryExecutionResult;
+  selectionAnchor?: TextSearchSelectionAnchor | null;
 };
+
+export type TextSearchSelectionAnchor = Pick<WorkspaceTextSearchMatch, "path" | "line" | "column">;
 
 export function buildEntitySearchApplication({
   query,
@@ -59,13 +63,16 @@ export function buildTextSearchApplication({
   mode,
   query,
   result,
+  selectionAnchor,
 }: TextSearchApplicationInput) {
+  const selectedIndex = resolveTextSearchSelection(result.result, selectionAnchor);
   return {
     patch: {
       ...buildTextSearchResultPatch(result.result),
       truncationNotice: textSearchPartialNotice(result.result),
+      selectedIndex,
     },
-    previewIndex: 0,
+    previewIndex: selectedIndex,
     missReport: {
       mode,
       query,
@@ -73,4 +80,15 @@ export function buildTextSearchApplication({
       suppressMissExplain: result.suppressMissExplain,
     },
   };
+}
+
+export function resolveTextSearchSelection(
+  result: WorkspaceTextSearchResult,
+  anchor?: TextSearchSelectionAnchor | null,
+) {
+  if (!anchor) return 0;
+  const index = result.matches.findIndex((match) => (
+    match.path === anchor.path && match.line === anchor.line && match.column === anchor.column
+  ));
+  return index >= 0 ? index : 0;
 }

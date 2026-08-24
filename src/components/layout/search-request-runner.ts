@@ -3,6 +3,7 @@ import {
   buildEntitySearchApplication,
   buildTextSearchApplication,
   type EntitySearchApplicationInput,
+  type TextSearchSelectionAnchor,
 } from "@/components/layout/search-result-application";
 import type { SearchEntityQueryResult } from "@/components/layout/search-entity-query-session";
 import type { UiInteractionKind } from "@/features/performance/ui-latency-monitor";
@@ -40,6 +41,7 @@ export type TextSearchRequestRunnerInput = {
   scheduleSelectedPreview: (selectedIndex: number) => void;
   reportMiss: (requestId: number, missReport: ReturnType<typeof buildTextSearchApplication>["missReport"]) => void;
   now?: () => number;
+  selectionAnchor?: TextSearchSelectionAnchor | null;
 };
 
 export function runEntitySearchRequest({
@@ -86,6 +88,7 @@ export function runTextSearchRequest({
   scheduleSelectedPreview,
   reportMiss,
   now = Date.now,
+  selectionAnchor,
 }: TextSearchRequestRunnerInput) {
   patchSearchSession({ candidates: [], truncationNotice: null });
   const normalizedQuery = query.trim();
@@ -99,7 +102,7 @@ export function runTextSearchRequest({
     request: request(),
     apply: (result, generation) => {
       recordUiInteraction?.(mode === "searchEverywhere" ? "searchEverywhere" : "globalSearch", normalizedQuery, startedAt, now());
-      const applied = buildTextSearchApplication({ mode, query, result });
+      const applied = buildTextSearchApplication({ mode, query, result, selectionAnchor });
       patchSearchSession(applied.patch);
       scheduleSelectedPreview(applied.previewIndex);
       reportMiss(generation, applied.missReport);

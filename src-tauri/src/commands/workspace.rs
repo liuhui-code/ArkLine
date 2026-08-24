@@ -17,7 +17,7 @@ use crate::services::workspace_index_diagnostics_service::inspect_workspace_inde
 use crate::services::workspace_index_health_service::get_workspace_index_health as get_workspace_index_health_service;
 use crate::services::workspace_index_maintenance_service::clear_workspace_index as clear_workspace_index_service;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
-use crate::services::workspace_index_rebuild_service::rebuild_workspace_index_through_manager;
+use crate::services::workspace_index_rebuild_service::rebuild_workspace_index_and_start_worker;
 use crate::services::workspace_index_repair_service::{
     inspect_parser_failures as inspect_parser_failures_service,
     inspect_unresolved_imports as inspect_unresolved_imports_service,
@@ -29,7 +29,9 @@ use crate::services::workspace_index_ui_activity_service::{
     WorkspaceIndexUiActivityKind, WorkspaceIndexUiActivityRuntime,
 };
 use crate::services::workspace_index_watcher_service::WorkspaceIndexWatcherRuntime;
-use crate::services::workspace_open_command_service::open_workspace_through_manager_blocking;
+use crate::services::workspace_open_command_service::{
+    open_workspace_through_manager_blocking, resume_workspace_indexing_through_manager,
+};
 use crate::services::workspace_query_broker_service::WorkspaceQueryBrokerRuntime;
 use crate::services::workspace_query_command_service::{
     search_workspace_text_blocking, stream_workspace_text_blocking, WorkspaceTextSearchStreamEvent,
@@ -123,18 +125,45 @@ pub fn clear_workspace_index(
 #[tauri::command]
 pub fn rebuild_workspace_index(
     root_path: String,
+    app_handle: AppHandle,
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<(), String> {
-    rebuild_workspace_index_through_manager(&index_runtime, &index_manager, &root_path)
+    let app_handle = app_handle.clone();
+    let callback_runtime = index_runtime.inner().clone();
+    rebuild_workspace_index_and_start_worker(
+        index_runtime.inner().clone(),
+        index_manager.inner().clone(),
+        ui_activity.inner().clone(),
+        &root_path,
+        move |status, events| {
+            emit_workspace_index_task_update(&app_handle, &callback_runtime, status);
+            emit_workspace_index_events(&app_handle, &events);
+        },
+    )
 }
 
 #[tauri::command]
 pub fn resume_workspace_indexing(
     root_path: String,
+    app_handle: AppHandle,
+    index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
+    ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
 ) -> Result<(), String> {
-    index_manager.open_workspace_index(&root_path)
+    let app_handle = app_handle.clone();
+    let callback_runtime = index_runtime.inner().clone();
+    resume_workspace_indexing_through_manager(
+        index_runtime.inner().clone(),
+        index_manager.inner().clone(),
+        ui_activity.inner().clone(),
+        &root_path,
+        move |status, events| {
+            emit_workspace_index_task_update(&app_handle, &callback_runtime, status);
+            emit_workspace_index_events(&app_handle, &events);
+        },
+    )
 }
 
 #[tauri::command]
