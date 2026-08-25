@@ -2,6 +2,7 @@ import { IndexDiagnosticsCenter } from "@/components/layout/IndexDiagnosticsCent
 import { IndexExplainPanel } from "@/components/layout/IndexExplainPanel";
 import type { BottomToolKey } from "@/components/layout/shell-state";
 import { ShellStatusBar } from "@/components/layout/ShellStatusBar";
+import { deriveBackgroundTasks } from "@/components/layout/background-task-model";
 import type { SemanticCapabilityState } from "@/features/semantic/semantic-capability-state";
 import type { SemanticState } from "@/features/semantic/semantic-store";
 import type {
@@ -16,6 +17,7 @@ import type { UiLatencySample } from "@/features/performance/ui-latency-monitor"
 import type { IpcLatencySample } from "@/features/performance/ipc-latency-store";
 import type { RenderPressureSample } from "@/features/performance/render-pressure-store";
 import type { StatusMessageStore } from "@/features/status/status-message-store";
+import type { BuildState } from "@/features/build/build-model";
 
 export type AppShellIndexAndStatusSurfacesProps = {
   activeBottomTool: BottomToolKey;
@@ -60,6 +62,8 @@ export type AppShellIndexAndStatusSurfacesProps = {
   workspaceIndexText: string;
   sdkIndexText: string | null;
   buildMessage: string;
+  buildState: Pick<BuildState, "status" | "message">;
+  onStopBuild: () => void;
   currentLineBlame: string | null;
   gitBlameVisible: boolean;
   gitBlameMenuOpen: boolean;
@@ -115,6 +119,8 @@ export function AppShellIndexAndStatusSurfaces({
   workspaceIndexText,
   sdkIndexText,
   buildMessage,
+  buildState,
+  onStopBuild,
   currentLineBlame,
   gitBlameVisible,
   gitBlameMenuOpen,
@@ -126,6 +132,8 @@ export function AppShellIndexAndStatusSurfaces({
   onOpenIndexDiagnostics,
   onOpenGitBranchPicker,
 }: AppShellIndexAndStatusSurfacesProps) {
+  const backgroundTasks = deriveBackgroundTasks(workspaceIndexTaskStatuses, buildState);
+
   return (
     <>
       <div
@@ -202,6 +210,10 @@ export function AppShellIndexAndStatusSurfaces({
         onCloseGitBlame={onCloseGitBlame}
         onOpenIndexDiagnostics={onOpenIndexDiagnostics}
         onOpenGitBranchPicker={onOpenGitBranchPicker}
+        backgroundTasks={backgroundTasks}
+        onCancelBackgroundTask={(taskId) => {
+          if (taskId === "build:current") onStopBuild();
+        }}
       />
     </>
   );
