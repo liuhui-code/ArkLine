@@ -109,6 +109,7 @@ describe("TDD capability registry", () => {
     const capability = registry.capabilities.find((item) => item.id === "verified-windows-release");
 
     expect(capability?.sourcePatterns).toContain("scripts/release-*.mjs");
+    expect(capability?.sourcePatterns).toContain("scripts/verify-release-*.mjs");
     expect(capability?.testPatterns).toContain("tests/frontend/*release*.test.*");
   });
 });

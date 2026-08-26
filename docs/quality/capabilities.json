@@ -153,7 +153,7 @@
       "risk": "high",
       "owner": "release-engineering",
       "behavior": "The exact Windows artifact that passes package verification and real-project smoke is the artifact eligible for immutable publication.",
-      "sourcePatterns": [".github/workflows/**", "scripts/package-*.mjs", "scripts/release-*.mjs", "scripts/run-windows-*.mjs", "scripts/packaged-soak-*.mjs", "src-tauri/tauri.conf.json"],
+      "sourcePatterns": [".github/workflows/**", "scripts/package-*.mjs", "scripts/release-*.mjs", "scripts/verify-release-*.mjs", "scripts/run-windows-*.mjs", "scripts/packaged-soak-*.mjs", "src-tauri/tauri.conf.json"],
       "testPatterns": ["tests/frontend/*ci-workflow*.test.*", "tests/frontend/*package*.test.*", "tests/frontend/*release*.test.*", "tests/frontend/packaged-soak-*.test.ts", "tests/frontend/*test-impact*.test.ts", "tests/frontend/*tdd*.test.ts"],
       "testLevels": ["small", "product"]
     }
