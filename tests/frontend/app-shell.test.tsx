@@ -3934,8 +3934,10 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}{Enter}wid");
     await user.keyboard("{Control>} {/Control}");
 
-    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(popup).toBeVisible();
+    await waitFor(() => expect(getCompletionOption(
+      screen.getByRole("listbox", { name: "Code Completion" }),
+      "width",
+    )).toBeVisible());
     expect(screen.getAllByText("width(value: Length): T")).not.toHaveLength(0);
     expect(screen.getByText("Sets the width of the component.")).toBeVisible();
     expect(screen.getByText(/common\.d\.ts:20927:5/)).toBeVisible();
