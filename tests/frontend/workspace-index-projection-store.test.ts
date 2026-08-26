@@ -83,6 +83,42 @@ describe("workspace index projection store", () => {
     vi.useRealTimers();
   });
 
+  it("keeps measured deep-index progress monotonic across continuation transitions", () => {
+    vi.useFakeTimers();
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    store.recordTaskStatus(taskStatus({
+      taskId: "deep-progress",
+      kind: "changed-paths",
+      reason: "full-refresh-deep:refresh-workspace",
+      status: "partial",
+      generation: 4,
+      progressCurrent: 2,
+      progressTotal: 6,
+    }));
+    expect(store.statusSnapshot().taskStatuses[0]).toMatchObject({
+      status: "running",
+      progressCurrent: 2,
+      progressTotal: 6,
+    });
+
+    store.recordTaskStatus(taskStatus({
+      taskId: "deep-progress",
+      kind: "changed-paths",
+      reason: "full-refresh-deep:refresh-workspace",
+      status: "running",
+      generation: 4,
+      progressCurrent: 0,
+      progressTotal: 1,
+    }));
+    expect(store.statusSnapshot().taskStatuses[0]).toMatchObject({
+      status: "running",
+      progressCurrent: 2,
+      progressTotal: 6,
+    });
+    vi.useRealTimers();
+  });
+
   it("keeps completed foreground file tasks out of the shell status projection", () => {
     vi.useFakeTimers();
     const store = createWorkspaceIndexProjectionStore(1);

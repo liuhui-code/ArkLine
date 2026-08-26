@@ -31,6 +31,55 @@ pub(crate) struct WorkspaceIndexDeepRefreshBatch {
     pub path_budget: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct WorkspaceIndexDeepRefreshProgress {
+    pub current_units: usize,
+    pub total_units: usize,
+}
+
+pub(crate) fn load_deep_refresh_progress(
+    root_path: &str,
+    cursor: &WorkspaceIndexDeepRefreshCursor,
+) -> Result<WorkspaceIndexDeepRefreshProgress, String> {
+    if !Path::new(root_path).is_dir() {
+        return Ok(WorkspaceIndexDeepRefreshProgress {
+            current_units: 0,
+            total_units: 0,
+        });
+    }
+    let Some(connection) = open_existing_workspace_index_reader(root_path)? else {
+        return Ok(WorkspaceIndexDeepRefreshProgress {
+            current_units: 0,
+            total_units: 0,
+        });
+    };
+    let (file_count, phase_file_count) = connection
+        .query_row(
+            "select count(*),
+                    sum(case when file_id <= ?3 then 1 else 0 end)
+             from workspace_index_deep_refresh_catalog_files
+             where root_path = ?1 and catalog_generation = ?2",
+            params![
+                normalize_root_path(root_path),
+                cursor.catalog_generation as i64,
+                cursor.last_file_id,
+            ],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?)),
+        )
+        .map_err(|error| error.to_string())?;
+    let file_count = file_count.max(0) as usize;
+    let phase_file_count = phase_file_count.unwrap_or_default().max(0) as usize;
+    let completed_phases = match cursor.phase {
+        WorkspaceIndexDeepRefreshPhase::Content => 0,
+        WorkspaceIndexDeepRefreshPhase::Stub => 1,
+        WorkspaceIndexDeepRefreshPhase::Substring => 2,
+    };
+    Ok(WorkspaceIndexDeepRefreshProgress {
+        current_units: completed_phases * file_count + phase_file_count.min(file_count),
+        total_units: 3 * file_count,
+    })
+}
+
 pub(crate) fn plan_deep_refresh_batch(
     cursor: Option<&WorkspaceIndexDeepRefreshCursor>,
     path_budget: usize,

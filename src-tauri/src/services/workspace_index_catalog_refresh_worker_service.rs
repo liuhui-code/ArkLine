@@ -8,8 +8,8 @@ use crate::services::workspace_index_deep_refresh_catalog_service::{
 };
 use crate::services::workspace_index_deep_refresh_cursor_service::{
     advance_deep_refresh_cursor, clear_deep_refresh_cursor, load_deep_refresh_cursor,
-    plan_deep_refresh_batch, save_deep_refresh_cursor, start_next_deep_refresh_phase,
-    WorkspaceIndexDeepRefreshCursor, WorkspaceIndexDeepRefreshPhase,
+    load_deep_refresh_progress, plan_deep_refresh_batch, save_deep_refresh_cursor,
+    start_next_deep_refresh_phase, WorkspaceIndexDeepRefreshCursor, WorkspaceIndexDeepRefreshPhase,
 };
 use crate::services::workspace_index_deep_sidecar_service::{
     update_background_deep_layer_phase, WorkspaceDeepLayerUpdate,
@@ -57,6 +57,7 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
             save_deep_refresh_cursor(&task.root_path, &next)?;
             let state = index_runtime.get_index_state(&task.root_path)?;
             let mut result = yielded_result(task, state, started_at);
+            apply_catalog_progress(&mut result, task, &next)?;
             result.message = Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE.to_string());
             return Ok(Some(result));
         }
@@ -132,7 +133,19 @@ pub(crate) fn refresh_catalog_deep_layer_chunk<G: Fn() -> bool + Sync>(
     result.refresh_result = None;
     result.status = "partial".to_string();
     result.message = Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE.to_string());
+    apply_catalog_progress(&mut result, task, &next)?;
     Ok(Some(result))
+}
+
+fn apply_catalog_progress(
+    result: &mut WorkspaceIndexTaskResult,
+    task: &WorkspaceIndexTask,
+    cursor: &WorkspaceIndexDeepRefreshCursor,
+) -> Result<(), String> {
+    let progress = load_deep_refresh_progress(&task.root_path, cursor)?;
+    result.progress_current = progress.current_units;
+    result.progress_total = progress.total_units;
+    Ok(())
 }
 
 fn catalog_page_limit(

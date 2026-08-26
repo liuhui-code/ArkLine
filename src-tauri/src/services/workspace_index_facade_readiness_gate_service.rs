@@ -2,6 +2,27 @@ use crate::models::workspace::{WorkspaceIndexReadiness, WorkspaceIndexReadinessS
 use crate::models::workspace_index_layer::WorkspaceIndexLayerStatus;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
 use crate::services::workspace_index_layer_readiness_service::get_workspace_index_layer_readiness;
+use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
+
+pub(crate) fn gate_search_scope(
+    root_path: &str,
+    readiness: &mut WorkspaceIndexReadiness,
+    scope: WorkspaceIndexQueryScope,
+) -> Result<Vec<String>, String> {
+    if !matches!(
+        scope,
+        WorkspaceIndexQueryScope::Classes | WorkspaceIndexQueryScope::Symbols
+    ) {
+        return Ok(Vec::new());
+    }
+    gate_workspace_layer(
+        root_path,
+        readiness,
+        "symbols",
+        "SymbolIndex",
+        "Symbol index layer is missing; search results may be partial",
+    )
+}
 
 pub(crate) fn gate_workspace_layer(
     root_path: &str,

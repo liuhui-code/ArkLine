@@ -90,6 +90,44 @@ describe("useDefinitionController", () => {
     expect(scheduleForegroundNavigationIndex).not.toHaveBeenCalled();
   });
 
+  it("reports a retryable semantic deadline as pending instead of a final miss", async () => {
+    const onStatusChange = vi.fn();
+    const explainIndexMiss = vi.fn(async () => "unexpected final miss");
+    const queryLanguageDefinition = vi.fn(async (
+      _rootPath: string,
+      _request: unknown,
+      requestGeneration: number,
+    ) => ({
+      items: [],
+      readiness: {
+        ...readiness("partial"),
+        reason: "Semantic definition is still preparing; retry the request",
+      },
+      requestGeneration,
+      documentGeneration: null,
+      targetGeneration: null,
+      provider: "none" as const,
+      confidence: "partial" as const,
+      fallbackUsed: false,
+      missReason: "Semantic definition is still preparing; retry the request",
+      explain: ["broker:semanticState:deadline"],
+    }));
+    const { result } = renderHook(() => useDefinitionController(options({
+      workspaceApi: workspaceApi({ queryLanguageDefinition }),
+      explainIndexMiss,
+      onStatusChange,
+    })));
+
+    await act(async () => {
+      await result.current.goToDefinitionFromEditor();
+    });
+
+    expect(explainIndexMiss).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      "Go to Definition pending: Semantic definition is still preparing; retry the request",
+    );
+  });
+
   it("rejects a broker response from a stale request generation", async () => {
     const navigateToLocation = vi.fn(async () => undefined);
     const onStatusChange = vi.fn();

@@ -4,6 +4,8 @@ use tauri::async_runtime::JoinHandle;
 
 const COMPLETION_SEMANTIC_BUDGET: Duration = Duration::from_millis(80);
 const COMPLETION_SEMANTIC_ENRICHMENT_BUDGET: Duration = Duration::from_millis(24);
+const DEFINITION_SEMANTIC_BUDGET: Duration = Duration::from_millis(2_500);
+const DEFINITION_SEMANTIC_ENRICHMENT_BUDGET: Duration = Duration::from_millis(180);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SemanticDeadlineOutcome<T> {
@@ -17,6 +19,14 @@ pub fn completion_semantic_budget(has_indexed_results: bool) -> Duration {
         COMPLETION_SEMANTIC_ENRICHMENT_BUDGET
     } else {
         COMPLETION_SEMANTIC_BUDGET
+    }
+}
+
+pub fn definition_semantic_budget(has_indexed_results: bool) -> Duration {
+    if has_indexed_results {
+        DEFINITION_SEMANTIC_ENRICHMENT_BUDGET
+    } else {
+        DEFINITION_SEMANTIC_BUDGET
     }
 }
 
@@ -54,7 +64,10 @@ pub fn elapsed_millis(started_at: Instant) -> u128 {
 
 #[cfg(test)]
 mod tests {
-    use super::{await_semantic_until, completion_semantic_budget, SemanticDeadlineOutcome};
+    use super::{
+        await_semantic_until, completion_semantic_budget, definition_semantic_budget,
+        SemanticDeadlineOutcome,
+    };
     use std::time::{Duration, Instant};
 
     #[test]
@@ -100,5 +113,14 @@ mod tests {
     fn gives_indexed_completions_a_short_semantic_enrichment_window() {
         assert_eq!(completion_semantic_budget(true), Duration::from_millis(24));
         assert_eq!(completion_semantic_budget(false), Duration::from_millis(80));
+    }
+
+    #[test]
+    fn waits_for_authoritative_definition_only_when_the_index_has_no_target() {
+        assert_eq!(definition_semantic_budget(true), Duration::from_millis(180));
+        assert_eq!(
+            definition_semantic_budget(false),
+            Duration::from_millis(2_500)
+        );
     }
 }

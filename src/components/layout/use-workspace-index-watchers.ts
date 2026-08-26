@@ -182,10 +182,9 @@ export function useWorkspaceIndexWatchers({
     const watchedRootPath = rootPath;
     let teardownWatcher: (() => void) | null = null;
 
-    async function synchronizeWorkspaceIndexState(status: WorkspaceIndexTaskStatus) {
+    async function synchronizeWorkspaceIndexState() {
       if (
-        !isTerminalProjectIndexTaskStatus(status)
-        || !workspaceApi.getWorkspaceIndexState
+        !workspaceApi.getWorkspaceIndexState
         || !applyWorkspaceIndexStateRef.current
       ) {
         return;
@@ -204,28 +203,36 @@ export function useWorkspaceIndexWatchers({
       }
     }
 
-    void refreshWorkspaceIndexTaskStatuses(watchedRootPath);
-    void workspaceApi.watchWorkspaceIndexTaskStatuses(watchedRootPath, (status) => {
-      if (disposed) {
-        return;
-      }
+    async function initializeTaskStatusWatcher() {
+      try {
+        const teardown = await workspaceApi.watchWorkspaceIndexTaskStatuses!(watchedRootPath, (status) => {
+          if (disposed) {
+            return;
+          }
 
-      recordWorkspaceIndexTaskStatus(status);
-      void synchronizeWorkspaceIndexState(status);
-    })
-      .then((teardown) => {
+          recordWorkspaceIndexTaskStatus(status);
+          if (isTerminalProjectIndexTaskStatus(status)) {
+            void synchronizeWorkspaceIndexState();
+          }
+        });
         if (disposed) {
           teardown();
           return;
         }
 
         teardownWatcher = teardown;
-      })
-      .catch((error) => {
+        await refreshWorkspaceIndexTaskStatuses(watchedRootPath);
+        if (!disposed) {
+          await synchronizeWorkspaceIndexState();
+        }
+      } catch (error) {
         if (!disposed) {
           onStatusChange(`Workspace index status watcher failed: ${error instanceof Error ? error.message : String(error)}`);
         }
-      });
+      }
+    }
+
+    void initializeTaskStatusWatcher();
 
     return () => {
       disposed = true;

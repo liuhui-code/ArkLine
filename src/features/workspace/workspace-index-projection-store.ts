@@ -255,8 +255,6 @@ function projectStatusTask(status: WorkspaceIndexTaskStatus): WorkspaceIndexTask
   return {
     ...status,
     status: "running",
-    progressCurrent: 0,
-    progressTotal: 0,
     startedAt: undefined,
     lastHeartbeatAt: undefined,
     finishedAt: undefined,
@@ -388,8 +386,33 @@ function mergeTaskStatus(
   statuses: WorkspaceIndexTaskStatus[],
   next: WorkspaceIndexTaskStatus,
 ) {
+  const previous = statuses.find((status) => status.taskId === next.taskId);
+  const merged = preserveDeepRefreshProgress(previous, next);
   const retained = statuses.filter((status) => status.taskId !== next.taskId);
-  return [...retained, next].sort((left, right) => left.generation - right.generation);
+  return [...retained, merged].sort((left, right) => left.generation - right.generation);
+}
+
+function preserveDeepRefreshProgress(
+  previous: WorkspaceIndexTaskStatus | undefined,
+  next: WorkspaceIndexTaskStatus,
+) {
+  if (!previous || !isActiveDeepRefresh(next) || previous.progressTotal <= 1) {
+    return next;
+  }
+  if (next.progressTotal <= 1) {
+    return {
+      ...next,
+      progressCurrent: previous.progressCurrent,
+      progressTotal: previous.progressTotal,
+    };
+  }
+  if (next.progressTotal !== previous.progressTotal) {
+    return next;
+  }
+  return {
+    ...next,
+    progressCurrent: Math.max(previous.progressCurrent, next.progressCurrent),
+  };
 }
 
 function healthSummaryFromTaskStatuses(

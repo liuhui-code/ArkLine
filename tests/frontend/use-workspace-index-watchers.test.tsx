@@ -170,6 +170,44 @@ describe("useWorkspaceIndexWatchers", () => {
     expect(applyWorkspaceIndexState).toHaveBeenCalledWith(readyState);
     expect(applyWorkspaceIndexRefreshResult).not.toHaveBeenCalled();
   });
+
+  it("subscribes before reconciling state so task completion cannot be missed", async () => {
+    const rootPath = "/workspace";
+    let finishWatcherRegistration!: () => void;
+    const watcherRegistration = new Promise<void>((resolve) => {
+      finishWatcherRegistration = resolve;
+    });
+    const readyState = indexRefreshResult(rootPath).state;
+    const getWorkspaceIndexState = vi.fn(async () => readyState);
+    const refreshWorkspaceIndexTaskStatuses = vi.fn(async () => undefined);
+    const watchWorkspaceIndexTaskStatuses = vi.fn(async () => {
+      await watcherRegistration;
+      return vi.fn();
+    });
+    const applyWorkspaceIndexState = vi.fn();
+
+    renderHook(() => useWorkspaceIndexWatchers({
+      rootPath,
+      workspaceApi: {
+        getWorkspaceIndexState,
+        watchWorkspaceIndexTaskStatuses,
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult: vi.fn(),
+      applyWorkspaceIndexState,
+      refreshWorkspaceIndexTaskStatuses,
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    await waitFor(() => expect(watchWorkspaceIndexTaskStatuses).toHaveBeenCalledWith(rootPath, expect.any(Function)));
+    expect(refreshWorkspaceIndexTaskStatuses).not.toHaveBeenCalled();
+
+    finishWatcherRegistration();
+
+    await waitFor(() => expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledWith(rootPath));
+    await waitFor(() => expect(getWorkspaceIndexState).toHaveBeenCalledWith(rootPath));
+    expect(applyWorkspaceIndexState).toHaveBeenCalledWith(readyState);
+  });
 });
 
 function indexRefreshResult(rootPath: string): WorkspaceIndexRefreshResult {
