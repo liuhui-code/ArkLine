@@ -137,7 +137,7 @@ export type WorkspaceViewModel = {
   rootPath: string;
   visibleFiles: string[];
   fileTree: FileTreeNode[];
-  scanSummary: WorkspaceScanSummary;
+  scanSummary: WorkspaceScanSummary | null;
 };
 
 export type WorkspaceIndexRefreshResult = {

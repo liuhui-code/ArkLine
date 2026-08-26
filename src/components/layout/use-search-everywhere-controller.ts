@@ -245,6 +245,13 @@ export function useSearchEverywhereController({
     }
   }
 
+  function changeSearchEverywhereScope(scope: WorkspaceIndexQueryScope) {
+    if (scope === searchEverywhereScope) return;
+    interactionRuntimeRef.current.invalidateForeground({ cancelActive: true });
+    searchSessionStoreRef.current.clear(quickOpenQuery.trim());
+    setSearchEverywhereScope(scope);
+  }
+
   function resetSearchOverlayState() {
     searchOverlayCommands.resetSearchOverlayState();
   }
@@ -349,7 +356,7 @@ export function useSearchEverywhereController({
 
   return buildSearchEverywhereControllerResult({
     state: { searchEverywhereMode, searchEverywhereScope, searchEverywhereReplaceQuery, searchEverywhereOptions },
-    actions: { setSearchEverywhereScope, setSearchEverywhereReplaceQuery, setSearchEverywhereSelectedIndex, openSearchOverlay, handleOverlayQueryChange, handleOverlayQueryDraftChange, resetSearchOverlayState, moveSearchEverywhereSelection, openSearchEverywhereResult, openSearchEverywhereCandidate, openSelectedSearchEverywhereResult, loadNextSearchEverywherePage, toggleSearchEverywhereCaseSensitive, toggleSearchEverywhereWholeWord },
+    actions: { setSearchEverywhereScope: changeSearchEverywhereScope, setSearchEverywhereReplaceQuery, setSearchEverywhereSelectedIndex, openSearchOverlay, handleOverlayQueryChange, handleOverlayQueryDraftChange, resetSearchOverlayState, moveSearchEverywhereSelection, openSearchEverywhereResult, openSearchEverywhereCandidate, openSelectedSearchEverywhereResult, loadNextSearchEverywherePage, toggleSearchEverywhereCaseSensitive, toggleSearchEverywhereWholeWord },
     searchSessionStore: searchSessionStoreRef.current,
   });
 }

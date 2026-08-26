@@ -49,7 +49,7 @@ export function useWorkspaceOpeningController({
     applyWorkspaceSessionSnapshot(snapshot);
     scheduleVisibleFilesIndex(snapshot.rootPath, snapshot.visibleFiles);
     resetProjectTree();
-    if (snapshot.scanSummary.truncated || snapshot.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD) {
+    if (!snapshot.scanSummary || snapshot.scanSummary.truncated || snapshot.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD) {
       void loadProjectDirectory(snapshot.rootPath, snapshot.rootPath);
     }
   }

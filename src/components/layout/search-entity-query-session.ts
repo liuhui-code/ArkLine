@@ -4,13 +4,17 @@ import {
 } from "@/components/layout/search-overlay-model";
 import { searchEverywhereEntityCandidates as filterEntityCandidates } from "@/components/layout/app-shell-model";
 import type { WorkspaceIndexQueryScope } from "@/features/workspace/workspace-api";
-import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace-index-api-types";
+import type {
+  WorkspaceIndexQueryEnvelope,
+  WorkspaceIndexReadiness,
+} from "@/features/workspace/workspace-index-api-types";
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 export type SearchEntityQueryResult = {
   candidates: SearchCandidate[];
   explain?: string[];
   nextCursor?: number | null;
+  readiness?: WorkspaceIndexReadiness;
 };
 
 export type SearchEntityPatchInput = SearchEntityQueryResult & {
@@ -26,7 +30,6 @@ export type SearchEntityPatchInput = SearchEntityQueryResult & {
 export type SearchEntityQueryExecutionInput = {
   runReadiness?: () => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   runLocal: () => SearchCandidate[];
-  onReadiness: (envelope: WorkspaceIndexQueryEnvelope<SearchCandidate>) => void;
 };
 
 export type SearchEntityQueryRequestInput = {
@@ -35,7 +38,6 @@ export type SearchEntityQueryRequestInput = {
   limit: number;
   runReadiness?: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => Promise<WorkspaceIndexQueryEnvelope<SearchCandidate>>;
   runLocal: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
-  onReadiness: (envelope: WorkspaceIndexQueryEnvelope<SearchCandidate>) => void;
 };
 
 export function buildSearchEntityQueryRequest({
@@ -44,24 +46,25 @@ export function buildSearchEntityQueryRequest({
   limit,
   runReadiness,
   runLocal,
-  onReadiness,
 }: SearchEntityQueryRequestInput): SearchEntityQueryExecutionInput {
   return {
     runReadiness: runReadiness ? () => runReadiness(query, scope, limit) : undefined,
     runLocal: () => runLocal(query, scope, limit),
-    onReadiness,
   };
 }
 
 export async function executeSearchEntityQuery({
   runReadiness,
   runLocal,
-  onReadiness,
 }: SearchEntityQueryExecutionInput): Promise<SearchEntityQueryResult> {
   if (runReadiness) {
     const envelope = await runReadiness();
-    onReadiness(envelope);
-    return { candidates: envelope.items, explain: envelope.explain, nextCursor: envelope.nextCursor ?? null };
+    return {
+      candidates: envelope.items,
+      explain: envelope.explain,
+      nextCursor: envelope.nextCursor ?? null,
+      readiness: envelope.readiness,
+    };
   }
   return { candidates: runLocal() };
 }
@@ -75,6 +78,7 @@ export function buildSearchEntityPatch({
   recentPaths,
   openedPaths,
   nextCursor,
+  readiness,
   readinessCursorAvailable,
 }: SearchEntityPatchInput) {
   const visibleCandidates = filterEntityCandidates(candidates);
@@ -92,6 +96,7 @@ export function buildSearchEntityPatch({
       entityNextCursor: readinessCursorAvailable && capped.metadata.truncated ? capped.items.length : nextCursor ?? null,
       textNextCursor: null,
       textPageLoading: false,
+      indexReadiness: readiness ?? null,
     },
     visibleCount: visibleCandidates.length,
   };

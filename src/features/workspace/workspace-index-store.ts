@@ -61,7 +61,7 @@ function createInitialState(): WorkspaceIndexState {
 }
 
 function buildPartialReason(workspace: WorkspaceViewModel) {
-  if (!workspace.scanSummary.truncated) {
+  if (!workspace.scanSummary?.truncated) {
     return null;
   }
 
@@ -89,7 +89,7 @@ export function createWorkspaceIndexStore() {
       state.rootPath = normalizePath(workspace.rootPath);
       state.filePaths = workspace.visibleFiles.map(normalizePath);
       state.symbols = [];
-      state.status = workspace.scanSummary.truncated ? "partial" : "ready";
+      state.status = !workspace.scanSummary ? "scanning" : workspace.scanSummary.truncated ? "partial" : "ready";
       state.indexedAt = Date.now();
       state.partialReason = buildPartialReason(workspace);
       state.queryReadiness = null;

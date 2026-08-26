@@ -2,7 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::models::workspace::{
-    WorkspaceDirectoryEntry, WorkspaceDirectoryEntryKind, WorkspaceScanSummary, WorkspaceSnapshot,
+    WorkspaceDirectoryEntry, WorkspaceDirectoryEntryKind, WorkspaceOpenSnapshot,
+    WorkspaceScanSummary, WorkspaceSnapshot,
 };
 
 const DEFAULT_EXCLUDES: [&str; 11] = [
@@ -24,19 +25,13 @@ pub fn scan_workspace(root_path: &Path) -> Result<WorkspaceSnapshot, String> {
     scan_workspace_with_limit(root_path, MAX_WORKSPACE_FILES)
 }
 
-pub fn scan_workspace_for_open(root_path: &Path) -> Result<WorkspaceSnapshot, String> {
+pub fn scan_workspace_for_open(root_path: &Path) -> Result<WorkspaceOpenSnapshot, String> {
     validate_workspace_root(root_path)?;
 
-    Ok(WorkspaceSnapshot {
+    Ok(WorkspaceOpenSnapshot {
         root_name: workspace_root_name(root_path),
         root_path: normalize_path(root_path),
         files: Vec::new(),
-        scan_summary: WorkspaceScanSummary {
-            scanned_files: 0,
-            skipped_entries: 0,
-            truncated: true,
-            exclude_rules: default_exclude_rules(),
-        },
     })
 }
 
@@ -327,28 +322,16 @@ mod tests {
     }
 
     #[test]
-    fn open_scan_returns_root_only_partial_snapshot_for_large_workspaces() {
+    fn open_scan_returns_root_only_snapshot_without_a_scan_summary() {
         let root = unique_temp_dir("workspace-open-root-only");
-        let source_dir = root.join("entry").join("src").join("main").join("ets");
-        fs::create_dir_all(&source_dir).unwrap();
-        for index in 0..1_050 {
-            fs::write(
-                source_dir.join(format!("Page{index:04}.ets")),
-                "struct Page {}\n",
-            )
-            .unwrap();
-        }
+        fs::create_dir_all(&root).unwrap();
 
         let snapshot = scan_workspace_for_open(&root).unwrap();
+        let wire = serde_json::to_value(&snapshot).unwrap();
 
         assert_eq!(snapshot.root_path, normalize_path(&root));
         assert!(snapshot.files.is_empty());
-        assert_eq!(snapshot.scan_summary.scanned_files, 0);
-        assert!(snapshot.scan_summary.truncated);
-        assert!(snapshot
-            .scan_summary
-            .exclude_rules
-            .contains(&"oh_modules".to_string()));
+        assert_eq!(wire.get("scanSummary"), None);
 
         fs::remove_dir_all(root).unwrap();
     }

@@ -160,6 +160,81 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.search.searchEverywhereCandidates).toEqual([]);
   });
 
+  it("does not let stale search readiness overwrite the current query", async () => {
+    vi.useFakeTimers();
+    const first = createDeferred<{
+      items: SearchCandidate[];
+      readiness: WorkspaceIndexReadiness;
+      explain: string[];
+    }>();
+    const second = createDeferred<{
+      items: SearchCandidate[];
+      readiness: WorkspaceIndexReadiness;
+      explain: string[];
+    }>();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const replaceQueryReadiness = vi.fn();
+    const { result } = renderSearchHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      replaceQueryReadiness,
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    act(() => result.current.search.handleOverlayQueryDraftChange("Final"));
+    act(() => result.current.search.handleOverlayQueryChange("Final"));
+    await flushSearchDebounce();
+
+    await act(async () => {
+      second.resolve({ items: [], readiness: readiness(), explain: [] });
+      await Promise.resolve();
+    });
+    expect(result.current.search.searchSessionStore.getSnapshot().indexReadiness).toEqual(readiness());
+
+    await act(async () => {
+      first.resolve({
+        items: [],
+        readiness: {
+          ...readiness(),
+          state: "partial",
+          reason: "Old query is still indexing",
+          retryable: true,
+        },
+        explain: [],
+      });
+      await Promise.resolve();
+    });
+
+    expect(result.current.search.searchSessionStore.getSnapshot().indexReadiness).toEqual(readiness());
+    expect(replaceQueryReadiness).not.toHaveBeenCalled();
+  });
+
+  it("clears results and readiness immediately when the search scope changes", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ source: "file", title: "Entry.ets", path: "/workspace/Entry.ets" })],
+      readiness: readiness(),
+      explain: [],
+    }));
+    const { result } = renderSearchHarness({
+      query: "Entry",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    expect(result.current.search.searchEverywhereCandidates).toHaveLength(1);
+    expect(result.current.search.searchSessionStore.getSnapshot().indexReadiness?.state).toBe("ready");
+
+    act(() => result.current.search.setSearchEverywhereScope("classes"));
+
+    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
+    expect(result.current.search.searchSessionStore.getSnapshot().indexReadiness).toBeNull();
+  });
+
   it("cancels stale backend work while keeping the next query debounced", () => {
     vi.useFakeTimers();
     const cancelWorkspaceSearch = vi.fn(async () => undefined);

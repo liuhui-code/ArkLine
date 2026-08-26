@@ -9,7 +9,7 @@ use crate::commands::workspace_emit::{
 use crate::models::workspace::{
     WorkspaceDirectoryEntry, WorkspaceIndexDiagnostics, WorkspaceIndexEvent, WorkspaceIndexHealth,
     WorkspaceIndexParserFailure, WorkspaceIndexRefreshResult, WorkspaceIndexState,
-    WorkspaceIndexTaskStatus, WorkspaceIndexUnresolvedImport, WorkspaceSnapshot,
+    WorkspaceIndexTaskStatus, WorkspaceIndexUnresolvedImport, WorkspaceOpenSnapshot,
     WorkspaceTextSearchRequest, WorkspaceTextSearchResult,
 };
 use crate::services::diff_service::load_workspace_diff_text;
@@ -48,7 +48,7 @@ pub async fn open_workspace(
     index_runtime: State<'_, WorkspaceIndexRuntime>,
     index_manager: State<'_, WorkspaceIndexManagerRuntime>,
     ui_activity: State<'_, WorkspaceIndexUiActivityRuntime>,
-) -> Result<WorkspaceSnapshot, String> {
+) -> Result<WorkspaceOpenSnapshot, String> {
     let app_handle = app_handle.clone();
     let callback_runtime = index_runtime.inner().clone();
     ui_activity.record_ui_activity(

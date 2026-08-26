@@ -16,20 +16,21 @@ describe("search entity query session", () => {
       nextCursor: 5,
     };
     const readiness = async () => envelope;
-    const observed: unknown[] = [];
-
     const input = buildSearchEntityQueryRequest({
       query: "Entry",
       scope: "all",
       limit: 25,
       runReadiness: readiness,
       runLocal: () => [],
-      onReadiness: (value) => observed.push(value),
     });
     const result = await executeSearchEntityQuery(input);
 
-    expect(result).toEqual({ candidates: envelope.items, explain: ["reason:ready"], nextCursor: 5 });
-    expect(observed).toEqual([envelope]);
+    expect(result).toEqual({
+      candidates: envelope.items,
+      explain: ["reason:ready"],
+      nextCursor: 5,
+      readiness: envelope.readiness,
+    });
   });
 
   it("builds local fallback entity query requests", async () => {
@@ -39,7 +40,6 @@ describe("search entity query session", () => {
       limit: 25,
       runReadiness: undefined,
       runLocal: () => [candidate("class", "Entry")],
-      onReadiness: () => undefined,
     });
 
     await expect(executeSearchEntityQuery(input)).resolves.toEqual({
@@ -97,10 +97,14 @@ describe("search entity query session", () => {
     const result = await executeSearchEntityQuery({
       runReadiness: async () => envelope,
       runLocal: () => [],
-      onReadiness: (next) => expect(next).toBe(envelope),
     });
 
-    expect(result).toMatchObject({ candidates: envelope.items, explain: ["query:entity"], nextCursor: 2 });
+    expect(result).toMatchObject({
+      candidates: envelope.items,
+      explain: ["query:entity"],
+      nextCursor: 2,
+      readiness: envelope.readiness,
+    });
   });
 
   it("builds append patches for paged entity results", () => {
