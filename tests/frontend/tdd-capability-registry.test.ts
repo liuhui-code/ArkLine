@@ -103,4 +103,12 @@ describe("TDD capability registry", () => {
       "src/features/git/**",
     ]));
   });
+
+  it("maps candidate creation and promotion scripts to the verified Windows release capability", async () => {
+    const registry = await readRegistry();
+    const capability = registry.capabilities.find((item) => item.id === "verified-windows-release");
+
+    expect(capability?.sourcePatterns).toContain("scripts/release-*.mjs");
+    expect(capability?.testPatterns).toContain("tests/frontend/*release*.test.*");
+  });
 });

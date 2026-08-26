@@ -6,6 +6,7 @@
       "stepTimeoutMs": 5400000,
       "steps": [
         "pnpm check:whitespace",
+        "pnpm check:version",
         "pnpm check:line-count",
         "pnpm test:semantic-worker",
         "pnpm test:frontend:quality",
@@ -20,6 +21,7 @@
       "stepTimeoutMs": 5400000,
       "steps": [
         "pnpm check:whitespace",
+        "pnpm check:version",
         "pnpm check:line-count",
         "pnpm test",
         "pnpm test:rust",
@@ -33,6 +35,7 @@
       "stepTimeoutMs": 2000000,
       "steps": [
         "pnpm check:whitespace",
+        "pnpm check:version",
         "pnpm check:line-count",
         "pnpm test",
         "pnpm build",
@@ -54,6 +57,9 @@
     "tests/frontend/quality-gate-manifest.test.ts",
     "tests/frontend/indexing-roadmap-status.test.ts",
     "tests/frontend/ci-workflow-gates.test.ts",
+    "tests/frontend/release-version.test.ts",
+    "tests/frontend/release-candidate-manifest.test.ts",
+    "tests/frontend/verify-release-candidate.test.ts",
     "tests/frontend/packaged-soak-foundation.test.ts",
     "tests/frontend/packaged-soak-report.test.ts",
     "tests/frontend/packaged-soak-webdriver.test.ts",

@@ -111,6 +111,25 @@ describe("package windows launcher", () => {
     ]);
   });
 
+  it("builds one Windows binary before packaging both candidate formats", () => {
+    expect(buildPackagingSteps({ target: "windows-candidate", hostPlatform: "win32" })).toEqual([
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
+      {
+        name: "semantic-sidecar",
+        command: "node",
+        args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
+      },
+      {
+        name: "indexer-sidecar",
+        command: "node",
+        args: ["scripts/build-indexer-sidecar.mjs", "--target-triple", "x86_64-pc-windows-msvc"],
+      },
+      { name: "tauri-binary", command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--no-bundle"] },
+      { name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] },
+      { name: "tauri-installer", command: "pnpm", args: ["tauri", "bundle", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"] },
+    ]);
+  });
+
   it("uses the Windows pnpm shim on Windows", () => {
     expect(resolvePnpmExecutable("win32")).toBe("pnpm.cmd");
   });
