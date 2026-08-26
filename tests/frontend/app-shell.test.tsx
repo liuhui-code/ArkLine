@@ -1141,7 +1141,21 @@ describe("App shell", () => {
 
   it("opens quick open from the keyboard and filters workspace paths", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async (_rootPath: string, query: string) => searchEnvelope(
+      query === "main" ? [{
+        id: "file:C:\\samples\\DemoWorkspace\\src\\main.ets",
+        source: "file" as const,
+        kind: "file",
+        title: "main.ets",
+        subtitle: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+        path: "C:\\samples\\DemoWorkspace\\src\\main.ets",
+        line: 1,
+        column: 1,
+        score: 100,
+        freshness: "ready" as const,
+      }] : [],
+    ));
+    render(<AppShell workspaceApi={createWorkspaceApi({ queryWorkspaceCandidatesWithReadiness })} />);
 
     await openProject(user);
     await user.keyboard("{Control>}p{/Control}");
@@ -1149,6 +1163,17 @@ describe("App shell", () => {
     const query = await screen.findByLabelText("Quick Open Query");
     await user.type(query, "main");
 
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenLastCalledWith(
+      "C:\\samples\\DemoWorkspace",
+      "main",
+      "files",
+      20,
+      null,
+      undefined,
+      expect.any(Number),
+      1_000,
+      "quickOpen",
+    ));
     const results = screen.getByRole("list", { name: "Quick Open Results" });
     expect(await within(results).findByRole("button", { name: "C:\\samples\\DemoWorkspace\\src\\main.ets" })).toBeVisible();
   });
@@ -3864,9 +3889,8 @@ describe("App shell", () => {
       expect.any(Number),
       250,
     ));
-    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(within(popup).getByRole("option", { name: /PrivateProfile/ })).toBeVisible();
-    expect(within(popup).getByRole("option", { name: /private/ })).toBeVisible();
+    expect(await screen.findByRole("option", { name: /PrivateProfile/ })).toBeVisible();
+    expect(screen.getByRole("option", { name: /private/ })).toBeVisible();
   });
 
   it("shows SDK completion signature and source details", async () => {
@@ -3910,8 +3934,10 @@ describe("App shell", () => {
     await user.keyboard("{Control>}{End}{/Control}{Enter}wid");
     await user.keyboard("{Control>} {/Control}");
 
-    const popup = await screen.findByRole("listbox", { name: "Code Completion" });
-    expect(popup).toBeVisible();
+    await waitFor(() => expect(getCompletionOption(
+      screen.getByRole("listbox", { name: "Code Completion" }),
+      "width",
+    )).toBeVisible());
     expect(screen.getAllByText("width(value: Length): T")).not.toHaveLength(0);
     expect(screen.getByText("Sets the width of the component.")).toBeVisible();
     expect(screen.getByText(/common\.d\.ts:20927:5/)).toBeVisible();
