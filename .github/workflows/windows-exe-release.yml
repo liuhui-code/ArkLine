@@ -4,260 +4,163 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "New immutable release tag, for example v0.1.26"
+        description: "Immutable release tag matching the candidate manifest, for example v0.1.32"
+        required: true
+        type: string
+      candidate_run_id:
+        description: "Successful windows-ci run ID for the main commit being promoted"
         required: true
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: arkline-release
   cancel-in-progress: false
 
 jobs:
-  validate-release:
-    name: Release / Validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate new release tag
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "release_tag must be a version such as v0.1.26" >&2
-            exit 1
-          fi
-
-          remote_tag="$(git ls-remote --tags origin "refs/tags/$RELEASE_TAG")"
-          if [[ -n "$remote_tag" ]]; then
-            echo "release tag already exists: $RELEASE_TAG" >&2
-            exit 1
-          fi
-
-  quality:
-    name: Release / Frontend Gate
-    needs: validate-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run release frontend gate
-        run: pnpm check:release:frontend
-
-      - name: Upload quality evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: arkline-release-quality-gate
-          path: artifacts/*.json
-          if-no-files-found: warn
-          retention-days: 30
-
-  rust:
-    name: Release / Rust Gate
-    needs: validate-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Tauri Linux dependencies
-        run: bash scripts/install-tauri-linux-deps.sh
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          cache-on-failure: true
-
-      - name: Run release Rust gate
-        run: pnpm check:release:rust
-
-      - name: Upload Rust quality evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: arkline-release-rust-gate
-          path: artifacts/quality-gate-release-rust.json
-          if-no-files-found: warn
-          retention-days: 30
-
-  build-windows-exe:
-    name: Release / Windows Portable
-    needs: validate-release
-    runs-on: windows-latest
-    timeout-minutes: 45
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.12.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Publish PowerShell host path
-        shell: pwsh
-        run: |
-          $hostPath = Join-Path $PSHOME "pwsh.exe"
-          if (-not (Test-Path -LiteralPath $hostPath)) {
-            throw "PowerShell host was not found at $hostPath"
-          }
-          "ARKLINE_POWERSHELL_PATH=$hostPath" >> $env:GITHUB_ENV
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          cache-on-failure: true
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Edge driver
-        shell: pwsh
-        run: |
-          cargo install --git https://github.com/chippers/msedgedriver-tool
-          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
-          $driverPath = Join-Path $PWD.Path "msedgedriver.exe"
-          if (-not (Test-Path -LiteralPath $driverPath)) {
-            throw "Edge driver was not installed at $driverPath"
-          }
-          "ARKLINE_EDGEDRIVER=$driverPath" >> $env:GITHUB_ENV
-
-      - name: Build Windows portable exe
-        run: pnpm package:windows:portable
-
-      - name: Verify portable bundle
-        shell: pwsh
-        run: |
-          $archive = "dist/ArkLine-windows-x64.zip"
-          if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
-            throw "Portable archive was not created at $archive"
-          }
-
-          Expand-Archive -LiteralPath $archive -DestinationPath artifacts/release-verify
-          $requiredFiles = @(
-            "artifacts/release-verify/ArkLine.exe",
-            "artifacts/release-verify/arkline-semantic.exe",
-            "artifacts/release-verify/arkline-indexer.exe"
-          )
-          foreach ($requiredFile in $requiredFiles) {
-            if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
-              throw "Portable archive is missing $requiredFile"
-            }
-          }
-
-      - name: Checkout pinned real Harmony project
-        uses: actions/checkout@v4
-        with:
-          repository: Joker-x-dev/CoolMallArkTS
-          ref: 17b6899086a57a4d48448842a14f9e325e3e35a3
-          path: artifacts/real-harmony-project
-
-      - name: Run packaged real-project semantic smoke
-        shell: pwsh
-        run: |
-          pnpm perf:packaged:windows -- `
-            --mode=smoke `
-            --application=artifacts/release-verify/ArkLine.exe `
-            --driver="$env:ARKLINE_EDGEDRIVER" `
-            --fixture=artifacts/real-harmony-project `
-            --scenario=docs/performance-fixtures/core-loop-coolmall-v1.json `
-            --sdk=semantic-worker/fixtures/golden-corpus/v1/sdk/openharmony `
-            --report=artifacts/packaged-real-project-report.json `
-            --strict
-
-      - name: Upload packaged evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: arkline-release-packaged-evidence
-          path: artifacts/packaged-*-report.json
-          if-no-files-found: warn
-          retention-days: 30
-
-      - name: Upload verified portable bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: ArkLine-windows-x64
-          path: dist/ArkLine-windows-x64.zip
-          if-no-files-found: error
-          retention-days: 30
-
-  publish-release:
-    name: Release / Publish
-    needs:
-      - quality
-      - rust
-      - build-windows-exe
+  promote-release:
+    name: Release / Promote Candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
+      actions: read
 
     steps:
-      - name: Download verified portable bundle
+      - name: Validate successful main candidate run
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$CANDIDATE_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "candidate_run_id must be numeric" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GH_REPO/actions/runs/$CANDIDATE_RUN_ID")"
+          workflow_path="$(jq -r '.path' <<<"$run_json")"
+          event="$(jq -r '.event' <<<"$run_json")"
+          head_branch="$(jq -r '.head_branch' <<<"$run_json")"
+          conclusion="$(jq -r '.conclusion' <<<"$run_json")"
+          commit_sha="$(jq -r '.head_sha' <<<"$run_json")"
+          if [[ "$workflow_path" != ".github/workflows/windows-ci.yml" || "$event" != "push" || "$head_branch" != "main" || "$conclusion" != "success" ]]; then
+            echo "candidate must be a successful windows-ci push run on main" >&2
+            exit 1
+          fi
+
+          ready_conclusion="$(gh api --paginate "repos/$GH_REPO/actions/runs/$CANDIDATE_RUN_ID/jobs" --jq '.jobs[] | select(.name == "Release Ready") | .conclusion' | tail -n 1)"
+          if [[ "$ready_conclusion" != "success" ]]; then
+            echo "candidate run has no successful Release Ready job" >&2
+            exit 1
+          fi
+          echo "commit_sha=$commit_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout candidate verifier
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.candidate.outputs.commit_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Download release candidate
         uses: actions/download-artifact@v5
         with:
-          name: ArkLine-windows-x64
-          path: dist
+          name: arkline-windows-candidate
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+          path: candidate
 
-      - name: Create immutable GitHub Release
+      - name: Verify candidate identity and digests
+        id: verify
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARKLINE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+          ARKLINE_RELEASE_TAG: ${{ inputs.release_tag }}
+          ARKLINE_CANDIDATE_SHA: ${{ steps.candidate.outputs.commit_sha }}
+        run: node scripts/verify-release-candidate.mjs
+
+      - name: Require a new tag or recover the same stale draft
+        env:
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.commit_sha }}
         run: |
-          gh release create "$RELEASE_TAG" dist/ArkLine-windows-x64.zip \
-            --target "$GITHUB_SHA" \
+          set -euo pipefail
+          if existing_json="$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish 2>/dev/null)"; then
+            is_draft="$(jq -r '.isDraft' <<<"$existing_json")"
+            target="$(jq -r '.targetCommitish' <<<"$existing_json")"
+            if [[ "$is_draft" != "true" || "$target" != "$CANDIDATE_SHA" ]]; then
+              echo "release already exists or belongs to another candidate: $RELEASE_TAG" >&2
+              exit 1
+            fi
+            gh release delete "$RELEASE_TAG" --yes --cleanup-tag
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Create draft with both verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.commit_sha }}
+          INSTALLER_PATH: "${{ steps.verify.outputs.installer_path }}"
+          PORTABLE_PATH: "${{ steps.verify.outputs.portable_path }}"
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" "$INSTALLER_PATH" "$PORTABLE_PATH" \
+            --draft \
+            --target "$CANDIDATE_SHA" \
             --title "$RELEASE_TAG" \
-            --notes "ArkLine Windows portable build from $GITHUB_SHA."
+            --notes "ArkLine Windows candidate from commit $CANDIDATE_SHA, verified by windows-ci run $CANDIDATE_RUN_ID."
+
+      - name: Verify draft release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh release view "$RELEASE_TAG" --json tagName,isDraft,targetCommitish,assets)"
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$CANDIDATE_SHA" '
+            .tagName == $tag and
+            .isDraft == true and
+            .targetCommitish == $sha and
+            ([.assets[].name] | sort) == (["ArkLine-windows-x64.zip", ("ArkLine_" + ($tag | ltrimstr("v")) + "_x64-setup.exe")] | sort)
+          ' <<<"$release_json" >/dev/null
+
+      - name: Publish verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release edit "$RELEASE_TAG" --draft=false
+
+      - name: Verify published release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh release view "$RELEASE_TAG" --json tagName,isDraft,targetCommitish,assets)"
+          jq -e --arg tag "$RELEASE_TAG" --arg sha "$CANDIDATE_SHA" '
+            .tagName == $tag and
+            .isDraft == false and
+            .targetCommitish == $sha and
+            ([.assets[].name] | sort) == (["ArkLine-windows-x64.zip", ("ArkLine_" + ($tag | ltrimstr("v")) + "_x64-setup.exe")] | sort)
+          ' <<<"$release_json" >/dev/null

@@ -63,6 +63,10 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
   const resolvedTarget = resolveTarget(target);
   const steps = [];
 
+  if (resolvedTarget === "windows-candidate" && hostPlatform !== "win32") {
+    throw new Error("windows-candidate packaging requires a Windows host");
+  }
+
   if (!skipFrontendBuild) {
     steps.push({ name: "frontend-build", command: "pnpm", args: ["build"] });
   }
@@ -99,6 +103,31 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
         : ["tauri", "build", "--runner", "cargo-xwin", "--target", WINDOWS_TARGET, "--no-bundle"],
     });
     steps.push({ name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] });
+    return steps;
+  }
+
+  if (resolvedTarget === "windows-candidate") {
+    steps.push({
+      name: "semantic-sidecar",
+      command: "node",
+      args: ["scripts/build-semantic-sidecar.mjs", "--target-triple", WINDOWS_TARGET],
+    });
+    steps.push({
+      name: "indexer-sidecar",
+      command: "node",
+      args: ["scripts/build-indexer-sidecar.mjs", "--target-triple", WINDOWS_TARGET],
+    });
+    steps.push({
+      name: "tauri-binary",
+      command: "pnpm",
+      args: ["tauri", "build", "--target", WINDOWS_TARGET, "--no-bundle"],
+    });
+    steps.push({ name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] });
+    steps.push({
+      name: "tauri-installer",
+      command: "pnpm",
+      args: ["tauri", "bundle", "--target", WINDOWS_TARGET, "--bundles", "nsis"],
+    });
     return steps;
   }
 

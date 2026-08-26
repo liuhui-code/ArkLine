@@ -41,7 +41,7 @@ describe("CI quality gates", () => {
     expect(workflow).not.toContain("continue-on-error");
   });
 
-  it("runs the shared fast quality gate for every branch before the Windows package job", async () => {
+  it("runs the shared fast quality gate once for pull requests and main pushes", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
     const qualityIndex = workflow.indexOf("  quality:");
     const packageIndex = workflow.indexOf("  package:");
@@ -49,7 +49,9 @@ describe("CI quality gates", () => {
 
     expect(workflow).toContain("version: 10.12.1");
     expectPnpmBeforeNodeCache(workflow);
-    expect(workflow).toContain('branches:\n      - "**"');
+    expect(workflow).toContain('push:\n    branches:\n      - main');
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).not.toContain('branches:\n      - "**"');
     expect(workflow).toContain("run: pnpm check:fast");
     expect(workflow).toContain("fetch-depth: 0");
     expect(workflow).toContain("name: Run TDD impact advisory");
@@ -88,50 +90,87 @@ describe("CI quality gates", () => {
     expect(qualityJob).not.toContain("sudo apt-get");
   });
 
-  it("validates and builds a Windows release before creating its tag", async () => {
+  it("uploads installer and portable packages from one Windows candidate build", async () => {
+    const workflow = await readWorkflow("windows-ci.yml");
+
+    expect(workflow).toContain("run: pnpm package:windows:candidate");
+    expect(workflow).toContain("name: arkline-windows-candidate");
+    expect(workflow).toContain("src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe");
+    expect(workflow).toContain("dist/ArkLine-windows-x64.zip");
+    expect(workflow).toContain("run: node scripts/release-candidate-manifest.mjs");
+    expect(workflow).toContain("artifacts/release-candidate-manifest.json");
+    expect(workflow).not.toContain("name: arkline-windows-bundle");
+  });
+
+  it("runs the complete frontend release gate automatically for main candidates", async () => {
+    const workflow = await readWorkflow("windows-ci.yml");
+
+    expect(workflow).toContain("name: Release Candidate / Frontend");
+    expect(workflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("run: pnpm check:release:frontend");
+  });
+
+  it("smokes both the installed and portable artifacts downloaded from the main candidate", async () => {
+    const workflow = await readWorkflow("windows-ci.yml");
+
+    expect(workflow).toContain("name: Release Candidate / Windows Smoke");
+    expect(workflow).toContain("needs: package");
+    expect(workflow).toContain("name: arkline-windows-candidate");
+    expect(workflow).toContain("name: Install candidate silently");
+    expect(workflow).toContain('"/S", "/D=$installRoot"');
+    expect(workflow).toContain("ARKLINE_INSTALLED_APPLICATION");
+    expect(workflow).toContain("Run installed candidate semantic smoke");
+    expect(workflow).toContain("Run portable candidate semantic smoke");
+    expect(workflow).toContain("--application=artifacts/release-verify/ArkLine.exe");
+    expect(workflow).toContain("--rev 8c4b34f51b45f5cf08013366d703de464ab871d1");
+    expect(workflow).toContain("ref: 17b6899086a57a4d48448842a14f9e325e3e35a3");
+    expect(workflow).toContain("if (-not $env:ARKLINE_CANDIDATE_INSTALL_ROOT) { exit 0 }");
+  });
+
+  it("marks a main candidate release-ready only after every release gate passes", async () => {
+    const workflow = await readWorkflow("windows-ci.yml");
+
+    expect(workflow).toContain("name: Release Ready");
+    expect(workflow).toContain("needs: [release-frontend, candidate-smoke]");
+    expect(workflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("ARKLINE_RELEASE_READY ${{ github.sha }}");
+  });
+
+  it("promotes one successful main candidate without rebuilding or manually replacing assets", async () => {
     const workflow = await readWorkflow("windows-exe-release.yml");
-    const qualityIndex = workflow.indexOf("  quality:");
-    const rustIndex = workflow.indexOf("  rust:");
-    const packageIndex = workflow.indexOf("  build-windows-exe:");
-    const publishIndex = workflow.indexOf("  publish-release:");
-    const qualityJob = workflow.slice(qualityIndex, rustIndex);
-    const rustJob = workflow.slice(rustIndex, packageIndex);
-    const packageJob = workflow.slice(packageIndex, publishIndex);
-    const publishJob = workflow.slice(publishIndex);
 
     expect(workflow).toContain("name: windows-exe-release");
-    expect(workflow).toContain("version: 10.12.1");
-    expectPnpmBeforeNodeCache(workflow);
     expect(workflow).toContain("contents: read");
+    expect(workflow).toContain("actions: read");
+    expect(workflow).toContain("candidate_run_id:");
     expect(workflow).toContain("required: true");
     expect(workflow).not.toContain("  push:");
-    expect(workflow).not.toContain("cargo-xwin");
-    expect(workflow).not.toContain("brew install");
-
-    expect(qualityJob).toContain("needs: validate-release");
-    expect(qualityJob).toContain("runs-on: ubuntu-latest");
-    expect(qualityJob).toContain("run: pnpm check:release:frontend");
-    expect(qualityJob).not.toContain("pnpm test:rust");
-    expect(rustJob).toContain("needs: validate-release");
-    expect(rustJob).toContain("runs-on: ubuntu-latest");
-    expect(rustJob).toContain("run: bash scripts/install-tauri-linux-deps.sh");
-    expect(rustJob).toContain("run: pnpm check:release:rust");
-    expect(rustJob).not.toContain("cache: pnpm");
-    expect(packageJob).toContain("needs: validate-release");
-    expect(packageJob).not.toContain("needs: quality");
-    expect(packageJob).toContain("runs-on: windows-latest");
-    expect(packageJob).toContain("uses: Swatinem/rust-cache@v2");
-    expect(packageJob).toContain("run: pnpm package:windows:portable");
-    expect(packageJob).toContain("Run packaged real-project semantic smoke");
-    expect(packageJob).toContain("--application=artifacts/release-verify/ArkLine.exe");
-
-    expect(workflow).toContain("name: Release / Publish");
-    expect(publishJob).toContain("needs:\n      - quality\n      - rust\n      - build-windows-exe");
-    expect(publishJob).toContain("permissions:\n      contents: write");
-    expect(publishJob).toContain("uses: actions/download-artifact@v5");
-    expect(publishJob).toContain('gh release create "$RELEASE_TAG" dist/ArkLine-windows-x64.zip');
-    expect(publishJob).toContain('--target "$GITHUB_SHA"');
-    expect(publishJob).not.toContain("--clobber");
+    expect(workflow).toContain("name: Release / Promote Candidate");
+    expect(workflow).toContain("name: Validate successful main candidate run");
+    expect(workflow).toContain(".github/workflows/windows-ci.yml");
+    expect(workflow).toContain("Release Ready");
+    expect(workflow).toContain("head_branch");
+    expect(workflow).toContain("conclusion");
+    expect(workflow).toContain("uses: actions/download-artifact@v5");
+    expect(workflow).toContain("name: arkline-windows-candidate");
+    expect(workflow).toContain("run-id: ${{ inputs.candidate_run_id }}");
+    expect(workflow).toContain("github-token: ${{ github.token }}");
+    expect(workflow).toContain("run: node scripts/verify-release-candidate.mjs");
+    expect(workflow).toContain('"${{ steps.verify.outputs.installer_path }}"');
+    expect(workflow).toContain('"${{ steps.verify.outputs.portable_path }}"');
+    expect(workflow).toContain("gh release create");
+    expect(workflow).toContain("--draft");
+    expect(workflow).toContain('--target "$CANDIDATE_SHA"');
+    expect(workflow).toContain('gh release delete "$RELEASE_TAG" --yes --cleanup-tag');
+    expect(workflow).toContain("Verify draft release assets");
+    expect(workflow).toContain('gh release edit "$RELEASE_TAG" --draft=false');
+    expect(workflow).toContain("Verify published release assets");
+    expect(workflow.indexOf("Verify draft release assets")).toBeLessThan(
+      workflow.indexOf("Publish verified draft"),
+    );
+    expect(workflow).not.toContain("--clobber");
+    expect(workflow).not.toMatch(/pnpm (?:build|check|package|test|perf)/u);
+    expect(workflow).not.toContain("cargo ");
   });
 
   it("bounds and retries non-interactive Tauri dependency installation", async () => {
