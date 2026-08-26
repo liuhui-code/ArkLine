@@ -54,10 +54,11 @@ describe("search entity runner", () => {
       9,
       250,
     );
-    expect(replaceQueryReadiness).toHaveBeenCalledWith(envelope.readiness);
+    expect(replaceQueryReadiness).not.toHaveBeenCalled();
     expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
       candidates: [expect.objectContaining({ title: "Entry.ets" })],
       entityNextCursor: 4,
+      indexReadiness: envelope.readiness,
     }));
     expect(reportMiss).not.toHaveBeenCalled();
   });

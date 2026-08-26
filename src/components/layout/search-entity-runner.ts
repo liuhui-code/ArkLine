@@ -65,7 +65,6 @@ export function runSearchEntityQuery({
   openedPaths,
   queryIndexCandidates,
   workspaceApi,
-  replaceQueryReadiness,
   trackQuery,
   clearSearchResults,
   patchSearchSession,
@@ -97,9 +96,6 @@ export function runSearchEntityQuery({
         )
         : undefined,
       runLocal: queryIndexCandidates,
-      onReadiness: (envelope) => {
-        replaceQueryReadiness(envelope.readiness);
-      },
     })),
     application: {
       scope,

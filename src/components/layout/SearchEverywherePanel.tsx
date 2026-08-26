@@ -296,9 +296,13 @@ export function SearchEverywherePanel({
           </button>
         </div>
       </div>
-      {mode === "searchEverywhere" ? (
-        <div className="search-everywhere__scopes" role="tablist" aria-label="Search Everywhere Categories">
-          {SEARCH_EVERYWHERE_SCOPES.map((item) => (
+      <div
+        className={`search-everywhere__scopes${mode === "searchEverywhere" ? "" : " search-everywhere__scopes--empty"}`}
+        role={mode === "searchEverywhere" ? "tablist" : undefined}
+        aria-label={mode === "searchEverywhere" ? "Search Everywhere Categories" : undefined}
+        aria-hidden={mode === "searchEverywhere" ? undefined : true}
+      >
+        {mode === "searchEverywhere" ? SEARCH_EVERYWHERE_SCOPES.map((item) => (
             <button
               key={item.scope}
               type="button"
@@ -309,15 +313,17 @@ export function SearchEverywherePanel({
             >
               {item.label}
             </button>
-          ))}
-        </div>
-      ) : null}
-      {result.query.kind === "invalid" ? (
-        <div className="search-everywhere__error" role="status">
-          Invalid regular expression: {result.query.message}
-        </div>
-      ) : null}
-      {partialNotice ? <div className="search-everywhere__error" role="status">{partialNotice}</div> : null}
+          )) : null}
+      </div>
+      <div className="search-everywhere__status" aria-label="Search Everywhere Status">
+        {result.query.kind === "invalid" ? (
+          <div className="search-everywhere__error" role="status">
+            Invalid regular expression: {result.query.message}
+          </div>
+        ) : partialNotice ? (
+          <div className="search-everywhere__notice" role="status">{partialNotice}</div>
+        ) : null}
+      </div>
       {mode === "searchEverywhere" ? (
         <div className="search-everywhere__body search-everywhere__body--palette">
           <div className="search-results search-results--grouped" role="list" aria-label={resultsLabel} onWheel={handleResultsWheel}>
@@ -349,7 +355,7 @@ export function SearchEverywherePanel({
               </section>
             ))}
             {candidates.length === 0 ? (
-              <div className="search-everywhere__empty">No matches</div>
+              <div className="search-everywhere__empty">{partialNotice ? "No matches yet" : "No matches"}</div>
             ) : null}
           </div>
         </div>
@@ -387,7 +393,7 @@ export function SearchEverywherePanel({
             </section>
           ))}
           {result.query.kind !== "invalid" && result.matches.length === 0 ? (
-            <div className="search-everywhere__empty">No matches</div>
+            <div className="search-everywhere__empty">{partialNotice ? "No matches yet" : "No matches"}</div>
           ) : null}
           {canLoadMore ? (
             <button

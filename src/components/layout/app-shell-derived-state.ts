@@ -82,7 +82,7 @@ export function getAppShellDerivedState({
     semanticCapability: describeSemanticCapabilities(semanticState, settingsApplyState),
     useLazyProjectTree: Boolean(
       workspace
-        && (workspace.scanSummary.truncated || workspace.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD),
+        && (!workspace.scanSummary || workspace.scanSummary.truncated || workspace.visibleFiles.length >= LAZY_PROJECT_TREE_FILE_THRESHOLD),
     ),
     workspaceScanText: getWorkspaceScanText(workspace),
     workspaceIndexText: workspaceIndexStatusSummary.workspaceIndexText,

@@ -1961,6 +1961,51 @@ describe("App shell", () => {
     expect(await screen.findByRole("button", { name: "entry" })).toBeVisible();
   });
 
+  it("does not show the root-only workspace notice when the active class query is ready", async () => {
+    const user = userEvent.setup();
+    const rootPath = "C:/samples/HugeWorkspace";
+    const classCandidate = {
+      id: "class:EntryAbility",
+      source: "class" as const,
+      kind: "class",
+      title: "EntryAbility",
+      subtitle: "entry/src/main/ets/EntryAbility.ets",
+      path: `${rootPath}/entry/src/main/ets/EntryAbility.ets`,
+      line: 1,
+      column: 1,
+      score: 100,
+      freshness: "ready" as const,
+    };
+
+    render(
+      <AppShell
+        workspaceApi={createWorkspaceApi({
+          listWorkspaceDirectory: async () => [],
+          openWorkspace: async () => ({
+            rootName: "HugeWorkspace",
+            rootPath,
+            files: [],
+            scanSummary: {
+              scannedFiles: 0,
+              skippedEntries: 0,
+              truncated: true,
+              excludeRules: [".git", "node_modules", "oh_modules"],
+            },
+          }),
+          queryWorkspaceCandidatesWithReadiness: async () => searchEnvelope([classCandidate]),
+        })}
+      />,
+    );
+
+    await openProject(user, rootPath);
+    await user.keyboard("{Shift}{Shift}");
+    await user.click(await screen.findByRole("tab", { name: "Classes" }));
+    await user.type(screen.getByLabelText("Search Everywhere Query"), "Entry");
+
+    expect(await screen.findByRole("button", { name: /class EntryAbility/ })).toBeVisible();
+    expect(screen.queryByText(/Partial workspace results: scan stopped at 0 files/)).not.toBeInTheDocument();
+  });
+
   it("opens a persistent Quick Open result from a lazy workspace with Enter", async () => {
     const user = userEvent.setup();
     const rootPath = "C:/samples/HugeWorkspace";

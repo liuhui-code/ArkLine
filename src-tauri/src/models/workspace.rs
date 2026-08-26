@@ -18,6 +18,14 @@ pub struct WorkspaceSnapshot {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkspaceOpenSnapshot {
+    pub root_name: String,
+    pub root_path: String,
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceScanSummary {
     pub scanned_files: usize,
     pub skipped_entries: usize,

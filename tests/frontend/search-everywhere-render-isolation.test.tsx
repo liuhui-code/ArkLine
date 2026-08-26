@@ -27,6 +27,31 @@ vi.mock("@/components/layout/SearchResultItems", async () => {
 });
 
 describe("Search Everywhere render isolation", () => {
+  it("keeps stable scope, status, and results grid slots when no notice is shown", () => {
+    render(<SearchEverywherePanel {...createPanelProps([])} selectedIndex={0} />);
+
+    const scopes = screen.getByRole("tablist", { name: "Search Everywhere Categories" });
+    const status = screen.getByLabelText("Search Everywhere Status");
+    const results = screen.getByRole("list", { name: "Search Everywhere Results" });
+
+    expect(status).toBeEmptyDOMElement();
+    expect(scopes.nextElementSibling).toBe(status);
+    expect(status.nextElementSibling).toBe(results.parentElement);
+  });
+
+  it("does not claim there are no matches when the query result is partial", () => {
+    render(
+      <SearchEverywherePanel
+        {...createPanelProps([])}
+        selectedIndex={0}
+        partialNotice="Class index is still building"
+      />,
+    );
+
+    expect(screen.getByText("No matches yet")).toBeInTheDocument();
+    expect(screen.queryByText("No matches")).not.toBeInTheDocument();
+  });
+
   it("does not rerender result rows while the user edits the local query draft", () => {
     vi.useFakeTimers();
     candidateRenderCount.value = 0;

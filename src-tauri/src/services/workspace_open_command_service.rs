@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use tauri::async_runtime::spawn_blocking;
 
-use crate::models::workspace::{WorkspaceIndexEvent, WorkspaceIndexTaskStatus, WorkspaceSnapshot};
+use crate::models::workspace::{
+    WorkspaceIndexEvent, WorkspaceIndexTaskStatus, WorkspaceOpenSnapshot,
+};
 use crate::services::workspace_edit_service::recover_workspace_edit_transactions;
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
@@ -16,7 +18,7 @@ pub async fn open_workspace_through_manager_blocking<F>(
     ui_activity: WorkspaceIndexUiActivityRuntime,
     root_path: String,
     on_status: F,
-) -> Result<WorkspaceSnapshot, String>
+) -> Result<WorkspaceOpenSnapshot, String>
 where
     F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
 {
@@ -39,7 +41,7 @@ pub fn open_workspace_through_manager<F>(
     ui_activity: WorkspaceIndexUiActivityRuntime,
     root_path: &str,
     on_status: F,
-) -> Result<WorkspaceSnapshot, String>
+) -> Result<WorkspaceOpenSnapshot, String>
 where
     F: Fn(WorkspaceIndexTaskStatus, Vec<WorkspaceIndexEvent>) + Send + 'static,
 {

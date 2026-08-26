@@ -47,7 +47,8 @@ fn open_workspace_command_returns_snapshot_and_queues_background_index() {
 
     assert_eq!(snapshot.root_path, root_path);
     assert!(snapshot.files.is_empty());
-    assert!(snapshot.scan_summary.truncated);
+    let wire = serde_json::to_value(&snapshot).unwrap();
+    assert_eq!(wire.get("scanSummary"), None);
     assert!(statuses.iter().any(|status| {
         status.kind == "open-workspace"
             && matches!(

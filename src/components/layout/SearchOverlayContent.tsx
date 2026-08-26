@@ -220,8 +220,9 @@ export function SearchOverlayContent({
         canLoadMore={Boolean(searchSession.entityNextCursor ?? searchSession.textNextCursor)}
         pageLoading={searchSession.textPageLoading}
         partialNotice={searchSession.truncationNotice
-          ?? searchSession.indexReadiness?.reason
-          ?? workspacePartialNotice}
+          ?? (searchSession.indexReadiness?.state === "ready"
+            ? null
+            : searchSession.indexReadiness?.reason ?? workspacePartialNotice)}
         onChangeQuery={onChangeQuery}
         onDraftQueryChange={onDraftQueryChange}
         onChangeScope={onChangeSearchEverywhereScope}

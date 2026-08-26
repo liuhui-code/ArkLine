@@ -107,7 +107,7 @@ export function useWorkspaceSession({
       const nextWorkspace = {
         ...current,
         visibleFiles: [...current.visibleFiles, normalizedPath],
-        fileTree: current.scanSummary.truncated
+        fileTree: current.scanSummary?.truncated !== false
           ? current.fileTree
           : [...current.fileTree, ...createFileTreeNodes([normalizedPath])],
       };

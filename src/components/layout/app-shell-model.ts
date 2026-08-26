@@ -96,13 +96,17 @@ export function getWorkspaceScanText(workspace: WorkspaceViewModel | null) {
     return null;
   }
 
+  if (!workspace.scanSummary) {
+    return "Workspace: loading";
+  }
+
   return workspace.scanSummary.truncated
     ? `Workspace: partial (${workspace.visibleFiles.length.toLocaleString()} files)`
     : `Workspace: ready (${workspace.visibleFiles.length.toLocaleString()} files)`;
 }
 
 export function getWorkspacePartialNotice(workspace: WorkspaceViewModel | null) {
-  if (!workspace?.scanSummary.truncated) {
+  if (!workspace?.scanSummary?.truncated) {
     return null;
   }
 
