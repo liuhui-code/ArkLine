@@ -510,7 +510,8 @@ describe("App shell", () => {
     const backgroundTask = await screen.findByRole("button", { name: "Background Tasks: 1 running" });
     expect(backgroundTask).toHaveTextContent("Indexing current file");
     expect(within(backgroundTask).getByRole("progressbar", { name: "Indexing current file progress" }))
-      .toHaveAttribute("aria-valuenow", "0");
+      .not.toHaveAttribute("aria-valuenow");
+    expect(backgroundTask).not.toHaveTextContent("0%");
     await user.click(await screen.findByRole("button", { name: /Open Index Diagnostics/i }));
 
     const dialog = await screen.findByRole("dialog", { name: "Index Diagnostics Center" });
