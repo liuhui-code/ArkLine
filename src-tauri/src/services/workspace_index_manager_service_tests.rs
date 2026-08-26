@@ -394,18 +394,17 @@ fn queued_foreground_status_exposes_bounded_target_paths() {
 }
 
 #[test]
-fn foreground_admission_drops_repeated_completion_hints_before_queueing() {
+fn manager_does_not_queue_a_duplicate_completion_hint() {
     let root = unique_temp_dir("workspace-index-manager-foreground-admission");
     fs::create_dir_all(&root).unwrap();
     let root_path = root.to_string_lossy().to_string();
     let manager = WorkspaceIndexManagerRuntime::default();
-    let first = root.join("First.ets").to_string_lossy().to_string();
-    let second = root.join("Second.ets").to_string_lossy().to_string();
+    let path = root.join("First.ets").to_string_lossy().to_string();
 
     manager
         .schedule_changed_path_task(
             &root_path,
-            &[first],
+            &[path.clone()],
             WorkspaceIndexTaskPriority::ForegroundCompletion,
             "foreground-completion",
         )
@@ -413,7 +412,7 @@ fn foreground_admission_drops_repeated_completion_hints_before_queueing() {
     manager
         .schedule_changed_path_task(
             &root_path,
-            &[second],
+            &[path],
             WorkspaceIndexTaskPriority::ForegroundCompletion,
             "foreground-completion",
         )

@@ -130,7 +130,7 @@ fn large_missing_text_index_returns_one_result_with_a_filesystem_cursor() {
     let mut discovered = Vec::new();
     for index in 0..1_000 {
         let path = source_dir.join(format!("Page{index:04}.ets"));
-        let content = if matches!(index, 0 | 500 | 999) {
+        let content = if matches!(index, 0 | 125 | 500 | 999) {
             format!("const fastFallbackTarget{index} = true;\n")
         } else {
             format!("const unrelatedValue{index} = true;\n")
