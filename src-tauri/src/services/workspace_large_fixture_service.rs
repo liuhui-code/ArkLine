@@ -26,6 +26,10 @@ pub struct LargeWorkspaceFixtureReport {
     pub query_duration: Duration,
 }
 
+#[cfg(test)]
+#[path = "workspace_large_real_project_navigation_tests.rs"]
+mod real_project_navigation;
+
 pub fn create_large_workspace_fixture(
     name: &str,
     file_count: usize,
@@ -456,5 +460,31 @@ mod tests {
             assert_eq!(indexer.fallback_count, 0);
         }
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the pinned nim-uikit-harmony diagnostic fixture"]
+    fn netease_large_project_classes_are_searchable() {
+        super::real_project_navigation::classes_are_searchable();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "requires the pinned nim-uikit-harmony diagnostic fixture"]
+    fn netease_large_project_class_search_is_retryable_during_catalog_only_stage() {
+        super::real_project_navigation::class_search_is_retryable_during_catalog_only_stage();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "requires the pinned fixture and indexer sidecar"]
+    fn netease_packaged_index_pipeline_publishes_classes() {
+        super::real_project_navigation::packaged_index_pipeline_publishes_classes();
+    }
+
+    #[test]
+    #[ignore = "requires the pinned nim-uikit-harmony diagnostic fixture"]
+    fn netease_large_project_resolves_direct_and_inherited_methods() {
+        super::real_project_navigation::resolves_direct_and_inherited_methods();
     }
 }

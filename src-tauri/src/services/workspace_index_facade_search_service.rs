@@ -9,6 +9,7 @@ use crate::services::workspace_index_candidate_page_service::{
     query_workspace_candidate_page, query_workspace_file_symbol_page,
 };
 use crate::services::workspace_index_facade_explain_service::explain_facade_query;
+use crate::services::workspace_index_facade_readiness_gate_service::gate_search_scope;
 use crate::services::workspace_index_facade_service::{
     WorkspaceIndexFacadeEnvelope, WorkspaceIndexFacadeItem,
 };
@@ -116,8 +117,9 @@ pub(crate) fn query_facade_search_everywhere_page_with_context(
     if scope == WorkspaceIndexQueryScope::Text {
         return query_facade_search_text_scope(index_runtime, root_path, query, limit);
     }
-    let envelope =
+    let mut envelope =
         query_workspace_candidate_page(index_runtime, root_path, query, scope, limit, cursor)?;
+    let layer_explain = gate_search_scope(root_path, &mut envelope.readiness, scope)?;
     let mut items = envelope.items;
     sort_search_everywhere_candidates_with_context(&mut items, limit, context);
     let explain = explain_facade_query(
@@ -127,6 +129,7 @@ pub(crate) fn query_facade_search_everywhere_page_with_context(
         Some("indexed"),
     );
     let mut explain = explain;
+    explain.extend(layer_explain);
     // File-only queries are the Quick Open latency path. Their result and
     // readiness already come from the published in-memory FileIndex snapshot;
     // layer diagnostics must not make that path wait for SQLite publications.

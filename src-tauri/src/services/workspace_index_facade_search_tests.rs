@@ -182,6 +182,49 @@ fn file_scope_query_does_not_depend_on_persistent_layer_diagnostics() {
 }
 
 #[test]
+fn class_scope_is_retryable_until_the_symbol_layer_is_ready() {
+    let root = create_empty_workspace("facade-class-scope-symbol-readiness");
+    let source_dir = create_workspace_source_dir(&root);
+    let file_path = source_dir.join("DeferredController.ets");
+    fs::write(&file_path, "class DeferredController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime
+        .index_workspace_snapshot_for_open(&WorkspaceSnapshot {
+            root_name: "ArkDemo".to_string(),
+            root_path: root_path.clone(),
+            files: vec![file_path.to_string_lossy().to_string()],
+            scan_summary: WorkspaceScanSummary {
+                scanned_files: 1,
+                skipped_entries: 0,
+                truncated: false,
+                exclude_rules: Vec::new(),
+            },
+        })
+        .unwrap();
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhere {
+            root_path: root_path.clone(),
+            query: "DeferredController".to_string(),
+            scope: WorkspaceIndexQueryScope::Classes,
+            limit: 8,
+        },
+    )
+    .unwrap();
+
+    assert!(envelope.items.is_empty());
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert!(envelope.readiness.retryable);
+    assert_explain_contains(&envelope.explain, "skipped:SymbolIndex:missing");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn search_everywhere_explain_names_project_and_sdk_layers() {
     let root = create_empty_workspace("search-layer-explain");
     let root_path = root.to_string_lossy().to_string();

@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tauri::{AppHandle, State};
 
@@ -12,7 +12,8 @@ use crate::services::language_command_service::{
     goto_definition_candidates_with_document_version_blocking,
 };
 use crate::services::language_query_broker_service::deadline::{
-    await_semantic_until, completion_semantic_budget, elapsed_millis, SemanticDeadlineOutcome,
+    await_semantic_until, completion_semantic_budget, definition_semantic_budget, elapsed_millis,
+    SemanticDeadlineOutcome,
 };
 use crate::services::language_query_broker_service::{
     assemble_language_completion, assemble_language_definition,
@@ -31,8 +32,6 @@ use crate::services::workspace_symbol_hierarchy_service::{
     query_call_hierarchy as query_call_hierarchy_service,
     query_type_hierarchy as query_type_hierarchy_service,
 };
-
-const DEFINITION_SEMANTIC_BUDGET: Duration = Duration::from_millis(180);
 
 #[tauri::command]
 pub fn query_definition_candidates_with_readiness(
@@ -140,32 +139,35 @@ pub async fn query_language_definition(
     });
     let mut facade = index_task.await.map_err(|error| error.to_string())??;
     let index_ms = elapsed_millis(started_at);
-    let semantic_outcome =
-        await_semantic_until(semantic_task, started_at, DEFINITION_SEMANTIC_BUDGET).await;
-    let (semantic_candidates, semantic_error, semantic_state) = match semantic_outcome {
-        SemanticDeadlineOutcome::Ready(items) => {
-            let error = items
-                .is_empty()
-                .then(|| semantic_runtime_error(&language_runtime))
-                .flatten();
-            (items, error, "ready")
-        }
-        SemanticDeadlineOutcome::Failed(error) => (Vec::new(), Some(error), "failed"),
-        SemanticDeadlineOutcome::TimedOut => (
-            Vec::new(),
-            Some(format!(
-                "Semantic definition exceeded the {}ms foreground budget",
-                DEFINITION_SEMANTIC_BUDGET.as_millis()
-            )),
-            "deadline",
-        ),
-    };
+    let semantic_budget = definition_semantic_budget(!facade.items.is_empty());
+    let semantic_outcome = await_semantic_until(semantic_task, started_at, semantic_budget).await;
+    let (semantic_candidates, semantic_error, semantic_state, semantic_pending) =
+        match semantic_outcome {
+            SemanticDeadlineOutcome::Ready(items) => {
+                let error = items
+                    .is_empty()
+                    .then(|| semantic_runtime_error(&language_runtime))
+                    .flatten();
+                (items, error, "ready", false)
+            }
+            SemanticDeadlineOutcome::Failed(error) => (Vec::new(), Some(error), "failed", false),
+            SemanticDeadlineOutcome::TimedOut => (
+                Vec::new(),
+                Some(format!(
+                    "Semantic definition exceeded the {}ms foreground budget",
+                    semantic_budget.as_millis()
+                )),
+                "deadline",
+                true,
+            ),
+        };
     append_broker_timing(&mut facade.explain, index_ms, semantic_state, started_at);
     Ok(assemble_language_definition(
         request_generation,
         document_version,
         semantic_candidates,
         semantic_error,
+        semantic_pending,
         facade,
     ))
 }

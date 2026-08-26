@@ -273,6 +273,18 @@ export function useDefinitionController({
       if (envelope.readiness.state !== "ready") {
         void scheduleForegroundNavigationIndex(workspaceApi, workspace.rootPath, activePath);
       }
+      const semanticPending = usesLanguageBroker
+        && envelope.items.length === 0
+        && envelope.readiness.retryable
+        && envelope.explain?.includes("broker:semanticState:deadline");
+      if (semanticPending) {
+        const reason = envelope.readiness.reason ?? "Semantic definition is still preparing; retry the request";
+        const message = `Go to Definition pending: ${reason}`;
+        setDefinitionDebug(message);
+        onStatusChange(message);
+        completeDefinitionRequest();
+        return;
+      }
       const brokerSource = usesLanguageBroker
         && "provider" in envelope
         && typeof envelope.provider === "string"

@@ -166,6 +166,56 @@ fn catalog_transitions_to_stub_only_after_content_is_exhausted() {
 }
 
 #[test]
+fn catalog_deep_refresh_reports_monotonic_pipeline_progress() {
+    let root = create_empty_workspace("worker-deep-progress");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    let root_path = root.to_string_lossy().to_string();
+    let paths = ["First.ets", "Second.ets"]
+        .into_iter()
+        .map(|name| {
+            let path = source_dir.join(name);
+            fs::write(
+                &path,
+                format!("export class {} {{}}\n", name.trim_end_matches(".ets")),
+            )
+            .unwrap();
+            path.to_string_lossy().to_string()
+        })
+        .collect::<Vec<_>>();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+
+    let content =
+        run_index_tasks(&runtime, vec![deep_task(&root_path, paths)], |_| Ok(())).unwrap();
+    let phase_transition = run_index_tasks(
+        &runtime,
+        vec![deep_task(&root_path, Vec::new())],
+        |_| Ok(()),
+    )
+    .unwrap();
+    let stub = run_index_tasks(
+        &runtime,
+        vec![deep_task(&root_path, Vec::new())],
+        |_| Ok(()),
+    )
+    .unwrap();
+
+    assert_eq!(
+        (content[0].progress_current, content[0].progress_total),
+        (2, 6)
+    );
+    assert_eq!(
+        (
+            phase_transition[0].progress_current,
+            phase_transition[0].progress_total
+        ),
+        (2, 6)
+    );
+    assert_eq!((stub[0].progress_current, stub[0].progress_total), (4, 6));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn catalog_runs_full_content_stub_and_substring_stages_in_order() {
     let root = create_empty_workspace("worker-deep-stage-order");
     let source_dir = root.join("entry").join("src").join("main").join("ets");

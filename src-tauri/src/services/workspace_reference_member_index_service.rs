@@ -14,18 +14,25 @@ use crate::services::workspace_reference_receiver_type_service::receiver_type_ma
 use crate::services::workspace_sdk_shared_bridge_service::query_shared_sdk_members_from_binding;
 use crate::services::workspace_symbol_identity_service::sdk_symbol_id;
 
+#[path = "workspace_reference_type_hierarchy_service.rs"]
+mod type_hierarchy;
+use type_hierarchy::WorkspaceProjectTypeHierarchy;
+
 pub struct WorkspaceMemberReferenceContext {
     sdk_targets: Vec<MemberTarget>,
     project_targets: Vec<MemberTarget>,
+    project_type_hierarchy: WorkspaceProjectTypeHierarchy,
 }
 
 impl WorkspaceMemberReferenceContext {
     pub fn load(connection: &Connection, root_key: &str) -> Result<Self, String> {
         let sdk_targets = load_sdk_member_targets(connection, root_key)?;
         let project_targets = load_project_member_targets(connection, root_key)?;
+        let project_type_hierarchy = WorkspaceProjectTypeHierarchy::load(connection, root_key)?;
         Ok(Self {
             sdk_targets,
             project_targets,
+            project_type_hierarchy,
         })
     }
 }
@@ -81,6 +88,7 @@ pub fn index_workspace_member_references_with_context(
                         &context.project_targets,
                         &import_type_targets,
                         &unresolved_import_types,
+                        &context.project_type_hierarchy,
                         receiver_type,
                         member.name,
                     )
@@ -97,6 +105,7 @@ pub fn index_workspace_member_references_with_context(
                         &context.project_targets,
                         &import_type_targets,
                         &unresolved_import_types,
+                        &context.project_type_hierarchy,
                         member.owner,
                         member.name,
                     )
@@ -361,13 +370,14 @@ fn resolve_project_member_target<'a>(
     project_targets: &'a [MemberTarget],
     import_type_targets: &[ImportTypeTarget],
     unresolved_import_types: &HashSet<String>,
+    hierarchy: &WorkspaceProjectTypeHierarchy,
     receiver_type: &str,
     member_name: &str,
 ) -> Option<&'a MemberTarget> {
-    if let Some(import_target) = import_type_targets
+    let import_target = import_type_targets
         .iter()
-        .find(|target| target.local_name == receiver_type)
-    {
+        .find(|target| target.local_name == receiver_type);
+    if let Some(import_target) = import_target {
         if let Some(target) = project_targets.iter().find(|target| {
             target.path == import_target.path
                 && target.name == member_name
@@ -380,9 +390,23 @@ fn resolve_project_member_target<'a>(
     if unresolved_import_types.contains(receiver_type) {
         return None;
     }
-    project_targets
+    let direct = project_targets
         .iter()
-        .find(|target| target.matches(receiver_type, member_name))
+        .find(|target| target.matches(receiver_type, member_name));
+    if direct.is_some() {
+        return direct;
+    }
+    let (receiver_path, receiver_name) = import_target
+        .map(|target| (Some(target.path.as_str()), target.target_name.as_str()))
+        .unwrap_or((None, receiver_type));
+    hierarchy
+        .inherited_types(receiver_path, receiver_name)
+        .into_iter()
+        .find_map(|parent| {
+            project_targets.iter().find(|target| {
+                target.path == parent.path && target.matches(&parent.name, member_name)
+            })
+        })
 }
 
 fn is_declaration_like_line(line: &str) -> bool {

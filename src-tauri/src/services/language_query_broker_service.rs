@@ -20,6 +20,7 @@ pub fn assemble_language_definition(
     document_generation: Option<u64>,
     semantic_candidates: Vec<DefinitionCandidate>,
     semantic_error: Option<String>,
+    semantic_pending: bool,
     mut facade: WorkspaceIndexFacadeEnvelope,
 ) -> LanguageQueryBrokerEnvelope<DefinitionCandidate> {
     let semantic_ready = !semantic_candidates.is_empty();
@@ -28,6 +29,12 @@ pub fn assemble_language_definition(
             .into_iter()
             .map(WorkspaceIndexFacadeItem::Definition)
             .collect();
+    }
+    if semantic_pending && !semantic_ready && facade.items.is_empty() {
+        facade.readiness.state = WorkspaceIndexReadinessState::Partial;
+        facade.readiness.retryable = true;
+        facade.readiness.reason =
+            Some("Semantic definition is still preparing; retry the request".to_string());
     }
     let provider = if semantic_ready {
         "semantic"
@@ -252,7 +259,7 @@ fn confidence(
 
 #[cfg(test)]
 mod tests {
-    use super::{broker_envelope, merge_completion_sources};
+    use super::{assemble_language_definition, broker_envelope, merge_completion_sources};
     use crate::models::language::{CompletionItem, LanguageQueryRequest};
     use crate::models::workspace::{
         WorkspaceIndexQueryCapability, WorkspaceIndexReadiness, WorkspaceIndexReadinessState,
@@ -339,6 +346,35 @@ mod tests {
             .explain
             .iter()
             .any(|entry| entry == "semanticError:semantic unavailable"));
+    }
+
+    #[test]
+    fn definition_timeout_without_an_index_target_is_retryable() {
+        let envelope = assemble_language_definition(
+            7,
+            Some(3),
+            Vec::new(),
+            Some("Semantic definition exceeded the foreground budget".to_string()),
+            true,
+            crate::services::workspace_index_facade_service::WorkspaceIndexFacadeEnvelope {
+                items: Vec::new(),
+                readiness: readiness(12),
+                confidence: None,
+                explain: Vec::new(),
+                next_cursor: None,
+            },
+        );
+
+        assert_eq!(envelope.provider, "none");
+        assert_eq!(
+            envelope.readiness.state,
+            WorkspaceIndexReadinessState::Partial
+        );
+        assert!(envelope.readiness.retryable);
+        assert_eq!(
+            envelope.readiness.reason.as_deref(),
+            Some("Semantic definition is still preparing; retry the request")
+        );
     }
 
     fn item(label: &str, kind: &str) -> CompletionItem {

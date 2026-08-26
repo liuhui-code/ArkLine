@@ -41,6 +41,44 @@ describe("background task model", () => {
       source: "build",
     }]);
   });
+
+  it("does not present a lifecycle placeholder as measurable zero percent progress", () => {
+    const tasks = deriveBackgroundTasks([
+      indexTask({
+        taskId: "refresh-running",
+        kind: "refresh-workspace",
+        status: "running",
+        reason: "background-refresh-after-open",
+        progressCurrent: 0,
+        progressTotal: 1,
+      }),
+    ]);
+
+    expect(tasks[0]).toMatchObject({
+      id: "index:refresh-running",
+      status: "running",
+      progress: null,
+      detail: "background-refresh-after-open",
+    });
+  });
+
+  it("labels deep-index pipeline progress as indexing steps", () => {
+    const tasks = deriveBackgroundTasks([
+      indexTask({
+        taskId: "deep-running",
+        kind: "changed-paths",
+        status: "running",
+        reason: "full-refresh-deep:refresh-workspace",
+        progressCurrent: 2,
+        progressTotal: 6,
+      }),
+    ]);
+
+    expect(tasks[0]).toMatchObject({
+      progress: { current: 2, total: 6 },
+      detail: "2 of 6 indexing steps",
+    });
+  });
 });
 
 function indexTask(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

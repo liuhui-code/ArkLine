@@ -22,7 +22,7 @@ export function deriveBackgroundTasks(
       title: indexTaskTitle(task.kind),
       detail: indexTaskDetail(task),
       status: task.status === "queued" ? "queued" : "running",
-      progress: task.progressTotal > 0
+      progress: hasMeasurableProgress(task)
         ? { current: task.progressCurrent, total: task.progressTotal }
         : null,
       cancellable: false,
@@ -50,6 +50,11 @@ function isActiveIndexTask(task: WorkspaceIndexTaskStatus) {
     || (task.kind === "discovery" && task.status === "partial");
 }
 
+function hasMeasurableProgress(task: WorkspaceIndexTaskStatus) {
+  return task.progressTotal > 0
+    && !(task.progressCurrent === 0 && task.progressTotal === 1);
+}
+
 function indexTaskTitle(kind: string) {
   switch (kind) {
     case "open-workspace":
@@ -72,8 +77,11 @@ function indexTaskTitle(kind: string) {
 }
 
 function indexTaskDetail(task: WorkspaceIndexTaskStatus) {
-  if (task.progressTotal > 0) {
-    return `${task.progressCurrent.toLocaleString()} of ${task.progressTotal.toLocaleString()} files`;
+  if (hasMeasurableProgress(task)) {
+    const unit = task.reason.startsWith("full-refresh-deep:")
+      ? "indexing steps"
+      : "files";
+    return `${task.progressCurrent.toLocaleString()} of ${task.progressTotal.toLocaleString()} ${unit}`;
   }
   return task.message ?? task.reason;
 }
