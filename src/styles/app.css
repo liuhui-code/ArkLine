@@ -1301,7 +1301,7 @@ button:disabled {
 .editor-codemirror .cm-editor,
 .editor-codemirror .cm-scroller,
 .editor-codemirror .cm-content {
-  background: #1f2329;
+  background-color: #1f2329;
 }
 
 .editor-codemirror .cm-scroller {
