@@ -340,12 +340,14 @@ stage. The full release-candidate gate is:
 pnpm check
 ```
 
-Every branch push and pull request runs `Quality Gate / Fast`; outdated
-non-`main` runs are cancelled. The Windows installer job starts only after the
-fast gate passes. A release splits the full checks into parallel frontend and
-Rust lanes alongside the native Windows portable build and real-project smoke
-check, then creates the immutable tag and uploads the verified asset. The manual packaged soak remains a separate,
-serialized performance evidence workflow; see
+Every pull request and `main` candidate runs `Quality Gate / Fast` and the
+complete frontend gate; outdated non-`main` runs are cancelled. After Fast, one
+Windows job builds both installer and portable artifacts, and the next job
+smokes both the installed and portable candidates against a pinned real project.
+The fail-closed `Merge Ready` check requires every lane to succeed before merge.
+Release publishing promotes that exact verified `main` candidate without
+rebuilding it. The manual packaged soak remains a separate, serialized
+performance evidence workflow; see
 [the gate architecture](docs/quality-gate-architecture.md).
 
 ## First-use flow

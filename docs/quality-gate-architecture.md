@@ -10,10 +10,12 @@ code, and a JSON report that remains available after CI finishes.
 ## Industry alignment
 
 ArkLine follows the GitHub Actions model in which required status checks block a
-protected branch until they pass. The repository should require the stable
-`Quality Gate / Fast` check on pull requests and `Windows / Package` for the
-Windows product target. GitHub documents that required checks must pass before
-a pull request can merge:
+protected branch until they pass. The repository requires the stable,
+fail-closed `Merge Ready` result on pull requests. That result runs even when a
+dependency fails or is skipped and succeeds only after `Quality Gate / Fast`,
+the complete frontend gate, `Windows / Package`, and installed and portable
+candidate smoke all succeed. GitHub documents that required checks must pass
+before a pull request can merge:
 
 <https://docs.github.com/en/pull-requests/reference/status-checks>
 
@@ -71,35 +73,36 @@ retains both formats with the history artifact. Threshold qualification produces
 
 | Layer | Trigger | Purpose | Blocking result |
 | --- | --- | --- | --- |
-| Fast | every branch push and PR | whitespace, file-size policy, semantic tests, focused frontend contract tests, Rust tests, production build, local interaction performance | blocks merge |
-| Full | manual release candidate | complete frontend suite, Rust tests, build, strict interaction performance | blocks release creation |
-| Windows package | every branch after fast | native Windows package and bundle shape verification | blocks Windows target |
-| Packaged soak | manual release evidence | real packaged executable, index workload, search/navigation responsiveness, memory and queue health | blocks release claim when strict |
+| Fast | every PR and `main` candidate | whitespace, file-size policy, semantic tests, focused frontend contract tests, Rust tests, production build, local interaction performance | blocks `Merge Ready` |
+| Release frontend | every PR and `main` candidate | complete frontend suite, production build, strict interaction performance | blocks `Merge Ready` |
+| Windows package | every PR and `main` candidate after Fast | native Windows installer and portable artifact built once with a shared manifest | blocks `Merge Ready` |
+| Candidate smoke | every PR and `main` candidate after packaging | installed and portable candidate smoke against a pinned real Harmony project | blocks `Merge Ready` |
+| Packaged soak | manual release evidence | extended packaged executable workload, search/navigation responsiveness, memory and queue health | blocks release claim when strict |
 | Impact evidence | weekly or manual | historical advisory reconciliation and controlled-failure calibration | evidence only; does not block product CI |
 | Impact promotion review | after evidence aggregation | auditable threshold status and human-review recommendation | never authorizes enforcement automatically |
 
 The fast and full gates share one manifest and one Node runner. A failed stage
 stops later stages, writes the failing command and exit information, and exits
 non-zero. This keeps local and hosted decisions identical while still allowing
-the Windows package and long soak to remain platform-specific. During a release,
-the full gate is split into independent frontend and Rust lanes that run in
-parallel with the native Windows portable build. The portable
-bundle is unpacked and started against a pinned real Harmony project before it
-becomes publishable.
+the Windows package, candidate smoke, and long soak to remain platform-specific.
+Pull requests and `main` candidates use the same frontend, packaging, and smoke
+jobs. The installer and portable archive come from one package job and are both
+exercised against a pinned real Harmony project. A `main` candidate becomes
+release-ready only after the same `Merge Ready` aggregation succeeds.
 
 ## Required status checks and repository settings
 
 Configure a protected `main` branch or repository ruleset with:
 
 1. Require pull requests and at least one review.
-2. Require `Quality Gate / Fast` and `Windows / Package` to pass.
+2. Require `TDD Evidence` and `Merge Ready` to pass.
 3. Require branches to be up to date before merging when the repository has
    enough parallel changes to make merge skew material.
 4. Disallow force-pushes and deletion of `main`.
 5. Keep release publishing outside pull-request workflows. Manually dispatch
-   `windows-exe-release` from the exact branch to release; the workflow creates
-   the new tag at that SHA only after the frontend and Rust release lanes,
-   Windows build, and packaged smoke check pass.
+   `windows-exe-release` with the successful `main` candidate run; the workflow
+   verifies the manifest and SHA-256 digests, then creates the new tag at that
+   exact SHA without rebuilding either artifact.
 
 These branch settings are repository metadata and cannot be reliably enforced
 by a source file alone. They must be checked once in the GitHub repository
