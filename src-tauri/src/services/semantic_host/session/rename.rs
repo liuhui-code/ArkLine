@@ -26,7 +26,11 @@ impl SemanticWorkerSession {
             position.content = request.content.clone();
             position.content_generation = content_generation;
         }
-        let response = self.send_payload(payload, content_generation)?;
+        let response = self.send_payload(
+            payload,
+            content_generation,
+            super::SEMANTIC_WORKER_REQUEST_TIMEOUT,
+        )?;
         let resolution: CodeActionResolution = serde_json::from_value(response.payload)
             .map_err(|error| format!("Failed to parse semantic worker rename result: {error}"))?;
         if let CodeActionResolution::Unsupported(unsupported) = &resolution {

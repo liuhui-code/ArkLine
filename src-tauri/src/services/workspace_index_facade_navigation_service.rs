@@ -24,13 +24,17 @@ pub(crate) fn query_facade_definition(
         semantic_target,
         semantic_candidates,
     )?;
-    let extra_explain = gate_workspace_layer(
-        root_path,
-        &mut envelope.readiness,
-        "symbols",
-        "SymbolIndex",
-        "Symbol index layer is missing; definition results may be partial",
-    )?;
+    let extra_explain = if envelope.items.is_empty() {
+        gate_workspace_layer(
+            root_path,
+            &mut envelope.readiness,
+            "symbols",
+            "SymbolIndex",
+            "Symbol index layer is missing; definition results may be partial",
+        )?
+    } else {
+        Vec::new()
+    };
     let mut explain = explain_facade_query(
         "definition",
         &envelope.readiness,

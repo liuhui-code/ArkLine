@@ -18,6 +18,7 @@ export const PACKAGED_SOAK_LIMITS = Object.freeze({
   jsHeapGrowthBytes: 256 * 1024 * 1024,
   walGrowthBytes: 128 * 1024 * 1024,
   minimumSteadyMemorySamples: 5,
+  minimumSemanticLatencySamples: 5,
 });
 
 export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
@@ -40,6 +41,14 @@ export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
   if (!Number.isFinite(coreIndexTimeoutMinutes) || coreIndexTimeoutMinutes <= 0) {
     throw new Error("core-index-timeout-minutes must be a positive number");
   }
+  const maxCyclesArgument = argumentValue(argv, "--max-cycles");
+  const maxCycles = maxCyclesArgument === undefined
+    ? (mode === "smoke" ? 1 : Number.POSITIVE_INFINITY)
+    : Number(maxCyclesArgument);
+  if (maxCyclesArgument !== undefined
+    && (!(maxCycles > 0) || !Number.isInteger(maxCycles))) {
+    throw new Error("max-cycles must be a positive integer");
+  }
   return {
     mode,
     applicationPath: path.resolve(applicationPath),
@@ -48,7 +57,7 @@ export function parsePackagedSoakArguments(argv = process.argv.slice(2)) {
     sdkPath: optionalResolvedPath(argumentValue(argv, "--sdk")),
     durationMs: durationMinutes * 60_000,
     coreIndexTimeoutMs: coreIndexTimeoutMinutes * 60_000,
-    maxCycles: mode === "smoke" ? 1 : Number.POSITIVE_INFINITY,
+    maxCycles,
     reportPath: path.resolve(
       argumentValue(argv, "--report") ?? "artifacts/packaged-soak.json",
     ),
@@ -186,7 +195,7 @@ export function evaluateSmokeReport(metrics) {
   if (metrics.processTreeSampleCount === 0) {
     failures.push("no-process-tree-evidence");
   }
-  appendSemanticFailures(failures, metrics, PACKAGED_SOAK_LIMITS, false);
+  appendSemanticFailures(failures, metrics, PACKAGED_SOAK_LIMITS);
   return { passed: failures.length === 0, failures };
 }
 
@@ -207,13 +216,17 @@ function appendSemanticFailures(failures, metrics, limits, enforceLatency = true
   if (metrics.successfulCompletionCount === 0) {
     failures.push("no-member-completion-evidence");
   }
-  if (enforceLatency
-    && metrics.rendererDefinitionP95Ms > limits.rendererDefinitionP95Ms) {
-    failures.push("renderer-definition-p95");
-  }
-  if (enforceLatency
-    && metrics.rendererCompletionP95Ms > limits.rendererCompletionP95Ms) {
-    failures.push("renderer-completion-p95");
+  if (enforceLatency) {
+    if (metrics.successfulDefinitionCount < limits.minimumSemanticLatencySamples) {
+      failures.push("insufficient-definition-latency-evidence");
+    } else if (metrics.rendererDefinitionP95Ms > limits.rendererDefinitionP95Ms) {
+      failures.push("renderer-definition-p95");
+    }
+    if (metrics.successfulCompletionCount < limits.minimumSemanticLatencySamples) {
+      failures.push("insufficient-completion-latency-evidence");
+    } else if (metrics.rendererCompletionP95Ms > limits.rendererCompletionP95Ms) {
+      failures.push("renderer-completion-p95");
+    }
   }
 }
 

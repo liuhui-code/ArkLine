@@ -266,6 +266,7 @@ jobs:
         run: |
           pnpm perf:packaged:windows -- `
             --mode=smoke `
+            --max-cycles=5 `
             --application="$env:ARKLINE_INSTALLED_APPLICATION" `
             --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/real-harmony-project `
@@ -279,6 +280,7 @@ jobs:
         run: |
           pnpm perf:packaged:windows -- `
             --mode=smoke `
+            --max-cycles=5 `
             --application=artifacts/release-verify/ArkLine.exe `
             --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/real-harmony-project `

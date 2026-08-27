@@ -17,6 +17,7 @@ impl SemanticWorkerSession {
             Some(&request),
             None,
             Some(document_version),
+            super::SEMANTIC_WORKER_REQUEST_TIMEOUT,
         )?;
         if response.payload.get("status").and_then(Value::as_str) != Some("ready") {
             return Err("Semantic worker document preparation did not become ready".to_string());
@@ -59,6 +60,7 @@ impl SemanticWorkerSession {
                 document_path: None,
             },
             None,
+            super::SEMANTIC_WORKER_REQUEST_TIMEOUT,
         )?;
         if response.payload.get("status").and_then(Value::as_str) != Some("ready") {
             return Err("Semantic worker document sync did not become ready".to_string());
@@ -80,6 +82,7 @@ impl SemanticWorkerSession {
                 document_path: Some(path.to_string()),
             },
             None,
+            super::SEMANTIC_WORKER_REQUEST_TIMEOUT,
         )?;
         if response.payload.get("status").and_then(Value::as_str) != Some("closed") {
             return Err("Semantic worker document close was not acknowledged".to_string());

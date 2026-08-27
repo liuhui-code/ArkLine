@@ -145,6 +145,7 @@ jobs:
         run: |
           pnpm perf:packaged:windows -- `
             --mode=smoke `
+            --max-cycles=5 `
             --application=dist/ArkLine-windows-x64/ArkLine.exe `
             --driver="$env:ARKLINE_EDGEDRIVER" `
             --fixture=artifacts/real-harmony-project `

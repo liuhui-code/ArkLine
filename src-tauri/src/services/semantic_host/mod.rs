@@ -16,6 +16,8 @@ mod response_state;
 pub mod sdk;
 pub mod session;
 #[cfg(test)]
+mod session_deadline_tests;
+#[cfg(test)]
 mod session_tests;
 pub mod supervisor;
 mod transport;

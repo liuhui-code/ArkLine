@@ -1,3 +1,4 @@
+use std::time::Duration;
 use tauri::async_runtime::spawn_blocking;
 use tauri::AppHandle;
 
@@ -9,8 +10,8 @@ use crate::models::language::{
 };
 use crate::services::language_service::{
     complete_symbol, complete_symbol_with_document_version, find_usages, goto_definition,
-    goto_definition_candidates, goto_definition_candidates_with_document_version, hover_symbol,
-    inspect_runtime, list_document_symbols, validate_document, LanguageRuntime,
+    goto_definition_candidates, goto_definition_candidates_with_document_version_and_timeout,
+    hover_symbol, inspect_runtime, list_document_symbols, validate_document, LanguageRuntime,
 };
 use crate::services::settings_store::load_settings_for_app;
 
@@ -83,15 +84,19 @@ pub async fn goto_definition_candidates_with_document_version_blocking(
     runtime: LanguageRuntime,
     request: LanguageQueryRequest,
     document_version: Option<u64>,
+    timeout: Duration,
 ) -> Result<Vec<DefinitionCandidate>, String> {
     spawn_blocking(move || {
         let settings = load_settings_for_app(&app)?;
-        Ok(goto_definition_candidates_with_document_version(
-            &runtime,
-            &settings,
-            &request,
-            document_version,
-        ))
+        Ok(
+            goto_definition_candidates_with_document_version_and_timeout(
+                &runtime,
+                &settings,
+                &request,
+                document_version,
+                timeout,
+            ),
+        )
     })
     .await
     .map_err(|error| error.to_string())?

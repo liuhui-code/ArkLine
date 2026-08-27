@@ -40,8 +40,8 @@ describe("packaged core editing loop verdict", () => {
       "completion-result-miss",
       "no-definition-evidence",
       "no-member-completion-evidence",
-      "renderer-definition-p95",
-      "renderer-completion-p95",
+      "insufficient-definition-latency-evidence",
+      "insufficient-completion-latency-evidence",
     ]));
   });
 

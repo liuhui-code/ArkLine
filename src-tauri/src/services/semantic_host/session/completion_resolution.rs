@@ -41,7 +41,11 @@ impl SemanticWorkerSession {
             document: None,
             document_path: None,
         };
-        let response = self.send_payload(payload, content_generation)?;
+        let response = self.send_payload(
+            payload,
+            content_generation,
+            super::SEMANTIC_WORKER_REQUEST_TIMEOUT,
+        )?;
         parse_completion_item(extract_payload(&response.payload, "completion"))
             .ok_or_else(|| "Semantic worker completion resolution was invalid".to_string())
     }
