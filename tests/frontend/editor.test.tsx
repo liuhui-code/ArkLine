@@ -9,6 +9,33 @@ import { tags, type Tag } from "@lezer/highlight";
 import { vi } from "vitest";
 
 describe("ArkTsEditor", () => {
+  it("draws a non-wrapping visual ruler after column 120", () => {
+    render(
+      <ArkTsEditor
+        appearance={{ ...defaultSettings().editor, letterSpacing: 0.2 }}
+        path="C:/demo/main.ets"
+        value={"x".repeat(140)}
+        onChange={() => undefined}
+      />,
+    );
+
+    const editorContent = screen.getByLabelText("Editor Content");
+    const themeRules = Array.from(document.styleSheets).flatMap((styleSheet) =>
+      Array.from(styleSheet.cssRules, (rule) => rule.cssText),
+    );
+
+    expect(
+      themeRules.some(
+        (rule) =>
+          rule.includes(".cm-content") &&
+          rule.includes("linear-gradient") &&
+          rule.includes("calc(120ch + 24px)") &&
+          rule.includes("background-repeat: no-repeat"),
+      ),
+    ).toBe(true);
+    expect(editorContent).not.toHaveClass("cm-lineWrapping");
+  });
+
   it("maps code reading colors across common ArkTS token groups", () => {
     expect(highlightColorFor(tags.keyword)).toBe("#c792ea");
     expect(highlightColorFor(tags.function(tags.variableName))).toBe("#dcdcaa");

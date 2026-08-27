@@ -3,6 +3,8 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 
+const editorColumnRulerColumn = 120;
+
 const editorPalette = {
   background: "#1f2329",
   foreground: "#d6deeb",
@@ -12,6 +14,7 @@ const editorPalette = {
   gutterActive: "#b7c2d0",
   lineActive: "rgba(72, 95, 126, 0.22)",
   lineActiveBorder: "rgba(88, 166, 255, 0.44)",
+  columnRuler: "rgba(139, 148, 158, 0.24)",
   selection: "rgba(62, 125, 208, 0.36)",
   selectionMatch: "rgba(88, 166, 255, 0.16)",
   searchMatch: "rgba(255, 212, 92, 0.32)",
@@ -53,6 +56,15 @@ export const arkLineHighlightStyle = HighlightStyle.define([
 ]);
 
 export function createArkLineEditorTheme(appearance: EditorAppearance) {
+  const rulerPosition = (lineOffset: number) => {
+    const pixelOffset = Number((appearance.letterSpacing * editorColumnRulerColumn + lineOffset).toFixed(4));
+    const operator = pixelOffset < 0 ? "-" : "+";
+    return `calc(${editorColumnRulerColumn}ch ${operator} ${Math.abs(pixelOffset)}px)`;
+  };
+  const rulerStart = rulerPosition(0);
+  const rulerEnd = rulerPosition(1);
+  const rulerBackground = `linear-gradient(to right, transparent ${rulerStart}, ${editorPalette.columnRuler} ${rulerStart}, ${editorPalette.columnRuler} ${rulerEnd}, transparent ${rulerEnd})`;
+
   return EditorView.theme({
     "&": {
       height: "100%",
@@ -98,6 +110,8 @@ export function createArkLineEditorTheme(appearance: EditorAppearance) {
       padding: "0 22px 0 0",
       letterSpacing: `${appearance.letterSpacing}px`,
       minWidth: "100%",
+      backgroundImage: rulerBackground,
+      backgroundRepeat: "no-repeat",
       outline: "none",
       userSelect: "text",
       WebkitUserSelect: "text",
