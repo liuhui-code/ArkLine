@@ -134,6 +134,28 @@ describe("packaged Windows WebView2 attachment", () => {
     expect(fetchImpl.mock.calls.every(([url]) => !String(url).includes("/element"))).toBe(true);
   });
 
+  it("clears a located input through the W3C element clear command", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ value: { "element-6066-11e4-a52e-4f735466cecf": "query-1" } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ value: null }),
+      });
+    const driver = new PackagedWebDriver("http://127.0.0.1:4445", fetchImpl);
+    driver.sessionId = "session-1";
+
+    await driver.clearElement('[aria-label="Find in Files Query"]');
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:4445/session/session-1/element/query-1/clear",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("performs a real control-click at the editor token coordinates", async () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

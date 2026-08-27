@@ -82,7 +82,7 @@ export async function exerciseFindInFiles(
     );
   }
   automationDispatchSamples.push(await timed(
-    () => driver.typeText(WEBDRIVER_KEYS.backspace.repeat(query.length)),
+    () => driver.clearElement('[aria-label="Find in Files Query"]'),
   ));
   await waitForQueryState(driver, "Find in Files Query", "", 2_000);
   await driver.keyChord([WEBDRIVER_KEYS.escape]);

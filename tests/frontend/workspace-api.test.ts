@@ -158,6 +158,19 @@ describe("workspace api", () => {
     });
   });
 
+  it("returns a complete scan summary for fallback workspaces", async () => {
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+    const snapshot = await defaultWorkspaceApi.openWorkspace("C:/samples/AlphaWorkspace");
+
+    expect(snapshot.scanSummary).toEqual(expect.objectContaining({
+      scannedFiles: snapshot.files.length,
+      skippedEntries: 0,
+      truncated: false,
+      excludeRules: expect.any(Array),
+    }));
+  });
+
   it("queries device logs through the workspace API contract outside Tauri", async () => {
     delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 

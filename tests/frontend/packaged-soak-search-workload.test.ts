@@ -8,7 +8,7 @@ import { SEARCH_RESULT_READINESS_SCRIPT } from "../../scripts/packaged-soak-read
 import { WEBDRIVER_KEYS } from "../../scripts/packaged-soak-webdriver.mjs";
 
 describe("packaged Find in Files workload", () => {
-  it("deletes the complete query and proves the palette closes", async () => {
+  it("clears the complete query through the located input and proves the palette closes", async () => {
     const query = "buildTarget";
     let inputValue: string | null = "";
     const driver = {
@@ -19,8 +19,8 @@ describe("packaged Find in Files workload", () => {
       typeText: vi.fn(async (text: string) => {
         if (text === query) inputValue = query;
         else if (text === WEBDRIVER_KEYS.arrowDown) return;
-        else inputValue = "";
       }),
+      clearElement: vi.fn(async () => { inputValue = ""; }),
       execute: vi.fn(async (script: string) => {
         if (script === INTERACTION_START_SCRIPT) return 100;
         if (script === QUERY_VALUE_SCRIPT) return inputValue;
@@ -47,9 +47,7 @@ describe("packaged Find in Files workload", () => {
 
     expect(readySamples).toEqual([30]);
     expect(counters).toEqual({ searchMissCount: 0, findInFilesMissCount: 0 });
-    expect(driver.typeText).toHaveBeenCalledWith(
-      WEBDRIVER_KEYS.backspace.repeat(query.length),
-    );
+    expect(driver.clearElement).toHaveBeenCalledWith('[aria-label="Find in Files Query"]');
     expect(inputValue).toBeNull();
   });
 });

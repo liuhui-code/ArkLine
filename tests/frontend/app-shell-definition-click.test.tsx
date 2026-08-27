@@ -17,6 +17,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
       rootName: "DemoWorkspace",
       rootPath,
       files: [`${rootPath}/src/main.ets`],
+      scanSummary: { scannedFiles: 1, skippedEntries: 0, truncated: false, excludeRules: [] },
     }),
     openDemoWorkspace: async () => ({
       rootName: "DemoWorkspace",

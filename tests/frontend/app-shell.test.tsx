@@ -45,19 +45,19 @@ function getCompletionOption(listbox: HTMLElement, label: string) {
 }
 
 function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi {
+  const openWorkspace = overrides.openWorkspace ?? (async (rootPath: string) => ({
+    rootName: rootPath.split("/").at(-1) ?? "Workspace",
+    rootPath,
+    files: [`${rootPath}/src/main.ets`, `${rootPath}/AppScope/app.json5`],
+  }));
+  const openDemoWorkspace = overrides.openDemoWorkspace ?? (async () => ({
+    rootName: "DemoWorkspace",
+    rootPath: "C:/samples/DemoWorkspace",
+    files: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/AppScope/app.json5"],
+  }));
   return {
     pickWorkspaceRoot: async () => null,
     pickPath: async () => null,
-    openWorkspace: async (rootPath: string) => ({
-      rootName: rootPath.split("/").at(-1) ?? "Workspace",
-      rootPath,
-      files: [`${rootPath}/src/main.ets`, `${rootPath}/AppScope/app.json5`],
-    }),
-    openDemoWorkspace: async () => ({
-      rootName: "DemoWorkspace",
-      rootPath: "C:/samples/DemoWorkspace",
-      files: ["C:/samples/DemoWorkspace/src/main.ets", "C:/samples/DemoWorkspace/AppScope/app.json5"],
-    }),
     openFile: async (path: string) => path.endsWith("app.json5")
       ? "{\n  \"app\": {\n    \"bundleName\": \"com.demo.app\"\n  }\n}"
       : "@Entry\n@Component\nstruct Index {}",
@@ -103,6 +103,8 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     runTerminalCommand: async () => ({ runId: "run-1", command: "", stdout: "", stderr: "", exitCode: 0, durationMs: 0, stopped: false }),
     stopTerminalCommand: async () => undefined,
     ...overrides,
+    openWorkspace: async (rootPath: string) => withCompleteScan(await openWorkspace(rootPath)),
+    openDemoWorkspace: async () => withCompleteScan(await openDemoWorkspace()),
     listDeviceLogDevices: async () => [],
     listDeviceFaultLogs: async (request) => ({
       deviceId: request.deviceId,
@@ -115,6 +117,18 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
     }),
     startDeviceLogStream: async (request) => ({ streamId: "stream-1", deviceId: request.deviceId, status: "running" }),
     stopDeviceLogStream: async () => undefined,
+  };
+}
+
+function withCompleteScan(snapshot: Awaited<ReturnType<WorkspaceApi["openWorkspace"]>>) {
+  return snapshot.scanSummary ? snapshot : {
+    ...snapshot,
+    scanSummary: {
+      scannedFiles: snapshot.files.length,
+      skippedEntries: 0,
+      truncated: false,
+      excludeRules: [],
+    },
   };
 }
 
