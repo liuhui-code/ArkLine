@@ -52,6 +52,12 @@ export async function loadWorkspaceSnapshot(rootPath: string) {
       joinPath(normalized, "src", "main.ets"),
       joinPath(normalized, "src", "pages", "Index.ets"),
     ],
+    scanSummary: {
+      scannedFiles: 3,
+      skippedEntries: 0,
+      truncated: false,
+      excludeRules: [...DEFAULT_WORKSPACE_EXCLUDES],
+    },
   };
 }
 

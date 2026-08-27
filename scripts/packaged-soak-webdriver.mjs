@@ -142,6 +142,14 @@ export class PackagedWebDriver {
     return this.sendKeys(await this.activeElement(), text);
   }
 
+  async clearElement(selector) {
+    const elementId = await this.findElement(selector);
+    return this.sessionRequest(`/element/${elementId}/clear`, {
+      method: "POST",
+      body: {},
+    });
+  }
+
   async typeText(text) {
     const actions = [];
     Array.from(text).forEach((value) => {

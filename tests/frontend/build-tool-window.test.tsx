@@ -31,6 +31,7 @@ function createWorkspaceApi(overrides: Partial<WorkspaceApi> = {}): WorkspaceApi
         "/workspace/Demo/hvigorfile.ts",
         "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
       ],
+      scanSummary: { scannedFiles: 5, skippedEntries: 0, truncated: false, excludeRules: [] },
     }),
     openDemoWorkspace: async () => ({
       rootName: "Demo",
@@ -288,6 +289,7 @@ describe("build tool window", () => {
           "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
           "/workspace/Demo/feature/src/main/ets/pages/Feature.ets",
         ],
+        scanSummary: { scannedFiles: 5, skippedEntries: 0, truncated: false, excludeRules: [] },
       }),
     })} />);
 
@@ -315,6 +317,7 @@ describe("build tool window", () => {
           "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
           "/workspace/Demo/feature/src/main/ets/pages/Feature.ets",
         ],
+        scanSummary: { scannedFiles: 5, skippedEntries: 0, truncated: false, excludeRules: [] },
       }),
     })} />);
 
@@ -340,6 +343,7 @@ describe("build tool window", () => {
           "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
           "/workspace/Demo/feature/src/main/ets/pages/Feature.ets",
         ],
+        scanSummary: { scannedFiles: 5, skippedEntries: 0, truncated: false, excludeRules: [] },
       }),
     })} />);
 
@@ -400,6 +404,7 @@ describe("build tool window", () => {
           "/workspace/Demo/hvigorfile.ts",
           "/workspace/Demo/entry/src/main/ets/pages/Index.ets",
         ],
+        scanSummary: { scannedFiles: 3, skippedEntries: 0, truncated: false, excludeRules: [] },
       }),
     })} />);
 
