@@ -50,11 +50,17 @@ fn rebuild_repair_starts_the_worker_and_reaches_ready() {
     )
     .unwrap();
 
+    let mut stable_ready_polls = 0;
     for _ in 0..400 {
         let pressure = index_manager.get_queue_pressure(&root_path).unwrap();
         let state = index_runtime.get_index_state(&root_path).unwrap();
         if pressure.pending_task_count == 0 && state.status.to_string() == "ready" {
-            break;
+            stable_ready_polls += 1;
+            if stable_ready_polls == 4 {
+                break;
+            }
+        } else {
+            stable_ready_polls = 0;
         }
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
@@ -63,6 +69,7 @@ fn rebuild_repair_starts_the_worker_and_reaches_ready() {
     assert_eq!(pressure.pending_task_count, 0);
     assert_eq!(state.status.to_string(), "ready");
     assert_eq!(state.partial_reason, None);
+    assert_eq!(stable_ready_polls, 4);
 
     fs::remove_dir_all(root).unwrap();
 }
