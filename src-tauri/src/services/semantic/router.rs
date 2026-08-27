@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::arkts_lsp_provider::ArkTsLspProvider;
 use super::provider::{FallbackProvider, SemanticProvider};
@@ -124,6 +125,26 @@ impl SemanticProvider for CompositeSemanticProvider {
         let items = self
             .semantic
             .definition_candidates_with_document_version(request, document_version);
+        if items.is_empty() {
+            self.fallback.definition_candidates(request)
+        } else {
+            items
+        }
+    }
+
+    fn definition_candidates_with_document_version_and_timeout(
+        &self,
+        request: &crate::models::language::LanguageQueryRequest,
+        document_version: Option<u64>,
+        timeout: Duration,
+    ) -> Vec<crate::models::language::DefinitionCandidate> {
+        let items = self
+            .semantic
+            .definition_candidates_with_document_version_and_timeout(
+                request,
+                document_version,
+                timeout,
+            );
         if items.is_empty() {
             self.fallback.definition_candidates(request)
         } else {

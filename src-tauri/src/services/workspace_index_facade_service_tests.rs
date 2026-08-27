@@ -206,7 +206,7 @@ fn facade_preserves_stale_readiness_for_definition_queries() {
 }
 
 #[test]
-fn facade_reports_partial_definition_when_symbol_layer_is_missing() {
+fn facade_keeps_resolved_definition_ready_when_global_symbol_search_rows_are_missing() {
     let (root_path, app_path, _service_path) =
         create_member_workspace("facade-definition-symbol-missing");
     let runtime = WorkspaceIndexRuntime::default();
@@ -234,9 +234,10 @@ fn facade_reports_partial_definition_when_symbol_layer_is_missing() {
 
     assert_eq!(
         envelope.readiness.state,
-        WorkspaceIndexReadinessState::Partial
+        WorkspaceIndexReadinessState::Ready
     );
-    assert_explain_contains(&envelope.explain, "skipped:SymbolIndex:missing");
+    assert_eq!(envelope.items.len(), 1);
+    assert_explain_contains(&envelope.explain, "skipped:none");
     fs::remove_dir_all(root_path).unwrap();
 }
 

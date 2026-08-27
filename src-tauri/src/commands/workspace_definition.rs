@@ -6,7 +6,7 @@ use crate::models::language::{
     CallHierarchyResult, CompletionItem, DefinitionCandidate, LanguageQueryBrokerEnvelope,
     LanguageQueryRequest, RenameImpactResult, TypeHierarchyResult, UsageResult,
 };
-use crate::models::workspace::WorkspaceIndexQueryEnvelope;
+use crate::models::workspace::{WorkspaceIndexQueryEnvelope, WorkspaceIndexReadinessState};
 use crate::services::language_command_service::{
     complete_symbol_with_document_version_blocking,
     goto_definition_candidates_with_document_version_blocking,
@@ -114,17 +114,6 @@ pub async fn query_language_definition(
     index_runtime: State<'_, WorkspaceIndexRuntime>,
 ) -> Result<LanguageQueryBrokerEnvelope<DefinitionCandidate>, String> {
     let started_at = Instant::now();
-    let semantic_runtime = language_runtime.inner().clone();
-    let semantic_request = request.clone();
-    let semantic_task = tauri::async_runtime::spawn(async move {
-        goto_definition_candidates_with_document_version_blocking(
-            app,
-            semantic_runtime,
-            semantic_request,
-            document_version,
-        )
-        .await
-    });
     let index_runtime_snapshot = index_runtime.inner().clone();
     let index_root_path = root_path.clone();
     let index_request = request.clone();
@@ -139,7 +128,49 @@ pub async fn query_language_definition(
     });
     let mut facade = index_task.await.map_err(|error| error.to_string())??;
     let index_ms = elapsed_millis(started_at);
-    let semantic_budget = definition_semantic_budget(!facade.items.is_empty());
+    let semantic_budget = definition_semantic_budget(
+        facade.items.len(),
+        facade.confidence.as_deref(),
+        facade.readiness.state == WorkspaceIndexReadinessState::Ready,
+    );
+    if semantic_budget.is_zero() {
+        append_broker_timing(&mut facade.explain, index_ms, "skipped", started_at);
+        return Ok(assemble_language_definition(
+            request_generation,
+            document_version,
+            Vec::new(),
+            None,
+            false,
+            facade,
+        ));
+    }
+    let semantic_timeout = semantic_budget.saturating_sub(started_at.elapsed());
+    if semantic_timeout.is_zero() {
+        append_broker_timing(&mut facade.explain, index_ms, "deadline", started_at);
+        return Ok(assemble_language_definition(
+            request_generation,
+            document_version,
+            Vec::new(),
+            Some(format!(
+                "Semantic definition exceeded the {}ms foreground budget",
+                semantic_budget.as_millis()
+            )),
+            true,
+            facade,
+        ));
+    }
+    let semantic_runtime = language_runtime.inner().clone();
+    let semantic_request = request.clone();
+    let semantic_task = tauri::async_runtime::spawn(async move {
+        goto_definition_candidates_with_document_version_blocking(
+            app,
+            semantic_runtime,
+            semantic_request,
+            document_version,
+            semantic_timeout,
+        )
+        .await
+    });
     let semantic_outcome = await_semantic_until(semantic_task, started_at, semantic_budget).await;
     let (semantic_candidates, semantic_error, semantic_state, semantic_pending) =
         match semantic_outcome {

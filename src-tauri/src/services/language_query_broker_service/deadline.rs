@@ -22,12 +22,25 @@ pub fn completion_semantic_budget(has_indexed_results: bool) -> Duration {
     }
 }
 
-pub fn definition_semantic_budget(has_indexed_results: bool) -> Duration {
-    if has_indexed_results {
+pub fn definition_semantic_budget(
+    indexed_result_count: usize,
+    confidence: Option<&str>,
+    index_ready: bool,
+) -> Duration {
+    if indexed_result_count == 1 && index_ready && is_navigation_proof_confident(confidence) {
+        Duration::ZERO
+    } else if indexed_result_count > 0 {
         DEFINITION_SEMANTIC_ENRICHMENT_BUDGET
     } else {
         DEFINITION_SEMANTIC_BUDGET
     }
+}
+
+fn is_navigation_proof_confident(confidence: Option<&str>) -> bool {
+    matches!(
+        confidence,
+        Some("exact" | "resolvedAlias" | "memberResolved" | "localScope")
+    )
 }
 
 pub async fn await_semantic_until<T>(
@@ -116,11 +129,22 @@ mod tests {
     }
 
     #[test]
-    fn waits_for_authoritative_definition_only_when_the_index_has_no_target() {
-        assert_eq!(definition_semantic_budget(true), Duration::from_millis(180));
+    fn keeps_bounded_semantic_arbitration_for_provisional_or_missing_index_targets() {
         assert_eq!(
-            definition_semantic_budget(false),
+            definition_semantic_budget(1, Some("unresolvedLikely"), true),
+            Duration::from_millis(180)
+        );
+        assert_eq!(
+            definition_semantic_budget(0, None, true),
             Duration::from_millis(2_500)
+        );
+    }
+
+    #[test]
+    fn returns_a_unique_member_resolved_index_target_without_waiting_for_semantic_enrichment() {
+        assert_eq!(
+            definition_semantic_budget(1, Some("memberResolved"), true),
+            Duration::ZERO
         );
     }
 }

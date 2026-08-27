@@ -2,6 +2,7 @@ use super::{
     extract_payload, parse_definition_candidate, parse_definition_target, SemanticWorkerSession,
 };
 use crate::models::language::{DefinitionCandidate, DefinitionTarget, LanguageQueryRequest};
+use std::time::Duration;
 
 impl SemanticWorkerSession {
     pub fn goto_definition(
@@ -34,8 +35,26 @@ impl SemanticWorkerSession {
         request: &LanguageQueryRequest,
         document_version: Option<u64>,
     ) -> Result<Vec<DefinitionCandidate>, String> {
-        let response =
-            self.send_request_parts("gotoDefinition", Some(request), None, document_version)?;
+        self.goto_definition_candidates_with_document_version_and_timeout(
+            request,
+            document_version,
+            super::SEMANTIC_WORKER_REQUEST_TIMEOUT,
+        )
+    }
+
+    pub fn goto_definition_candidates_with_document_version_and_timeout(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+        timeout: Duration,
+    ) -> Result<Vec<DefinitionCandidate>, String> {
+        let response = self.send_request_parts(
+            "gotoDefinition",
+            Some(request),
+            None,
+            document_version,
+            timeout,
+        )?;
         let payload = extract_payload(&response.payload, "definition");
         if payload.is_null() {
             return Ok(Vec::new());

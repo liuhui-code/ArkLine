@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::models::diagnostics::ValidationQueryResult;
 use crate::models::language::{
@@ -173,6 +174,23 @@ impl SemanticProvider for ArkTsLspProvider {
         self.manager
             .request_interactive(|session| {
                 session.goto_definition_candidates_with_document_version(request, document_version)
+            })
+            .unwrap_or_default()
+    }
+
+    fn definition_candidates_with_document_version_and_timeout(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+        timeout: Duration,
+    ) -> Vec<DefinitionCandidate> {
+        self.manager
+            .request_interactive(|session| {
+                session.goto_definition_candidates_with_document_version_and_timeout(
+                    request,
+                    document_version,
+                    timeout,
+                )
             })
             .unwrap_or_default()
     }

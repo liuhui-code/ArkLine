@@ -14,6 +14,7 @@ use crate::services::semantic_host::launcher::{
 use crate::services::settings_store::AppSettings;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct LanguageRuntime {
@@ -181,16 +182,21 @@ pub fn complete_symbol_with_document_version(
     })
 }
 
-pub fn goto_definition_candidates_with_document_version(
+pub fn goto_definition_candidates_with_document_version_and_timeout(
     runtime: &LanguageRuntime,
     settings: &AppSettings,
     request: &LanguageQueryRequest,
     document_version: Option<u64>,
+    timeout: Duration,
 ) -> Vec<DefinitionCandidate> {
     runtime.with_router(settings, |router| {
         router
             .active()
-            .definition_candidates_with_document_version(request, document_version)
+            .definition_candidates_with_document_version_and_timeout(
+                request,
+                document_version,
+                timeout,
+            )
     })
 }
 

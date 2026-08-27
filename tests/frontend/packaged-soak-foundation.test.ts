@@ -81,11 +81,12 @@ describe("packaged Windows soak foundation", () => {
       "--application=arkline.exe",
       "--fixture=fixture",
       "--mode=smoke",
+      "--max-cycles=5",
     ])).toMatchObject({
       mode: "smoke",
       durationMs: 2 * 60_000,
       coreIndexTimeoutMs: 5 * 60_000,
-      maxCycles: 1,
+      maxCycles: 5,
     });
     expect(() => parsePackagedSoakArguments([
       "--application=arkline.exe",
@@ -279,7 +280,7 @@ describe("packaged Windows soak foundation", () => {
     });
   });
 
-  it("does not treat one smoke cycle as semantic latency percentile evidence", () => {
+  it("requires enough post-warmup semantic samples before enforcing smoke latency", () => {
     expect(evaluateSmokeReport({
       crashCount: 0,
       unresponsiveCount: 0,
@@ -303,7 +304,44 @@ describe("packaged Windows soak foundation", () => {
       successfulCompletionCount: 1,
       rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
       rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
-    })).toMatchObject({ passed: true, failures: [] });
+    })).toMatchObject({
+      passed: false,
+      failures: expect.arrayContaining([
+        "insufficient-definition-latency-evidence",
+        "insufficient-completion-latency-evidence",
+      ]),
+    });
+
+    expect(evaluateSmokeReport({
+      crashCount: 0,
+      unresponsiveCount: 0,
+      staleApplyCount: 0,
+      successfulSearchCount: 5,
+      successfulJumpCount: 5,
+      successfulEditorInputCount: 5,
+      successfulEditorScrollCount: 5,
+      editorInteractionFailureCount: 0,
+      eventTimingSupported: true,
+      longAnimationFrameSupported: true,
+      processTreeSampleCount: 1,
+      causalTraceCount: 15,
+      causalTraceErrorCount: 0,
+      causalTraceRunningCount: 0,
+      causalTraceKindCount: 3,
+      semanticRequired: true,
+      definitionMissCount: 0,
+      completionMissCount: 0,
+      successfulDefinitionCount: 5,
+      successfulCompletionCount: 5,
+      rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
+      rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
+    })).toMatchObject({
+      passed: false,
+      failures: expect.arrayContaining([
+        "renderer-definition-p95",
+        "renderer-completion-p95",
+      ]),
+    });
   });
 
   it("captures bounded query UI evidence for native smoke failures", () => {
@@ -430,6 +468,7 @@ describe("packaged Windows soak foundation", () => {
     expect(workflow).toContain('default: "30"');
     expect(workflow).toContain("pnpm perf:packaged:windows");
     expect(workflow).toContain("--mode=smoke");
+    expect(workflow).toContain("--max-cycles=5");
     expect(workflow).toContain("--strict");
     expect(workflow).toContain("Test-Path -LiteralPath $driverPath");
     expect(workflow).toContain("ARKLINE_EDGEDRIVER=$driverPath");

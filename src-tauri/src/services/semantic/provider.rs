@@ -8,6 +8,7 @@ use crate::models::language::{
 };
 use crate::services::document_service::read_text_file;
 use std::path::Path;
+use std::time::Duration;
 
 pub trait SemanticProvider: Send + Sync {
     fn report(&self) -> LanguageServiceReport;
@@ -20,6 +21,14 @@ pub trait SemanticProvider: Send + Sync {
         _document_version: Option<u64>,
     ) -> Vec<DefinitionCandidate> {
         self.definition_candidates(request)
+    }
+    fn definition_candidates_with_document_version_and_timeout(
+        &self,
+        request: &LanguageQueryRequest,
+        document_version: Option<u64>,
+        _timeout: Duration,
+    ) -> Vec<DefinitionCandidate> {
+        self.definition_candidates_with_document_version(request, document_version)
     }
     fn completion(&self, request: &LanguageQueryRequest) -> Vec<CompletionItem>;
     fn resolve_completion(
