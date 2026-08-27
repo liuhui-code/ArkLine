@@ -19,8 +19,9 @@ command, and name the merge-ready gate evidence.
 The blocking `TDD Evidence` check validates that executable changes include a
 changed test contract and complete RED/GREEN evidence. Rust files containing
 inline tests are discovered through the repository test inventory. A branch
-ruleset must require `TDD Evidence`, `Quality Gate / Fast`, and
-`Windows / Package` before merge.
+ruleset must require `TDD Evidence` and `Merge Ready` before merge. `Merge Ready`
+fails closed unless the fast gate, complete frontend gate, Windows package, and
+installed and portable candidate smoke all succeed.
 
 Documentation-only and mechanically generated changes may use an explicit TDD
 exception. The exception must state its reason, affected scope, owner, and a

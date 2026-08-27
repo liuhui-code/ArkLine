@@ -102,36 +102,63 @@ describe("CI quality gates", () => {
     expect(workflow).not.toContain("name: arkline-windows-bundle");
   });
 
-  it("runs the complete frontend release gate automatically for main candidates", async () => {
+  it("runs the complete frontend release gate before pull requests can merge", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
+    const releaseFrontendIndex = workflow.indexOf("  release-frontend:");
+    const packageIndex = workflow.indexOf("  package:");
+    const releaseFrontendJob = workflow.slice(releaseFrontendIndex, packageIndex);
 
     expect(workflow).toContain("name: Release Candidate / Frontend");
-    expect(workflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
-    expect(workflow).toContain("run: pnpm check:release:frontend");
+    expect(releaseFrontendJob).toContain("run: pnpm check:release:frontend");
+    expect(releaseFrontendJob).not.toContain("github.event_name == 'push'");
   });
 
-  it("smokes both the installed and portable artifacts downloaded from the main candidate", async () => {
+  it("smokes both installed and portable pull request candidates before merge", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
+    const candidateSmokeIndex = workflow.indexOf("  candidate-smoke:");
+    const releaseReadyIndex = workflow.indexOf("  release-ready:");
+    const candidateSmokeJob = workflow.slice(candidateSmokeIndex, releaseReadyIndex);
 
-    expect(workflow).toContain("name: Release Candidate / Windows Smoke");
-    expect(workflow).toContain("needs: package");
-    expect(workflow).toContain("name: arkline-windows-candidate");
-    expect(workflow).toContain("name: Install candidate silently");
-    expect(workflow).toContain('"/S", "/D=$installRoot"');
-    expect(workflow).toContain("ARKLINE_INSTALLED_APPLICATION");
-    expect(workflow).toContain("Run installed candidate semantic smoke");
-    expect(workflow).toContain("Run portable candidate semantic smoke");
-    expect(workflow).toContain("--application=artifacts/release-verify/ArkLine.exe");
-    expect(workflow).toContain("--rev 8c4b34f51b45f5cf08013366d703de464ab871d1");
-    expect(workflow).toContain("ref: 17b6899086a57a4d48448842a14f9e325e3e35a3");
-    expect(workflow).toContain("if (-not $env:ARKLINE_CANDIDATE_INSTALL_ROOT) { exit 0 }");
+    expect(candidateSmokeJob).toContain("name: Release Candidate / Windows Smoke");
+    expect(candidateSmokeJob).toContain("needs: package");
+    expect(candidateSmokeJob).toContain("name: arkline-windows-candidate");
+    expect(candidateSmokeJob).toContain("name: Install candidate silently");
+    expect(candidateSmokeJob).toContain('"/S", "/D=$installRoot"');
+    expect(candidateSmokeJob).toContain("ARKLINE_INSTALLED_APPLICATION");
+    expect(candidateSmokeJob).toContain("Run installed candidate semantic smoke");
+    expect(candidateSmokeJob).toContain("Run portable candidate semantic smoke");
+    expect(candidateSmokeJob).toContain("--application=artifacts/release-verify/ArkLine.exe");
+    expect(candidateSmokeJob).toContain("--rev 8c4b34f51b45f5cf08013366d703de464ab871d1");
+    expect(candidateSmokeJob).toContain("ref: 17b6899086a57a4d48448842a14f9e325e3e35a3");
+    expect(candidateSmokeJob).toContain("if (-not $env:ARKLINE_CANDIDATE_INSTALL_ROOT) { exit 0 }");
+    expect(candidateSmokeJob).not.toContain("github.event_name == 'push'");
+  });
+
+  it("publishes one fail-closed merge-ready check for every pull request gate", async () => {
+    const workflow = await readWorkflow("windows-ci.yml");
+    const mergeReadyIndex = workflow.indexOf("  merge-ready:");
+    const releaseReadyIndex = workflow.indexOf("  release-ready:");
+    const mergeReadyJob = workflow.slice(mergeReadyIndex, releaseReadyIndex);
+
+    expect(mergeReadyIndex).toBeGreaterThanOrEqual(0);
+    expect(mergeReadyJob).toContain("name: Merge Ready");
+    expect(mergeReadyJob).toContain("if: ${{ always() }}");
+    expect(mergeReadyJob).toContain("- quality");
+    expect(mergeReadyJob).toContain("- release-frontend");
+    expect(mergeReadyJob).toContain("- package");
+    expect(mergeReadyJob).toContain("- candidate-smoke");
+    expect(mergeReadyJob).toContain("QUALITY_RESULT: ${{ needs.quality.result }}");
+    expect(mergeReadyJob).toContain("FRONTEND_RESULT: ${{ needs.release-frontend.result }}");
+    expect(mergeReadyJob).toContain("PACKAGE_RESULT: ${{ needs.package.result }}");
+    expect(mergeReadyJob).toContain("SMOKE_RESULT: ${{ needs.candidate-smoke.result }}");
+    expect(mergeReadyJob).not.toContain("continue-on-error");
   });
 
   it("marks a main candidate release-ready only after every release gate passes", async () => {
     const workflow = await readWorkflow("windows-ci.yml");
 
     expect(workflow).toContain("name: Release Ready");
-    expect(workflow).toContain("needs: [release-frontend, candidate-smoke]");
+    expect(workflow).toContain("needs: merge-ready");
     expect(workflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(workflow).toContain("ARKLINE_RELEASE_READY ${{ github.sha }}");
   });

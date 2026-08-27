@@ -76,7 +76,6 @@ jobs:
 
   release-frontend:
     name: Release Candidate / Frontend
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -161,7 +160,6 @@ jobs:
 
   candidate-smoke:
     name: Release Candidate / Windows Smoke
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: package
     runs-on: windows-latest
     timeout-minutes: 45
@@ -308,10 +306,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+  merge-ready:
+    name: Merge Ready
+    if: ${{ always() }}
+    needs:
+      - quality
+      - release-frontend
+      - package
+      - candidate-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Require every merge gate
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          FRONTEND_RESULT: ${{ needs.release-frontend.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          SMOKE_RESULT: ${{ needs.candidate-smoke.result }}
+        run: |
+          failed=0
+          for result in \
+            "Quality Gate / Fast=$QUALITY_RESULT" \
+            "Release Candidate / Frontend=$FRONTEND_RESULT" \
+            "Windows / Package=$PACKAGE_RESULT" \
+            "Release Candidate / Windows Smoke=$SMOKE_RESULT"
+          do
+            echo "$result"
+            if [[ "${result##*=}" != "success" ]]; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+
   release-ready:
     name: Release Ready
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [release-frontend, candidate-smoke]
+    needs: merge-ready
     runs-on: ubuntu-latest
     timeout-minutes: 5
 

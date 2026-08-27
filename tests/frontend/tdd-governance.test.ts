@@ -33,6 +33,16 @@ describe("TDD governance", () => {
     expect(policy).toContain("owner and expiry");
   });
 
+  it("requires one fail-closed merge-ready status in repository governance", async () => {
+    const policy = await read("docs/quality/tdd-policy.md");
+    const architecture = await read("docs/quality-gate-architecture.md");
+
+    expect(policy).toContain("`TDD Evidence` and `Merge Ready`");
+    expect(architecture).toContain("Require `TDD Evidence` and `Merge Ready`");
+    expect(architecture).toContain("complete frontend gate");
+    expect(architecture).toContain("installed and portable candidate smoke");
+  });
+
   it("requires pull requests to carry executable TDD evidence or an explicit exception", async () => {
     const template = await read(".github/PULL_REQUEST_TEMPLATE.md");
 
