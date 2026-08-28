@@ -25,6 +25,23 @@ describe("Git workflow surfaces", () => {
     expect(onOpenFile).toHaveBeenCalledWith("src/main.ets");
   });
 
+  it("opens a Git-quoted Unicode path as the workspace file", async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    const unicodeFiles = parseUnifiedDiff(`diff --git "a/\\344\\270\\255\\346\\226\\207 \\347\\273\\204\\344\\273\\266.ets" "b/\\344\\270\\255\\346\\226\\207 \\347\\273\\204\\344\\273\\266.ets"
+--- "a/\\344\\270\\255\\346\\226\\207 \\347\\273\\204\\344\\273\\266.ets"
++++ "b/\\344\\270\\255\\346\\226\\207 \\347\\273\\204\\344\\273\\266.ets"
+@@ -1 +1 @@
+-export const value = 1;
++export const value = 2;`);
+
+    render(<GitEditorDiffPreview files={unicodeFiles} comparison={null} actionContext={null} onApplyPartial={vi.fn()} onOpenFile={onOpenFile} onClose={vi.fn()} />);
+
+    expect(screen.getAllByText("中文 组件.ets")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Open File" }));
+    expect(onOpenFile).toHaveBeenCalledWith("中文 组件.ets");
+  });
+
   it("keeps partial hunk actions available in the preview", async () => {
     const user = userEvent.setup();
     const onApplyPartial = vi.fn().mockResolvedValue(undefined);
