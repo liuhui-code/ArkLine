@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GitChangeEntry, GitChangeSelection, GitConflictContent, GitConflictResolution, GitDiffActionContext, GitFileDiffRequest, GitPatchAction, GitRemoteOperation, GitRepositorySnapshot } from "@/features/git/git-source-control-model";
+import type { GitChangeEntry, GitChangeSelection, GitConflictContent, GitConflictResolution, GitDiffActionContext, GitFileComparison, GitFileDiffRequest, GitPatchAction, GitRemoteOperation, GitRepositorySnapshot } from "@/features/git/git-source-control-model";
 import type { GitCommitAction } from "@/features/git/git-commit-model";
 import { useGitHistoryController } from "@/components/layout/use-git-history-controller";
 import { useGitCommitDraft } from "@/components/layout/use-git-commit-draft";
@@ -172,7 +172,12 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
         timeoutMs: GIT_QUERY_TIMEOUT_MS,
         maxBytes: GIT_DIFF_LIMIT_BYTES,
       };
-      const comparison = await workspaceApi.getGitFileComparison?.(request);
+      let comparison: GitFileComparison | undefined;
+      try {
+        comparison = await workspaceApi.getGitFileComparison?.(request);
+      } catch (reason) {
+        if (diffRequestRef.current !== requestId || !workspaceApi.getGitFileDiff) throw reason;
+      }
       const diff = comparison?.patch ?? await workspaceApi.getGitFileDiff!(request);
       if (diffRequestRef.current !== requestId) return;
       onOpenDiff(diff.content, {

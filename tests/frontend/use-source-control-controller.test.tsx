@@ -415,6 +415,37 @@ describe("useSourceControlController remote operations", () => {
       comparison,
     );
   });
+
+  it("falls back to the patch when full-file comparison is unavailable", async () => {
+    const modified = change("tracked.ets");
+    const initial = { ...snapshot, totalChanges: 1, changes: [modified] };
+    const getGitFileComparison = vi.fn().mockRejectedValue(new Error("Git comparison path is not a file: tracked.ets"));
+    const getGitFileDiff = vi.fn().mockResolvedValue({ content: "patch", truncated: false, totalBytes: 5 });
+    const onOpenDiff = vi.fn();
+    const workspaceApi = {
+      getGitRepositorySnapshot: vi.fn().mockResolvedValue(initial),
+      getGitFileComparison,
+      getGitFileDiff,
+    } as unknown as WorkspaceApi;
+    const { result } = renderHook(() => useSourceControlController({
+      active: false,
+      rootPath: "/workspace",
+      workspaceApi,
+      onOpenDiff,
+      onStatusChange: vi.fn(),
+    }));
+    await waitFor(() => expect(result.current.snapshot?.totalChanges).toBe(1));
+
+    await act(async () => result.current.openDiff({ entry: modified, staged: false }));
+
+    expect(getGitFileDiff).toHaveBeenCalledOnce();
+    expect(onOpenDiff).toHaveBeenCalledWith(
+      "patch",
+      { relativePath: "tracked.ets", staged: false, kind: "modified" },
+      null,
+    );
+    expect(result.current.error).toBeNull();
+  });
 });
 
 function change(relativePath: string) {
