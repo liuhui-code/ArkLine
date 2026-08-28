@@ -1,42 +1,59 @@
-use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-
 use crate::models::git::{
-    GitCommitRequest, GitConflictContent, GitConflictContentRequest, GitDiffResult,
-    GitDiscardResult, GitFileComparison, GitFileDiffRequest, GitHistoryActionRequest,
-    GitMutationResult, GitPatchMutationResult, GitPatchRequest, GitPathsRequest,
-    GitRemoteOperationRequest, GitRepositoryActionRequest, GitRepositorySnapshot,
+    GitBranchSnapshot, GitCommitRequest, GitConflictContent, GitConflictContentRequest,
+    GitDiffResult, GitDiscardResult, GitFileComparison, GitFileDiffRequest,
+    GitHistoryActionRequest, GitMutationResult, GitPatchMutationResult, GitPatchRequest,
+    GitPathsRequest, GitRemoteOperationRequest, GitRepositoryActionRequest, GitRepositorySnapshot,
     GitRepositorySnapshotRequest, GitResolveConflictRequest, GitRestoreDiscardRequest,
     GitRestorePatchRequest, GitStashActionRequest, GitStashCreateRequest, GitStashDiffRequest,
     GitStashListRequest, GitStashPage,
 };
 use crate::services::git_query_service::{GitQueryOutput, GitQueryRuntime};
-use crate::services::git_status_service::{default_snapshot_request, read_snapshot};
+use crate::services::git_repository_identity_cache_service::GitRepositoryIdentityRuntime;
+use crate::services::git_status_service::{
+    cursor_snapshot_id, default_snapshot_request, read_snapshot_source,
+};
+use crate::services::git_status_snapshot_cache_service::GitStatusSnapshotCache;
 use crate::services::process_command_service::hidden_command;
-
+use std::collections::HashMap;
+use std::path::{Component, Path};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 #[derive(Clone, Default)]
 pub struct GitRepositoryRuntime {
     locks: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
     generation: Arc<AtomicU64>,
     queries: GitQueryRuntime,
+    identities: GitRepositoryIdentityRuntime,
+    status_snapshots: Arc<Mutex<GitStatusSnapshotCache>>,
 }
-
 impl GitRepositoryRuntime {
+    pub fn branches(&self, root_path: &str) -> Result<GitBranchSnapshot, String> {
+        let root = self.identities.resolve(Path::new(root_path))?.root;
+        crate::services::git_branch_service::list_branches_at_root(&root)
+    }
+
     pub fn snapshot(
         &self,
         request: &GitRepositorySnapshotRequest,
     ) -> Result<GitRepositorySnapshot, String> {
-        read_snapshot(&self.queries, request, self.next_generation())
+        if let Some(snapshot_id) = cursor_snapshot_id(request.cursor.as_deref()) {
+            let cached = self
+                .status_snapshots
+                .lock()
+                .map_err(|_| "Git status cache is unavailable".to_string())?
+                .get(&request.root_path, snapshot_id);
+            if let Some(source) = cached {
+                return source.page(request);
+            }
+        }
+        self.read_fresh_snapshot(request, self.next_generation())
     }
-
     pub fn cancel_query(&self, request_id: &str) -> Result<bool, String> {
         self.queries.cancel(request_id)
     }
 
     pub fn file_diff(&self, request: &GitFileDiffRequest) -> Result<GitDiffResult, String> {
-        let root = resolve_repo_root(Path::new(&request.root_path))?;
+        let root = self.identities.resolve(Path::new(&request.root_path))?.root;
         validate_relative_path(&request.relative_path)?;
         if request.scope.as_deref() == Some("commit") && !has_head(&root) {
             return self.run_untracked_diff(&root, request);
@@ -54,7 +71,6 @@ impl GitRepositoryRuntime {
         }
         self.run_untracked_diff(&root, request)
     }
-
     fn run_untracked_diff(
         &self,
         root: &Path,
@@ -72,13 +88,12 @@ impl GitRepositoryRuntime {
             request,
         )
     }
-
     pub fn file_comparison(
         &self,
         request: &GitFileDiffRequest,
     ) -> Result<GitFileComparison, String> {
         let patch = self.file_diff(request)?;
-        let root = resolve_repo_root(Path::new(&request.root_path))?;
+        let root = self.identities.resolve(Path::new(&request.root_path))?.root;
         validate_relative_path(&request.relative_path)?;
         if let Some(path) = request.original_path.as_deref() {
             validate_relative_path(path)?;
@@ -310,7 +325,22 @@ impl GitRepositoryRuntime {
             root.to_string_lossy().as_ref(),
             format!("git-mutation-status-{generation}"),
         );
-        read_snapshot(&self.queries, &request, generation)
+        self.read_fresh_snapshot(&request, generation)
+    }
+
+    fn read_fresh_snapshot(
+        &self,
+        request: &GitRepositorySnapshotRequest,
+        generation: u64,
+    ) -> Result<GitRepositorySnapshot, String> {
+        let identity = self.identities.resolve(Path::new(&request.root_path))?;
+        let source = read_snapshot_source(&self.queries, request, generation, &identity)?;
+        let snapshot = source.page(request)?;
+        self.status_snapshots
+            .lock()
+            .map_err(|_| "Git status cache is unavailable".to_string())?
+            .insert(source);
+        Ok(snapshot)
     }
 
     pub(crate) fn query_runtime(&self) -> &GitQueryRuntime {
@@ -339,7 +369,7 @@ impl GitRepositoryRuntime {
     where
         F: FnOnce(&Path) -> Result<T, String>,
     {
-        let root = resolve_repo_root(Path::new(root_path))?;
+        let root = self.identities.resolve(Path::new(root_path))?.root;
         let key = root.to_string_lossy().to_string();
         let lock = self.repository_lock(&key)?;
         let _guard = lock
@@ -398,18 +428,6 @@ pub(crate) fn validate_relative_path(path: &str) -> Result<(), String> {
         return Err("Git path must stay inside the repository".to_string());
     }
     Ok(())
-}
-
-fn resolve_repo_root(path: &Path) -> Result<PathBuf, String> {
-    let cwd = if path.is_dir() {
-        path
-    } else {
-        path.parent().unwrap_or(path)
-    };
-    let resolved = run_git(cwd, &["rev-parse", "--show-toplevel"])?;
-    PathBuf::from(resolved.trim())
-        .canonicalize()
-        .map_err(|error| error.to_string())
 }
 
 fn is_tracked(root: &Path, path: &str) -> bool {

@@ -71,7 +71,7 @@ fn stages_unstages_and_commits_real_repository_changes() {
 }
 
 #[test]
-fn pages_large_working_trees_with_a_bounded_payload() {
+fn reuses_a_bounded_snapshot_across_working_tree_pages() {
     let repository = TestRepository::new();
     for index in 0..430 {
         repository.write(
@@ -93,10 +93,15 @@ fn pages_large_working_trees_with_a_bounded_payload() {
     assert_eq!(first.changes.len(), 100);
     assert!(first.has_more);
 
+    repository.write(
+        "arrived-after-first-page.ets",
+        "export const arrivedAfterPaging = true;\n",
+    );
     let second = runtime
         .snapshot(&snapshot_request(&root, first.next_cursor, 100))
         .unwrap();
     assert_eq!(second.snapshot_id, first.snapshot_id);
+    assert_eq!(second.total_changes, 430);
     assert_eq!(second.changes.len(), 100);
     assert_ne!(
         second.changes[0].relative_path,

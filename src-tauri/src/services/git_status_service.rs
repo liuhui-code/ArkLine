@@ -1,14 +1,57 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::models::git::{GitChangeEntry, GitRepositorySnapshot, GitRepositorySnapshotRequest};
 use crate::services::git_query_service::{GitQueryOutput, GitQueryRuntime};
-use crate::services::process_command_service::hidden_command;
+use crate::services::git_repository_identity_cache_service::GitRepositoryIdentity;
 
 pub const DEFAULT_CHANGE_PAGE_SIZE: u32 = 200;
 const MAX_CHANGE_PAGE_SIZE: u32 = 500;
 const STATUS_OUTPUT_LIMIT: usize = 32 * 1024 * 1024;
+
+#[derive(Clone)]
+pub struct GitStatusSnapshotSource {
+    request_root: String,
+    repository_root: PathBuf,
+    output: Arc<Vec<u8>>,
+    operation: String,
+    generation: u64,
+    snapshot_id: String,
+}
+
+impl GitStatusSnapshotSource {
+    pub fn page(
+        &self,
+        request: &GitRepositorySnapshotRequest,
+    ) -> Result<GitRepositorySnapshot, String> {
+        parse_status_page_with_metadata(
+            &self.repository_root,
+            request,
+            &self.output,
+            self.generation,
+            &self.snapshot_id,
+            &self.operation,
+        )
+    }
+
+    pub fn matches(&self, root_path: &str, snapshot_id: &str) -> bool {
+        self.request_root == root_path && self.snapshot_id == snapshot_id
+    }
+
+    pub fn byte_len(&self) -> usize {
+        self.output.len()
+    }
+
+    pub fn request_root(&self) -> &str {
+        &self.request_root
+    }
+
+    pub fn snapshot_id(&self) -> &str {
+        &self.snapshot_id
+    }
+}
 
 pub fn default_snapshot_request(
     root_path: &str,
@@ -23,12 +66,13 @@ pub fn default_snapshot_request(
     }
 }
 
-pub fn read_snapshot(
+pub fn read_snapshot_source(
     runtime: &GitQueryRuntime,
     request: &GitRepositorySnapshotRequest,
     generation: u64,
-) -> Result<GitRepositorySnapshot, String> {
-    let root = resolve_repo_root(Path::new(&request.root_path))?;
+    identity: &GitRepositoryIdentity,
+) -> Result<GitStatusSnapshotSource, String> {
+    let root = &identity.root;
     let output = runtime.run(
         &request.request_id,
         &root,
@@ -49,14 +93,42 @@ pub fn read_snapshot(
             STATUS_OUTPUT_LIMIT / 1024 / 1024
         ));
     }
-    parse_status_page(&root, request, &output.stdout, generation)
+    let snapshot_id = snapshot_id(&output.stdout);
+    Ok(GitStatusSnapshotSource {
+        request_root: request.root_path.clone(),
+        repository_root: root.to_path_buf(),
+        output: Arc::new(output.stdout),
+        operation: detect_operation(&identity.git_dir),
+        generation,
+        snapshot_id,
+    })
 }
 
+#[cfg(test)]
 pub fn parse_status_page(
     root: &Path,
     request: &GitRepositorySnapshotRequest,
     output: &[u8],
     generation: u64,
+) -> Result<GitRepositorySnapshot, String> {
+    let snapshot_id = snapshot_id(output);
+    parse_status_page_with_metadata(
+        root,
+        request,
+        output,
+        generation,
+        &snapshot_id,
+        &detect_operation(&root.join(".git")),
+    )
+}
+
+fn parse_status_page_with_metadata(
+    root: &Path,
+    request: &GitRepositorySnapshotRequest,
+    output: &[u8],
+    generation: u64,
+    snapshot_id: &str,
+    operation: &str,
 ) -> Result<GitRepositorySnapshot, String> {
     let offset = parse_cursor(request.cursor.as_deref())?;
     let limit = request.limit.clamp(1, MAX_CHANGE_PAGE_SIZE) as usize;
@@ -124,13 +196,13 @@ pub fn parse_status_page(
         upstream,
         ahead,
         behind,
-        operation: detect_operation(root),
+        operation: operation.to_string(),
         generation,
-        snapshot_id: snapshot_id(output),
+        snapshot_id: snapshot_id.to_string(),
         total_changes,
         staged_changes,
         conflicted_changes,
-        next_cursor: has_more.then(|| consumed.to_string()),
+        next_cursor: has_more.then(|| format!("{snapshot_id}:{consumed}")),
         has_more,
         changes,
     })
@@ -234,9 +306,17 @@ fn parse_cursor(cursor: Option<&str>) -> Result<usize, String> {
     match cursor {
         None | Some("") => Ok(0),
         Some(value) => value
+            .rsplit_once(':')
+            .map(|(_, offset)| offset)
+            .unwrap_or(value)
             .parse()
             .map_err(|_| "Git change cursor is invalid".to_string()),
     }
+}
+
+pub fn cursor_snapshot_id(cursor: Option<&str>) -> Option<&str> {
+    let (snapshot_id, offset) = cursor?.rsplit_once(':')?;
+    (!snapshot_id.is_empty() && offset.parse::<usize>().is_ok()).then_some(snapshot_id)
 }
 
 fn snapshot_id(output: &[u8]) -> String {
@@ -245,13 +325,7 @@ fn snapshot_id(output: &[u8]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
-fn detect_operation(root: &Path) -> String {
-    let git_dir = run_git(root, &["rev-parse", "--git-dir"])
-        .ok()
-        .map(|value| root.join(value.trim()));
-    let Some(git_dir) = git_dir else {
-        return "idle".to_string();
-    };
+fn detect_operation(git_dir: &Path) -> String {
     if git_dir.join("MERGE_HEAD").exists() {
         "merge"
     } else if git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists() {
@@ -264,30 +338,6 @@ fn detect_operation(root: &Path) -> String {
         "idle"
     }
     .to_string()
-}
-
-fn resolve_repo_root(path: &Path) -> Result<PathBuf, String> {
-    let cwd = if path.is_dir() {
-        path
-    } else {
-        path.parent().unwrap_or(path)
-    };
-    PathBuf::from(run_git(cwd, &["rev-parse", "--show-toplevel"])?.trim())
-        .canonicalize()
-        .map_err(|error| error.to_string())
-}
-
-fn run_git(cwd: &Path, args: &[&str]) -> Result<String, String> {
-    let output = hidden_command("git")
-        .args(args)
-        .current_dir(cwd)
-        .output()
-        .map_err(|error| error.to_string())?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-    }
 }
 
 fn ensure_success(output: &GitQueryOutput) -> Result<(), String> {
@@ -326,7 +376,10 @@ mod tests {
         assert_eq!(snapshot.conflicted_changes, 1);
         assert_eq!(snapshot.changes.len(), 2);
         assert_eq!(snapshot.changes[0].relative_path, "conflict.ets");
-        assert_eq!(snapshot.next_cursor.as_deref(), Some("3"));
+        assert!(snapshot
+            .next_cursor
+            .as_deref()
+            .is_some_and(|cursor| cursor.ends_with(":3")));
         assert!(snapshot.has_more);
     }
 

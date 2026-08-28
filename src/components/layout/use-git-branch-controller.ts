@@ -70,8 +70,8 @@ export function useGitBranchController({
     setVisible(true);
     setQuery("");
     setSelectedIndex(0);
-    void loadBranches();
-  }, [loadBranches]);
+    if (!snapshot) void loadBranches();
+  }, [loadBranches, snapshot]);
 
   const close = useCallback(() => {
     if (!switching) {
