@@ -23,6 +23,28 @@ const snapshot: GitRepositorySnapshot = {
 };
 
 describe("useSourceControlController remote operations", () => {
+  it("runs one trailing refresh when repository invalidation arrives during an active query", async () => {
+    const first = deferred<GitRepositorySnapshot>();
+    const getGitRepositorySnapshot = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({ ...snapshot, generation: 2, snapshotId: "snapshot-2" });
+    const workspaceApi = { getGitRepositorySnapshot } as unknown as WorkspaceApi;
+    const { result } = renderHook(() => useSourceControlController({
+      active: false,
+      rootPath: "/workspace",
+      workspaceApi,
+      onOpenDiff: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+    await waitFor(() => expect(getGitRepositorySnapshot).toHaveBeenCalledOnce());
+
+    act(() => result.current.refresh());
+    first.resolve(snapshot);
+
+    await waitFor(() => expect(getGitRepositorySnapshot).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.snapshot?.generation).toBe(2));
+  });
+
   it("runs fetch in the repository runtime and applies its snapshot", async () => {
     const getGitRepositorySnapshot = vi.fn().mockResolvedValue(snapshot);
     const runGitRemoteOperation = vi.fn().mockResolvedValue({
@@ -459,4 +481,10 @@ function change(relativePath: string) {
     unstaged: true,
     conflicted: false,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
 }

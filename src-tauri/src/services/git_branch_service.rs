@@ -8,6 +8,10 @@ use crate::services::process_command_service::hidden_command;
 
 pub fn list_branches(root_path: &Path) -> Result<GitBranchSnapshot, String> {
     let root = resolve_repo_root(root_path)?;
+    list_branches_at_root(&root)
+}
+
+pub(crate) fn list_branches_at_root(root: &Path) -> Result<GitBranchSnapshot, String> {
     let current_branch = run_git(&root, &["symbolic-ref", "--quiet", "--short", "HEAD"]).ok();
     let refs = run_git(
         &root,
@@ -32,9 +36,9 @@ pub fn list_branches(root_path: &Path) -> Result<GitBranchSnapshot, String> {
     }
     local_branches.sort_by_key(|branch| (!branch.current, branch.name.to_lowercase()));
     remote_branches.sort_by_key(|branch| branch.name.to_lowercase());
-    let recent_branches = read_recent_branches(&root, &local_branches, current_branch.as_deref());
+    let recent_branches = read_recent_branches(root, &local_branches, current_branch.as_deref());
     let detached = current_branch.is_none();
-    let working_tree = read_working_tree(&root)?;
+    let working_tree = read_working_tree(root)?;
     Ok(GitBranchSnapshot {
         root_path: root.to_string_lossy().to_string(),
         current_branch: current_branch.map(|value| value.trim().to_string()),

@@ -30,12 +30,12 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
   const [discardBackup, setDiscardBackup] = useState<{ commit: string; path: string; patch?: string } | null>(null);
   const requestGenerationRef = useRef(0);
   const refreshInFlightRef = useRef(false);
+  const refreshPendingRef = useRef(false);
   const snapshotRef = useRef<GitRepositorySnapshot | null>(null);
   const statusRequestRef = useRef<string | null>(null);
   const diffRequestRef = useRef<string | null>(null);
   const commitDraft = useGitCommitDraft(rootPath, workspaceApi);
   const dirtyGuard = useGitWorkingTreeGuard({ rootPath, getDirtyDocumentPaths, saveDirtyDocuments });
-
   const stagedCount = snapshot?.stagedChanges ?? 0;
   const changeCount = snapshot?.totalChanges ?? 0;
   const branchLabel = snapshot?.currentBranch ?? (snapshot?.detached ? "Detached HEAD" : "No Git branch");
@@ -57,7 +57,6 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
     });
     return true;
   }, []);
-
   const history = useGitHistoryController({ rootPath, workspaceApi, onOpenDiff, onApplySnapshot: applySnapshot, onStatusChange, ensureWorkingTreeReady: dirtyGuard.ensureReady, reconcileDocuments });
   const invalidateHistory = history.invalidate;
 
@@ -67,7 +66,10 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
       setSnapshot(null);
       return;
     }
-    if (refreshInFlightRef.current) return;
+    if (refreshInFlightRef.current) {
+      refreshPendingRef.current = true;
+      return;
+    }
     refreshInFlightRef.current = true;
     const requestGeneration = ++requestGenerationRef.current;
     const requestId = createGitQueryId(append ? "git-status-page" : "git-status");
@@ -96,6 +98,10 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
       if (statusRequestRef.current === requestId) {
         statusRequestRef.current = null;
         refreshInFlightRef.current = false;
+        if (refreshPendingRef.current) {
+          refreshPendingRef.current = false;
+          queueMicrotask(() => void refresh());
+        }
       }
       if (requestGeneration === requestGenerationRef.current) {
         setRefreshing(false);
@@ -121,6 +127,7 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
     if (diffRequestRef.current) void workspaceApi.cancelGitQuery?.(diffRequestRef.current);
     requestGenerationRef.current += 1;
     refreshInFlightRef.current = false;
+    refreshPendingRef.current = false;
     statusRequestRef.current = null;
     diffRequestRef.current = null;
     snapshotRef.current = null;
