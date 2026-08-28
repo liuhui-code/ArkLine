@@ -1637,6 +1637,81 @@ describe("App shell", () => {
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes a pending Search Everywhere query when an index publication completes", async () => {
+    const user = userEvent.setup();
+    let taskStatusWatcher: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
+    let watchedRootPath = "C:/samples/DemoWorkspace";
+    const queryWorkspaceCandidatesWithReadiness = vi.fn()
+      .mockResolvedValueOnce({
+        items: [],
+        readiness: {
+          rootPath: watchedRootPath,
+          requestedGeneration: 1,
+          servedGeneration: 1,
+          state: "partial" as const,
+          reason: "Indexing pending",
+          retryable: true,
+        },
+      })
+      .mockResolvedValue({
+        items: [{
+          id: "class:ReadyController",
+          source: "class" as const,
+          kind: "class",
+          title: "ReadyController",
+          subtitle: "C:/samples/DemoWorkspace/src/ReadyController.ets",
+          path: "C:/samples/DemoWorkspace/src/ReadyController.ets",
+          line: 3,
+          column: 7,
+          score: 120,
+          freshness: "ready" as const,
+        }],
+        readiness: {
+          rootPath: watchedRootPath,
+          requestedGeneration: 1,
+          servedGeneration: 1,
+          state: "ready" as const,
+          retryable: false,
+        },
+      });
+    const workspaceApi = createWorkspaceApi({
+      queryWorkspaceCandidatesWithReadiness,
+      getWorkspaceIndexTaskStatuses: async () => [],
+      watchWorkspaceIndexTaskStatuses: async (rootPath, onChange) => {
+        watchedRootPath = rootPath;
+        taskStatusWatcher = onChange;
+        return () => undefined;
+      },
+    });
+
+    render(<AppShell workspaceApi={workspaceApi} />);
+
+    await openProject(user);
+    await waitFor(() => expect(taskStatusWatcher).not.toBeNull());
+    await user.keyboard("{Shift}{Shift}");
+    await user.type(await screen.findByLabelText("Search Everywhere Query"), "ReadyController");
+    expect(await screen.findByText("Indexing pending")).toBeVisible();
+    const queryCountBeforePublication = queryWorkspaceCandidatesWithReadiness.mock.calls.length;
+
+    act(() => {
+      taskStatusWatcher?.({
+        taskId: "7:changed-paths",
+        rootPath: watchedRootPath,
+        kind: "changed-paths",
+        status: "ready",
+        reason: "full-refresh-deep:background-refresh-after-open",
+        generation: 7,
+        progressCurrent: 6,
+        progressTotal: 6,
+      });
+    });
+
+    await waitFor(() => expect(queryWorkspaceCandidatesWithReadiness.mock.calls.length)
+      .toBeGreaterThan(queryCountBeforePublication));
+    expect(await screen.findByRole("button", { name: /class ReadyController/ })).toBeVisible();
+    expect(screen.queryByText("Indexing pending")).not.toBeInTheDocument();
+  });
+
   it("filters Search Everywhere through scoped index categories", async () => {
     const user = userEvent.setup();
     const queryWorkspaceCandidatesWithReadiness = vi.fn(async (_rootPath: string, _query: string, scope: string) => {

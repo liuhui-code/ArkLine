@@ -70,6 +70,11 @@ export function useIndexDiagnosticsController({
     workspaceIndexProjectionStore.statusSnapshot,
     workspaceIndexProjectionStore.statusSnapshot,
   );
+  const workspaceIndexQueryRevision = useSyncExternalStore(
+    workspaceIndexProjectionStore.subscribeQuery,
+    workspaceIndexProjectionStore.querySnapshot,
+    workspaceIndexProjectionStore.querySnapshot,
+  );
   const statusTaskStatuses = indexProjection.rootPath === workspace?.rootPath
     ? indexProjection.taskStatuses
     : [];
@@ -135,8 +140,9 @@ export function useIndexDiagnosticsController({
 
   async function loadWorkspaceIndexTaskStatuses(rootPath = workspace?.rootPath) {
     if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return [];
+    const reconciliationRevision = workspaceIndexProjectionStore.taskStatusRevision();
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
-    workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses);
+    workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses, reconciliationRevision);
     if (statuses.some(shouldRefreshDetailedIndexState)) {
       await Promise.all([
         refreshLayerReadiness(rootPath),
@@ -208,6 +214,7 @@ export function useIndexDiagnosticsController({
     }
     setIndexDiagnosticsLoading(true);
     try {
+      const reconciliationRevision = workspaceIndexProjectionStore.taskStatusRevision();
       const [diagnostics, statuses, layers] = await Promise.all([
         workspaceApi.inspectWorkspaceIndex?.(workspace.rootPath) ?? Promise.resolve(null),
         workspaceApi.getWorkspaceIndexTaskStatuses?.(workspace.rootPath) ?? Promise.resolve([]),
@@ -218,7 +225,7 @@ export function useIndexDiagnosticsController({
       setIndexDiagnostics(diagnostics);
       workspaceIndexProjectionStore.recordHealthSummary(workspace.rootPath, diagnostics);
       workspaceIndexProjectionStore.recordRecentEvents(workspace.rootPath, diagnostics?.recentEvents ?? []);
-      workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses);
+      workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses, reconciliationRevision);
       await refreshCurrentFileReadiness(workspace.rootPath, activePath);
       setLayerReadiness(layers);
     } finally {
@@ -405,6 +412,7 @@ export function useIndexDiagnosticsController({
     currentFileReadiness,
     layerReadiness,
     workspaceIndexTaskStatuses,
+    workspaceIndexQueryRevision,
     workspaceIndexStatusSummary,
     recordWorkspaceIndexTaskStatus,
     refreshWorkspaceIndexTaskStatuses,
