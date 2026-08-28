@@ -119,6 +119,46 @@ describe("workspace index projection store", () => {
     vi.useRealTimers();
   });
 
+  it("does not let an older reconciliation snapshot overwrite a live terminal status", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+    const partial = taskStatus({
+      taskId: "7:discovery",
+      kind: "discovery",
+      reason: "workspace-discovery",
+      status: "partial",
+      generation: 7,
+      progressCurrent: 1024,
+      progressTotal: 1025,
+    });
+    const reconciliationRevision = store.taskStatusRevision();
+
+    store.recordTaskStatus({
+      ...partial,
+      status: "ready",
+      progressCurrent: 865,
+      progressTotal: 865,
+    });
+    store.replaceTaskStatuses("/workspace", [partial], reconciliationRevision);
+
+    expect(store.snapshot().taskStatuses).toEqual([
+      expect.objectContaining({ taskId: "7:discovery", status: "ready" }),
+    ]);
+  });
+
+  it("advances the query publication revision only when index results can change", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+
+    expect(store.querySnapshot()).toBe(0);
+    store.recordTaskStatus(taskStatus({ status: "queued" }));
+    store.recordTaskStatus(taskStatus({ status: "running" }));
+    expect(store.querySnapshot()).toBe(0);
+
+    store.recordTaskStatus(taskStatus({ status: "partial" }));
+    expect(store.querySnapshot()).toBe(1);
+    store.recordTaskStatus(taskStatus({ status: "ready" }));
+    expect(store.querySnapshot()).toBe(2);
+  });
+
   it("keeps completed foreground file tasks out of the shell status projection", () => {
     vi.useFakeTimers();
     const store = createWorkspaceIndexProjectionStore(1);

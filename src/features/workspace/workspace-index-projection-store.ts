@@ -6,6 +6,7 @@ import type {
 } from "@/features/workspace/workspace-index-api-types";
 import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace-api-contract";
 import { repairActionFromPayload } from "@/features/workspace/workspace-index-repair-action-model";
+import { createWorkspaceIndexTaskReconciler, isQueryPublicationTaskStatus } from "@/features/workspace/workspace-index-task-reconciliation";
 
 export type WorkspaceIndexHealthSummary = Pick<WorkspaceIndexHealth, "retryBackoffCount" | "latestRetryBackoff">;
 
@@ -33,6 +34,7 @@ export type WorkspaceIndexProjectionSnapshot = {
   errorSummary: WorkspaceIndexErrorSummary | null;
   repairSummary: WorkspaceIndexRepairSummary | null;
   taskStatuses: WorkspaceIndexTaskStatus[];
+  queryRevision: number;
   recentEvents: WorkspaceIndexEvent[];
   timeline: WorkspaceIndexTimelineItem[];
   eventCount: number;
@@ -56,6 +58,7 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
     errorSummary: null,
     repairSummary: null,
     taskStatuses: [],
+    queryRevision: 0,
     recentEvents: [],
     timeline: [],
     eventCount: 0,
@@ -66,10 +69,13 @@ function createInitialSnapshot(): WorkspaceIndexProjectionSnapshot {
 export function createWorkspaceIndexProjectionStore(flushMs = 500) {
   let snapshot = createInitialSnapshot();
   let statusProjection: WorkspaceIndexStatusProjection = statusProjectionFrom(snapshot);
+  const taskStatusReconciler = createWorkspaceIndexTaskReconciler();
   const listeners = new Set<Listener>();
   const statusListeners = new Set<Listener>();
+  const queryListeners = new Set<Listener>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let statusFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  let queryFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scheduleFlush() {
     if (flushTimer) return;
@@ -78,7 +84,6 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       listeners.forEach((listener) => listener());
     }, flushMs);
   }
-
   function scheduleStatusFlush() {
     if (statusFlushTimer) return;
     statusFlushTimer = setTimeout(() => {
@@ -86,7 +91,13 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       statusListeners.forEach((listener) => listener());
     }, flushMs);
   }
-
+  function scheduleQueryFlush() {
+    if (queryFlushTimer) return;
+    queryFlushTimer = setTimeout(() => {
+      queryFlushTimer = null;
+      queryListeners.forEach((listener) => listener());
+    }, flushMs);
+  }
   function clearScheduledFlushes() {
     if (flushTimer != null) {
       clearTimeout(flushTimer);
@@ -96,9 +107,13 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
       clearTimeout(statusFlushTimer);
       statusFlushTimer = null;
     }
+    if (queryFlushTimer != null) {
+      clearTimeout(queryFlushTimer);
+      queryFlushTimer = null;
+    }
   }
 
-  function commit(next: WorkspaceIndexProjectionSnapshot, includeStatus = false) {
+  function commit(next: WorkspaceIndexProjectionSnapshot, includeStatus = false, includeQuery = false) {
     snapshot = next;
     scheduleFlush();
     if (includeStatus) {
@@ -107,6 +122,9 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         statusProjection = nextStatusProjection;
         scheduleStatusFlush();
       }
+    }
+    if (includeQuery) {
+      scheduleQueryFlush();
     }
   }
 
@@ -123,26 +141,51 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         statusListeners.delete(listener);
       };
     },
+    subscribeQuery(listener: Listener) {
+      queryListeners.add(listener);
+      return () => {
+        queryListeners.delete(listener);
+      };
+    },
     snapshot() {
       return snapshot;
     },
     statusSnapshot() {
       return statusProjection;
     },
+    querySnapshot() {
+      return snapshot.queryRevision;
+    },
     reset() {
       clearScheduledFlushes();
-      commit(createInitialSnapshot(), true);
+      taskStatusReconciler.reset();
+      commit(createInitialSnapshot(), true, true);
     },
-    replaceTaskStatuses(rootPath: string, statuses: WorkspaceIndexTaskStatus[]) {
+    taskStatusRevision() {
+      return taskStatusReconciler.revision();
+    },
+    replaceTaskStatuses(
+      rootPath: string,
+      statuses: WorkspaceIndexTaskStatus[],
+      reconciliationRevision = taskStatusReconciler.revision(),
+    ) {
+      const taskStatuses = taskStatusReconciler.reconcile(
+        snapshot.rootPath === rootPath ? snapshot.taskStatuses : [],
+        statuses,
+        rootPath,
+        reconciliationRevision,
+      );
       commit({
         ...snapshot,
         rootPath,
-        taskStatuses: [...statuses],
+        taskStatuses,
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
       }, true);
     },
     recordTaskStatus(status: WorkspaceIndexTaskStatus) {
+      taskStatusReconciler.record(status);
+      const queryPublication = isQueryPublicationTaskStatus(status.status);
       const current = snapshot.rootPath === status.rootPath ? snapshot.taskStatuses : [];
       const taskStatuses = mergeTaskStatus(current, status);
       const healthSummary = isActiveDeepRefresh(status)
@@ -153,9 +196,10 @@ export function createWorkspaceIndexProjectionStore(flushMs = 500) {
         rootPath: status.rootPath,
         healthSummary: healthSummary === undefined ? snapshot.healthSummary : healthSummary,
         taskStatuses,
+        queryRevision: snapshot.queryRevision + Number(queryPublication),
         eventCount: snapshot.eventCount + 1,
         updatedAt: Date.now(),
-      }, true);
+      }, true, queryPublication);
     },
     recordHealthSummary(rootPath: string, healthSummary: WorkspaceIndexHealthSummary | null) {
       commit({
