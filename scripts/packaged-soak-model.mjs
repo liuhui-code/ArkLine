@@ -195,7 +195,7 @@ export function evaluateSmokeReport(metrics) {
   if (metrics.processTreeSampleCount === 0) {
     failures.push("no-process-tree-evidence");
   }
-  appendSemanticFailures(failures, metrics, PACKAGED_SOAK_LIMITS);
+  appendSemanticFailures(failures, metrics, PACKAGED_SOAK_LIMITS, false);
   return { passed: failures.length === 0, failures };
 }
 

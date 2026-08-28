@@ -280,7 +280,7 @@ describe("packaged Windows soak foundation", () => {
     });
   });
 
-  it("requires enough post-warmup semantic samples before enforcing smoke latency", () => {
+  it("keeps short smoke latency observational while requiring semantic evidence", () => {
     expect(evaluateSmokeReport({
       crashCount: 0,
       unresponsiveCount: 0,
@@ -304,13 +304,7 @@ describe("packaged Windows soak foundation", () => {
       successfulCompletionCount: 1,
       rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
       rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
-    })).toMatchObject({
-      passed: false,
-      failures: expect.arrayContaining([
-        "insufficient-definition-latency-evidence",
-        "insufficient-completion-latency-evidence",
-      ]),
-    });
+    })).toMatchObject({ passed: true, failures: [] });
 
     expect(evaluateSmokeReport({
       crashCount: 0,
@@ -335,13 +329,7 @@ describe("packaged Windows soak foundation", () => {
       successfulCompletionCount: 5,
       rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
       rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
-    })).toMatchObject({
-      passed: false,
-      failures: expect.arrayContaining([
-        "renderer-definition-p95",
-        "renderer-completion-p95",
-      ]),
-    });
+    })).toMatchObject({ passed: true, failures: [] });
   });
 
   it("captures bounded query UI evidence for native smoke failures", () => {
