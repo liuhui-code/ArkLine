@@ -23,6 +23,53 @@ const snapshot: GitRepositorySnapshot = {
 };
 
 describe("useSourceControlController remote operations", () => {
+  it("refreshes once for a burst of workspace changes without frequent polling", async () => {
+    const setIntervalSpy = vi.spyOn(window, "setInterval");
+    const teardown = vi.fn();
+    let publishFileChange: ((event: {
+      rootPath: string;
+      path: string;
+      kind: "modified";
+    }) => void) | null = null;
+    const getGitRepositorySnapshot = vi.fn().mockResolvedValue(snapshot);
+    const watchWorkspaceFileChanges = vi.fn(async (_rootPath, onChange) => {
+      publishFileChange = onChange;
+      return teardown;
+    });
+    const workspaceApi = {
+      getGitRepositorySnapshot,
+      watchWorkspaceFileChanges,
+    } as unknown as WorkspaceApi;
+    const { unmount } = renderHook(() => useSourceControlController({
+      active: true,
+      rootPath: "/workspace",
+      workspaceApi,
+      onOpenDiff: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    try {
+      await waitFor(() => expect(getGitRepositorySnapshot).toHaveBeenCalledOnce());
+      await waitFor(() => expect(watchWorkspaceFileChanges).toHaveBeenCalledOnce());
+      expect(setIntervalSpy).not.toHaveBeenCalledWith(expect.any(Function), 10_000);
+      expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+
+      act(() => {
+        const event = { rootPath: "/workspace", path: "/workspace/main.ets", kind: "modified" as const };
+        publishFileChange?.(event);
+        publishFileChange?.(event);
+        publishFileChange?.(event);
+      });
+
+      await waitFor(() => expect(getGitRepositorySnapshot).toHaveBeenCalledTimes(2));
+    } finally {
+      unmount();
+      setIntervalSpy.mockRestore();
+    }
+
+    expect(teardown).toHaveBeenCalledOnce();
+  });
+
   it("runs one trailing refresh when repository invalidation arrives during an active query", async () => {
     const first = deferred<GitRepositorySnapshot>();
     const getGitRepositorySnapshot = vi.fn()
