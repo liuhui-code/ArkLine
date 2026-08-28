@@ -6,6 +6,7 @@ import { useGitCommitDraft } from "@/components/layout/use-git-commit-draft";
 import { useGitStashController } from "@/components/layout/use-git-stash-controller";
 import { createGitQueryId, GIT_DIFF_LIMIT_BYTES, GIT_QUERY_TIMEOUT_MS, GIT_STATUS_PAGE_SIZE } from "@/features/git/git-query-control";
 import { useGitWorkingTreeGuard } from "@/components/layout/use-git-working-tree-guard";
+import { useGitStatusInvalidation } from "@/components/layout/use-git-status-invalidation";
 import type { SourceControlOperation, UseSourceControlControllerOptions } from "@/components/layout/source-control-controller-types";
 import { gitMutationError, gitMutationStatus, skipGitDocumentReconciliation } from "@/components/layout/use-git-document-safety";
 
@@ -143,21 +144,7 @@ export function useSourceControlController({ active, rootPath, workspaceApi, onO
     void refresh();
   }, [refresh, rootPath, workspaceApi]);
 
-  useEffect(() => {
-    if (!active) return;
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
-    const interval = window.setInterval(refreshWhenVisible, 10_000);
-    const refreshOnFocus = () => void refresh();
-    window.addEventListener("focus", refreshOnFocus);
-    document.addEventListener("visibilitychange", refreshWhenVisible);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("focus", refreshOnFocus);
-      document.removeEventListener("visibilitychange", refreshWhenVisible);
-    };
-  }, [active, refresh]);
+  useGitStatusInvalidation({ active, rootPath, workspaceApi, onInvalidate: refresh });
 
   const openDiff = useCallback(async (selection: GitChangeSelection) => {
     if (!rootPath || (!workspaceApi.getGitFileComparison && !workspaceApi.getGitFileDiff)) return;
