@@ -154,8 +154,19 @@ fn background_file_catalog_publication_defers_content_fingerprints() {
             |row| row.get(0),
         )
         .unwrap();
+    let symbol_count: i64 = connection
+        .query_row(
+            "select count(*) from workspace_symbols where path = ?1",
+            [&normalized_path],
+            |row| row.get(0),
+        )
+        .unwrap();
 
     assert_eq!(catalog_count, 1);
     assert_eq!(fingerprint_count, 0);
+    assert_eq!(
+        symbol_count, 0,
+        "file catalog publication must defer source parsing to the stub layer"
+    );
     fs::remove_dir_all(root).unwrap();
 }

@@ -197,9 +197,17 @@ impl WorkspaceIndexRuntime {
         workspace.file_search_index = Arc::new(WorkspaceFileSearchIndex::new(
             workspace.state.file_paths.iter().cloned(),
         ));
+        // Catalog-only publication must stay metadata-only. Parsing every discovered
+        // source file here delays the first Stub slice and duplicates the deep layer.
+        // Keep last-known-good symbols for present files; the Stub layer replaces them.
+        let symbol_paths = if update_fingerprints {
+            added_paths
+        } else {
+            &[]
+        };
         let symbol_update = update_workspace_symbols_with_delta(
             &workspace.state.symbols,
-            added_paths,
+            symbol_paths,
             removed_paths,
         );
         workspace.state.symbols = symbol_update.symbols;
