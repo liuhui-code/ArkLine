@@ -6,6 +6,8 @@ use crate::services::workspace_index_catalog_refresh_worker_service::CATALOG_DEE
 use crate::services::workspace_index_deep_refresh_cursor_service::{
     load_deep_refresh_cursor, WorkspaceIndexDeepRefreshPhase,
 };
+use crate::services::workspace_index_facade_service::query_facade_search_everywhere_with_readiness;
+use crate::services::workspace_index_query_service::WorkspaceIndexQueryScope;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
 };
@@ -15,6 +17,42 @@ use crate::services::workspace_index_worker_budget_service::WORKSPACE_INDEX_BACK
 use crate::services::workspace_index_worker_service::{
     run_index_tasks, run_index_tasks_with_cancellation_and_ui_activity,
 };
+
+#[test]
+fn first_background_deep_slice_makes_class_search_available_before_content_indexing() {
+    let root = create_empty_workspace("worker-symbol-first");
+    let source_dir = root.join("entry").join("src").join("main").join("ets");
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    runtime.refresh_workspace_index(&root_path).unwrap();
+    let paths = (0..WORKSPACE_INDEX_BACKGROUND_DEEP_PATH_BUDGET)
+        .map(|index| {
+            let path = source_dir.join(format!("PriorityClass{index:02}.ets"));
+            fs::write(
+                &path,
+                format!("export class PriorityClass{index:02} {{}}\n"),
+            )
+            .unwrap();
+            path.to_string_lossy().to_string()
+        })
+        .collect::<Vec<_>>();
+
+    run_index_tasks(&runtime, vec![deep_task(&root_path, paths)], |_| Ok(())).unwrap();
+    let classes = query_facade_search_everywhere_with_readiness(
+        &runtime,
+        &root_path,
+        "PriorityClass00",
+        WorkspaceIndexQueryScope::Classes,
+        20,
+    )
+    .unwrap();
+
+    assert!(
+        classes.items.iter().any(|item| item.title == "PriorityClass00"),
+        "the symbol layer must become queryable before the slower content layer completes"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
 
 #[test]
 fn worker_background_deep_continuation_defers_paths_over_budget() {
@@ -81,7 +119,7 @@ fn worker_background_deep_continuation_uses_ui_active_budget() {
 }
 
 #[test]
-fn content_exhausts_its_catalog_before_the_stub_phase_starts() {
+fn stub_exhausts_its_catalog_before_the_content_phase_starts() {
     let root = create_empty_workspace("worker-deep-stub-yield");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     let root_path = root.to_string_lossy().to_string();
@@ -102,7 +140,7 @@ fn content_exhausts_its_catalog_before_the_stub_phase_starts() {
     let before = load_deep_refresh_cursor(&root_path, "full-refresh-deep:refresh-workspace")
         .unwrap()
         .unwrap();
-    assert_eq!(before.phase, WorkspaceIndexDeepRefreshPhase::Content);
+    assert_eq!(before.phase, WorkspaceIndexDeepRefreshPhase::Stub);
 
     let waiting = deep_task(&root_path, Vec::new());
     let token = WorkspaceIndexCancellationToken::new(waiting.generation);
@@ -122,13 +160,13 @@ fn content_exhausts_its_catalog_before_the_stub_phase_starts() {
         Some(CATALOG_DEEP_REFRESH_PROGRESS_MESSAGE)
     );
     assert!(progressed[0].refresh_result.is_none());
-    assert_eq!(after.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+    assert_eq!(after.phase, WorkspaceIndexDeepRefreshPhase::Content);
     assert_eq!(after.last_file_id, 0);
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn catalog_transitions_to_stub_only_after_content_is_exhausted() {
+fn catalog_transitions_to_content_only_after_stub_is_exhausted() {
     let root = create_empty_workspace("worker-deep-catalog-pair");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     let root_path = root.to_string_lossy().to_string();
@@ -160,7 +198,7 @@ fn catalog_transitions_to_stub_only_after_content_is_exhausted() {
     let cursor = load_deep_refresh_cursor(&root_path, "full-refresh-deep:refresh-workspace")
         .unwrap()
         .unwrap();
-    assert_eq!(cursor.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+    assert_eq!(cursor.phase, WorkspaceIndexDeepRefreshPhase::Content);
     assert_eq!(cursor.last_file_id, 0);
     fs::remove_dir_all(root).unwrap();
 }
@@ -216,7 +254,7 @@ fn catalog_deep_refresh_reports_monotonic_pipeline_progress() {
 }
 
 #[test]
-fn catalog_runs_full_content_stub_and_substring_stages_in_order() {
+fn catalog_runs_full_stub_content_and_substring_stages_in_order() {
     let root = create_empty_workspace("worker-deep-stage-order");
     let source_dir = root.join("entry").join("src").join("main").join("ets");
     let root_path = root.to_string_lossy().to_string();
@@ -236,8 +274,8 @@ fn catalog_runs_full_content_stub_and_substring_stages_in_order() {
     .unwrap();
     let mut continuation = deep_task(&root_path, Vec::new());
     for expected in [
-        WorkspaceIndexDeepRefreshPhase::Stub,
-        WorkspaceIndexDeepRefreshPhase::Stub,
+        WorkspaceIndexDeepRefreshPhase::Content,
+        WorkspaceIndexDeepRefreshPhase::Content,
         WorkspaceIndexDeepRefreshPhase::Substring,
         WorkspaceIndexDeepRefreshPhase::Substring,
     ] {

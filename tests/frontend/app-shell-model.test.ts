@@ -102,6 +102,10 @@ describe("app shell model", () => {
     expect(getIndexStatusText(indexState({ status: "partial" }), [
       taskStatus({ kind: "discovery", status: "partial", progressCurrent: 1024, progressTotal: 1025 }),
     ])).toBe("Index: Discovering files (1,024+)");
+    expect(getIndexStatusText(indexState({ status: "ready", filePaths: ["/a.ets", "/b.ets"] }), [
+      taskStatus({ taskId: "7:discovery", kind: "discovery", status: "partial", generation: 7 }),
+      taskStatus({ taskId: "8:discovery", kind: "discovery", status: "ready", generation: 8 }),
+    ])).toBe("Index: ready (2 files)");
     expect(getIndexStatusText(indexState({ status: "ready" }), [
       taskStatus({ kind: "refresh-workspace", stalled: true }),
     ])).toBe("Index: Stalled, 1 task > 60s");

@@ -79,6 +79,27 @@ describe("background task model", () => {
       detail: "2 of 6 indexing steps",
     });
   });
+
+  it("does not resurrect an interrupted discovery after a newer generation is ready", () => {
+    const tasks = deriveBackgroundTasks([
+      indexTask({
+        taskId: "7:discovery",
+        kind: "discovery",
+        status: "partial",
+        reason: "workspace-discovery",
+        generation: 7,
+      }),
+      indexTask({
+        taskId: "8:discovery",
+        kind: "discovery",
+        status: "ready",
+        reason: "workspace-discovery",
+        generation: 8,
+      }),
+    ]);
+
+    expect(tasks).toEqual([]);
+  });
 });
 
 function indexTask(overrides: Partial<WorkspaceIndexTaskStatus> = {}): WorkspaceIndexTaskStatus {

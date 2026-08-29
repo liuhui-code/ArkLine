@@ -43,6 +43,7 @@ export type SearchRunActionsOptions = {
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   scheduleSelectedPreview: (selectedIndex: number) => void;
   reportEntityMiss: SearchMissReporters["reportEntityMiss"];
+  onRetryableEntityResult?: (requestId: number) => void;
   reportTextMiss: SearchMissReporters["reportTextMiss"];
   onStreamError?: (message: string) => void;
   runFallback: (query: string, dirty: boolean, generation: number) => Promise<WorkspaceTextSearchResult>;
@@ -70,6 +71,7 @@ export function createSearchRunActions(options: SearchRunActionsOptions) {
         patchSearchSession: options.patchSearchSession,
         recordUiInteraction: options.recordUiInteraction,
         reportMiss: options.reportEntityMiss,
+        onRetryableResult: options.onRetryableEntityResult,
       });
     },
     runTextSearch(requestId: number) {

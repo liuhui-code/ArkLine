@@ -160,6 +160,53 @@ describe("useSearchEverywhereController", () => {
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(initialCalls + 1);
   });
 
+  it("retries partial all-scope results while the class index is still publishing", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn()
+      .mockResolvedValueOnce({
+        items: [candidate({
+          source: "file",
+          kind: "file",
+          title: "Page000000.ets",
+          path: "/workspace/Page000000.ets",
+        })],
+        readiness: {
+          ...readiness(),
+          state: "partial",
+          reason: "The symbol index is still publishing",
+          retryable: true,
+        },
+        explain: [],
+      })
+      .mockResolvedValue({
+        items: [candidate({ title: "Page000000", path: "/workspace/Page000000.ets" })],
+        readiness: readiness(),
+        explain: [],
+      });
+    const { result } = renderSearchHarness({
+      query: "Page000000",
+      overlay: "searchEverywhere",
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    });
+
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
+    expect(result.current.search.searchEverywhereCandidates).toEqual([
+      expect.objectContaining({ title: "Page000000.ets", kind: "file" }),
+    ]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(2);
+    expect(result.current.search.searchEverywhereCandidates).toEqual([
+      expect.objectContaining({ title: "Page000000", kind: "class" }),
+    ]);
+  });
+
   it("invalidates a slow backend search immediately when the query changes", async () => {
     vi.useFakeTimers();
     const slowSearch = createDeferred<{

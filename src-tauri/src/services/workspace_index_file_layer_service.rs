@@ -129,6 +129,35 @@ impl WorkspaceIndexRuntime {
         added_paths: &[String],
         removed_paths: &[String],
     ) -> Result<WorkspaceIndexState, String> {
+        self.update_workspace_file_symbol_layer_with_fingerprints(
+            root_path,
+            added_paths,
+            removed_paths,
+            true,
+        )
+    }
+
+    pub(crate) fn publish_workspace_file_catalog(
+        &self,
+        root_path: &str,
+        added_paths: &[String],
+        removed_paths: &[String],
+    ) -> Result<WorkspaceIndexState, String> {
+        self.update_workspace_file_symbol_layer_with_fingerprints(
+            root_path,
+            added_paths,
+            removed_paths,
+            false,
+        )
+    }
+
+    fn update_workspace_file_symbol_layer_with_fingerprints(
+        &self,
+        root_path: &str,
+        added_paths: &[String],
+        removed_paths: &[String],
+        update_fingerprints: bool,
+    ) -> Result<WorkspaceIndexState, String> {
         let normalized_root = normalize_index_path(root_path);
         let existing_workspace = {
             let workspaces = self
@@ -168,9 +197,17 @@ impl WorkspaceIndexRuntime {
         workspace.file_search_index = Arc::new(WorkspaceFileSearchIndex::new(
             workspace.state.file_paths.iter().cloned(),
         ));
+        // Catalog-only publication must stay metadata-only. Parsing every discovered
+        // source file here delays the first Stub slice and duplicates the deep layer.
+        // Keep last-known-good symbols for present files; the Stub layer replaces them.
+        let symbol_paths = if update_fingerprints {
+            added_paths
+        } else {
+            &[]
+        };
         let symbol_update = update_workspace_symbols_with_delta(
             &workspace.state.symbols,
-            added_paths,
+            symbol_paths,
             removed_paths,
         );
         workspace.state.symbols = symbol_update.symbols;
@@ -190,8 +227,10 @@ impl WorkspaceIndexRuntime {
             .lock()
             .map_err(|_| "Workspace index lock poisoned".to_string())?
             .insert(normalized_root, workspace.clone());
-        update_file_catalog_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
-        remove_file_fingerprints(root_path, removed_paths)?;
+        if update_fingerprints {
+            update_file_catalog_fingerprints(root_path, added_paths, now_epoch_ms()? as u64)?;
+            remove_file_fingerprints(root_path, removed_paths)?;
+        }
         persist_incremental_file_symbol_state(
             root_path,
             &workspace.state,
@@ -202,7 +241,6 @@ impl WorkspaceIndexRuntime {
 
         Ok(workspace.state)
     }
-
 }
 
 fn restore_minimal_workspace(

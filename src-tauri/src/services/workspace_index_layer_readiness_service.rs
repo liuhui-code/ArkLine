@@ -389,13 +389,23 @@ fn symbol_layer(
     root_key: &str,
     file_readiness: Option<&crate::models::workspace::WorkspaceIndexFileReadiness>,
 ) -> Result<WorkspaceIndexLayerReadiness, String> {
-    let count = count_rows(connection, "workspace_symbol_entities", root_key)?;
+    let entity_count = count_rows(connection, "workspace_symbol_entities", root_key)?;
+    let declaration_count = count_rows(connection, "workspace_stub_declarations", root_key)?;
+    let stub_file_count = count_rows(connection, "workspace_stub_files", root_key)?;
+    let failures = count_rows(connection, "workspace_stub_parse_errors", root_key)?;
+    let expected = count_stub_source_files(connection, root_key)?;
+    let count = declaration_count.max(entity_count);
+    let workspace_status = if expected > 0 {
+        status_with_expected_count(stub_file_count, failures, expected)
+    } else {
+        status_from_count(count)
+    };
     Ok(layer_with_current(
         "symbols",
-        status_from_count(count),
+        workspace_status,
         file_readiness.map(|readiness| status_from_text(&readiness.symbol_index)),
         count,
-        0,
+        failures,
         0,
         None,
     ))

@@ -42,6 +42,8 @@ import {
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_PREVIEW_DEBOUNCE_MS = 200;
+const SEARCH_INDEX_RETRY_DELAY_MS = 500;
+const SEARCH_INDEX_RETRY_LIMIT = 40;
 
 export type UseSearchEverywhereControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -104,6 +106,9 @@ export function useSearchEverywhereController({
 }: UseSearchEverywhereControllerOptions) {
   const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
   const [searchEverywhereScope, setSearchEverywhereScope] = useState<WorkspaceIndexQueryScope>("all");
+  const [searchIndexRetryVersion, setSearchIndexRetryVersion] = useState(0);
+  const searchIndexRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchIndexRetryAttemptsRef = useRef(0);
   const scopedIndexVersionKey = workspaceIndexQueryVersionKey(
     indexVersionKey,
     searchEverywhereScope,
@@ -149,6 +154,13 @@ export function useSearchEverywhereController({
     navigationCloseHandledRef,
     invalidateSearchSession,
   });
+  const searchIndexRetryIdentity = [
+    activeOverlay,
+    workspace?.rootPath ?? "",
+    searchEverywhereMode,
+    searchEverywhereScope,
+    debouncedSearchQuery.trim(),
+  ].join("\u0000");
   const readSearchFile = createSearchFileReader({
     activePath,
     getOpenDocumentContent,
@@ -220,6 +232,7 @@ export function useSearchEverywhereController({
     recordUiInteraction,
     scheduleSelectedPreview,
     reportEntityMiss: searchMissReporters.reportEntityMiss,
+    onRetryableEntityResult: scheduleRetryableEntitySearch,
     reportTextMiss: searchMissReporters.reportTextMiss,
     onStreamError: (message) => onStatusChange(`Search failed: ${message}`),
     runFallback: fallbackTextSearch,
@@ -308,6 +321,32 @@ export function useSearchEverywhereController({
     searchOverlayCommands.toggleSearchEverywhereWholeWord();
   }
 
+  function scheduleRetryableEntitySearch(requestId: number) {
+    if (
+      activeOverlay !== "searchEverywhere"
+      || !interactionRuntimeRef.current.isCurrentQuery(requestId)
+      || searchIndexRetryAttemptsRef.current >= SEARCH_INDEX_RETRY_LIMIT
+    ) return;
+    searchIndexRetryAttemptsRef.current += 1;
+    if (searchIndexRetryTimerRef.current) clearTimeout(searchIndexRetryTimerRef.current);
+    searchIndexRetryTimerRef.current = setTimeout(() => {
+      searchIndexRetryTimerRef.current = null;
+      if (interactionRuntimeRef.current.isCurrentQuery(requestId)) {
+        setSearchIndexRetryVersion((version) => version + 1);
+      }
+    }, SEARCH_INDEX_RETRY_DELAY_MS);
+  }
+
+  useEffect(() => {
+    searchIndexRetryAttemptsRef.current = 0;
+    if (searchIndexRetryTimerRef.current) clearTimeout(searchIndexRetryTimerRef.current);
+    searchIndexRetryTimerRef.current = null;
+    return () => {
+      if (searchIndexRetryTimerRef.current) clearTimeout(searchIndexRetryTimerRef.current);
+      searchIndexRetryTimerRef.current = null;
+    };
+  }, [searchIndexRetryIdentity]);
+
   useEffect(() => {
     dispatchSearchOverlayQueryEffect({
       activeOverlay,
@@ -327,6 +366,7 @@ export function useSearchEverywhereController({
     searchEverywhereMode,
     searchEverywhereOptions,
     searchEverywhereScope,
+    searchIndexRetryVersion,
     workspace,
     workspaceApi,
   ]);

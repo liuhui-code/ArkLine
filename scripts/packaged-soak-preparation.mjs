@@ -1,13 +1,10 @@
 import {
   waitForCoreIndexReady,
   waitForDiscoveryReady,
-  waitForInteractiveIndexReady,
   waitForTerminalIndexReady,
 } from "./packaged-soak-readiness.mjs";
 import { warmSemanticInteractions } from "./packaged-soak-semantic-workload.mjs";
 import { verifySearchEverywhereClass } from "./packaged-soak-search-workload.mjs";
-import { buildFixtureRelativePath } from "./generate-performance-fixture.mjs";
-import path from "node:path";
 
 export async function preparePackagedSoakRun(
   driver,
@@ -16,11 +13,10 @@ export async function preparePackagedSoakRun(
   onPhase,
 ) {
   if (options.mode === "smoke" && scenario.kind === "generated") {
-    onPhase("interactive-index-ready");
-    await waitForInteractiveIndexReady(
+    onPhase("discovery-ready");
+    await waitForDiscoveryReady(
       driver,
       options.fixturePath,
-      path.join(options.fixturePath, buildFixtureRelativePath(0)),
       90_000,
     );
     onPhase("search-everywhere-class-ready");

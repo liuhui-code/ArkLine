@@ -19,6 +19,7 @@ import type {
   WorkspaceIndexQueryScope,
 } from "@/features/workspace/workspace-api";
 import type { SearchCandidate, WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
+import { isLatestTaskGenerationForKind } from "@/features/workspace/workspace-index-task-reconciliation";
 import { normalizePath } from "@/features/workspace/workspace-store";
 import type { EditorCaretRect } from "@/editor/editor-events";
 
@@ -174,14 +175,19 @@ export function getIndexDiagnosticsStatusTarget(workspaceIndexText: string) {
 export function getActiveProjectIndexTaskStatus(statuses: WorkspaceIndexTaskStatus[]) {
   return [...statuses]
     .reverse()
-    .find((status) => status.kind !== "sdk" && isActiveProjectIndexTask(status));
+    .find((status) => status.kind !== "sdk" && isActiveProjectIndexTask(status, statuses));
 }
 
-function isActiveProjectIndexTask(status: WorkspaceIndexTaskStatus) {
+function isActiveProjectIndexTask(
+  status: WorkspaceIndexTaskStatus,
+  statuses: WorkspaceIndexTaskStatus[],
+) {
   if (status.status === "queued" || status.status === "running") {
     return true;
   }
-  return status.kind === "discovery" && status.status === "partial";
+  return status.kind === "discovery"
+    && status.status === "partial"
+    && isLatestTaskGenerationForKind(status, statuses);
 }
 
 function formatDiscoveryIndexStatus(status: WorkspaceIndexTaskStatus) {

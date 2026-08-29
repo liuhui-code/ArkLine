@@ -1,5 +1,6 @@
 import type { WorkspaceIndexTaskStatus } from "@/features/workspace/workspace-api";
 import type { BuildState } from "@/features/build/build-model";
+import { isLatestTaskGenerationForKind } from "@/features/workspace/workspace-index-task-reconciliation";
 
 export type BackgroundTask = {
   id: string;
@@ -16,7 +17,7 @@ export function deriveBackgroundTasks(
   buildState?: Pick<BuildState, "status" | "message">,
 ): BackgroundTask[] {
   const tasks: BackgroundTask[] = indexTasks
-    .filter(isActiveIndexTask)
+    .filter((task) => isActiveIndexTask(task, indexTasks))
     .map((task) => ({
       id: `index:${task.taskId}`,
       title: indexTaskTitle(task.kind),
@@ -44,10 +45,14 @@ export function deriveBackgroundTasks(
   return tasks;
 }
 
-function isActiveIndexTask(task: WorkspaceIndexTaskStatus) {
+function isActiveIndexTask(task: WorkspaceIndexTaskStatus, tasks: WorkspaceIndexTaskStatus[]) {
   return task.status === "queued"
     || task.status === "running"
-    || (task.kind === "discovery" && task.status === "partial");
+    || (
+      task.kind === "discovery"
+      && task.status === "partial"
+      && isLatestTaskGenerationForKind(task, tasks)
+    );
 }
 
 function hasMeasurableProgress(task: WorkspaceIndexTaskStatus) {
