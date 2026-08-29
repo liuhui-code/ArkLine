@@ -51,7 +51,7 @@ export type SearchEntityRunnerInput = {
   patchSearchSession: PatchSearchSession;
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   reportMiss: EntitySearchRequestRunnerInput["reportMiss"];
-  onRetryableMiss?: EntitySearchRequestRunnerInput["onRetryableMiss"];
+  onRetryableResult?: EntitySearchRequestRunnerInput["onRetryableResult"];
 };
 
 export function runSearchEntityQuery({
@@ -71,7 +71,7 @@ export function runSearchEntityQuery({
   patchSearchSession,
   recordUiInteraction,
   reportMiss,
-  onRetryableMiss,
+  onRetryableResult,
 }: SearchEntityRunnerInput) {
   if (!rootPath) return;
   const rankingContext: WorkspaceSearchRankingContext = { activePath, recentPaths, openedPaths };
@@ -110,6 +110,6 @@ export function runSearchEntityQuery({
     patchSearchSession,
     recordUiInteraction,
     reportMiss,
-    onRetryableMiss,
+    onRetryableResult,
   });
 }

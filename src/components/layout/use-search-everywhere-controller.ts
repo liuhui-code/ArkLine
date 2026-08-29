@@ -232,7 +232,7 @@ export function useSearchEverywhereController({
     recordUiInteraction,
     scheduleSelectedPreview,
     reportEntityMiss: searchMissReporters.reportEntityMiss,
-    onRetryableEntityMiss: scheduleRetryableEntitySearch,
+    onRetryableEntityResult: scheduleRetryableEntitySearch,
     reportTextMiss: searchMissReporters.reportTextMiss,
     onStreamError: (message) => onStatusChange(`Search failed: ${message}`),
     runFallback: fallbackTextSearch,

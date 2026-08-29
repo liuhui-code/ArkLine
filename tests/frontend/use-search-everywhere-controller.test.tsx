@@ -160,11 +160,16 @@ describe("useSearchEverywhereController", () => {
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(initialCalls + 1);
   });
 
-  it("retries an empty class query while the symbol index is still publishing", async () => {
+  it("retries partial all-scope results while the class index is still publishing", async () => {
     vi.useFakeTimers();
     const queryWorkspaceCandidatesWithReadiness = vi.fn()
       .mockResolvedValueOnce({
-        items: [],
+        items: [candidate({
+          source: "file",
+          kind: "file",
+          title: "Page000000.ets",
+          path: "/workspace/Page000000.ets",
+        })],
         readiness: {
           ...readiness(),
           state: "partial",
@@ -186,7 +191,9 @@ describe("useSearchEverywhereController", () => {
 
     await flushSearchDebounce();
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
-    expect(result.current.search.searchEverywhereCandidates).toEqual([]);
+    expect(result.current.search.searchEverywhereCandidates).toEqual([
+      expect.objectContaining({ title: "Page000000.ets", kind: "file" }),
+    ]);
 
     await act(async () => {
       vi.advanceTimersByTime(500);

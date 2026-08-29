@@ -11,7 +11,9 @@ pub(crate) fn gate_search_scope(
 ) -> Result<Vec<String>, String> {
     if !matches!(
         scope,
-        WorkspaceIndexQueryScope::Classes | WorkspaceIndexQueryScope::Symbols
+        WorkspaceIndexQueryScope::All
+            | WorkspaceIndexQueryScope::Classes
+            | WorkspaceIndexQueryScope::Symbols
     ) {
         return Ok(Vec::new());
     }

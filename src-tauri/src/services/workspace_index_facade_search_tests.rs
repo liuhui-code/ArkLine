@@ -145,19 +145,7 @@ fn file_scope_query_does_not_depend_on_persistent_layer_diagnostics() {
     fs::write(&file_path, "class ImmediatePage {}\n").unwrap();
     let root_path = root.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
-    runtime
-        .index_workspace_snapshot_for_open(&WorkspaceSnapshot {
-            root_name: "ArkDemo".to_string(),
-            root_path: root_path.clone(),
-            files: vec![file_path.to_string_lossy().to_string()],
-            scan_summary: WorkspaceScanSummary {
-                scanned_files: 1,
-                skipped_entries: 0,
-                truncated: false,
-                exclude_rules: Vec::new(),
-            },
-        })
-        .unwrap();
+    index_snapshot_for_open(&runtime, &root_path, &file_path);
     let store_dir = root.join(".arkline/index");
     fs::create_dir_all(&store_dir).unwrap();
     fs::write(store_dir.join("workspace-catalog.sqlite"), "not sqlite").unwrap();
@@ -189,19 +177,7 @@ fn class_scope_is_retryable_until_the_symbol_layer_is_ready() {
     fs::write(&file_path, "class DeferredController {}\n").unwrap();
     let root_path = root.to_string_lossy().to_string();
     let runtime = WorkspaceIndexRuntime::default();
-    runtime
-        .index_workspace_snapshot_for_open(&WorkspaceSnapshot {
-            root_name: "ArkDemo".to_string(),
-            root_path: root_path.clone(),
-            files: vec![file_path.to_string_lossy().to_string()],
-            scan_summary: WorkspaceScanSummary {
-                scanned_files: 1,
-                skipped_entries: 0,
-                truncated: false,
-                exclude_rules: Vec::new(),
-            },
-        })
-        .unwrap();
+    index_snapshot_for_open(&runtime, &root_path, &file_path);
 
     let envelope = query_workspace_index_facade(
         &runtime,
@@ -215,6 +191,37 @@ fn class_scope_is_retryable_until_the_symbol_layer_is_ready() {
     .unwrap();
 
     assert!(envelope.items.is_empty());
+    assert_eq!(
+        envelope.readiness.state,
+        WorkspaceIndexReadinessState::Partial
+    );
+    assert!(envelope.readiness.retryable);
+    assert_explain_contains(&envelope.explain, "skipped:SymbolIndex:missing");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn all_scope_is_retryable_when_files_are_ready_but_symbols_are_pending() {
+    let root = create_empty_workspace("facade-all-scope-symbol-readiness");
+    let source_dir = create_workspace_source_dir(&root);
+    let file_path = source_dir.join("DeferredController.ets");
+    fs::write(&file_path, "class DeferredController {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let runtime = WorkspaceIndexRuntime::default();
+    index_snapshot_for_open(&runtime, &root_path, &file_path);
+
+    let envelope = query_workspace_index_facade(
+        &runtime,
+        WorkspaceIndexFacadeRequest::SearchEverywhere {
+            root_path: root_path.clone(),
+            query: "DeferredController".to_string(),
+            scope: WorkspaceIndexQueryScope::All,
+            limit: 8,
+        },
+    )
+    .unwrap();
+
+    assert!(search_titles(&envelope).contains(&"DeferredController.ets"));
     assert_eq!(
         envelope.readiness.state,
         WorkspaceIndexReadinessState::Partial
@@ -435,6 +442,26 @@ fn search_sources(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
             _ => None,
         })
         .collect()
+}
+
+fn index_snapshot_for_open(
+    runtime: &WorkspaceIndexRuntime,
+    root_path: &str,
+    file_path: &std::path::Path,
+) {
+    runtime
+        .index_workspace_snapshot_for_open(&WorkspaceSnapshot {
+            root_name: "ArkDemo".to_string(),
+            root_path: root_path.to_string(),
+            files: vec![file_path.to_string_lossy().to_string()],
+            scan_summary: WorkspaceScanSummary {
+                scanned_files: 1,
+                skipped_entries: 0,
+                truncated: false,
+                exclude_rules: Vec::new(),
+            },
+        })
+        .unwrap();
 }
 
 fn search_titles(envelope: &WorkspaceIndexFacadeEnvelope) -> Vec<&str> {
