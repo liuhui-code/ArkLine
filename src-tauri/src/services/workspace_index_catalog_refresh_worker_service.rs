@@ -204,7 +204,7 @@ fn load_or_create_cursor(
     let cursor = WorkspaceIndexDeepRefreshCursor {
         task_key: task.reason.clone(),
         catalog_generation: task.generation,
-        phase: WorkspaceIndexDeepRefreshPhase::Content,
+        phase: WorkspaceIndexDeepRefreshPhase::Stub,
         last_file_id: 0,
         batch_last_file_id: None,
     };

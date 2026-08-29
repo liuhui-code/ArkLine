@@ -127,6 +127,12 @@ describe("CI quality gates", () => {
     expect(candidateSmokeJob).toContain("ARKLINE_INSTALLED_APPLICATION");
     expect(candidateSmokeJob).toContain("Run installed candidate semantic smoke");
     expect(candidateSmokeJob).toContain("Run portable candidate semantic smoke");
+    expect(candidateSmokeJob).toContain("Generate deterministic class-search smoke workspace");
+    expect(candidateSmokeJob).toContain("Run portable candidate class-index smoke");
+    expect(candidateSmokeJob).toContain("--profile=small");
+    expect(candidateSmokeJob).toContain("--fixture=artifacts/generated-class-smoke");
+    expect(candidateSmokeJob).toContain("--report=artifacts/portable-generated-candidate-report.json");
+    expect(candidateSmokeJob).not.toContain("ARKLINE_INDEXER_ENABLED: \"0\"");
     expect(candidateSmokeJob).toContain("--application=artifacts/release-verify/ArkLine.exe");
     expect(candidateSmokeJob).toContain("--rev 8c4b34f51b45f5cf08013366d703de464ab871d1");
     expect(candidateSmokeJob).toContain("ref: 17b6899086a57a4d48448842a14f9e325e3e35a3");

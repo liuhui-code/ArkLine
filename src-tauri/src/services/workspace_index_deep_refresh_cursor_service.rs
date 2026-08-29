@@ -70,8 +70,8 @@ pub(crate) fn load_deep_refresh_progress(
     let file_count = file_count.max(0) as usize;
     let phase_file_count = phase_file_count.unwrap_or_default().max(0) as usize;
     let completed_phases = match cursor.phase {
-        WorkspaceIndexDeepRefreshPhase::Content => 0,
-        WorkspaceIndexDeepRefreshPhase::Stub => 1,
+        WorkspaceIndexDeepRefreshPhase::Stub => 0,
+        WorkspaceIndexDeepRefreshPhase::Content => 1,
         WorkspaceIndexDeepRefreshPhase::Substring => 2,
     };
     Ok(WorkspaceIndexDeepRefreshProgress {
@@ -87,7 +87,7 @@ pub(crate) fn plan_deep_refresh_batch(
     let cursor = cursor.cloned().unwrap_or(WorkspaceIndexDeepRefreshCursor {
         task_key: String::new(),
         catalog_generation: 0,
-        phase: WorkspaceIndexDeepRefreshPhase::Content,
+        phase: WorkspaceIndexDeepRefreshPhase::Stub,
         last_file_id: 0,
         batch_last_file_id: None,
     });
@@ -115,8 +115,8 @@ pub(crate) fn start_next_deep_refresh_phase(
     cursor: &WorkspaceIndexDeepRefreshCursor,
 ) -> Option<WorkspaceIndexDeepRefreshCursor> {
     let phase = match cursor.phase {
-        WorkspaceIndexDeepRefreshPhase::Content => WorkspaceIndexDeepRefreshPhase::Stub,
-        WorkspaceIndexDeepRefreshPhase::Stub => WorkspaceIndexDeepRefreshPhase::Substring,
+        WorkspaceIndexDeepRefreshPhase::Stub => WorkspaceIndexDeepRefreshPhase::Content,
+        WorkspaceIndexDeepRefreshPhase::Content => WorkspaceIndexDeepRefreshPhase::Substring,
         WorkspaceIndexDeepRefreshPhase::Substring => return None,
     };
     Some(WorkspaceIndexDeepRefreshCursor {
@@ -183,12 +183,18 @@ pub(crate) fn load_deep_refresh_cursor(
              where root_path = ?1 and task_key = ?2",
             params![normalize_root_path(root_path), task_key],
             |row| {
+                let phase_label = row.get::<_, String>(1)?;
+                let (phase, reset_legacy_offset) = parse_phase(&phase_label);
                 Ok(WorkspaceIndexDeepRefreshCursor {
                     task_key: task_key.to_string(),
                     catalog_generation: row.get::<_, i64>(0)? as u64,
-                    phase: parse_phase(&row.get::<_, String>(1)?),
-                    last_file_id: row.get(2)?,
-                    batch_last_file_id: row.get(3)?,
+                    phase,
+                    last_file_id: if reset_legacy_offset { 0 } else { row.get(2)? },
+                    batch_last_file_id: if reset_legacy_offset {
+                        None
+                    } else {
+                        row.get(3)?
+                    },
                 })
             },
         )
@@ -214,17 +220,22 @@ pub(crate) fn clear_deep_refresh_cursor(root_path: &str, task_key: &str) -> Resu
 
 fn phase_label(phase: WorkspaceIndexDeepRefreshPhase) -> &'static str {
     match phase {
-        WorkspaceIndexDeepRefreshPhase::Content => "content",
-        WorkspaceIndexDeepRefreshPhase::Stub => "stub",
-        WorkspaceIndexDeepRefreshPhase::Substring => "substring",
+        WorkspaceIndexDeepRefreshPhase::Content => "content-v2",
+        WorkspaceIndexDeepRefreshPhase::Stub => "stub-v2",
+        WorkspaceIndexDeepRefreshPhase::Substring => "substring-v2",
     }
 }
 
-fn parse_phase(value: &str) -> WorkspaceIndexDeepRefreshPhase {
+fn parse_phase(value: &str) -> (WorkspaceIndexDeepRefreshPhase, bool) {
     match value {
-        "stub" => WorkspaceIndexDeepRefreshPhase::Stub,
-        "substring" => WorkspaceIndexDeepRefreshPhase::Substring,
-        _ => WorkspaceIndexDeepRefreshPhase::Content,
+        "stub-v2" => (WorkspaceIndexDeepRefreshPhase::Stub, false),
+        "content-v2" => (WorkspaceIndexDeepRefreshPhase::Content, false),
+        "substring-v2" | "substring" => (WorkspaceIndexDeepRefreshPhase::Substring, false),
+        "stub" => (WorkspaceIndexDeepRefreshPhase::Stub, false),
+        // Legacy catalogs indexed content before symbols. Restart them at the
+        // beginning of the symbol phase so an upgraded packaged application does
+        // not keep class search blocked behind the remaining content backlog.
+        _ => (WorkspaceIndexDeepRefreshPhase::Stub, true),
     }
 }
 
@@ -237,10 +248,16 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    use rusqlite::params;
+
+    use crate::services::workspace_index_connection_service::with_workspace_index_transaction;
+    use crate::services::workspace_index_schema_service::ensure_workspace_index_schema;
+
     use super::{
         advance_deep_refresh_cursor, clear_deep_refresh_cursor, load_deep_refresh_cursor,
-        plan_deep_refresh_batch, save_deep_refresh_cursor, start_next_deep_refresh_phase,
-        WorkspaceIndexDeepRefreshCursor, WorkspaceIndexDeepRefreshPhase,
+        parse_phase, plan_deep_refresh_batch, save_deep_refresh_cursor,
+        start_next_deep_refresh_phase, WorkspaceIndexDeepRefreshCursor,
+        WorkspaceIndexDeepRefreshPhase,
     };
 
     #[test]
@@ -264,7 +281,7 @@ mod tests {
     }
 
     #[test]
-    fn advances_within_content_before_starting_stub() {
+    fn advances_within_current_phase_without_transition() {
         let cursor = cursor("phase", 12);
         let content = plan_deep_refresh_batch(Some(&cursor), 7);
         let next = advance_deep_refresh_cursor(&cursor, &content, 19);
@@ -276,16 +293,58 @@ mod tests {
 
     #[test]
     fn starts_the_next_full_catalog_phase_at_the_beginning() {
-        let mut content = cursor("phase", 12);
-        content.last_file_id = 19;
+        let mut stub = cursor("phase", 12);
+        stub.phase = WorkspaceIndexDeepRefreshPhase::Stub;
+        stub.last_file_id = 19;
 
-        let stub = start_next_deep_refresh_phase(&content).unwrap();
-        let substring = start_next_deep_refresh_phase(&stub).unwrap();
+        let content = start_next_deep_refresh_phase(&stub).unwrap();
+        let substring = start_next_deep_refresh_phase(&content).unwrap();
 
-        assert_eq!(stub.phase, WorkspaceIndexDeepRefreshPhase::Stub);
-        assert_eq!(stub.last_file_id, 0);
+        assert_eq!(content.phase, WorkspaceIndexDeepRefreshPhase::Content);
+        assert_eq!(content.last_file_id, 0);
         assert_eq!(substring.phase, WorkspaceIndexDeepRefreshPhase::Substring);
         assert!(start_next_deep_refresh_phase(&substring).is_none());
+    }
+
+    #[test]
+    fn legacy_content_checkpoint_restarts_at_the_symbol_phase() {
+        assert_eq!(
+            parse_phase("content"),
+            (WorkspaceIndexDeepRefreshPhase::Stub, true)
+        );
+        assert_eq!(
+            parse_phase("content-v2"),
+            (WorkspaceIndexDeepRefreshPhase::Content, false)
+        );
+    }
+
+    #[test]
+    fn persisted_legacy_content_checkpoint_resets_its_offset_during_upgrade() {
+        let root = temp_root("deep-checkpoint-legacy-upgrade");
+        let root_path = root.to_string_lossy().to_string();
+        let task_key = "full-refresh-deep:background-refresh-after-open";
+        with_workspace_index_transaction(&root_path, ensure_workspace_index_schema, |transaction| {
+            transaction
+                .execute(
+                    "insert into workspace_index_deep_refresh_checkpoints (
+                        root_path, task_key, catalog_generation, phase,
+                        last_file_id, batch_last_file_id, updated_at
+                     ) values (?1, ?2, 12, 'content', 17, 24, 1)",
+                    params![root_path.replace('/', "\\"), task_key],
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        })
+        .unwrap();
+
+        let cursor = load_deep_refresh_cursor(&root_path, task_key)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(cursor.phase, WorkspaceIndexDeepRefreshPhase::Stub);
+        assert_eq!(cursor.last_file_id, 0);
+        assert_eq!(cursor.batch_last_file_id, None);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

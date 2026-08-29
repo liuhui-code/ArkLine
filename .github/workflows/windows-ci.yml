@@ -252,6 +252,25 @@ jobs:
           "ARKLINE_CANDIDATE_INSTALL_ROOT=$installRoot" >> $env:GITHUB_ENV
           "ARKLINE_INSTALLED_APPLICATION=$(Join-Path $installRoot 'ArkLine.exe')" >> $env:GITHUB_ENV
 
+      - name: Generate deterministic class-search smoke workspace
+        shell: pwsh
+        run: |
+          pnpm fixture:performance -- `
+            --profile=small `
+            --output=artifacts/generated-class-smoke
+
+      - name: Run portable candidate class-index smoke
+        shell: pwsh
+        run: |
+          pnpm perf:packaged:windows -- `
+            --mode=smoke `
+            --max-cycles=1 `
+            --application=artifacts/release-verify/ArkLine.exe `
+            --driver="$env:ARKLINE_EDGEDRIVER" `
+            --fixture=artifacts/generated-class-smoke `
+            --report=artifacts/portable-generated-candidate-report.json `
+            --strict
+
       - name: Checkout pinned real Harmony project
         uses: actions/checkout@v4
         with:

@@ -53,6 +53,17 @@ export function createWorkspaceIndexTaskReconciler() {
   };
 }
 
+export function isLatestTaskGenerationForKind(
+  status: WorkspaceIndexTaskStatus,
+  statuses: WorkspaceIndexTaskStatus[],
+) {
+  return statuses.every((candidate) => (
+    candidate.rootPath !== status.rootPath
+    || candidate.kind !== status.kind
+    || candidate.generation <= status.generation
+  ));
+}
+
 function revisionKey(rootPath: string, taskId: string) {
   return `${rootPath}\u0000${taskId}`;
 }
