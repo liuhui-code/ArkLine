@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { rustTestEnvironment } from "../../scripts/test-rust.mjs";
 
 type PackageJson = {
   scripts?: Record<string, string>;
@@ -80,5 +82,26 @@ describe("package scripts", () => {
     const config = await readAppTypeScriptConfig();
 
     expect(config.include).toEqual(["src", "vite.config.ts", "vitest.config.ts"]);
+  });
+
+  it("runs macOS Rust tests through an isolated binary directory", () => {
+    const environment = rustTestEnvironment("darwin", "x64", {});
+
+    expect(environment.CARGO_TARGET_X86_64_APPLE_DARWIN_RUNNER).toBe(
+      `node ${path.resolve("scripts/run-rust-test-binary.mjs")}`,
+    );
+  });
+
+  it("executes a staged Rust test binary with its arguments", () => {
+    const result = spawnSync(process.execPath, [
+      "scripts/run-rust-test-binary.mjs",
+      process.execPath,
+      "-e",
+      "process.stdout.write(process.argv[1])",
+      "runner-ok",
+    ], { encoding: "utf8" });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("runner-ok");
   });
 });

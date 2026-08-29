@@ -10,6 +10,8 @@ import type {
 } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
+const TASK_STATUS_WATCH_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000];
+
 export type UseWorkspaceIndexWatchersOptions = {
   rootPath: string | null;
   workspaceApi: WorkspaceApi;
@@ -181,6 +183,8 @@ export function useWorkspaceIndexWatchers({
     let stateSyncSequence = 0;
     const watchedRootPath = rootPath;
     let teardownWatcher: (() => void) | null = null;
+    let retryTimer: number | null = null;
+    let retryAttempt = 0;
 
     async function synchronizeWorkspaceIndexState() {
       if (
@@ -204,6 +208,7 @@ export function useWorkspaceIndexWatchers({
     }
 
     async function initializeTaskStatusWatcher() {
+      let shouldRetry = false;
       try {
         const teardown = await workspaceApi.watchWorkspaceIndexTaskStatuses!(watchedRootPath, (status) => {
           if (disposed) {
@@ -221,14 +226,33 @@ export function useWorkspaceIndexWatchers({
         }
 
         teardownWatcher = teardown;
-        await refreshWorkspaceIndexTaskStatuses(watchedRootPath);
-        if (!disposed) {
-          await synchronizeWorkspaceIndexState();
-        }
+        retryAttempt = 0;
       } catch (error) {
+        shouldRetry = true;
         if (!disposed) {
           onStatusChange(`Workspace index status watcher failed: ${error instanceof Error ? error.message : String(error)}`);
         }
+      }
+      if (disposed) return;
+      try {
+        await refreshWorkspaceIndexTaskStatuses(watchedRootPath);
+      } catch (error) {
+        if (!disposed) {
+          onStatusChange(`Workspace index status reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      if (!disposed) {
+        await synchronizeWorkspaceIndexState();
+      }
+      if (!disposed && shouldRetry) {
+        const delay = TASK_STATUS_WATCH_RETRY_DELAYS_MS[
+          Math.min(retryAttempt, TASK_STATUS_WATCH_RETRY_DELAYS_MS.length - 1)
+        ];
+        retryAttempt += 1;
+        retryTimer = window.setTimeout(() => {
+          retryTimer = null;
+          void initializeTaskStatusWatcher();
+        }, delay);
       }
     }
 
@@ -236,6 +260,9 @@ export function useWorkspaceIndexWatchers({
 
     return () => {
       disposed = true;
+      if (retryTimer != null) {
+        window.clearTimeout(retryTimer);
+      }
       teardownWatcher?.();
     };
   }, [rootPath, workspaceApi]);

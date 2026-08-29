@@ -46,6 +46,7 @@ import { idleUsageSearchState } from "@/features/workspace/usage-search";
 import { defaultWorkspaceApi, type WorkspaceApi } from "@/features/workspace/workspace-api";
 import { useWorkspaceQueryExplains } from "@/features/workspace/use-workspace-query-explains";
 import { createWorkspaceIndexStore, type WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
+import { workspaceIndexPublicationRevisions } from "@/features/workspace/workspace-index-query-publication";
 import { getPathBasename } from "@/features/workspace/workspace-store";
 import { recordRenderPressure, useUiLatencyMonitor } from "@/features/performance/use-ui-latency-monitor";
 import { createEditorSelectionRuntime } from "@/features/editor/editor-selection-runtime";
@@ -78,7 +79,6 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
   function closeEditorCompletion() {
     requestEditorCompletion("close");
   }
-
   function openEditorCompletion() {
     if (settingsApplying) {
       onStatusChange("SDK settings are still applying");
@@ -217,7 +217,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
     onBeforeApply: closeEditorCompletion,
     onStatusChange,
   });
-  const { latestExplainResult, latestExplainContext, indexExplainPanelVisible, setIndexExplainPanelVisible, indexDiagnosticsVisible, setIndexDiagnosticsVisible, indexDiagnosticsSectionTarget, indexDiagnosticsLoading, indexDiagnostics, currentFileReadiness, layerReadiness, workspaceIndexTaskStatuses, workspaceIndexQueryRevision, workspaceIndexStatusSummary, recordWorkspaceIndexTaskStatus, refreshWorkspaceIndexTaskStatuses, refreshIndexDiagnostics, openIndexDiagnostics, resumeIndexingFromDiagnostics, rebuildProjectIndexFromDiagnostics, rebuildSdkIndexFromDiagnostics, indexCurrentFileFromDiagnostics, indexSdkSymbolsForSettings, explainIndexMiss, rebuildIndexFromExplainPanel, openSettingsFromExplainPanel, retryLatestExplainQuery } = useIndexDiagnosticsController({
+  const { latestExplainResult, latestExplainContext, indexExplainPanelVisible, setIndexExplainPanelVisible, indexDiagnosticsVisible, setIndexDiagnosticsVisible, indexDiagnosticsSectionTarget, indexDiagnosticsLoading, indexDiagnostics, currentFileReadiness, layerReadiness, workspaceIndexTaskStatuses, workspaceIndexStatusSummary, recordWorkspaceIndexTaskStatus, refreshWorkspaceIndexTaskStatuses, refreshIndexDiagnostics, openIndexDiagnostics, resumeIndexingFromDiagnostics, rebuildProjectIndexFromDiagnostics, rebuildSdkIndexFromDiagnostics, indexCurrentFileFromDiagnostics, indexSdkSymbolsForSettings, explainIndexMiss, rebuildIndexFromExplainPanel, openSettingsFromExplainPanel, retryLatestExplainQuery } = useIndexDiagnosticsController({
     workspaceApi,
     workspace,
     workspaceIndexState,
@@ -484,7 +484,7 @@ export function AppShell({ workspaceApi = defaultWorkspaceApi }: AppShellProps) 
         settingsDialogProps={{ environmentReport, open: settingsVisible, saveStateLabel: settingsSaveState === "saving" ? "Saving..." : settingsSaveState === "saved" ? "Saved" : "Ready", settings: settingsRef.current.state.settings, onClose: closeSettings, onApply: applySettings, onPickPath: pickSettingsPath, onRefreshEnvironment: () => void refreshEnvironmentReport() }}
       />
       <SearchWorkspaceOverlayController
-        activeOverlay={activeOverlay} workspace={workspace} workspaceApi={workspaceApi} activePath={activePath} workspaceIndex={workspaceIndexRef.current} documentsRef={documentsRef} tabsRef={tabsRef} getActiveContent={getActiveContent} getEditorSelectedText={editorSelectionRuntimeRef.current.getSelectedText} indexVersionKey={`${workspaceIndexState.indexedAt ?? ""}:${workspaceIndexState.status}:${workspaceIndexQueryRevision}`} partialNotice={derived.workspacePartialNotice}
+        activeOverlay={activeOverlay} workspace={workspace} workspaceApi={workspaceApi} activePath={activePath} workspaceIndex={workspaceIndexRef.current} documentsRef={documentsRef} tabsRef={tabsRef} getActiveContent={getActiveContent} getEditorSelectedText={editorSelectionRuntimeRef.current.getSelectedText} indexVersionKey={`${workspaceIndexState.indexedAt ?? ""}:${workspaceIndexState.status}`} indexPublicationRevisions={workspaceIndexPublicationRevisions(layerReadiness)} partialNotice={derived.workspacePartialNotice}
         onClose={() => setActiveOverlay("none")} onOpenQuickOpen={() => setOverlay("quickOpen")} onSetActiveOverlay={setActiveOverlay} onOpenFile={openFile} rememberCurrentLocation={rememberCurrentLocation} navigateToLocation={navigateToLocation} explainIndexMiss={explainIndexMiss} recordRecentQueryExplain={recordRecentQueryExplain} recordUiInteraction={recordUiInteraction} onStatusChange={onStatusChange}
         registerActions={(actions) => { searchActionsRef.current.resetSearchOverlayState = actions.reset; searchActionsRef.current.openQuickOpen = actions.openQuickOpen; searchActionsRef.current.openSearchOverlay = actions.open; }}
       />

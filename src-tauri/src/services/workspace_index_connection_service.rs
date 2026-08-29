@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -22,7 +21,10 @@ use crate::services::workspace_index_store_generation_service::{
 };
 use crate::services::workspace_index_writer_connection_pool_service::WorkspaceIndexWriterConnectionPool;
 
-const WORKSPACE_INDEX_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+#[path = "workspace_index_connection_config_service.rs"]
+mod connection_config;
+use connection_config::{configure_reader, configure_writer, create_store_parent};
+
 const WORKSPACE_INDEX_READER_POOL_LIMIT: usize = 4;
 
 #[derive(Debug)]
@@ -73,6 +75,7 @@ impl WorkspaceIndexConnectionManager {
         self.mark_writer_acquired(&store_path);
         let hold_started = Instant::now();
         let result = (|| {
+            self.discard_connections_for_missing_store(&store_path)?;
             let mut connection = match self.writer_connections.take(&store_path)? {
                 Some(connection) => connection,
                 None => {
@@ -115,6 +118,7 @@ impl WorkspaceIndexConnectionManager {
         };
         let local_wait = wait_started.elapsed();
         let setup_started = Instant::now();
+        self.discard_connections_for_missing_store(&store_path)?;
         let setup = match self.writer_connections.take(&store_path)? {
             Some(connection) => Ok(connection),
             None => Connection::open(&store_path)
@@ -260,6 +264,17 @@ impl WorkspaceIndexConnectionManager {
         self.writer_connections.discard(&store_path)?;
         clear_workspace_index_store_generation(&store_path);
         Ok(())
+    }
+
+    fn discard_connections_for_missing_store(&self, store_path: &Path) -> Result<(), String> {
+        if store_path.exists() {
+            return Ok(());
+        }
+        self.readers
+            .lock()
+            .map_err(|_| "Workspace index reader pool poisoned".to_string())?
+            .remove(store_path);
+        self.writer_connections.discard(store_path)
     }
 
     fn take_reader(&self, store_path: &Path) -> Result<Option<Connection>, String> {
@@ -453,43 +468,4 @@ fn global_reader_pool_limit() -> usize {
 #[cfg(test)]
 fn global_reader_pool_limit() -> usize {
     0
-}
-
-fn create_store_parent(store_path: &Path) -> Result<(), String> {
-    let Some(parent) = store_path.parent() else {
-        return Err(format!(
-            "Workspace SQLite index path has no parent: {}",
-            store_path.display()
-        ));
-    };
-    fs::create_dir_all(parent).map_err(|error| error.to_string())
-}
-
-fn configure_writer(connection: &Connection) -> Result<(), String> {
-    connection
-        .busy_timeout(WORKSPACE_INDEX_BUSY_TIMEOUT)
-        .map_err(|error| error.to_string())?;
-    let journal_mode = connection
-        .pragma_query_value(None, "journal_mode", |row| row.get::<_, String>(0))
-        .map_err(|error| error.to_string())?;
-    if !journal_mode.eq_ignore_ascii_case("wal") {
-        connection
-            .pragma_update(None, "journal_mode", "wal")
-            .map_err(|error| error.to_string())?;
-    }
-    connection
-        .execute_batch("pragma synchronous = normal;")
-        .map_err(|error| error.to_string())
-}
-
-fn configure_reader(connection: &Connection) -> Result<(), String> {
-    connection
-        .busy_timeout(WORKSPACE_INDEX_BUSY_TIMEOUT)
-        .map_err(|error| error.to_string())?;
-    connection
-        .execute_batch(
-            "pragma synchronous = normal;
-             pragma query_only = on;",
-        )
-        .map_err(|error| error.to_string())
 }

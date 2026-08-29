@@ -130,7 +130,7 @@ describe("workspace index projection store", () => {
       progressCurrent: 1024,
       progressTotal: 1025,
     });
-    const reconciliationRevision = store.taskStatusRevision();
+    const reconciliation = store.beginTaskStatusReconciliation("/workspace");
 
     store.recordTaskStatus({
       ...partial,
@@ -138,25 +138,34 @@ describe("workspace index projection store", () => {
       progressCurrent: 865,
       progressTotal: 865,
     });
-    store.replaceTaskStatuses("/workspace", [partial], reconciliationRevision);
+    store.replaceTaskStatuses("/workspace", [partial], reconciliation);
 
     expect(store.snapshot().taskStatuses).toEqual([
       expect.objectContaining({ taskId: "7:discovery", status: "ready" }),
     ]);
   });
 
-  it("advances the query publication revision only when index results can change", () => {
+  it("does not let an older snapshot response overwrite a newer snapshot response", () => {
     const store = createWorkspaceIndexProjectionStore(1);
+    const olderRequest = store.beginTaskStatusReconciliation("/workspace");
+    const newerRequest = store.beginTaskStatusReconciliation("/workspace");
 
-    expect(store.querySnapshot()).toBe(0);
-    store.recordTaskStatus(taskStatus({ status: "queued" }));
-    store.recordTaskStatus(taskStatus({ status: "running" }));
-    expect(store.querySnapshot()).toBe(0);
+    store.replaceTaskStatuses("/workspace", [taskStatus({
+      taskId: "7:discovery",
+      kind: "discovery",
+      status: "ready",
+      generation: 7,
+    })], newerRequest);
+    store.replaceTaskStatuses("/workspace", [taskStatus({
+      taskId: "7:discovery",
+      kind: "discovery",
+      status: "partial",
+      generation: 7,
+    })], olderRequest);
 
-    store.recordTaskStatus(taskStatus({ status: "partial" }));
-    expect(store.querySnapshot()).toBe(1);
-    store.recordTaskStatus(taskStatus({ status: "ready" }));
-    expect(store.querySnapshot()).toBe(2);
+    expect(store.snapshot().taskStatuses).toEqual([
+      expect.objectContaining({ taskId: "7:discovery", status: "ready" }),
+    ]);
   });
 
   it("keeps completed foreground file tasks out of the shell status projection", () => {

@@ -19,6 +19,7 @@ pub struct WorkspaceIndexLayerReadiness {
     pub indexed_count: i64,
     pub failed_count: i64,
     pub stale_count: i64,
+    pub publication_revision: Option<u64>,
     pub reason: Option<String>,
     pub recommended_action: Option<String>,
 }

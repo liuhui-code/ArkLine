@@ -284,7 +284,7 @@ fn submit_sdk_index_command_returns_queued_status_and_finishes_in_background() {
         .any(|status| status == "ready"));
 
     wait_for_workspace_index_idle(&index_manager, &root_path);
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_dir(&root);
 }
 
 #[test]

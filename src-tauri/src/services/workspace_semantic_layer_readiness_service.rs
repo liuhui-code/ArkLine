@@ -62,6 +62,7 @@ fn semantic_layer(
         indexed_count: counts.0 + counts.1,
         failed_count: counts.2,
         stale_count: counts.3,
+        publication_revision: None,
         reason,
         recommended_action: action.map(str::to_string),
     })

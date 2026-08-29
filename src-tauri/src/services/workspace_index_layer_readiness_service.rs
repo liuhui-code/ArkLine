@@ -5,6 +5,7 @@ use crate::models::workspace_index_layer::{
 };
 use crate::services::workspace_content_readiness_store_service::load_content_layer_summary;
 use crate::services::workspace_index_file_readiness_service::get_workspace_index_file_readiness;
+use crate::services::workspace_index_layer_publication_readiness_service::attach_publication_revisions;
 use crate::services::workspace_index_layer_readiness_store_service::{
     count_rows, normalize_layer_index_path as normalize_index_path, row_exists,
     with_layer_readiness_store,
@@ -78,6 +79,7 @@ fn build_workspace_index_layer_readiness(
         &root_key,
         current_file_path,
     )?);
+    attach_publication_revisions(connection, &root_key, &mut layers)?;
 
     Ok(WorkspaceIndexLayerReadinessReport {
         root_path: root_key.clone(),
@@ -237,6 +239,7 @@ fn discovery_layer(
         indexed_count: discovered,
         failed_count: 0,
         stale_count: 0,
+        publication_revision: None,
         reason: has_more.then(|| "Discovery has a pending cursor".to_string()),
         recommended_action: (has_more || status == "partial").then(|| "wait".to_string()),
     }))
@@ -480,6 +483,7 @@ fn layer_with_current(
         indexed_count: indexed,
         failed_count: failed,
         stale_count: stale,
+        publication_revision: None,
         reason: None,
         recommended_action: action.map(|value| value.to_string()),
     })

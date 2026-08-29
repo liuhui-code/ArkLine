@@ -34,6 +34,7 @@ export function renderSearchHarness(overrides: Partial<SearchHarnessOptions> = {
       quickOpenQuery: query,
       activeOverlay: overlay,
       indexVersionKey: "ready:1",
+      indexPublicationRevisions: overrides.indexPublicationRevisions,
       setQuickOpenQuery: setQuery,
       setActiveOverlay: setOverlay,
       queryIndexCandidates,
@@ -92,6 +93,7 @@ export type SearchHarnessOptions = {
   recordRecentQueryExplain: Parameters<typeof useSearchEverywhereController>[0]["recordRecentQueryExplain"];
   recordUiInteraction: Parameters<typeof useSearchEverywhereController>[0]["recordUiInteraction"];
   onStatusChange: (message: string) => void;
+  indexPublicationRevisions: Record<string, number>;
 };
 
 export function workspaceApi(overrides: Partial<WorkspaceApi>): WorkspaceApi {
