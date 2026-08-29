@@ -16,6 +16,7 @@ import {
   createWorkspaceIndexStore,
 } from "@/features/workspace/workspace-index-store";
 import type { DocumentRuntimeStore } from "@/features/documents/document-runtime-store";
+import type { WorkspaceIndexPublicationRevisions } from "@/features/workspace/workspace-index-query-publication";
 
 type WorkspaceIndexStore = ReturnType<typeof createWorkspaceIndexStore>;
 
@@ -30,6 +31,8 @@ type SearchWorkspaceOverlayControllerProps = {
   getActiveContent: () => string;
   getEditorSelectedText: () => string;
   indexVersionKey: string;
+  indexPublicationRevisions: WorkspaceIndexPublicationRevisions;
+  indexFallbackPublicationKey: string;
   partialNotice: string | null;
   onClose: () => void;
   onOpenQuickOpen: () => void;
@@ -78,6 +81,8 @@ export function SearchWorkspaceOverlayController(props: SearchWorkspaceOverlayCo
     quickOpenQuery: query,
     activeOverlay: props.activeOverlay,
     indexVersionKey: props.indexVersionKey,
+    indexPublicationRevisions: props.indexPublicationRevisions,
+    indexFallbackPublicationKey: props.indexFallbackPublicationKey,
     setQuickOpenQuery: setQuery,
     setActiveOverlay: props.onSetActiveOverlay,
     queryIndexCandidates: (query, scope, limit) => props.workspaceIndex.queryCandidates(query, scope, limit),

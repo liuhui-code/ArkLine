@@ -130,6 +130,36 @@ describe("useSearchEverywhereController", () => {
     expect(result.current.search.searchEverywhereCandidates).toEqual([]);
   });
 
+  it("reruns a class query only when its symbol publication changes", async () => {
+    vi.useFakeTimers();
+    const queryWorkspaceCandidatesWithReadiness = vi.fn(async () => ({
+      items: [candidate({ title: "Entry", path: "/workspace/Entry.ets" })],
+      readiness: readiness(),
+      explain: [],
+    }));
+    const options = {
+      query: "Entry",
+      overlay: "searchEverywhere" as const,
+      indexPublicationRevisions: { symbols: 1, content: 1 },
+      workspaceApi: workspaceApi({ queryWorkspaceCandidatesWithReadiness }),
+    };
+    const { result, rerender } = renderSearchHarness(options);
+
+    act(() => result.current.search.setSearchEverywhereScope("classes"));
+    await flushSearchDebounce();
+    const initialCalls = queryWorkspaceCandidatesWithReadiness.mock.calls.length;
+
+    options.indexPublicationRevisions = { symbols: 1, content: 2 };
+    rerender();
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(initialCalls);
+
+    options.indexPublicationRevisions = { symbols: 2, content: 2 };
+    rerender();
+    await flushSearchDebounce();
+    expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(initialCalls + 1);
+  });
+
   it("invalidates a slow backend search immediately when the query changes", async () => {
     vi.useFakeTimers();
     const slowSearch = createDeferred<{

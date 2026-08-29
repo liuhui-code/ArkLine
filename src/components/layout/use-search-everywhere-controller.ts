@@ -35,6 +35,10 @@ import { createSearchRunActions } from "@/components/layout/search-run-actions";
 import { createSearchPreviewAction } from "@/components/layout/search-preview-action";
 import { createSearchControllerContext } from "@/components/layout/search-controller-context";
 import { createSearchOverlayCommandActions } from "@/components/layout/search-overlay-command-actions";
+import {
+  workspaceIndexQueryVersionKey,
+  type WorkspaceIndexPublicationRevisions,
+} from "@/features/workspace/workspace-index-query-publication";
 
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const SEARCH_PREVIEW_DEBOUNCE_MS = 200;
@@ -47,6 +51,8 @@ export type UseSearchEverywhereControllerOptions = {
   quickOpenQuery: string;
   activeOverlay: OverlayKey;
   indexVersionKey: string;
+  indexPublicationRevisions?: WorkspaceIndexPublicationRevisions;
+  indexFallbackPublicationKey?: string;
   setQuickOpenQuery: (query: string) => void;
   setActiveOverlay: Dispatch<SetStateAction<OverlayKey>>;
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
@@ -75,6 +81,8 @@ export function useSearchEverywhereController({
   quickOpenQuery,
   activeOverlay,
   indexVersionKey,
+  indexPublicationRevisions = {},
+  indexFallbackPublicationKey = "",
   setQuickOpenQuery,
   setActiveOverlay,
   queryIndexCandidates,
@@ -96,6 +104,12 @@ export function useSearchEverywhereController({
 }: UseSearchEverywhereControllerOptions) {
   const [searchEverywhereMode, setSearchEverywhereMode] = useState<SearchEverywhereMode>("searchEverywhere");
   const [searchEverywhereScope, setSearchEverywhereScope] = useState<WorkspaceIndexQueryScope>("all");
+  const scopedIndexVersionKey = workspaceIndexQueryVersionKey(
+    indexVersionKey,
+    searchEverywhereScope,
+    indexPublicationRevisions,
+    indexFallbackPublicationKey,
+  );
   const [searchEverywhereReplaceQuery, setSearchEverywhereReplaceQuery] = useState("");
   const [searchEverywhereOptions, setSearchEverywhereOptions] = useState<WorkspaceTextSearchOptions>({
     caseSensitive: false,
@@ -309,7 +323,7 @@ export function useSearchEverywhereController({
     activeOverlay,
     activePath,
     debouncedSearchQuery,
-    indexVersionKey,
+    scopedIndexVersionKey,
     searchEverywhereMode,
     searchEverywhereOptions,
     searchEverywhereScope,

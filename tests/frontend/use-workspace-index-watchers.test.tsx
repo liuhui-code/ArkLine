@@ -208,6 +208,67 @@ describe("useWorkspaceIndexWatchers", () => {
     await waitFor(() => expect(getWorkspaceIndexState).toHaveBeenCalledWith(rootPath));
     expect(applyWorkspaceIndexState).toHaveBeenCalledWith(readyState);
   });
+
+  it("reconciles task status and workspace state when task watcher registration fails", async () => {
+    const rootPath = "/workspace";
+    const readyState = indexRefreshResult(rootPath).state;
+    const refreshWorkspaceIndexTaskStatuses = vi.fn(async () => undefined);
+    const getWorkspaceIndexState = vi.fn(async () => readyState);
+    const applyWorkspaceIndexState = vi.fn();
+
+    renderHook(() => useWorkspaceIndexWatchers({
+      rootPath,
+      workspaceApi: {
+        getWorkspaceIndexState,
+        watchWorkspaceIndexTaskStatuses: vi.fn(async () => {
+          throw new Error("event bridge unavailable");
+        }),
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult: vi.fn(),
+      applyWorkspaceIndexState,
+      refreshWorkspaceIndexTaskStatuses,
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    await waitFor(() => expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledWith(rootPath));
+    await waitFor(() => expect(getWorkspaceIndexState).toHaveBeenCalledWith(rootPath));
+    expect(applyWorkspaceIndexState).toHaveBeenCalledWith(readyState);
+  });
+
+  it("retries task watcher registration after a transient failure", async () => {
+    vi.useFakeTimers();
+    const teardown = vi.fn();
+    const watchWorkspaceIndexTaskStatuses = vi.fn()
+      .mockRejectedValueOnce(new Error("event bridge unavailable"))
+      .mockResolvedValue(teardown);
+    const { unmount } = renderHook(() => useWorkspaceIndexWatchers({
+      rootPath: "/workspace",
+      workspaceApi: { watchWorkspaceIndexTaskStatuses } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult: vi.fn(),
+      refreshWorkspaceIndexTaskStatuses: vi.fn(async () => undefined),
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(watchWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+
+      expect(watchWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+    expect(teardown).toHaveBeenCalledTimes(1);
+  });
 });
 
 function indexRefreshResult(rootPath: string): WorkspaceIndexRefreshResult {

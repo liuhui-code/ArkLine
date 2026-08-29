@@ -232,7 +232,7 @@ mod workspace_index_health_service_tests;
 pub mod workspace_index_incremental_persistence_service;
 #[cfg(test)]
 mod workspace_index_incremental_persistence_service_tests;
-pub(crate) mod workspace_index_layer_generation_service;
+#[rustfmt::skip] pub(crate) mod workspace_index_layer_generation_service; pub(crate) mod workspace_index_layer_publication_readiness_service;
 pub mod workspace_index_layer_readiness_service;
 #[cfg(test)]
 mod workspace_index_layer_readiness_service_tests;

@@ -202,6 +202,38 @@ fn reuses_the_same_writer_connection_for_a_workspace() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[cfg(unix)]
+#[test]
+fn replaces_a_pooled_writer_after_the_store_is_deleted() {
+    let root = unique_temp_dir("workspace-index-replaced-store");
+    let manager = WorkspaceIndexConnectionManager::new(0);
+    manager
+        .with_writer(root_str(&root), |connection| {
+            connection
+                .execute_batch("create table stale_writer(value integer)")
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+    fs::remove_dir_all(&root).unwrap();
+
+    let stale_table_count = manager
+        .with_writer(root_str(&root), |connection| {
+            connection
+                .query_row(
+                    "select count(*) from sqlite_schema where name = 'stale_writer'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| error.to_string())
+        })
+        .unwrap();
+
+    assert_eq!(stale_table_count, 0);
+    manager.clear(root_str(&root)).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn bounds_cached_writer_connections_across_workspaces() {
     let manager = WorkspaceIndexConnectionManager::new(0);

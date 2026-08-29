@@ -249,6 +249,7 @@ export type WorkspaceIndexLayerReadiness = {
   indexedCount: number;
   failedCount: number;
   staleCount: number;
+  publicationRevision?: number | null;
   reason: string | null;
   recommendedAction: string | null;
 };

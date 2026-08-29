@@ -297,7 +297,7 @@ describe("useIndexDiagnosticsController", () => {
     expect(getWorkspaceIndexHealth).not.toHaveBeenCalled();
   });
 
-  it("keeps partial continuation diagnostics off the hidden hot path", async () => {
+  it("refreshes publication revisions for partial chunks without loading full health diagnostics", async () => {
     const getWorkspaceIndexLayerReadiness = vi.fn(async () => layerReadiness());
     const getWorkspaceIndexHealth = vi.fn(async () => ({ retryBackoffCount: 0 } as never));
     const { result } = renderHook(() => useIndexDiagnosticsController(controllerOptions({
@@ -313,9 +313,36 @@ describe("useIndexDiagnosticsController", () => {
       await waitForProjectionFlush();
     });
 
-    expect(getWorkspaceIndexLayerReadiness).not.toHaveBeenCalled();
+    expect(getWorkspaceIndexLayerReadiness).toHaveBeenCalledWith("/workspace", "/workspace/Entry.ets");
     expect(getWorkspaceIndexHealth).not.toHaveBeenCalled();
     expect(result.current.workspaceIndexTaskStatuses).toEqual([]);
+  });
+
+  it("does not let an older layer snapshot regress a newer publication revision", async () => {
+    const older = deferred<ReturnType<typeof layerReadiness>>();
+    const newer = deferred<ReturnType<typeof layerReadiness>>();
+    const getWorkspaceIndexLayerReadiness = vi.fn()
+      .mockReturnValueOnce(older.promise)
+      .mockReturnValueOnce(newer.promise);
+    const { result } = renderHook(() => useIndexDiagnosticsController(controllerOptions({
+      workspaceApi: workspaceApi({ getWorkspaceIndexLayerReadiness }),
+    })));
+
+    act(() => {
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({ status: "partial", generation: 1 }));
+      result.current.recordWorkspaceIndexTaskStatus(taskStatus({ status: "partial", generation: 2 }));
+    });
+    await act(async () => {
+      newer.resolve(withSymbolRevision(2));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      older.resolve(withSymbolRevision(1));
+      await Promise.resolve();
+    });
+
+    expect(result.current.layerReadiness?.layers.find((layer) => layer.layer === "symbols")?.publicationRevision)
+      .toBe(2);
   });
 
   it("refreshes current file readiness when diagnostics is open and active file changes", async () => {
@@ -372,3 +399,21 @@ describe("useIndexDiagnosticsController", () => {
     expect(result.current.layerReadiness).toBeNull();
   });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+function withSymbolRevision(publicationRevision: number) {
+  const report = layerReadiness();
+  return {
+    ...report,
+    layers: report.layers.map((layer) => layer.layer === "symbols"
+      ? { ...layer, publicationRevision }
+      : layer),
+  };
+}

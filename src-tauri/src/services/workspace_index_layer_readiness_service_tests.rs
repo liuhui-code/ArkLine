@@ -111,6 +111,15 @@ fn reports_ready_current_file_layers_after_indexing() {
         report.layer("symbols").unwrap().current_file_status,
         Some(WorkspaceIndexLayerStatus::Ready)
     );
+    assert!(report
+        .layer("symbols")
+        .unwrap()
+        .publication_revision
+        .is_some_and(|revision| revision > 0));
+    assert_eq!(
+        report.layer("symbols").unwrap().publication_revision,
+        report.layer("stub").unwrap().publication_revision
+    );
     assert_eq!(
         report.layer("sdk").unwrap().workspace_status,
         WorkspaceIndexLayerStatus::Missing
