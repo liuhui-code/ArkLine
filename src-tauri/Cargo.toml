@@ -1,6 +1,6 @@
 [package]
 name = "arkline"
-version = "0.1.34"
+version = "0.1.35"
 description = "ArkLine desktop host"
 authors = ["liuhui"]
 license = "UNLICENSED"

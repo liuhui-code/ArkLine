@@ -10,6 +10,7 @@ import {
   packagingStepTimeoutMs,
   packagingSpawnOptions,
   resolvePnpmExecutable,
+  runStepWithRetry,
 } from "../../scripts/package-windows.mjs";
 // @ts-ignore The staging helper is a Node ESM script, not a typed app module.
 import { portableBundlePaths } from "../../scripts/stage-windows-portable.mjs";
@@ -31,6 +32,48 @@ describe("package windows launcher", () => {
     expect(formatPackagingStepStart(step, 1_200_000)).toContain("tauri-binary");
     expect(formatPackagingStepEnd(step, 1_250)).toContain("1.3s");
     expect(() => packagingStepTimeoutMs("0")).toThrow("positive number");
+  });
+
+  it("retries only a retry-enabled packaging step with bounded backoff", () => {
+    const statuses = [1, 0];
+    let spawnCount = 0;
+    const sleepCalls: number[] = [];
+    const spawn = () => {
+      spawnCount += 1;
+      return { status: statuses.shift() };
+    };
+    const sleep = (delayMs: number) => sleepCalls.push(delayMs);
+    const step = {
+      name: "tauri-installer",
+      command: "pnpm",
+      args: ["tauri", "bundle", "--bundles", "nsis"],
+      maxAttempts: 3,
+      retryDelayMs: 10_000,
+    };
+
+    expect(runStepWithRetry(step, 1_200_000, () => 0, spawn, sleep)).toBe(0);
+    expect(spawnCount).toBe(2);
+    expect(sleepCalls).toEqual([10_000]);
+  });
+
+  it("does not retry ordinary deterministic packaging steps", () => {
+    let spawnCount = 0;
+    const sleepCalls: number[] = [];
+    const spawn = () => {
+      spawnCount += 1;
+      return { status: 1 };
+    };
+    const sleep = (delayMs: number) => sleepCalls.push(delayMs);
+
+    expect(runStepWithRetry(
+      { name: "frontend-build", command: "pnpm", args: ["build"] },
+      1_200_000,
+      () => 0,
+      spawn,
+      sleep,
+    )).toBe(1);
+    expect(spawnCount).toBe(1);
+    expect(sleepCalls).toEqual([]);
   });
 
   it("builds the Windows portable flow as a cross-compiled exe on macOS", () => {
@@ -126,7 +169,13 @@ describe("package windows launcher", () => {
       },
       { name: "tauri-binary", command: "pnpm", args: ["tauri", "build", "--target", "x86_64-pc-windows-msvc", "--no-bundle"] },
       { name: "stage-portable", command: "node", args: ["scripts/stage-windows-portable.mjs"] },
-      { name: "tauri-installer", command: "pnpm", args: ["tauri", "bundle", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"] },
+      {
+        name: "tauri-installer",
+        command: "pnpm",
+        args: ["tauri", "bundle", "--target", "x86_64-pc-windows-msvc", "--bundles", "nsis"],
+        maxAttempts: 3,
+        retryDelayMs: 10_000,
+      },
     ]);
   });
 
