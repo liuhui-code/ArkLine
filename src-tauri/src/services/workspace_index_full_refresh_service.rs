@@ -64,7 +64,7 @@ pub fn refresh_workspace_index_in_chunks(
             return Ok(None);
         }
         progress = Some(chunk.progress);
-        state = index_runtime.update_workspace_file_symbol_layer(root_path, &chunk.paths, &[])?;
+        state = index_runtime.publish_workspace_file_catalog(root_path, &chunk.paths, &[])?;
         added_paths.extend(chunk.paths);
     }
     if !removed_paths.is_empty() {
