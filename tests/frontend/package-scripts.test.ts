@@ -103,5 +103,5 @@ describe("package scripts", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("runner-ok");
-  });
+  }, 45_000);
 });

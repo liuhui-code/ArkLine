@@ -25,6 +25,7 @@ export type EntitySearchRequestRunnerInput = {
   patchSearchSession: PatchSearchSession;
   recordUiInteraction?: (kind: UiInteractionKind, label: string, startedAt: number, endedAt: number) => void;
   reportMiss: (requestId: number, missReport: NonNullable<ReturnType<typeof buildEntitySearchApplication>["missReport"]>) => void;
+  onRetryableMiss?: (requestId: number) => void;
   now?: () => number;
 };
 
@@ -55,6 +56,7 @@ export function runEntitySearchRequest({
   patchSearchSession,
   recordUiInteraction,
   reportMiss,
+  onRetryableMiss,
   now = Date.now,
 }: EntitySearchRequestRunnerInput) {
   const normalizedQuery = query.trim();
@@ -70,7 +72,11 @@ export function runEntitySearchRequest({
       recordUiInteraction?.("searchEverywhere", normalizedQuery, startedAt, now());
       const applied = buildEntitySearchApplication({ ...application, query, result });
       patchSearchSession(applied.patch);
-      if (applied.missReport) reportMiss(generation, applied.missReport);
+      if (applied.missReport && result.readiness?.retryable && onRetryableMiss) {
+        onRetryableMiss(generation);
+      } else if (applied.missReport) {
+        reportMiss(generation, applied.missReport);
+      }
     },
   });
 }
