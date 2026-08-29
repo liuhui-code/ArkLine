@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   workspaceIndexPublicationRevisions,
   workspaceIndexQueryVersionKey,
+  workspaceIndexTaskPublicationFallbackKey,
 } from "@/features/workspace/workspace-index-query-publication";
 import type { WorkspaceIndexLayerReadinessReport } from "@/features/workspace/workspace-api";
 
@@ -29,6 +30,26 @@ describe("workspace index query publication", () => {
     );
     expect(workspaceIndexQueryVersionKey("catalog:7", "text", contentPublished)).not.toBe(
       workspaceIndexQueryVersionKey("catalog:7", "text", symbolsPublished),
+    );
+  });
+
+  it("uses terminal task publications only when scoped revisions are unavailable", () => {
+    const fallback = workspaceIndexTaskPublicationFallbackKey([{
+      taskId: "7:changed-paths",
+      rootPath: "/workspace",
+      kind: "changed-paths",
+      status: "ready",
+      reason: "background-refresh",
+      generation: 7,
+      progressCurrent: 6,
+      progressTotal: 6,
+    }]);
+
+    expect(workspaceIndexQueryVersionKey("catalog:7", "classes", {}, fallback)).not.toBe(
+      workspaceIndexQueryVersionKey("catalog:7", "classes", {}, ""),
+    );
+    expect(workspaceIndexQueryVersionKey("catalog:7", "classes", { symbols: 2 }, fallback)).toBe(
+      workspaceIndexQueryVersionKey("catalog:7", "classes", { symbols: 2 }, ""),
     );
   });
 });

@@ -32,6 +32,7 @@ type SearchWorkspaceOverlayControllerProps = {
   getEditorSelectedText: () => string;
   indexVersionKey: string;
   indexPublicationRevisions: WorkspaceIndexPublicationRevisions;
+  indexFallbackPublicationKey: string;
   partialNotice: string | null;
   onClose: () => void;
   onOpenQuickOpen: () => void;
@@ -81,6 +82,7 @@ export function SearchWorkspaceOverlayController(props: SearchWorkspaceOverlayCo
     activeOverlay: props.activeOverlay,
     indexVersionKey: props.indexVersionKey,
     indexPublicationRevisions: props.indexPublicationRevisions,
+    indexFallbackPublicationKey: props.indexFallbackPublicationKey,
     setQuickOpenQuery: setQuery,
     setActiveOverlay: props.onSetActiveOverlay,
     queryIndexCandidates: (query, scope, limit) => props.workspaceIndex.queryCandidates(query, scope, limit),

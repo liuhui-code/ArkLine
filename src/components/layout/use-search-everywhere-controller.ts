@@ -52,6 +52,7 @@ export type UseSearchEverywhereControllerOptions = {
   activeOverlay: OverlayKey;
   indexVersionKey: string;
   indexPublicationRevisions?: WorkspaceIndexPublicationRevisions;
+  indexFallbackPublicationKey?: string;
   setQuickOpenQuery: (query: string) => void;
   setActiveOverlay: Dispatch<SetStateAction<OverlayKey>>;
   queryIndexCandidates: (query: string, scope: WorkspaceIndexQueryScope, limit: number) => SearchCandidate[];
@@ -81,6 +82,7 @@ export function useSearchEverywhereController({
   activeOverlay,
   indexVersionKey,
   indexPublicationRevisions = {},
+  indexFallbackPublicationKey = "",
   setQuickOpenQuery,
   setActiveOverlay,
   queryIndexCandidates,
@@ -106,6 +108,7 @@ export function useSearchEverywhereController({
     indexVersionKey,
     searchEverywhereScope,
     indexPublicationRevisions,
+    indexFallbackPublicationKey,
   );
   const [searchEverywhereReplaceQuery, setSearchEverywhereReplaceQuery] = useState("");
   const [searchEverywhereOptions, setSearchEverywhereOptions] = useState<WorkspaceTextSearchOptions>({

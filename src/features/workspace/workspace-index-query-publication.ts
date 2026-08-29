@@ -1,6 +1,7 @@
 import type {
   WorkspaceIndexLayerReadinessReport,
   WorkspaceIndexQueryScope,
+  WorkspaceIndexTaskStatus,
 } from "@/features/workspace/workspace-index-api-types";
 
 export type WorkspaceIndexPublicationRevisions = Readonly<Record<string, number>>;
@@ -29,9 +30,24 @@ export function workspaceIndexQueryVersionKey(
   catalogVersionKey: string,
   scope: WorkspaceIndexQueryScope,
   revisions: WorkspaceIndexPublicationRevisions,
+  fallbackPublicationKey = "",
 ) {
-  const layerKey = QUERY_SCOPE_LAYERS[scope]
-    .map((layer) => `${layer}:${revisions[layer] ?? 0}`)
+  const relevantLayers = QUERY_SCOPE_LAYERS[scope];
+  const layerKey = relevantLayers.map((layer) => `${layer}:${revisions[layer] ?? 0}`).join(",");
+  const hasCommittedRevision = relevantLayers.some((layer) => revisions[layer] != null);
+  return `${catalogVersionKey}|${layerKey}|fallback:${hasCommittedRevision ? "" : fallbackPublicationKey}`;
+}
+
+export function workspaceIndexTaskPublicationFallbackKey(statuses: WorkspaceIndexTaskStatus[]) {
+  return statuses
+    .filter((status) => status.status === "ready" || status.status === "partial")
+    .map((status) => [
+      status.taskId,
+      status.status,
+      status.generation,
+      status.progressCurrent ?? 0,
+      status.progressTotal ?? 0,
+    ].join(":"))
+    .sort()
     .join(",");
-  return `${catalogVersionKey}|${layerKey}`;
 }

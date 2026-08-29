@@ -27,6 +27,7 @@ import type {
   WorkspaceViewModel,
 } from "@/features/workspace/workspace-api";
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
+import { workspaceIndexTaskPublicationFallbackKey } from "@/features/workspace/workspace-index-query-publication";
 
 const DIAGNOSTICS_REBUILD_POLL_INTERVAL_MS = 1_000;
 
@@ -63,6 +64,7 @@ export function useIndexDiagnosticsController({
   const [diagnosticsProjection, setDiagnosticsProjection] = useState<WorkspaceIndexProjectionSnapshot | null>(null);
   const [currentFileReadiness, setCurrentFileReadiness] = useState<WorkspaceIndexFileReadiness | null>(null);
   const [layerReadiness, setLayerReadiness] = useState<WorkspaceIndexLayerReadinessReport | null>(null);
+  const [taskPublicationFallbackKey, setTaskPublicationFallbackKey] = useState("");
   const fileReadinessRequestIdRef = useRef(0);
   const layerReadinessRequestIdRef = useRef(0);
   const workspaceRootPathRef = useRef(workspace?.rootPath ?? null);
@@ -103,6 +105,7 @@ export function useIndexDiagnosticsController({
       setIndexDiagnostics(null);
       setCurrentFileReadiness(null);
       setLayerReadiness(null);
+      setTaskPublicationFallbackKey("");
       layerReadinessRequestIdRef.current += 1;
       workspaceIndexProjectionStore.reset();
       clearDiagnosticsRebuildPoll();
@@ -141,7 +144,11 @@ export function useIndexDiagnosticsController({
     if (!rootPath || !workspaceApi.getWorkspaceIndexTaskStatuses) return [];
     const reconciliation = workspaceIndexProjectionStore.beginTaskStatusReconciliation(rootPath);
     const statuses = await workspaceApi.getWorkspaceIndexTaskStatuses(rootPath);
-    workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses, reconciliation);
+    if (workspaceIndexProjectionStore.replaceTaskStatuses(rootPath, statuses, reconciliation)) {
+      setTaskPublicationFallbackKey(workspaceIndexTaskPublicationFallbackKey(
+        workspaceIndexProjectionStore.snapshot().taskStatuses,
+      ));
+    }
     await Promise.all([
       statuses.some(isTerminalProjectIndexTaskStatus)
         ? refreshLayerReadiness(rootPath)
@@ -155,6 +162,9 @@ export function useIndexDiagnosticsController({
 
   function recordWorkspaceIndexTaskStatus(status: WorkspaceIndexTaskStatus) {
     workspaceIndexProjectionStore.recordTaskStatus(status);
+    setTaskPublicationFallbackKey(workspaceIndexTaskPublicationFallbackKey(
+      workspaceIndexProjectionStore.snapshot().taskStatuses,
+    ));
     if (isTerminalProjectIndexTaskStatus(status)) {
       void refreshLayerReadiness(status.rootPath);
     }
@@ -242,7 +252,11 @@ export function useIndexDiagnosticsController({
       setIndexDiagnostics(diagnostics);
       workspaceIndexProjectionStore.recordHealthSummary(workspace.rootPath, diagnostics);
       workspaceIndexProjectionStore.recordRecentEvents(workspace.rootPath, diagnostics?.recentEvents ?? []);
-      workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses, reconciliation);
+      if (workspaceIndexProjectionStore.replaceTaskStatuses(workspace.rootPath, statuses, reconciliation)) {
+        setTaskPublicationFallbackKey(workspaceIndexTaskPublicationFallbackKey(
+          workspaceIndexProjectionStore.snapshot().taskStatuses,
+        ));
+      }
       await refreshCurrentFileReadiness(workspace.rootPath, activePath);
       if (
         layerReadinessRequestIdRef.current === layerRequestId
@@ -434,6 +448,7 @@ export function useIndexDiagnosticsController({
     indexDiagnostics: effectiveIndexDiagnostics,
     currentFileReadiness,
     layerReadiness,
+    taskPublicationFallbackKey,
     workspaceIndexTaskStatuses,
     workspaceIndexStatusSummary,
     recordWorkspaceIndexTaskStatus,
