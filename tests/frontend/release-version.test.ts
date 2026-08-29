@@ -40,6 +40,10 @@ async function withVersionFixture(
 }
 
 describe("release version", () => {
+  it("pins the next immutable GitHub release to v0.1.34", async () => {
+    await expect(readReleaseVersion(process.cwd())).resolves.toBe("0.1.34");
+  });
+
   it("returns the shared semantic version used by every release manifest", async () => {
     await withVersionFixture({
       packageVersion: "0.1.31",
