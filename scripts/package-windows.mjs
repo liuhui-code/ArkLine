@@ -4,6 +4,10 @@ import { pathToFileURL } from "node:url";
 const WINDOWS_TARGET = "x86_64-pc-windows-msvc";
 const DEFAULT_STEP_TIMEOUT_MS = 20 * 60_000;
 
+function sleepSync(delayMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+}
+
 export function resolvePnpmExecutable(platform = process.platform) {
   return platform === "win32" ? "pnpm.cmd" : "pnpm";
 }
@@ -127,6 +131,8 @@ export function buildPackagingSteps({ target, hostPlatform = process.platform, s
       name: "tauri-installer",
       command: "pnpm",
       args: ["tauri", "bundle", "--target", WINDOWS_TARGET, "--bundles", "nsis"],
+      maxAttempts: 3,
+      retryDelayMs: 10_000,
     });
     return steps;
   }
@@ -166,11 +172,11 @@ export function formatPackagingStepEnd(step, durationMs) {
   return `[package] done ${step.name ?? step.command} (${(durationMs / 1_000).toFixed(1)}s)`;
 }
 
-export function runStep(step, timeoutMs = packagingStepTimeoutMs(), now = Date.now) {
+export function runStep(step, timeoutMs = packagingStepTimeoutMs(), now = Date.now, spawn = spawnSync) {
   const command = step.command === "pnpm" ? resolvePnpmExecutable() : step.command;
   const startedAt = now();
   console.log(formatPackagingStepStart(step, timeoutMs));
-  const result = spawnSync(command, step.args, {
+  const result = spawn(command, step.args, {
     ...packagingSpawnOptions(),
     timeout: timeoutMs,
   });
@@ -183,6 +189,30 @@ export function runStep(step, timeoutMs = packagingStepTimeoutMs(), now = Date.n
   if (result.error) {
     console.error(`${step.name ?? command} failed: ${result.error.message}`);
     return 1;
+  }
+
+  return 1;
+}
+
+export function runStepWithRetry(
+  step,
+  timeoutMs = packagingStepTimeoutMs(),
+  now = Date.now,
+  spawn = spawnSync,
+  sleep = sleepSync,
+) {
+  const maxAttempts = Math.max(1, step.maxAttempts ?? 1);
+  const retryDelayMs = Math.max(0, step.retryDelayMs ?? 0);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const exitCode = runStep(step, timeoutMs, now, spawn);
+    if (exitCode === 0 || attempt === maxAttempts) return exitCode;
+
+    console.warn(
+      `[package] ${step.name ?? step.command} attempt ${attempt}/${maxAttempts} failed; `
+      + `retrying in ${(retryDelayMs / 1_000).toFixed(0)}s`,
+    );
+    sleep(retryDelayMs);
   }
 
   return 1;
@@ -205,7 +235,7 @@ export function main(argv = process.argv.slice(2)) {
 
   const timeoutMs = packagingStepTimeoutMs();
   for (const step of steps) {
-    const exitCode = runStep(step, timeoutMs);
+    const exitCode = runStepWithRetry(step, timeoutMs);
     if (exitCode !== 0) {
       process.exit(exitCode);
     }
