@@ -30,10 +30,15 @@ describe("packaged soak preparation", () => {
 
     await preparePackagedSoakRun({}, options, { kind: "generated" }, phases.push.bind(phases));
 
-    expect(readiness.waitForInteractiveIndexReady).toHaveBeenCalled();
+    expect(readiness.waitForDiscoveryReady).toHaveBeenCalledWith(
+      {},
+      options.fixturePath,
+      90_000,
+    );
+    expect(readiness.waitForInteractiveIndexReady).not.toHaveBeenCalled();
     expect(search.verifySearchEverywhereClass).toHaveBeenCalledWith({}, "Page000000");
     expect(phases).toEqual([
-      "interactive-index-ready",
+      "discovery-ready",
       "search-everywhere-class-ready",
       "semantic-warmup",
     ]);
