@@ -28,6 +28,7 @@ import {
   type EditorLineColumn,
 } from "@/editor/editor-events";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
+import { createGitChangeGutter, type GitChangeBaseline } from "@/editor/git-change-decorations";
 import { arkLineSyntaxTheme, createArkLineEditorTheme } from "@/editor/theme";
 import { searchPanelEnhancement } from "@/editor/search-panel";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
@@ -44,6 +45,7 @@ import {
 export const languageCompartment = new Compartment();
 export const appearanceCompartment = new Compartment();
 export const gitTraceCompartment = new Compartment();
+export const gitChangeCompartment = new Compartment();
 export const editorStructureCompartment = new Compartment();
 export const historyCompartment = new Compartment();
 
@@ -138,6 +140,7 @@ export function createEditorExtensions(
   onValidationRequest?: EditorValidationRequest,
   onValidationResult?: EditorValidationResultHandler,
   onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler,
+  gitChangeBaseline?: GitChangeBaseline | null,
 ): Extension[] {
   const deferDocumentExtensions = reducedPerformanceMode || deferEnhancements;
   const keymaps = reducedPerformanceMode
@@ -202,6 +205,7 @@ export function createEditorExtensions(
     appearanceCompartment.of(appearanceExtensionForSettings(appearance)),
     editorStructureCompartment.of(structureExtensionForDocument(deferDocumentExtensions)),
     languageCompartment.of(languageExtensionForPath(path)),
+    gitChangeCompartment.of(gitChangeBaseline ? createGitChangeGutter(gitChangeBaseline) : []),
     gitTraceCompartment.of(gitTrace && !reducedPerformanceMode ? createGitTraceGutter(gitTrace) : []),
   ];
 }

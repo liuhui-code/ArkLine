@@ -7122,6 +7122,42 @@ describe("App shell", () => {
     expect(await screen.findByText("Workspace: ArkDemoWorkspace")).toBeVisible();
   });
 
+  it("shows unsaved editor changes against the active file Git HEAD baseline", async () => {
+    const user = userEvent.setup();
+    const getGitFileComparison = vi.fn(async () => ({
+      relativePath: "src/main.ets",
+      staged: false,
+      before: {
+        exists: true,
+        binary: false,
+        content: "@Entry\n@Component\nstruct Index {}",
+        truncated: false,
+        totalBytes: 34,
+      },
+      after: {
+        exists: true,
+        binary: false,
+        content: "@Entry\n@Component\nstruct Index {}",
+        truncated: false,
+        totalBytes: 34,
+      },
+      patch: { content: "", truncated: false, totalBytes: 0 },
+    }));
+    render(<AppShell workspaceApi={createWorkspaceApi({ getGitFileComparison })} />);
+
+    const editor = await openMainEditor(user);
+    await waitFor(() => expect(getGitFileComparison).toHaveBeenCalledWith(expect.objectContaining({
+      rootPath: expect.stringContaining("DemoWorkspace"),
+      relativePath: "src/main.ets",
+      scope: "commit",
+    })));
+    await user.keyboard("{End} changed");
+
+    await waitFor(() => {
+      expect(editor.closest(".cm-editor")?.querySelector(".cm-git-change-marker--modified")).toBeTruthy();
+    });
+  });
+
   it("shows a project-open error instead of failing silently", async () => {
     const user = userEvent.setup();
     const workspaceApi = createWorkspaceApi({

@@ -2039,6 +2039,105 @@ button:disabled {
   background: #252a31;
 }
 
+.cm-git-change-gutter {
+  width: 4px;
+  min-width: 4px;
+}
+
+.cm-git-change-marker {
+  display: block;
+  width: 4px;
+  min-height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #58a6ff;
+  cursor: pointer;
+}
+
+.cm-git-change-marker--added {
+  background: #3fb950;
+}
+
+.cm-git-change-marker--deleted {
+  height: 0;
+  min-height: 0;
+  border-block: 4px solid transparent;
+  border-left: 4px solid #f85149;
+  background: transparent;
+}
+
+.cm-git-change-preview {
+  width: min(520px, 70vw);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+  color: var(--text-primary);
+}
+
+.cm-git-change-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 30px;
+  padding: 0 8px 0 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.cm-git-change-preview__close {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.cm-git-change-preview__side {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.cm-git-change-preview__side:last-child {
+  border-bottom: 0;
+}
+
+.cm-git-change-preview__side strong {
+  padding: 7px 8px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.cm-git-change-preview__side pre {
+  min-width: 0;
+  margin: 0;
+  overflow: auto;
+  padding: 7px 10px;
+  border-left: 1px solid var(--border);
+  white-space: pre;
+}
+
+.cm-git-change-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 8px;
+}
+
+.cm-git-change-preview__actions button {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .cm-git-trace-marker {
   width: 100%;
   min-height: 18px;

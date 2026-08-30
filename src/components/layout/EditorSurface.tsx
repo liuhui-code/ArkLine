@@ -11,6 +11,7 @@ import type { EditorAppearance } from "@/types/editor";
 import type { Text } from "@codemirror/state";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import type { GitChangeBaseline } from "@/editor/git-change-decorations";
 import type {
   EditorDiagnosticFixRequestHandler,
   EditorValidationRequest,
@@ -67,6 +68,7 @@ type EditorSurfaceProps = {
   onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
+  gitChangeBaseline?: GitChangeBaseline | null;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
   onSelectTab: (path: string) => void;
@@ -107,6 +109,7 @@ export function EditorSurface({
   onDiagnosticFixRequest,
   blameAttributions = [],
   gitBlameVisible = false,
+  gitChangeBaseline = null,
   selectedBlameLine = null,
   onGitTraceLineClick,
   onSelectTab,
@@ -226,6 +229,7 @@ export function EditorSurface({
             onContextMenu={openEditorContextMenu}
             blameAttributions={blameAttributions}
             gitBlameVisible={gitBlameVisible}
+            gitChangeBaseline={gitChangeBaseline}
             selectedBlameLine={selectedBlameLine}
             onGitTraceLineClick={onGitTraceLineClick}
             transientPreview={activeTab?.isPreview}
