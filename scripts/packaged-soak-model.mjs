@@ -208,6 +208,9 @@ function appendCausalTraceFailures(failures, metrics) {
 
 function appendSemanticFailures(failures, metrics, limits, enforceLatency = true) {
   if (!metrics.semanticRequired) return;
+  if (metrics.semanticWorkerHealthy !== true) {
+    failures.push("semantic-worker-unavailable");
+  }
   if (metrics.definitionMissCount > 0) failures.push("definition-result-miss");
   if (metrics.completionMissCount > 0) failures.push("completion-result-miss");
   if (metrics.successfulDefinitionCount === 0) {
@@ -216,12 +219,18 @@ function appendSemanticFailures(failures, metrics, limits, enforceLatency = true
   if (metrics.successfulCompletionCount === 0) {
     failures.push("no-member-completion-evidence");
   }
-  if (enforceLatency) {
+  const enoughDefinitionSamples =
+    metrics.successfulDefinitionCount >= limits.minimumSemanticLatencySamples;
+  const enoughCompletionSamples =
+    metrics.successfulCompletionCount >= limits.minimumSemanticLatencySamples;
+  if (enforceLatency || enoughDefinitionSamples) {
     if (metrics.successfulDefinitionCount < limits.minimumSemanticLatencySamples) {
       failures.push("insufficient-definition-latency-evidence");
     } else if (metrics.rendererDefinitionP95Ms > limits.rendererDefinitionP95Ms) {
       failures.push("renderer-definition-p95");
     }
+  }
+  if (enforceLatency || enoughCompletionSamples) {
     if (metrics.successfulCompletionCount < limits.minimumSemanticLatencySamples) {
       failures.push("insufficient-completion-latency-evidence");
     } else if (metrics.rendererCompletionP95Ms > limits.rendererCompletionP95Ms) {

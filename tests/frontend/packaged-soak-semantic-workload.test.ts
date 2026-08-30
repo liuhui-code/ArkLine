@@ -40,20 +40,32 @@ describe("packaged semantic workload", () => {
   it("reads member labels from the active CodeMirror completion list", async () => {
     document.body.innerHTML = `
       <ul aria-label="Code Completion">
-        <li><span class="cm-completionLabel">aboutToAppear()</span></li>
-        <li><span class="cm-completionLabel">aboutToDisappear()</span></li>
+        <li>
+          <span class="cm-completionIcon cm-completionIcon-method"></span>
+          <span class="cm-completionLabel">aboutToAppear()</span>
+        </li>
+        <li>
+          <span class="cm-completionIcon cm-completionIcon-property"></span>
+          <span class="cm-completionLabel">title</span>
+        </li>
       </ul>
     `;
 
     const result = await runAsyncBrowserScript(COMPLETION_READINESS_SCRIPT, [
-      ["aboutToAppear", "aboutToDisappear"],
+      [
+        { label: "aboutToAppear", kind: "method" },
+        { label: "title", kind: "property" },
+      ],
       20,
       [],
     ]);
 
     expect(result).toEqual(expect.objectContaining({
       matched: true,
-      labels: ["aboutToAppear()", "aboutToDisappear()"],
+      items: [
+        { label: "aboutToAppear()", kind: "method" },
+        { label: "title", kind: "property" },
+      ],
     }));
   });
 
@@ -91,6 +103,47 @@ describe("packaged semantic workload", () => {
     );
     expect(samples).toEqual([35]);
     expect(counters.completionMissCount).toBe(0);
+  });
+
+  it("opens member completion from the user's typed dot gesture", async () => {
+    const driver = createDriver();
+    const samples: number[] = [];
+    const evidence: unknown[] = [];
+    const counters = semanticCounters();
+
+    await exerciseMemberCompletion(driver, {
+      ...completionTarget(),
+      lineNeedle: "this",
+      cursorAfter: "this",
+      trigger: "typing",
+      expectedItems: [
+        { label: "refreshPrivate", kind: "method" },
+        { label: "refreshProtected", kind: "method" },
+      ],
+      accept: {
+        prefix: "refreshPriv",
+        item: { label: "refreshPrivate", kind: "method" },
+        expectedLine: "this.refreshPrivate()",
+        restoreLine: "this",
+      },
+    }, samples, counters, evidence);
+
+    expect(driver.keyChord).toHaveBeenCalledWith(["."]);
+    expect(driver.keyChord).not.toHaveBeenCalledWith(["\uE009", " "]);
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      COMPLETION_READINESS_SCRIPT,
+      [[
+        { label: "refreshPrivate", kind: "method" },
+        { label: "refreshProtected", kind: "method" },
+      ], 8_000, []],
+      9_000,
+    );
+    expect(driver.typeText).toHaveBeenCalledWith("refreshPriv");
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
+    expect(evidence).toEqual([expect.objectContaining({
+      acceptedLine: "this.refreshPrivate()",
+      restoredLine: "this",
+    })]);
   });
 
   it("warms semantic definition and completion without adding performance samples", async () => {

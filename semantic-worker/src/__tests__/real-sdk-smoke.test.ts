@@ -9,6 +9,7 @@ import { SemanticWorkerSession } from "../session.js"
 
 const tempRoots: string[] = []
 const previousSdkPath = process.env.ARKLINE_HARMONY_SDK_PATH
+const REAL_SDK_SMOKE_TIMEOUT_MS = 30_000
 
 afterEach(() => {
   for (const root of tempRoots.splice(0, tempRoots.length)) {
@@ -67,5 +68,5 @@ describe("real HarmonyOS SDK smoke", () => {
       definition: definition.payload,
       requiredCompletionLabels: ["filesDir", "terminateSelf"],
     })}`)
-  })
+  }, REAL_SDK_SMOKE_TIMEOUT_MS)
 })

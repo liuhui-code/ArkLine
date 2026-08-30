@@ -127,6 +127,9 @@ describe("CI quality gates", () => {
     expect(candidateSmokeJob).toContain("ARKLINE_INSTALLED_APPLICATION");
     expect(candidateSmokeJob).toContain("Run installed candidate semantic smoke");
     expect(candidateSmokeJob).toContain("Run portable candidate semantic smoke");
+    expect(candidateSmokeJob).toContain("Copy semantic completion probe");
+    expect(candidateSmokeJob).toContain("tests/fixtures/packaged-semantic/ArkLineCompletionProbe.ets");
+    expect(candidateSmokeJob).toContain("artifacts/real-harmony-project/ArkLineCompletionProbe.ets");
     expect(candidateSmokeJob).toContain("Generate deterministic class-search smoke workspace");
     expect(candidateSmokeJob).toContain("Run portable candidate class-index smoke");
     expect(candidateSmokeJob).toContain("--profile=small");

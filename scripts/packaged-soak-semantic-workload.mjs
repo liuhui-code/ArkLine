@@ -72,14 +72,18 @@ export async function exerciseMemberCompletion(
     counters.completionMissCount += 1;
     throw new Error(`Member completion caret did not match: ${JSON.stringify(caret)}`);
   }
+  const trigger = target.trigger ?? "manual";
   const startedAt = await performTimedSemanticGesture(
     driver,
-    "completion",
-    () => driver.keyChord([WEBDRIVER_KEYS.control, " "]),
+    trigger === "typing" ? "completionTyping" : "completion",
+    () => driver.keyChord(trigger === "typing"
+      ? ["."]
+      : [WEBDRIVER_KEYS.control, " "]),
   );
+  const expectedItems = target.expectedItems ?? target.expectedLabels;
   const completion = await driver.executeAsync(
     COMPLETION_READINESS_SCRIPT,
-    [target.expectedLabels, TARGET_TIMEOUT_MS, target.forbiddenLabels ?? []],
+    [expectedItems, TARGET_TIMEOUT_MS, target.forbiddenLabels ?? []],
     TARGET_TIMEOUT_MS + 1_000,
   );
   if (!completion?.matched) {
@@ -87,15 +91,61 @@ export async function exerciseMemberCompletion(
     throw new Error(`Member completion did not match: ${JSON.stringify(completion)}`);
   }
   samples.push(Math.max(0, completion.at - startedAt));
+  let acceptedLine = null;
+  let restoredLine = null;
+  if (target.accept) {
+    await driver.typeText(target.accept.prefix);
+    const filtered = await driver.executeAsync(
+      COMPLETION_READINESS_SCRIPT,
+      [[target.accept.item], 1_500, target.forbiddenLabels ?? []],
+      2_500,
+    );
+    if (!filtered?.matched) {
+      counters.completionMissCount += 1;
+      throw new Error(`Filtered member completion did not match: ${JSON.stringify(filtered)}`);
+    }
+    await driver.keyChord([WEBDRIVER_KEYS.enter]);
+    const applied = await driver.executeAsync(
+      EDITOR_LINE_READINESS_SCRIPT,
+      [target.accept.expectedLine, 1_500],
+      2_500,
+    );
+    if (!applied?.matched) {
+      counters.completionMissCount += 1;
+      throw new Error(`Accepted member completion was not applied: ${JSON.stringify(applied)}`);
+    }
+    acceptedLine = target.accept.expectedLine;
+    for (let undoAttempt = 0; undoAttempt < 4; undoAttempt += 1) {
+      await driver.keyChord([WEBDRIVER_KEYS.control, "z"]);
+      const restored = await driver.executeAsync(
+        EDITOR_LINE_READINESS_SCRIPT,
+        [target.accept.restoreLine, 250, true],
+        750,
+      );
+      if (restored?.matched) {
+        restoredLine = target.accept.restoreLine;
+        break;
+      }
+    }
+    if (!restoredLine) {
+      counters.completionMissCount += 1;
+      throw new Error(`Accepted member completion was not restored: ${target.accept.restoreLine}`);
+    }
+  } else {
+    await driver.keyChord([WEBDRIVER_KEYS.escape]);
+  }
   evidence.push({
     kind: "completion",
     sourceTitle: target.source.title,
     lineNeedle: target.lineNeedle,
-    expectedLabels: target.expectedLabels,
+    trigger,
+    expectedItems,
     labels: completion.labels,
+    items: completion.items,
+    acceptedLine,
+    restoredLine,
     capturedAt: Date.now(),
   });
-  await driver.keyChord([WEBDRIVER_KEYS.escape]);
 }
 
 export async function warmSemanticInteractions(driver, scenario, counters, evidence) {
@@ -149,7 +199,9 @@ const INSTALL_SEMANTIC_GESTURE_CLOCK_SCRIPT = `
   const listener = (event) => {
     const matched = gesture === "definition"
       ? event.ctrlKey && event.button === 0
-      : event.ctrlKey && (event.key === " " || event.code === "Space");
+      : gesture === "completionTyping"
+        ? !event.ctrlKey && event.key === "."
+        : event.ctrlKey && (event.key === " " || event.code === "Space");
     if (!matched) return;
     starts[gesture] = performance.now();
     document.removeEventListener(eventName, listener, true);
@@ -298,15 +350,51 @@ export const EDITOR_CARET_READINESS_SCRIPT = `
   inspect();
 `;
 
+export const EDITOR_LINE_READINESS_SCRIPT = `
+  const expectedNeedle = arguments[0];
+  const timeoutMs = arguments[1];
+  const exactMatch = arguments[2] === true;
+  const done = arguments[arguments.length - 1];
+  let observer;
+  let timer;
+  let finished = false;
+  const finish = (value) => {
+    if (finished) return;
+    finished = true;
+    observer?.disconnect();
+    clearTimeout(timer);
+    done(value);
+  };
+  const inspect = () => {
+    const editor = document.querySelector('[aria-label="Editor Content"]');
+    const line = [...(editor?.querySelectorAll('.cm-line') || [])]
+      .find((candidate) => {
+        const lineText = candidate.textContent || "";
+        return exactMatch
+          ? lineText.trim() === expectedNeedle.trim()
+          : lineText.includes(expectedNeedle);
+      });
+    if (line) finish({
+      matched: true,
+      lineText: line.textContent || "",
+      at: performance.now()
+    });
+  };
+  observer = new MutationObserver(inspect);
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  timer = setTimeout(() => finish({ matched: false, expectedNeedle, timeout: true }), timeoutMs);
+  inspect();
+`;
+
 export const COMPLETION_READINESS_SCRIPT = `
-  const expectedLabels = arguments[0];
+  const expectedItems = arguments[0];
   const timeoutMs = arguments[1];
   const forbiddenLabels = arguments[2];
   const done = arguments[arguments.length - 1];
   let observer;
   let timer;
   let finished = false;
-  let lastLabels = [];
+  let lastItems = [];
   const finish = (value) => {
     if (finished) return;
     finished = true;
@@ -317,23 +405,48 @@ export const COMPLETION_READINESS_SCRIPT = `
   const inspect = () => {
     const list = document.querySelector('[aria-label="Code Completion"]');
     if (!list) return;
-    const labels = [...list.querySelectorAll('.cm-completionLabel, .completion-popup__label')]
-      .map((item) => (item.textContent || "").trim())
-      .filter(Boolean);
-    lastLabels = labels;
+    const items = [...list.querySelectorAll('.cm-completionLabel, .completion-popup__label')]
+      .map((labelElement) => {
+        const label = (labelElement.textContent || "").trim();
+        const option = labelElement.closest('li, [role="option"], .cm-completion, .completion-popup__item')
+          || labelElement.parentElement;
+        const icon = option?.querySelector('[class*="cm-completionIcon-"]');
+        const iconKind = [...(icon?.classList || [])]
+          .find((className) => className.startsWith('cm-completionIcon-'))
+          ?.slice('cm-completionIcon-'.length);
+        const legacyKind = (option?.querySelector('.completion-popup__kind')?.textContent || "")
+          .trim()
+          .toLowerCase();
+        return { label, kind: iconKind || legacyKind || null };
+      })
+      .filter((item) => Boolean(item.label));
+    lastItems = items;
+    const labels = items.map((item) => item.label);
     const normalize = (label) => label.endsWith("()") ? label.slice(0, -2) : label;
     const normalizedLabels = labels.map(normalize);
     const forbidden = forbiddenLabels.filter((label) => normalizedLabels.includes(normalize(label)));
     if (forbidden.length > 0) {
-      finish({ matched: false, labels, forbidden, at: performance.now() });
+      finish({ matched: false, labels, items, forbidden, at: performance.now() });
       return;
     }
-    if (expectedLabels.every((label) => normalizedLabels.includes(normalize(label)))) {
-      finish({ matched: true, labels, at: performance.now() });
+    const expected = expectedItems.map((item) => typeof item === "string"
+      ? { label: item, kind: null }
+      : item);
+    const matched = expected.every((expectedItem) => items.some((item) => (
+      normalize(item.label) === normalize(expectedItem.label)
+      && (!expectedItem.kind || item.kind === expectedItem.kind)
+    )));
+    if (matched) {
+      finish({ matched: true, labels, items, at: performance.now() });
     }
   };
   observer = new MutationObserver(inspect);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  timer = setTimeout(() => finish({ matched: false, labels: lastLabels, timeout: true }), timeoutMs);
+  timer = setTimeout(() => finish({
+    matched: false,
+    labels: lastItems.map((item) => item.label),
+    items: lastItems,
+    timeout: true
+  }), timeoutMs);
   inspect();
 `;

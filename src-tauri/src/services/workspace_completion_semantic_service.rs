@@ -199,6 +199,7 @@ fn member_items(
     let Some(receiver_type) = receiver_type else {
         return Ok(Vec::new());
     };
+    let include_non_public = owner == "this";
     if !index_store_exists(root_path) {
         return Ok(source_member_items(
             root_path,
@@ -206,6 +207,7 @@ fn member_items(
             content,
             &receiver_type,
             prefix,
+            include_non_public,
         ));
     }
     let connection = open_index_store(root_path)?;
@@ -217,15 +219,22 @@ fn member_items(
     let owner_path = (owner == "this").then_some(path_key.as_str());
     let mut items =
         project_member_items(&connection, &root_key, &receiver_type, &prefix, owner_path)?;
-    if items.is_empty() {
-        items.extend(source_member_items(
-            root_path,
-            &request.path,
-            content,
-            &receiver_type,
-            prefix,
-        ));
-    }
+    let mut source_items = source_member_items(
+        root_path,
+        &request.path,
+        content,
+        &receiver_type,
+        prefix,
+        include_non_public,
+    );
+    items.retain(|indexed| {
+        !source_items.iter().any(|source| {
+            source.kind == indexed.kind
+                && source.label.trim_end_matches("()") == indexed.label.trim_end_matches("()")
+        })
+    });
+    source_items.extend(items);
+    let mut items = source_items;
     items.extend(sdk_member_completion_items(
         root_path,
         &connection,

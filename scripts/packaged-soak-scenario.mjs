@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const SCENARIO_VERSION = 2;
+const SCENARIO_VERSION = 3;
 
 export async function loadPackagedSoakScenario(options) {
   if (!options.scenarioPath) {
@@ -133,14 +133,40 @@ function validDefinitionTargets(targets) {
 function validCompletionTargets(targets) {
   return Array.isArray(targets)
     && targets.length > 0
-    && targets.every((target) => (
+    && targets.every(validCompletionTarget)
+    && targets.some((target) => target.trigger === "typing" && validCompletionAccept(target.accept));
+}
+
+function validCompletionTarget(target) {
+  return (
       validQuickOpenTarget(target?.source)
       && typeof target?.lineNeedle === "string"
       && Boolean(target.lineNeedle.trim())
       && typeof target?.cursorAfter === "string"
       && Boolean(target.cursorAfter.trim())
       && target.lineNeedle.includes(target.cursorAfter)
-      && validStrings(target.expectedLabels)
+      && ["manual", "typing"].includes(target.trigger)
+      && Array.isArray(target.expectedItems)
+      && target.expectedItems.length > 0
+      && target.expectedItems.every(validCompletionItem)
       && (target.forbiddenLabels === undefined || validStrings(target.forbiddenLabels))
-    ));
+      && (target.accept === undefined || validCompletionAccept(target.accept))
+    );
+}
+
+function validCompletionItem(item) {
+  return typeof item?.label === "string"
+    && Boolean(item.label.trim())
+    && typeof item?.kind === "string"
+    && Boolean(item.kind.trim());
+}
+
+function validCompletionAccept(accept) {
+  return typeof accept?.prefix === "string"
+    && Boolean(accept.prefix.trim())
+    && validCompletionItem(accept.item)
+    && typeof accept?.expectedLine === "string"
+    && Boolean(accept.expectedLine.trim())
+    && typeof accept?.restoreLine === "string"
+    && Boolean(accept.restoreLine.trim());
 }

@@ -19,6 +19,7 @@ use crate::services::language_query_broker_service::{
     assemble_language_completion, assemble_language_definition,
 };
 use crate::services::language_service::LanguageRuntime;
+use crate::services::workspace_completion_parser_service::is_member_access_context;
 use crate::services::workspace_index_facade_completion_service::query_facade_completion;
 use crate::services::workspace_index_facade_navigation_service::query_facade_definition;
 use crate::services::workspace_index_facade_service::{
@@ -238,7 +239,8 @@ pub async fn query_language_completion(
     });
     let mut facade = index_task.await.map_err(|error| error.to_string())??;
     let index_ms = elapsed_millis(started_at);
-    let semantic_budget = completion_semantic_budget(!facade.items.is_empty());
+    let semantic_budget =
+        completion_semantic_budget(!facade.items.is_empty(), is_member_access_context(&request));
     let semantic_outcome = await_semantic_until(semantic_task, started_at, semantic_budget).await;
     let (language_items, semantic_error, semantic_state) = match semantic_outcome {
         SemanticDeadlineOutcome::Ready(items) => {

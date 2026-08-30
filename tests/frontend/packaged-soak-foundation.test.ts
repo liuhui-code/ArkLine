@@ -280,7 +280,7 @@ describe("packaged Windows soak foundation", () => {
     });
   });
 
-  it("keeps short smoke latency observational while requiring semantic evidence", () => {
+  it("keeps cold smoke latency observational but enforces warm semantic latency", () => {
     expect(evaluateSmokeReport({
       crashCount: 0,
       unresponsiveCount: 0,
@@ -298,6 +298,7 @@ describe("packaged Windows soak foundation", () => {
       causalTraceRunningCount: 0,
       causalTraceKindCount: 3,
       semanticRequired: true,
+      semanticWorkerHealthy: true,
       definitionMissCount: 0,
       completionMissCount: 0,
       successfulDefinitionCount: 1,
@@ -323,13 +324,36 @@ describe("packaged Windows soak foundation", () => {
       causalTraceRunningCount: 0,
       causalTraceKindCount: 3,
       semanticRequired: true,
+      semanticWorkerHealthy: true,
       definitionMissCount: 0,
       completionMissCount: 0,
       successfulDefinitionCount: 5,
       successfulCompletionCount: 5,
       rendererDefinitionP95Ms: PACKAGED_SOAK_LIMITS.rendererDefinitionP95Ms + 1,
       rendererCompletionP95Ms: PACKAGED_SOAK_LIMITS.rendererCompletionP95Ms + 1,
-    })).toMatchObject({ passed: true, failures: [] });
+    })).toMatchObject({
+      passed: false,
+      failures: expect.arrayContaining([
+        "renderer-definition-p95",
+        "renderer-completion-p95",
+      ]),
+    });
+  });
+
+  it("rejects a semantic release smoke when the packaged semantic worker is unavailable", () => {
+    const metrics = passingSoakMetrics({
+      semanticRequired: true,
+      semanticWorkerHealthy: false,
+      successfulDefinitionCount: 1,
+      successfulCompletionCount: 1,
+    });
+
+    expect(evaluateSmokeReport(metrics)).toMatchObject({
+      passed: false,
+      failures: expect.arrayContaining(["semantic-worker-unavailable"]),
+    });
+    expect(evaluateSmokeReport({ ...metrics, semanticWorkerHealthy: true }))
+      .toMatchObject({ passed: true, failures: [] });
   });
 
   it("captures bounded query UI evidence for native smoke failures", () => {

@@ -92,6 +92,8 @@ export function buildPackagedSoakReport(input) {
     successfulEditorInputCount: editorInput.count,
     successfulEditorScrollCount: editorScroll.count,
     semanticRequired: input.scenario?.kind === "real-workspace",
+    semanticWorkerHealthy:
+      lastDiagnostics.semanticSupervisor?.status === "running",
     definitionMissCount: input.counters.definitionMissCount ?? 0,
     completionMissCount: input.counters.completionMissCount ?? 0,
     successfulDefinitionCount: definitions.count,

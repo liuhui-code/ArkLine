@@ -140,6 +140,14 @@ jobs:
           ref: 17b6899086a57a4d48448842a14f9e325e3e35a3
           path: artifacts/real-harmony-project
 
+      - name: Copy semantic completion probe
+        shell: pwsh
+        run: |
+          Copy-Item `
+            -LiteralPath tests/fixtures/packaged-semantic/ArkLineCompletionProbe.ets `
+            -Destination artifacts/real-harmony-project/ArkLineCompletionProbe.ets `
+            -Force
+
       - name: Run packaged real-project semantic smoke
         shell: pwsh
         run: |
