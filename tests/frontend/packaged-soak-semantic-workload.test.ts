@@ -173,6 +173,7 @@ describe("packaged semantic workload", () => {
     expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
     expect(evidence).toEqual([expect.objectContaining({
       acceptedLine: "this.refreshPrivate()",
+      latencyMs: 35,
       restoredLine: "this",
     })]);
   });
@@ -188,6 +189,27 @@ describe("packaged semantic workload", () => {
 
     expect(driver.modifierClickAt).toHaveBeenCalledTimes(1);
     expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", " "]);
+    expect(counters).toMatchObject({ definitionMissCount: 0, completionMissCount: 0 });
+  });
+
+  it("warms every semantic target shape before measuring steady-state latency", async () => {
+    const driver = createDriver();
+    const counters = semanticCounters();
+
+    await warmSemanticInteractions(driver, {
+      definitionTargets: [definitionTarget(), definitionTarget()],
+      completionTargets: [completionTarget(), completionTarget()],
+    }, counters, []);
+
+    expect(driver.modifierClickAt).toHaveBeenCalledTimes(2);
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      COMPLETION_READINESS_SCRIPT,
+      [["aboutToAppear", "aboutToDisappear"], 8_000, []],
+      9_000,
+    );
+    expect(driver.executeAsync.mock.calls.filter(
+      ([script]) => script === COMPLETION_READINESS_SCRIPT,
+    )).toHaveLength(2);
     expect(counters).toMatchObject({ definitionMissCount: 0, completionMissCount: 0 });
   });
 });

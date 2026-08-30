@@ -90,7 +90,8 @@ export async function exerciseMemberCompletion(
     counters.completionMissCount += 1;
     throw new Error(`Member completion did not match: ${JSON.stringify(completion)}`);
   }
-  samples.push(Math.max(0, completion.at - startedAt));
+  const latencyMs = Math.max(0, completion.at - startedAt);
+  samples.push(latencyMs);
   let acceptedLine = null;
   let restoredLine = null;
   if (target.accept) {
@@ -147,6 +148,7 @@ export async function exerciseMemberCompletion(
     expectedItems,
     labels: completion.labels,
     items: completion.items,
+    latencyMs,
     acceptedLine,
     restoredLine,
     capturedAt: Date.now(),
@@ -155,12 +157,10 @@ export async function exerciseMemberCompletion(
 
 export async function warmSemanticInteractions(driver, scenario, counters, evidence) {
   const samples = [];
-  const [definitionTarget] = scenario?.definitionTargets ?? [];
-  if (definitionTarget) {
+  for (const definitionTarget of scenario?.definitionTargets ?? []) {
     await exerciseDefinitionNavigation(driver, definitionTarget, samples, counters, evidence);
   }
-  const [completionTarget] = scenario?.completionTargets ?? [];
-  if (completionTarget) {
+  for (const completionTarget of scenario?.completionTargets ?? []) {
     await exerciseMemberCompletion(driver, completionTarget, samples, counters, evidence);
   }
 }
