@@ -5,6 +5,7 @@ import type { GitBlameAttribution } from "@/features/git/git-trace-model";
 import type { EditorAppearance } from "@/types/editor";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import type { GitChangeBaseline } from "@/editor/git-change-decorations";
 import type {
   EditorDiagnosticFixRequestHandler,
   EditorValidationRequest,
@@ -44,6 +45,7 @@ type LazyArkTsEditorProps = {
   onContextMenu?: (request: EditorContextMenuRequest) => void;
   blameAttributions?: GitBlameAttribution[];
   gitBlameVisible?: boolean;
+  gitChangeBaseline?: GitChangeBaseline | null;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
   transientPreview?: boolean;

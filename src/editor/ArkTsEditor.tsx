@@ -7,6 +7,7 @@ import {
   appearanceExtensionForSettings,
   createEditorExtensions,
   editorStructureCompartment,
+  gitChangeCompartment,
   gitTraceCompartment,
   languageCompartment,
   languageExtensionForPath,
@@ -21,6 +22,7 @@ import {
 import type { ArkTsEditorProps } from "@/editor/arkts-editor-props";
 import { isEditorReducedPerformanceDocument } from "@/editor/editor-document-budget";
 import { createGitTraceGutter } from "@/editor/git-trace-decorations";
+import { createGitChangeGutter } from "@/editor/git-change-decorations";
 import { recordRenderPressure } from "@/features/performance/use-ui-latency-monitor";
 import { createEditorDocumentSessionRegistry } from "@/editor/editor-document-session-registry";
 import { scheduleEditorEnhancement } from "@/editor/editor-enhancement-scheduler";
@@ -58,6 +60,7 @@ export function ArkTsEditor({
   gitBlameVisible = false,
   selectedBlameLine = null,
   onGitTraceLineClick,
+  gitChangeBaseline = null,
   transientPreview = false,
 }: ArkTsEditorProps) {
   recordRenderPressure("Editor/ArkTsEditor");
@@ -199,6 +202,7 @@ export function ArkTsEditor({
         onDiagnosticFixRequest
           ? (request) => onDiagnosticFixRequestRef.current?.(request)
           : undefined,
+        gitChangeBaseline,
       ),
     });
   }
@@ -375,6 +379,14 @@ export function ArkTsEditor({
       effects: appearanceCompartment.reconfigure(appearanceExtensionForSettings(appearance)),
     });
   }, [appearance]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: gitChangeCompartment.reconfigure(gitChangeBaseline ? createGitChangeGutter(gitChangeBaseline) : []),
+    });
+  }, [gitChangeBaseline]);
 
   useEffect(() => {
     const view = viewRef.current;

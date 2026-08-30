@@ -13,6 +13,7 @@ import type {
   EditorValidationResultHandler,
 } from "@/editor/editor-validation-lint";
 import type { GitBlameAttribution } from "@/features/git/git-trace-model";
+import type { GitChangeBaseline } from "@/editor/git-change-decorations";
 import type { EditorAppearance } from "@/types/editor";
 import type { Text } from "@codemirror/state";
 
@@ -44,5 +45,6 @@ export type ArkTsEditorProps = {
   gitBlameVisible?: boolean;
   selectedBlameLine?: number | null;
   onGitTraceLineClick?: (line: number) => void;
+  gitChangeBaseline?: GitChangeBaseline | null;
   transientPreview?: boolean;
 };

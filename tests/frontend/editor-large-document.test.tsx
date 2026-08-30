@@ -132,6 +132,27 @@ describe("ArkTsEditor large document mode", () => {
     expect(container.querySelector(".cm-git-trace-gutter")).toBeNull();
   });
 
+  it("bounds a Git hunk preview for an extremely long changed line", () => {
+    const suffix = "x".repeat(LARGE_EDITOR_DOCUMENT_CHARACTER_THRESHOLD);
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/large-change.ets"
+        value={`B${suffix}`}
+        gitChangeBaseline={{ revision: "head-1", content: `A${suffix}` }}
+        onChange={() => undefined}
+      />,
+    );
+
+    const marker = container.querySelector<HTMLButtonElement>(".cm-git-change-marker--modified");
+    expect(marker).toBeTruthy();
+    fireEvent.click(marker!);
+
+    const preview = screen.getByLabelText("Git Change Preview");
+    expect(preview).toHaveTextContent("Preview truncated");
+    expect(preview.textContent?.length).toBeLessThan(20_000);
+  });
+
   it("coalesces large document change payloads to the next frame", () => {
     const callbacks: FrameRequestCallback[] = [];
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

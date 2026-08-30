@@ -725,6 +725,145 @@ describe("ArkTsEditor", () => {
     expect(onGitTraceLineClick).toHaveBeenCalledWith(1);
   });
 
+  it("marks an unsaved modified line against the Git HEAD baseline", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"@Entry\nstruct Index {}"}
+        gitChangeBaseline={{ revision: "head-1", content: "@Entry\nstruct Index {}" }}
+        onChange={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector(".cm-git-change-marker")).toBeNull();
+    const editor = screen.getByLabelText("Editor Content");
+    await user.click(editor);
+    await user.keyboard("{End} changed");
+
+    const marker = await waitFor(() => {
+      const element = container.querySelector<HTMLElement>(".cm-git-change-marker--modified");
+      expect(element).toBeTruthy();
+      return element!;
+    });
+    expect(marker).toHaveAttribute("aria-label", "Git modified line 1");
+  });
+
+  it("applies a Git change baseline that arrives after the editor opens", async () => {
+    const props = {
+      appearance: defaultSettings().editor,
+      path: "C:/demo/main.ets",
+      value: "@Entry changed\nstruct Index {}",
+      onChange: () => undefined,
+    };
+    const { container, rerender } = render(<ArkTsEditor {...props} />);
+
+    expect(container.querySelector(".cm-git-change-marker")).toBeNull();
+    rerender(
+      <ArkTsEditor
+        {...props}
+        gitChangeBaseline={{ revision: "head-1", content: "@Entry\nstruct Index {}" }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".cm-git-change-marker--modified")).toBeTruthy();
+    });
+  });
+
+  it("opens the changed hunk preview from a Git gutter marker", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={"@Entry changed\nstruct Index {}"}
+        gitChangeBaseline={{ revision: "head-1", content: "@Entry\nstruct Index {}" }}
+        onChange={() => undefined}
+      />,
+    );
+
+    const marker = await waitFor(() => {
+      const element = container.querySelector<HTMLButtonElement>(".cm-git-change-marker--modified");
+      expect(element).toBeTruthy();
+      return element!;
+    });
+    await user.click(marker);
+
+    const preview = await screen.findByLabelText("Git Change Preview");
+    expect(preview).toHaveTextContent("@Entry");
+    expect(preview).toHaveTextContent("@Entry changed");
+  });
+
+  it("reverts one Git hunk as an undoable editor transaction", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const current = "@Entry changed\nstruct Index {}";
+    const baseline = "@Entry\nstruct Index {}";
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path="C:/demo/main.ets"
+        value={current}
+        gitChangeBaseline={{ revision: "head-1", content: baseline }}
+        onChange={onChange}
+      />,
+    );
+
+    const marker = await waitFor(() => {
+      const element = container.querySelector<HTMLButtonElement>(".cm-git-change-marker--modified");
+      expect(element).toBeTruthy();
+      return element!;
+    });
+    await user.click(marker);
+    await user.click(await screen.findByRole("button", { name: "Revert Change" }));
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(baseline));
+    expect(container.querySelector(".cm-git-change-marker")).toBeNull();
+
+    await user.click(screen.getByLabelText("Editor Content"));
+    await user.keyboard("{Control>}z{/Control}");
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(current));
+    expect(container.querySelector(".cm-git-change-marker--modified")).toBeTruthy();
+  });
+
+  it.each([
+    {
+      kind: "added",
+      baseline: "alpha\ngamma",
+      current: "alpha\nbeta\ngamma",
+    },
+    {
+      kind: "deleted",
+      baseline: "alpha\nbeta\ngamma",
+      current: "alpha\ngamma",
+    },
+  ])("reverts a $kind Git hunk without damaging adjacent lines", async ({ kind, baseline, current }) => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { container } = render(
+      <ArkTsEditor
+        appearance={defaultSettings().editor}
+        path={`C:/demo/${kind}.ets`}
+        value={current}
+        gitChangeBaseline={{ revision: "head-1", content: baseline }}
+        onChange={onChange}
+      />,
+    );
+
+    const marker = await waitFor(() => {
+      const element = container.querySelector<HTMLButtonElement>(`.cm-git-change-marker--${kind}`);
+      expect(element).toBeTruthy();
+      return element!;
+    });
+    await user.click(marker);
+    await user.click(await screen.findByRole("button", { name: "Revert Change" }));
+
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(baseline));
+    expect(container.querySelector(".cm-git-change-marker")).toBeNull();
+  });
+
   it("removes the git blame gutter when full-file blame is hidden", () => {
     const { container } = render(
       <ArkTsEditor

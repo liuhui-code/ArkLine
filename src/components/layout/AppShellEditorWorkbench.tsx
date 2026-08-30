@@ -14,6 +14,7 @@ import { recordRenderPressure } from "@/features/performance/use-ui-latency-moni
 import type { Text } from "@codemirror/state";
 import type { CodeMirrorCompletionBroker, CodeMirrorCompletionResolver } from "@/editor/codemirror-completion-source";
 import type { CodeMirrorSignatureHelpBroker } from "@/editor/codemirror-signature-help";
+import type { GitChangeBaseline } from "@/editor/git-change-decorations";
 import type {
   EditorDiagnosticFixRequestHandler,
   EditorValidationRequest,
@@ -50,6 +51,7 @@ export type AppShellEditorWorkbenchProps = {
   onDiagnosticFixRequest?: EditorDiagnosticFixRequestHandler;
   blameAttributions: GitBlameAttribution[];
   gitBlameVisible: boolean;
+  gitChangeBaseline: GitChangeBaseline | null;
   selectedBlameLine: number | null;
   onGitTraceLineClick: (line: number) => void;
   onSelectTab: (path: string) => void;
@@ -147,6 +149,7 @@ export function AppShellEditorWorkbench(props: AppShellEditorWorkbenchProps) {
         onDiagnosticFixRequest={props.onDiagnosticFixRequest ? onDiagnosticFixRequest : undefined}
         blameAttributions={props.blameAttributions}
         gitBlameVisible={props.gitBlameVisible}
+        gitChangeBaseline={props.gitChangeBaseline}
         selectedBlameLine={props.selectedBlameLine}
         onGitTraceLineClick={onGitTraceLineClick}
         onSelectTab={onSelectTab}
