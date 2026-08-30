@@ -125,9 +125,16 @@ function buildResult(
   reuseWhileTyping = false,
 ): CompletionResult | null {
   if (items.length === 0) return null;
+  const replacementFrom = resolveReplacementFrom(position, items);
   return {
-    from: resolveReplacementFrom(position, items),
-    options: items.map((item) => toCompletion(position, item, completionCache, resolver)),
+    from: replacementFrom,
+    options: items.map((item) => toCompletion(
+      position,
+      replacementFrom,
+      item,
+      completionCache,
+      resolver,
+    )),
     filter: reuseWhileTyping ? undefined : false,
     validFor: reuseWhileTyping ? validCompletionRange : undefined,
   };
@@ -135,6 +142,7 @@ function buildResult(
 
 function toCompletion(
   position: CompletionPosition,
+  replacementFrom: number,
   item: LanguageCompletionItem,
   completionCache: Map<string, Completion>,
   resolver?: CodeMirrorCompletionResolver,
@@ -158,7 +166,7 @@ function toCompletion(
     apply: isSnippetTemplate(insertText)
       ? undefined
       : resolvesOnApply && resolution
-        ? createResolvedApply(position, insertText, resolution)
+        ? createResolvedApply(position, replacementFrom, insertText, resolution)
         : insertText,
     commitCharacters: item.commitCharacters,
     info: createCompletionInfo(item),
@@ -230,27 +238,75 @@ function renderCompletionInfo(item: LanguageCompletionItem): CompletionInfo {
 
 function createResolvedApply(
   position: CompletionPosition,
+  replacementFrom: number,
   insertText: string,
   resolution: { resolve: () => Promise<LanguageCompletionItem | null> },
 ): NonNullable<Completion["apply"]> {
   return (view, completion, from, to) => {
+    const acceptedDocument = view.state.doc;
     void resolution.resolve().then((resolved) => {
       const additionalChanges = resolved
         ? resolveAdditionalChanges(position, resolved)
         : [];
       if (additionalChanges === null) return;
+      const rebasedChanges = rebaseCompletionChanges(
+        position,
+        replacementFrom,
+        acceptedDocument,
+        from,
+        to,
+        additionalChanges,
+      );
+      if (rebasedChanges === null) return;
       const transaction = createVersionCheckedCompletionTransaction({
         state: view.state,
-        expectedDocument: position.document,
+        expectedDocument: acceptedDocument,
         from,
         to,
         insertText,
-        additionalChanges,
+        additionalChanges: rebasedChanges,
         completion,
       });
       if (transaction) view.dispatch(transaction);
     });
   };
+}
+
+function rebaseCompletionChanges(
+  position: CompletionPosition,
+  replacementFrom: number,
+  acceptedDocument: Text,
+  from: number,
+  to: number,
+  changes: CompletionTextChange[],
+): CompletionTextChange[] | null {
+  const originalTo = position.from + position.replacePrefix.length;
+  if (from !== replacementFrom || to < from || to > acceptedDocument.length) return null;
+  if (acceptedDocument.sliceString(0, from) !== position.document.sliceString(0, replacementFrom)) {
+    return null;
+  }
+  if (acceptedDocument.sliceString(to) !== position.document.sliceString(originalTo)) {
+    return null;
+  }
+
+  const offsetDelta = (to - from) - (originalTo - replacementFrom);
+  const rebased: CompletionTextChange[] = [];
+  for (const change of changes) {
+    if (change.to <= replacementFrom) {
+      rebased.push(change);
+      continue;
+    }
+    if (change.from >= originalTo) {
+      rebased.push({
+        ...change,
+        from: change.from + offsetDelta,
+        to: change.to + offsetDelta,
+      });
+      continue;
+    }
+    return null;
+  }
+  return rebased;
 }
 
 function resolveAdditionalChanges(

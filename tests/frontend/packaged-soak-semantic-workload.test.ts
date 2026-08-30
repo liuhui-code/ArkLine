@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   COMPLETION_READINESS_SCRIPT,
   EDITOR_CARET_READINESS_SCRIPT,
+  EDITOR_LINE_READINESS_SCRIPT,
   EDITOR_TEXT_TARGET_SCRIPT,
   exerciseDefinitionNavigation,
   exerciseMemberCompletion,
@@ -40,20 +41,53 @@ describe("packaged semantic workload", () => {
   it("reads member labels from the active CodeMirror completion list", async () => {
     document.body.innerHTML = `
       <ul aria-label="Code Completion">
-        <li><span class="cm-completionLabel">aboutToAppear()</span></li>
-        <li><span class="cm-completionLabel">aboutToDisappear()</span></li>
+        <li aria-selected="true">
+          <span class="cm-completionIcon cm-completionIcon-method"></span>
+          <span class="cm-completionLabel">aboutToAppear()</span>
+        </li>
+        <li>
+          <span class="cm-completionIcon cm-completionIcon-property"></span>
+          <span class="cm-completionLabel">title</span>
+        </li>
       </ul>
     `;
 
     const result = await runAsyncBrowserScript(COMPLETION_READINESS_SCRIPT, [
-      ["aboutToAppear", "aboutToDisappear"],
+      [
+        { label: "aboutToAppear", kind: "method" },
+        { label: "title", kind: "property" },
+      ],
       20,
       [],
     ]);
 
     expect(result).toEqual(expect.objectContaining({
       matched: true,
-      labels: ["aboutToAppear()", "aboutToDisappear()"],
+      items: [
+        { label: "aboutToAppear()", kind: "method", selected: true },
+        { label: "title", kind: "property", selected: false },
+      ],
+      selectedItem: { label: "aboutToAppear()", kind: "method", selected: true },
+    }));
+  });
+
+  it("reports rendered editor lines when an accepted completion is missing", async () => {
+    document.body.innerHTML = `
+      <div aria-label="Editor Content">
+        <div class="cm-line">this.refreshPriv</div>
+        <div class="cm-line">next line</div>
+      </div>
+    `;
+
+    const result = await runAsyncBrowserScript(EDITOR_LINE_READINESS_SCRIPT, [
+      "this.refreshPrivate()",
+      20,
+    ]);
+
+    expect(result).toEqual(expect.objectContaining({
+      matched: false,
+      lines: ["this.refreshPriv", "next line"],
+      timeout: true,
     }));
   });
 
@@ -70,6 +104,7 @@ describe("packaged semantic workload", () => {
     expect(counters.definitionMissCount).toBe(0);
     expect(evidence).toEqual([expect.objectContaining({
       kind: "definition",
+      latencyMs: 40,
       targetTitle: "EntryViewModel.ets",
     })]);
   });
@@ -93,6 +128,57 @@ describe("packaged semantic workload", () => {
     expect(counters.completionMissCount).toBe(0);
   });
 
+  it("opens member completion from the user's typed dot gesture", async () => {
+    const driver = createDriver();
+    const samples: number[] = [];
+    const evidence: unknown[] = [];
+    const counters = semanticCounters();
+
+    await exerciseMemberCompletion(driver, {
+      ...completionTarget(),
+      lineNeedle: "this",
+      cursorAfter: "this",
+      trigger: "typing",
+      expectedItems: [
+        { label: "refreshPrivate", kind: "method" },
+        { label: "refreshProtected", kind: "method" },
+      ],
+      accept: {
+        prefix: "refreshPriv",
+        item: { label: "refreshPrivate", kind: "method" },
+        expectedLine: "this.refreshPrivate()",
+        restoreLine: "this",
+      },
+    }, samples, counters, evidence);
+
+    expect(driver.keyChord).toHaveBeenCalledWith(["."]);
+    expect(driver.keyChord).not.toHaveBeenCalledWith(["\uE009", " "]);
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      COMPLETION_READINESS_SCRIPT,
+      [[
+        { label: "refreshPrivate", kind: "method" },
+        { label: "refreshProtected", kind: "method" },
+      ], 8_000, []],
+      9_000,
+    );
+    expect(driver.typeText).toHaveBeenCalledWith("refreshPriv");
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      COMPLETION_READINESS_SCRIPT,
+      [[{ label: "refreshPrivate", kind: "method" }], 1_500, [], {
+        label: "refreshPrivate",
+        kind: "method",
+      }],
+      2_500,
+    );
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE007"]);
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
+    expect(evidence).toEqual([expect.objectContaining({
+      acceptedLine: "this.refreshPrivate()",
+      latencyMs: 35,
+      restoredLine: "this",
+    })]);
+  });
+
   it("warms semantic definition and completion without adding performance samples", async () => {
     const driver = createDriver();
     const counters = semanticCounters();
@@ -104,6 +190,27 @@ describe("packaged semantic workload", () => {
 
     expect(driver.modifierClickAt).toHaveBeenCalledTimes(1);
     expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", " "]);
+    expect(counters).toMatchObject({ definitionMissCount: 0, completionMissCount: 0 });
+  });
+
+  it("warms every semantic target shape before measuring steady-state latency", async () => {
+    const driver = createDriver();
+    const counters = semanticCounters();
+
+    await warmSemanticInteractions(driver, {
+      definitionTargets: [definitionTarget(), definitionTarget()],
+      completionTargets: [completionTarget(), completionTarget()],
+    }, counters, []);
+
+    expect(driver.modifierClickAt).toHaveBeenCalledTimes(2);
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      COMPLETION_READINESS_SCRIPT,
+      [["aboutToAppear", "aboutToDisappear"], 8_000, []],
+      9_000,
+    );
+    expect(driver.executeAsync.mock.calls.filter(
+      ([script]) => script === COMPLETION_READINESS_SCRIPT,
+    )).toHaveLength(2);
     expect(counters).toMatchObject({ definitionMissCount: 0, completionMissCount: 0 });
   });
 });
@@ -153,7 +260,14 @@ function createDriver() {
           : { matched: true, x: 160, y: 260, at: 108 };
       }
       if (script === COMPLETION_READINESS_SCRIPT) {
-        return { matched: true, labels: ["aboutToAppear", "aboutToDisappear"], at: 135 };
+        const selectedItem = args?.[3] ? { ...args[3] as object, selected: true } : undefined;
+        return {
+          matched: true,
+          labels: ["aboutToAppear", "aboutToDisappear"],
+          items: selectedItem ? [selectedItem] : [],
+          selectedItem,
+          at: 135,
+        };
       }
       if (script === EDITOR_CARET_READINESS_SCRIPT) {
         return { matched: true, column: 9, textBeforeCursor: "this.vm.", at: 109 };

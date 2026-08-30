@@ -168,6 +168,10 @@ export function createEditorExtensions(
       ? [
           autocompletion({
             defaultKeymap: false,
+            // CodeMirror defaults to 100 ms, which consumes most of ArkLine's
+            // 150 ms visible-completion budget before the broker starts.
+            // Coalesce typed triggers for one frame instead.
+            activateOnTypingDelay: 16,
             // Keep the immediate local source visible while the language broker
             // responds. The default 100ms sync wait is too expensive for Ctrl+Space.
             updateSyncTime: 0,

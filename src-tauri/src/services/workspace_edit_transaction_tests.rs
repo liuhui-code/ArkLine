@@ -8,7 +8,9 @@ use crate::models::workspace_edit::{TextRange, WorkspaceEditOperation};
 use crate::services::workspace_edit_service::{
     apply_workspace_edit, recover_workspace_edit_transactions,
 };
-use crate::services::workspace_edit_test_fixture_service::{plan, text_edit, unique_temp_dir};
+use crate::services::workspace_edit_test_fixture_service::{
+    plan, remove_temp_dir, text_edit, unique_temp_dir,
+};
 use crate::services::workspace_index_manager_service::WorkspaceIndexManagerRuntime;
 use crate::services::workspace_index_service::WorkspaceIndexRuntime;
 use crate::services::workspace_index_ui_activity_service::WorkspaceIndexUiActivityRuntime;
@@ -246,7 +248,7 @@ fn opening_workspace_recovers_a_prepared_workspace_edit_before_scanning() {
     assert_eq!(fs::read_to_string(&second).unwrap(), "console.log(name);\n");
 
     wait_for_workspace_index_idle(&index_manager, &root_path);
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_dir(&root);
 }
 
 #[test]

@@ -278,6 +278,14 @@ jobs:
           ref: 17b6899086a57a4d48448842a14f9e325e3e35a3
           path: artifacts/real-harmony-project
 
+      - name: Copy semantic completion probe for installed smoke
+        shell: pwsh
+        run: |
+          Copy-Item `
+            -LiteralPath tests/fixtures/packaged-semantic/ArkLineCompletionProbe.ets `
+            -Destination artifacts/real-harmony-project/ArkLineCompletionProbe.ets `
+            -Force
+
       - name: Run installed candidate semantic smoke
         shell: pwsh
         run: |
@@ -291,6 +299,14 @@ jobs:
             --sdk=semantic-worker/fixtures/golden-corpus/v1/sdk/openharmony `
             --report=artifacts/installed-candidate-report.json `
             --strict
+
+      - name: Copy semantic completion probe for portable smoke
+        shell: pwsh
+        run: |
+          Copy-Item `
+            -LiteralPath tests/fixtures/packaged-semantic/ArkLineCompletionProbe.ets `
+            -Destination artifacts/real-harmony-project/ArkLineCompletionProbe.ets `
+            -Force
 
       - name: Run portable candidate semantic smoke
         shell: pwsh

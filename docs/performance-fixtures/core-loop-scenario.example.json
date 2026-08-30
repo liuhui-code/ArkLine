@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "kind": "real-workspace",
   "revision": "replace-with-the-pinned-source-revision",
   "sdkIdentity": "replace-with-the-sdk-version-and-api-level",
@@ -46,10 +46,19 @@
         "title": "Index.ets",
         "editorNeedle": "struct Index"
       },
-      "lineNeedle": "this.model.refresh()",
-      "cursorAfter": "this.model.",
-      "expectedLabels": ["refresh"],
-      "forbiddenLabels": ["public", "private", "build", "build()"]
+      "lineNeedle": "this.model",
+      "cursorAfter": "this.model",
+      "trigger": "typing",
+      "expectedItems": [
+        { "label": "refresh", "kind": "method" }
+      ],
+      "forbiddenLabels": ["public", "private", "build", "build()"],
+      "accept": {
+        "prefix": "ref",
+        "item": { "label": "refresh", "kind": "method" },
+        "expectedLine": "this.model.refresh()",
+        "restoreLine": "this.model"
+      }
     }
   ]
 }

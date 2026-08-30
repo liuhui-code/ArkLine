@@ -94,7 +94,6 @@ export function runSearchEntityQuery({
           null,
           rankingContext,
           requestId,
-          250,
         )
         : undefined,
       runLocal: queryIndexCandidates,

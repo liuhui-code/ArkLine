@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "kind": "real-workspace",
   "revision": "17b6899086a57a4d48448842a14f9e325e3e35a3",
   "sdkIdentity": "arkline-golden-openharmony-subset-v1",
@@ -49,9 +49,10 @@
       },
       "lineNeedle": "this.vm.aboutToAppear(hostContext);",
       "cursorAfter": "this.vm.",
-      "expectedLabels": [
-        "aboutToAppear",
-        "aboutToDisappear"
+      "trigger": "manual",
+      "expectedItems": [
+        { "label": "aboutToAppear", "kind": "method" },
+        { "label": "aboutToDisappear", "kind": "method" }
       ],
       "forbiddenLabels": [
         "public",
@@ -59,6 +60,33 @@
         "build",
         "build()"
       ]
+    },
+    {
+      "source": {
+        "query": "ArkLineCompletionProbe",
+        "title": "ArkLineCompletionProbe.ets",
+        "editorNeedle": "class ArkLineCompletionProbe"
+      },
+      "lineNeedle": "this",
+      "cursorAfter": "this",
+      "trigger": "typing",
+      "expectedItems": [
+        { "label": "refreshPrivate", "kind": "method" },
+        { "label": "refreshProtected", "kind": "method" },
+        { "label": "refreshPublic", "kind": "method" }
+      ],
+      "forbiddenLabels": [
+        "public",
+        "private",
+        "build",
+        "build()"
+      ],
+      "accept": {
+        "prefix": "refreshPriv",
+        "item": { "label": "refreshPrivate", "kind": "method" },
+        "expectedLine": "this.refreshPrivate()",
+        "restoreLine": "this"
+      }
     }
   ]
 }

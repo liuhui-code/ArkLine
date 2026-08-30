@@ -123,7 +123,6 @@ describe("useSearchEverywhereController navigation isolation", () => {
         openedPaths: ["/workspace/Opened.ets", "/workspace/Entry.ets"],
       },
       expect.any(Number),
-      250,
     );
   });
 

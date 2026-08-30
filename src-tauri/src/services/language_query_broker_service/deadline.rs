@@ -14,8 +14,8 @@ pub enum SemanticDeadlineOutcome<T> {
     TimedOut,
 }
 
-pub fn completion_semantic_budget(has_indexed_results: bool) -> Duration {
-    if has_indexed_results {
+pub fn completion_semantic_budget(has_indexed_results: bool, member_access: bool) -> Duration {
+    if has_indexed_results && !member_access {
         COMPLETION_SEMANTIC_ENRICHMENT_BUDGET
     } else {
         COMPLETION_SEMANTIC_BUDGET
@@ -123,9 +123,19 @@ mod tests {
     }
 
     #[test]
-    fn gives_indexed_completions_a_short_semantic_enrichment_window() {
-        assert_eq!(completion_semantic_budget(true), Duration::from_millis(24));
-        assert_eq!(completion_semantic_budget(false), Duration::from_millis(80));
+    fn keeps_the_full_semantic_window_for_member_completion() {
+        assert_eq!(
+            completion_semantic_budget(true, true),
+            Duration::from_millis(80)
+        );
+        assert_eq!(
+            completion_semantic_budget(true, false),
+            Duration::from_millis(24)
+        );
+        assert_eq!(
+            completion_semantic_budget(false, true),
+            Duration::from_millis(80)
+        );
     }
 
     #[test]

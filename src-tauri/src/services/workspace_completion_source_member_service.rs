@@ -18,10 +18,11 @@ pub(super) fn source_member_items(
     content: &str,
     receiver_type: &str,
     prefix: &str,
+    include_non_public: bool,
 ) -> Vec<CompletionItem> {
     let source_stub = parse_arkts_file_stub(request_path, content);
     if declares_container(&source_stub, receiver_type) {
-        return member_items_from_stub(&source_stub, receiver_type, prefix);
+        return member_items_from_stub(&source_stub, receiver_type, prefix, include_non_public);
     }
     let Some(import) = source_stub.imports.iter().find(|candidate| {
         candidate.local_name == receiver_type && is_relative_module(&candidate.source_module)
@@ -43,7 +44,7 @@ pub(super) fn source_member_items(
         .as_deref()
         .filter(|name| *name != "default")
         .unwrap_or(receiver_type);
-    member_items_from_stub(&target_stub, target_name, prefix)
+    member_items_from_stub(&target_stub, target_name, prefix, include_non_public)
 }
 
 fn resolve_workspace_import(
@@ -87,6 +88,7 @@ fn member_items_from_stub(
     stub: &ArkTsFileStub,
     receiver_type: &str,
     prefix: &str,
+    include_non_public: bool,
 ) -> Vec<CompletionItem> {
     stub.declarations
         .iter()
@@ -97,10 +99,11 @@ fn member_items_from_stub(
                 .is_some_and(|container| container == receiver_type)
                 && declaration.name.starts_with(prefix)
                 && matches!(declaration.kind.as_str(), "method" | "property")
-                && !matches!(
-                    declaration.visibility.as_deref(),
-                    Some("private" | "protected")
-                )
+                && (include_non_public
+                    || !matches!(
+                        declaration.visibility.as_deref(),
+                        Some("private" | "protected")
+                    ))
         })
         .take(MAX_MEMBER_ITEMS)
         .map(|declaration| {

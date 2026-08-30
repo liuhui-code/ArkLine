@@ -1244,10 +1244,9 @@ describe("App shell", () => {
      "login",
      "all",
      25,
-     null,
-     expect.any(Object),
+      null,
+      expect.any(Object),
       expect.any(Number),
-      250,
    ));
     const results = screen.getByRole("list", { name: "Search Everywhere Results" });
     await waitFor(() => expect(within(results).getByText("Classes")).toBeVisible());
@@ -1490,7 +1489,6 @@ describe("App shell", () => {
      null,
      expect.any(Object),
       expect.any(Number),
-      250,
    ));
   });
 
@@ -1632,7 +1630,6 @@ describe("App shell", () => {
      null,
      expect.any(Object),
       expect.any(Number),
-      250,
    ));
     expect(queryWorkspaceCandidatesWithReadiness).toHaveBeenCalledTimes(1);
   });
@@ -1772,7 +1769,6 @@ describe("App shell", () => {
      null,
      expect.any(Object),
       expect.any(Number),
-      250,
    ));
     expect(await screen.findByRole("button", { name: /api loginAction/ })).toBeVisible();
 
@@ -1786,7 +1782,6 @@ describe("App shell", () => {
      null,
      expect.any(Object),
       expect.any(Number),
-      250,
    ));
     expect(screen.getByRole("tab", { name: "Classes", selected: true })).toBeVisible();
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
@@ -1858,7 +1853,6 @@ describe("App shell", () => {
      null,
      expect.any(Object),
       expect.any(Number),
-      250,
    ));
     expect(await screen.findByRole("button", { name: /class LoginController/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /text Text\("Login"\)/ })).not.toBeInTheDocument();
@@ -1872,7 +1866,6 @@ describe("App shell", () => {
      null,
      expect.any(Object),
       expect.any(Number),
-      250,
    ));
     expect(screen.getByRole("button", { name: /class LoginController/ })).toBeVisible();
   });

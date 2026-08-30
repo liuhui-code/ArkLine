@@ -136,6 +136,110 @@ fn semantic_completion_returns_current_class_members_for_this_receiver() {
 }
 
 #[test]
+fn semantic_completion_merges_unsaved_current_class_methods_with_indexed_members() {
+    let root = create_empty_workspace("completion-this-unsaved-method");
+    let source_dir = create_workspace_source_dir(&root);
+    let app_path = source_dir.join("Index.ets");
+    let indexed_content = [
+        "@Entry",
+        "@Component",
+        "struct UserPage {",
+        "  profile: string = \"\";",
+        "  build() {}",
+        "}",
+    ]
+    .join("\n");
+    fs::write(&app_path, indexed_content).unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    WorkspaceIndexRuntime::default()
+        .refresh_workspace_index(&root_path)
+        .unwrap();
+    let unsaved_content = [
+        "@Entry",
+        "@Component",
+        "struct UserPage {",
+        "  profile: string = \"\";",
+        "  refreshProfile(): void {}",
+        "  build() { this. }",
+        "}",
+    ]
+    .join("\n");
+    let line = unsaved_content.lines().nth(5).unwrap();
+    let caret = line.find("this.").unwrap() + "this.".len() + 1;
+
+    let items = query_semantic_completions(
+        &root_path,
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 6,
+            column: caret as u32,
+            content: Some(unsaved_content),
+        },
+        20,
+    )
+    .unwrap();
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        labels.contains(&"profile"),
+        "indexed property should remain available: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"refreshProfile()"),
+        "unsaved current-class method should supplement partial indexed members: {labels:?}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn semantic_completion_includes_non_public_methods_for_this_receiver() {
+    let root = create_empty_workspace("completion-this-visible-methods");
+    let app_path = root.join("Index.ets");
+    let content = [
+        "class UserPage {",
+        "  public refreshPublic(): void {}",
+        "  private refreshPrivate(): void {}",
+        "  protected refreshProtected(): void {}",
+        "  render() { this.refresh }",
+        "}",
+    ]
+    .join("\n");
+
+    let items = query_semantic_completions(
+        &root.to_string_lossy(),
+        &LanguageQueryRequest {
+            path: app_path.to_string_lossy().to_string(),
+            line: 5,
+            column: 26,
+            content: Some(content),
+        },
+        20,
+    )
+    .unwrap();
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        labels.contains(&"refreshPublic()"),
+        "public method missing: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"refreshPrivate()"),
+        "private method missing: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"refreshProtected()"),
+        "protected method missing: {labels:?}"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn semantic_completion_resolves_members_through_object_aliases() {
     let root = create_empty_workspace("completion-object-alias");
     let source_dir = create_workspace_source_dir(&root);

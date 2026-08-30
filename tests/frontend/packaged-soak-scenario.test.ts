@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,7 +26,7 @@ describe("packaged soak scenario", () => {
     const scenarioPath = path.join(root, "core-loop.json");
     await mkdir(root, { recursive: true });
     await writeFile(scenarioPath, JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       kind: "real-workspace",
       revision: "0123456789abcdef",
       sdkIdentity: "OpenHarmony-6.0/API-20",
@@ -52,9 +52,16 @@ describe("packaged soak scenario", () => {
       }],
       completionTargets: [{
         source: { query: "Index", title: "Index.ets", editorNeedle: "struct Index" },
-        lineNeedle: "this.model.refresh()",
-        cursorAfter: "this.model.",
-        expectedLabels: ["refresh"],
+        lineNeedle: "this.model",
+        cursorAfter: "this.model",
+        trigger: "typing",
+        expectedItems: [{ label: "refresh", kind: "method" }],
+        accept: {
+          prefix: "ref",
+          item: { label: "refresh", kind: "method" },
+          expectedLine: "this.model.refresh",
+          restoreLine: "this.model",
+        },
       }],
     }));
 
@@ -73,10 +80,51 @@ describe("packaged soak scenario", () => {
         editorNeedle: "struct Index",
       });
       expect(scenario.definitionTargets[0].target.title).toBe("PageModel.ets");
-      expect(scenario.completionTargets[0].expectedLabels).toEqual(["refresh"]);
+      expect(scenario.completionTargets[0].expectedItems).toEqual([
+        { label: "refresh", kind: "method" },
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("gates the packaged release on direct current-class this-dot completion", async () => {
+    const scenario = await loadPackagedSoakScenario({
+      scenarioPath: path.join(
+        process.cwd(),
+        "docs",
+        "performance-fixtures",
+        "core-loop-coolmall-v1.json",
+      ),
+    });
+    const probe = await readFile(path.join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "packaged-semantic",
+      "ArkLineCompletionProbe.ets",
+    ), "utf8");
+
+    expect(probe).toContain("private refreshPrivate(): void");
+    expect(probe).toContain("protected refreshProtected(): void");
+    expect(probe).toContain("this");
+    expect(scenario.completionTargets).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        source: expect.objectContaining({ query: "ArkLineCompletionProbe" }),
+        cursorAfter: "this",
+        trigger: "typing",
+        expectedItems: expect.arrayContaining([
+          { label: "refreshPrivate", kind: "method" },
+          { label: "refreshProtected", kind: "method" },
+          { label: "refreshPublic", kind: "method" },
+        ]),
+        accept: expect.objectContaining({
+          prefix: "refreshPriv",
+          expectedLine: "this.refreshPrivate()",
+          restoreLine: "this",
+        }),
+      }),
+    ]));
   });
 
   it("rejects a real workspace without a pinned revision", async () => {
@@ -84,7 +132,7 @@ describe("packaged soak scenario", () => {
     const scenarioPath = path.join(root, "core-loop.json");
     await mkdir(root, { recursive: true });
     await writeFile(scenarioPath, JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: 3,
       kind: "real-workspace",
       revision: "",
       findQueries: ["build"],

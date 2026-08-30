@@ -3,12 +3,55 @@ import type { Transaction } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorView } from "@codemirror/view";
 import { createCodeMirrorCompletionSources } from "@/editor/codemirror-completion-source";
+import { createEditorExtensions } from "@/editor/editor-extensions";
 import { createVersionCheckedCompletionTransaction } from "@/editor/completion-transaction";
 import { createCodeMirrorSignatureHelpExtension, readSignatureContext } from "@/editor/codemirror-signature-help";
 import { createCodeMirrorCompletionResultReporter } from "@/components/layout/codemirror-completion-broker";
 import type { LanguageCompletionItem } from "@/features/workspace/workspace-api";
 
 describe("CodeMirror completion sources", () => {
+  it("requests typed member completion within one animation frame", async () => {
+    vi.useFakeTimers();
+    const broker = vi.fn(async () => [{ label: "refreshPrivate", kind: "method" }]);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: "this",
+        selection: { anchor: 4 },
+        extensions: createEditorExtensions(
+          "/workspace/Main.ets",
+          { fontFamily: "monospace", fontSize: 14, lineHeight: 1.5, letterSpacing: 0 },
+          vi.fn(),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          broker,
+        ),
+      }),
+      parent: host,
+    });
+
+    try {
+      view.dispatch({
+        changes: { from: 4, insert: "." },
+        selection: { anchor: 5 },
+        userEvent: "input.type",
+      });
+      vi.advanceTimersByTime(16);
+      await Promise.resolve();
+
+      expect(broker).toHaveBeenCalledTimes(1);
+    } finally {
+      view.destroy();
+      host.remove();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps both immediate and broker completion disabled behind one availability gate", async () => {
     const broker = vi.fn(async () => [{ label: "build", detail: "method", kind: "method" }]);
     const sources = createCodeMirrorCompletionSources(
@@ -263,6 +306,48 @@ describe("CodeMirror completion sources", () => {
     await vi.waitFor(() => expect(transaction).toBeDefined());
 
     expect(transaction?.newDoc.toString()).toBe("import { Widget } from './Widget';\nconst Widget\n");
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a resolved member method after the user types a longer prefix", async () => {
+    const requestState = EditorState.create({ doc: "this." });
+    const acceptedState = requestState.update({
+      changes: { from: requestState.doc.length, insert: "refreshPriv" },
+    }).state;
+    let transaction: Transaction | undefined;
+    const resolver = vi.fn(async (item: LanguageCompletionItem) => item);
+    const [, source] = createCodeMirrorCompletionSources(
+      () => "/workspace/Main.ets",
+      async () => [{
+        label: "refreshPrivate",
+        detail: "method",
+        kind: "method",
+        insertText: "refreshPrivate()",
+        data: { provider: "typescript", documentVersion: 4 },
+      }],
+      resolver,
+    );
+    const result = await source(new CompletionContext(
+      requestState,
+      requestState.doc.length,
+      false,
+    ));
+    const option = result?.options[0];
+    if (!option || typeof option.apply !== "function") {
+      throw new Error("expected resolved completion apply function");
+    }
+
+    option.apply({
+      state: acceptedState,
+      dispatch: ((next: Transaction | readonly Transaction[]) => {
+        const value = Array.isArray(next) ? next[0] : next;
+        transaction = "newDoc" in value ? value : acceptedState.update(value);
+      }) as EditorView["dispatch"],
+    } as unknown as EditorView, option, 5, acceptedState.doc.length);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(transaction?.newDoc.toString()).toBe("this.refreshPrivate()");
     expect(resolver).toHaveBeenCalledTimes(1);
   });
 
