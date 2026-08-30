@@ -215,8 +215,48 @@ fn merge_completion_sources(
         .into_iter()
         .chain(indexed_items)
         .filter(|item| !member_access || is_receiver_member(&request.path, item))
-        .collect();
-    dedupe_completion_items(items, COMPLETION_LIMIT)
+        .collect::<Vec<_>>();
+    if member_access {
+        merge_receiver_member_items(items)
+    } else {
+        dedupe_completion_items(items, COMPLETION_LIMIT)
+    }
+}
+
+fn merge_receiver_member_items(items: Vec<CompletionItem>) -> Vec<CompletionItem> {
+    let mut merged = Vec::<CompletionItem>::new();
+    for item in items {
+        let canonical_label = item.label.trim_end_matches("()");
+        if let Some(existing) = merged.iter_mut().find(|existing| {
+            existing.kind == item.kind && existing.label.trim_end_matches("()") == canonical_label
+        }) {
+            enrich_receiver_member(existing, item);
+            continue;
+        }
+        merged.push(item);
+        if merged.len() >= COMPLETION_LIMIT {
+            break;
+        }
+    }
+    merged
+}
+
+fn enrich_receiver_member(existing: &mut CompletionItem, candidate: CompletionItem) {
+    if existing.insert_text.is_none() {
+        let call_insert_text = (matches!(candidate.kind.as_str(), "method" | "function")
+            && candidate.label.ends_with("()"))
+        .then(|| candidate.label.clone());
+        existing.insert_text = candidate.insert_text.or(call_insert_text);
+    }
+    if existing.filter_text.is_none() {
+        existing.filter_text = candidate.filter_text;
+    }
+    if existing.definition_target.is_none() {
+        existing.definition_target = candidate.definition_target;
+    }
+    if existing.data.is_none() {
+        existing.data = candidate.data;
+    }
 }
 
 fn is_receiver_member(path: &str, item: &CompletionItem) -> bool {
@@ -289,6 +329,26 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["profile", "print()"]
         );
+    }
+
+    #[test]
+    fn member_access_merges_semantic_and_indexed_method_identity_and_insert_text() {
+        let request = LanguageQueryRequest {
+            path: "/workspace/Index.ets".to_string(),
+            line: 1,
+            column: 6,
+            content: Some("this.".to_string()),
+        };
+        let mut semantic = item("refreshPrivate", "method");
+        semantic.source = Some("semantic".to_string());
+        let mut indexed = item("refreshPrivate()", "method");
+        indexed.source = Some("workspace-index".to_string());
+
+        let merged = merge_completion_sources(&request, vec![semantic], vec![indexed]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].label, "refreshPrivate");
+        assert_eq!(merged[0].insert_text.as_deref(), Some("refreshPrivate()"));
     }
 
     #[test]
