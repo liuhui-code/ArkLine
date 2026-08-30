@@ -97,7 +97,12 @@ export async function exerciseMemberCompletion(
     await driver.typeText(target.accept.prefix);
     const filtered = await driver.executeAsync(
       COMPLETION_READINESS_SCRIPT,
-      [[target.accept.item], 1_500, target.forbiddenLabels ?? []],
+      [
+        [target.accept.item],
+        1_500,
+        target.forbiddenLabels ?? [],
+        target.accept.item,
+      ],
       2_500,
     );
     if (!filtered?.matched) {
@@ -358,6 +363,7 @@ export const EDITOR_LINE_READINESS_SCRIPT = `
   let observer;
   let timer;
   let finished = false;
+  let lastLines = [];
   const finish = (value) => {
     if (finished) return;
     finished = true;
@@ -367,7 +373,9 @@ export const EDITOR_LINE_READINESS_SCRIPT = `
   };
   const inspect = () => {
     const editor = document.querySelector('[aria-label="Editor Content"]');
-    const line = [...(editor?.querySelectorAll('.cm-line') || [])]
+    const lines = [...(editor?.querySelectorAll('.cm-line') || [])];
+    lastLines = lines.map((candidate) => candidate.textContent || "");
+    const line = lines
       .find((candidate) => {
         const lineText = candidate.textContent || "";
         return exactMatch
@@ -382,7 +390,12 @@ export const EDITOR_LINE_READINESS_SCRIPT = `
   };
   observer = new MutationObserver(inspect);
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  timer = setTimeout(() => finish({ matched: false, expectedNeedle, timeout: true }), timeoutMs);
+  timer = setTimeout(() => finish({
+    matched: false,
+    expectedNeedle,
+    lines: lastLines,
+    timeout: true
+  }), timeoutMs);
   inspect();
 `;
 
@@ -390,11 +403,13 @@ export const COMPLETION_READINESS_SCRIPT = `
   const expectedItems = arguments[0];
   const timeoutMs = arguments[1];
   const forbiddenLabels = arguments[2];
+  const requiredSelectedItem = arguments.length > 4 ? arguments[3] : null;
   const done = arguments[arguments.length - 1];
   let observer;
   let timer;
   let finished = false;
   let lastItems = [];
+  let lastSelectedItem = null;
   const finish = (value) => {
     if (finished) return;
     finished = true;
@@ -417,10 +432,14 @@ export const COMPLETION_READINESS_SCRIPT = `
         const legacyKind = (option?.querySelector('.completion-popup__kind')?.textContent || "")
           .trim()
           .toLowerCase();
-        return { label, kind: iconKind || legacyKind || null };
+        const selected = option?.getAttribute('aria-selected') === 'true'
+          || option?.id === list.getAttribute('aria-activedescendant')
+          || option?.classList.contains('completion-popup__option--selected');
+        return { label, kind: iconKind || legacyKind || null, selected };
       })
       .filter((item) => Boolean(item.label));
     lastItems = items;
+    lastSelectedItem = items.find((item) => item.selected) || null;
     const labels = items.map((item) => item.label);
     const normalize = (label) => label.endsWith("()") ? label.slice(0, -2) : label;
     const normalizedLabels = labels.map(normalize);
@@ -436,8 +455,18 @@ export const COMPLETION_READINESS_SCRIPT = `
       normalize(item.label) === normalize(expectedItem.label)
       && (!expectedItem.kind || item.kind === expectedItem.kind)
     )));
-    if (matched) {
-      finish({ matched: true, labels, items, at: performance.now() });
+    const selectedMatched = !requiredSelectedItem || (lastSelectedItem && (
+      normalize(lastSelectedItem.label) === normalize(requiredSelectedItem.label)
+      && (!requiredSelectedItem.kind || lastSelectedItem.kind === requiredSelectedItem.kind)
+    ));
+    if (matched && selectedMatched) {
+      finish({
+        matched: true,
+        labels,
+        items,
+        selectedItem: lastSelectedItem,
+        at: performance.now()
+      });
     }
   };
   observer = new MutationObserver(inspect);
@@ -446,6 +475,8 @@ export const COMPLETION_READINESS_SCRIPT = `
     matched: false,
     labels: lastItems.map((item) => item.label),
     items: lastItems,
+    selectedItem: lastSelectedItem,
+    requiredSelectedItem,
     timeout: true
   }), timeoutMs);
   inspect();

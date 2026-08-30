@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   COMPLETION_READINESS_SCRIPT,
   EDITOR_CARET_READINESS_SCRIPT,
+  EDITOR_LINE_READINESS_SCRIPT,
   EDITOR_TEXT_TARGET_SCRIPT,
   exerciseDefinitionNavigation,
   exerciseMemberCompletion,
@@ -40,7 +41,7 @@ describe("packaged semantic workload", () => {
   it("reads member labels from the active CodeMirror completion list", async () => {
     document.body.innerHTML = `
       <ul aria-label="Code Completion">
-        <li>
+        <li aria-selected="true">
           <span class="cm-completionIcon cm-completionIcon-method"></span>
           <span class="cm-completionLabel">aboutToAppear()</span>
         </li>
@@ -63,9 +64,30 @@ describe("packaged semantic workload", () => {
     expect(result).toEqual(expect.objectContaining({
       matched: true,
       items: [
-        { label: "aboutToAppear()", kind: "method" },
-        { label: "title", kind: "property" },
+        { label: "aboutToAppear()", kind: "method", selected: true },
+        { label: "title", kind: "property", selected: false },
       ],
+      selectedItem: { label: "aboutToAppear()", kind: "method", selected: true },
+    }));
+  });
+
+  it("reports rendered editor lines when an accepted completion is missing", async () => {
+    document.body.innerHTML = `
+      <div aria-label="Editor Content">
+        <div class="cm-line">this.refreshPriv</div>
+        <div class="cm-line">next line</div>
+      </div>
+    `;
+
+    const result = await runAsyncBrowserScript(EDITOR_LINE_READINESS_SCRIPT, [
+      "this.refreshPrivate()",
+      20,
+    ]);
+
+    expect(result).toEqual(expect.objectContaining({
+      matched: false,
+      lines: ["this.refreshPriv", "next line"],
+      timeout: true,
     }));
   });
 
@@ -139,6 +161,15 @@ describe("packaged semantic workload", () => {
       9_000,
     );
     expect(driver.typeText).toHaveBeenCalledWith("refreshPriv");
+    expect(driver.executeAsync).toHaveBeenCalledWith(
+      COMPLETION_READINESS_SCRIPT,
+      [[{ label: "refreshPrivate", kind: "method" }], 1_500, [], {
+        label: "refreshPrivate",
+        kind: "method",
+      }],
+      2_500,
+    );
+    expect(driver.keyChord).toHaveBeenCalledWith(["\uE007"]);
     expect(driver.keyChord).toHaveBeenCalledWith(["\uE009", "z"]);
     expect(evidence).toEqual([expect.objectContaining({
       acceptedLine: "this.refreshPrivate()",
@@ -206,7 +237,14 @@ function createDriver() {
           : { matched: true, x: 160, y: 260, at: 108 };
       }
       if (script === COMPLETION_READINESS_SCRIPT) {
-        return { matched: true, labels: ["aboutToAppear", "aboutToDisappear"], at: 135 };
+        const selectedItem = args?.[3] ? { ...args[3] as object, selected: true } : undefined;
+        return {
+          matched: true,
+          labels: ["aboutToAppear", "aboutToDisappear"],
+          items: selectedItem ? [selectedItem] : [],
+          selectedItem,
+          at: 135,
+        };
       }
       if (script === EDITOR_CARET_READINESS_SCRIPT) {
         return { matched: true, column: 9, textBeforeCursor: "this.vm.", at: 109 };

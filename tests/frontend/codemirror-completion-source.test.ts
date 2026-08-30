@@ -266,6 +266,48 @@ describe("CodeMirror completion sources", () => {
     expect(resolver).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts a resolved member method after the user types a longer prefix", async () => {
+    const requestState = EditorState.create({ doc: "this." });
+    const acceptedState = requestState.update({
+      changes: { from: requestState.doc.length, insert: "refreshPriv" },
+    }).state;
+    let transaction: Transaction | undefined;
+    const resolver = vi.fn(async (item: LanguageCompletionItem) => item);
+    const [, source] = createCodeMirrorCompletionSources(
+      () => "/workspace/Main.ets",
+      async () => [{
+        label: "refreshPrivate",
+        detail: "method",
+        kind: "method",
+        insertText: "refreshPrivate()",
+        data: { provider: "typescript", documentVersion: 4 },
+      }],
+      resolver,
+    );
+    const result = await source(new CompletionContext(
+      requestState,
+      requestState.doc.length,
+      false,
+    ));
+    const option = result?.options[0];
+    if (!option || typeof option.apply !== "function") {
+      throw new Error("expected resolved completion apply function");
+    }
+
+    option.apply({
+      state: acceptedState,
+      dispatch: ((next: Transaction | readonly Transaction[]) => {
+        const value = Array.isArray(next) ? next[0] : next;
+        transaction = "newDoc" in value ? value : acceptedState.update(value);
+      }) as EditorView["dispatch"],
+    } as unknown as EditorView, option, 5, acceptedState.doc.length);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(transaction?.newDoc.toString()).toBe("this.refreshPrivate()");
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
   it("drops a resolved completion after the editor document changes", async () => {
     const state = EditorState.create({ doc: "const Wid" });
     let currentState = state;
