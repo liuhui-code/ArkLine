@@ -60,7 +60,6 @@ describe("useSearchEverywhereController", () => {
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
       expect.any(Number),
-      250,
     );
     expect(result.current.search.searchEverywhereCandidates).toHaveLength(1);
 
@@ -107,7 +106,6 @@ describe("useSearchEverywhereController", () => {
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
       expect.any(Number),
-      250,
     );
   });
 
@@ -363,7 +361,6 @@ describe("useSearchEverywhereController", () => {
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
       expect.any(Number),
-      250,
     );
   });
 

@@ -4,7 +4,7 @@ import type { WorkspaceIndexQueryEnvelope } from "@/features/workspace/workspace
 import type { SearchCandidate } from "@/features/workspace/workspace-index-store";
 
 describe("search entity runner", () => {
-  it("runs readiness-first entity search through tracked requests", async () => {
+  it("leaves the cancellable initial-query deadline to the workspace broker", async () => {
     const envelope: WorkspaceIndexQueryEnvelope<SearchCandidate> = {
       contractVersion: 1,
       capability: "searchEverywhere",
@@ -52,7 +52,6 @@ describe("search entity runner", () => {
       null,
       { activePath: "/workspace/Entry.ets", recentPaths: [], openedPaths: [] },
       9,
-      250,
     );
     expect(replaceQueryReadiness).not.toHaveBeenCalled();
     expect(patchSearchSession).toHaveBeenCalledWith(expect.objectContaining({
