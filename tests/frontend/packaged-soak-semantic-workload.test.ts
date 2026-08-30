@@ -104,6 +104,7 @@ describe("packaged semantic workload", () => {
     expect(counters.definitionMissCount).toBe(0);
     expect(evidence).toEqual([expect.objectContaining({
       kind: "definition",
+      latencyMs: 40,
       targetTitle: "EntryViewModel.ets",
     })]);
   });

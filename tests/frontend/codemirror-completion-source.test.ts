@@ -3,12 +3,55 @@ import type { Transaction } from "@codemirror/state";
 import { CompletionContext } from "@codemirror/autocomplete";
 import { EditorView } from "@codemirror/view";
 import { createCodeMirrorCompletionSources } from "@/editor/codemirror-completion-source";
+import { createEditorExtensions } from "@/editor/editor-extensions";
 import { createVersionCheckedCompletionTransaction } from "@/editor/completion-transaction";
 import { createCodeMirrorSignatureHelpExtension, readSignatureContext } from "@/editor/codemirror-signature-help";
 import { createCodeMirrorCompletionResultReporter } from "@/components/layout/codemirror-completion-broker";
 import type { LanguageCompletionItem } from "@/features/workspace/workspace-api";
 
 describe("CodeMirror completion sources", () => {
+  it("requests typed member completion within one animation frame", async () => {
+    vi.useFakeTimers();
+    const broker = vi.fn(async () => [{ label: "refreshPrivate", kind: "method" }]);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: "this",
+        selection: { anchor: 4 },
+        extensions: createEditorExtensions(
+          "/workspace/Main.ets",
+          { fontFamily: "monospace", fontSize: 14, lineHeight: 1.5, letterSpacing: 0 },
+          vi.fn(),
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          broker,
+        ),
+      }),
+      parent: host,
+    });
+
+    try {
+      view.dispatch({
+        changes: { from: 4, insert: "." },
+        selection: { anchor: 5 },
+        userEvent: "input.type",
+      });
+      vi.advanceTimersByTime(16);
+      await Promise.resolve();
+
+      expect(broker).toHaveBeenCalledTimes(1);
+    } finally {
+      view.destroy();
+      host.remove();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps both immediate and broker completion disabled behind one availability gate", async () => {
     const broker = vi.fn(async () => [{ label: "build", detail: "method", kind: "method" }]);
     const sources = createCodeMirrorCompletionSources(

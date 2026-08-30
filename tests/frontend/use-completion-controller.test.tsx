@@ -247,6 +247,26 @@ describe("useCompletionController", () => {
     expect(result.current.completion.completionRequestStats.running).toBe(true);
   });
 
+  it("requests punctuation-triggered member completion within one animation frame", async () => {
+    vi.useFakeTimers();
+    const completeSymbol = vi.fn(async () => []);
+    const { result } = renderHarness({
+      activeContent: "this.",
+      editorSelection: { line: 1, column: 6 },
+      workspaceApi: workspaceApi({ completeSymbol }),
+    });
+
+    act(() => {
+      result.current.completion.triggerTypingCompletion({ line: 1, column: 6 });
+      vi.advanceTimersByTime(16);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(completeSymbol).toHaveBeenCalledTimes(1);
+  });
+
   it("does not let a stale completion timeout take focus from search", async () => {
     vi.useFakeTimers();
     const focusEditorSoon = vi.fn();

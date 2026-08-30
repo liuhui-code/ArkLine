@@ -23,6 +23,9 @@ import type { LanguageCompletionItem, WorkspaceApi } from "@/features/workspace/
 import { getPathBasename, normalizePath } from "@/features/workspace/workspace-store";
 
 const COMPLETION_TIMEOUT_MS = 2500;
+const TYPING_COMPLETION_DELAY_MS = 120;
+const PUNCTUATION_COMPLETION_DELAY_MS = 16;
+const COMPLETION_TRIGGER_PUNCTUATION = ".([{:<#";
 
 export type UseCompletionControllerOptions = {
   workspaceApi: WorkspaceApi;
@@ -258,9 +261,17 @@ export function useCompletionController({
       onStatusChange("SDK settings are still applying");
       return;
     }
+    const lineTextBeforeCursor = getLineTextBeforeCursor(
+      getActiveContent(),
+      selection.line,
+      selection.column,
+    );
+    const delayMs = COMPLETION_TRIGGER_PUNCTUATION.includes(lineTextBeforeCursor.at(-1) ?? "")
+      ? PUNCTUATION_COMPLETION_DELAY_MS
+      : TYPING_COMPLETION_DELAY_MS;
     typingCompletionTimerRef.current = window.setTimeout(() => {
       void requestCompletion("typing", selection);
-    }, 120);
+    }, delayMs);
   }
 
   function insertCompletionItem(item: CompletionPresentation) {

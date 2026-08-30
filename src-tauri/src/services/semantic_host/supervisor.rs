@@ -5,7 +5,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::models::language::{SemanticSupervisorSnapshot, SemanticWorkerRuntime};
 
 pub const SEMANTIC_MEMORY_LIMIT_MB_ENV: &str = "ARKLINE_SEMANTIC_MEMORY_LIMIT_MB";
-const DEFAULT_MEMORY_LIMIT_MB: u64 = 256;
+const DEFAULT_MEMORY_LIMIT_MB: u64 = 1024;
 const MIN_MEMORY_LIMIT_MB: u64 = 256;
 const MAX_MEMORY_LIMIT_MB: u64 = 8192;
 const BASE_RESTART_BACKOFF_MS: u64 = 250;
@@ -253,8 +253,8 @@ mod tests {
     }
 
     #[test]
-    fn memory_budget_uses_conservative_default_and_bounds_configuration() {
-        assert_eq!(semantic_memory_limit_mb(None), 256);
+    fn memory_budget_preserves_the_large_workspace_default_and_bounds_configuration() {
+        assert_eq!(semantic_memory_limit_mb(None), 1024);
         assert_eq!(semantic_memory_limit_mb(Some("32")), 256);
         assert_eq!(semantic_memory_limit_mb(Some("99999")), 8192);
     }

@@ -249,7 +249,7 @@ fn foreground_navigation_does_not_interrupt_background_discovery() {
         .any(|status| status.kind == "discovery" && status.status == "ready"));
     assert_eq!(discovered.map(|files| files.len()), Some(1));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_dir(&root);
 }
 
 #[test]

@@ -33,13 +33,15 @@ export async function exerciseDefinitionNavigation(
       target.target.editorNeedle,
       TARGET_TIMEOUT_MS,
     );
-    samples.push(Math.max(0, rendered.at - startedAt));
+    const latencyMs = Math.max(0, rendered.at - startedAt);
+    samples.push(latencyMs);
     evidence.push({
       kind: "definition",
       sourceTitle: target.source.title,
       token: target.token,
       targetTitle: target.target.title,
       targetNeedle: target.target.editorNeedle,
+      latencyMs,
       capturedAt: Date.now(),
     });
   } catch (error) {
