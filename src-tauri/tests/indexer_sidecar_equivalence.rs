@@ -134,11 +134,8 @@ fn discovery_compacts_a_legacy_excluded_cursor_before_request_partitioning() {
     let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
     let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
 
-    let attempt = runtime.discover_workspace_chunk(
-        task(&root_path, "discovery", 51),
-        Some(legacy_cursor),
-        1,
-    );
+    let attempt =
+        runtime.discover_workspace_chunk(task(&root_path, "discovery", 51), Some(legacy_cursor), 1);
     let IndexerDiscoveryAttempt::Applied(result) = attempt else {
         panic!("packaged discovery should compact a legacy cursor");
     };
