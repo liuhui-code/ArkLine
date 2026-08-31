@@ -34,6 +34,7 @@ const DOCUMENTATION_EXCEPTION = `
 - Owner: quality-platform
 - Expiry: 2026-08-31
 `;
+const DOCUMENTATION_EXCEPTION_TODAY = "2026-08-16";
 
 describe("TDD evidence enforcement", () => {
   it("accepts a production change backed by a changed test and complete RED/GREEN evidence", () => {
@@ -148,6 +149,7 @@ describe("TDD evidence enforcement", () => {
       changedFiles: ["docs/quality/tdd-policy.md"],
       changedTestFiles: [],
       pullRequestBody: DOCUMENTATION_EXCEPTION,
+      today: DOCUMENTATION_EXCEPTION_TODAY,
     });
 
     expect(result).toEqual({ ok: true, mode: "exception", errors: [] });
@@ -165,6 +167,7 @@ describe("TDD evidence enforcement", () => {
         "docs/quality/tdd-policy.md",
         filePath,
       ),
+      today: DOCUMENTATION_EXCEPTION_TODAY,
     });
 
     expect(result).toEqual({ ok: true, mode: "exception", errors: [] });
@@ -178,6 +181,7 @@ describe("TDD evidence enforcement", () => {
       ],
       changedTestFiles: [],
       pullRequestBody: DOCUMENTATION_EXCEPTION,
+      today: DOCUMENTATION_EXCEPTION_TODAY,
     });
 
     expect(result).toEqual({

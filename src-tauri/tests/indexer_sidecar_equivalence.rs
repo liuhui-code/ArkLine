@@ -84,6 +84,70 @@ fn real_sidecar_matches_the_workspace_index_contract_fixture() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn discovery_does_not_defer_known_excludes_to_an_empty_follow_up_chunk() {
+    let root = std::env::temp_dir().join(format!(
+        "arkline-sidecar-excluded-frontier-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let module = root.join("module");
+    fs::create_dir_all(module.join("build")).unwrap();
+    fs::write(module.join("A.ets"), "struct A {}\n").unwrap();
+    fs::write(module.join("build").join("generated.ets"), "").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
+    let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+
+    let attempt = runtime.discover_workspace_chunk(task(&root_path, "discovery", 50), None, 1);
+    let IndexerDiscoveryAttempt::Applied(result) = attempt else {
+        panic!("packaged discovery should be available");
+    };
+
+    assert_eq!(result.chunk_file_count, 1);
+    assert_eq!(result.excluded_count, 1);
+    assert!(!result.has_more);
+    assert!(result.pending_directories.is_none());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_compacts_a_legacy_excluded_cursor_before_request_partitioning() {
+    let root = std::env::temp_dir().join(format!(
+        "arkline-sidecar-legacy-excluded-cursor-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let source = root.join("src").join("A.ets");
+    fs::create_dir_all(source.parent().unwrap()).unwrap();
+    fs::write(&source, "struct A {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let mut legacy_cursor = (0..2_000)
+        .map(|index| {
+            root.join("oh_modules")
+                .join(format!("dependency-{index:04}"))
+                .join("generated-entry-with-a-long-name.ets")
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    legacy_cursor.push(source.to_string_lossy().to_string());
+    let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
+    let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+
+    let attempt =
+        runtime.discover_workspace_chunk(task(&root_path, "discovery", 51), Some(legacy_cursor), 1);
+    let IndexerDiscoveryAttempt::Applied(result) = attempt else {
+        panic!("packaged discovery should compact a legacy cursor");
+    };
+
+    assert_eq!(result.chunk_file_count, 1);
+    assert_eq!(result.excluded_count, 2_000);
+    assert!(!result.has_more);
+    assert!(result.pending_directories.is_none());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn task(root_path: &str, kind: &str, generation: u64) -> IndexerTaskKey {
     IndexerTaskKey {
         root_path: root_path.to_string(),

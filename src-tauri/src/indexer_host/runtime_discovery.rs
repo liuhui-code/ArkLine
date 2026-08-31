@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::indexer_sidecar::{IndexerDiscoveryResult, IndexerTaskKey};
 use crate::models::workspace_index_publication::WorkspaceIndexPublicationArtifactDescriptor;
 use crate::services::workspace_discovery_service::{
@@ -11,6 +13,7 @@ use crate::services::workspace_index_publication_scheduler_service::PublicationP
 use crate::services::workspace_index_writer_actor_service::{
     WorkspaceIndexPublicationAttempt, WorkspaceIndexPublicationRequest,
 };
+use crate::services::workspace_service::should_exclude;
 
 use super::runtime::IndexerHostRuntime;
 use super::runtime_state::IndexerRequestKind;
@@ -44,11 +47,12 @@ impl IndexerHostRuntime {
             }
         };
         let actor_publication = session.supports_discovery_writer_actor_publication();
-        let (request_cursor, deferred_cursor, cursor_identity) = if actor_publication {
-            partition_discovery_cursor(pending_directories)
-        } else {
-            (pending_directories, Vec::new(), None)
-        };
+        let (request_cursor, deferred_cursor, cursor_identity, pruned_excluded_count) =
+            if actor_publication {
+                partition_discovery_cursor(&task.root_path, pending_directories)
+            } else {
+                (pending_directories, Vec::new(), None, 0)
+            };
         let result = if actor_publication {
             session.prepare_discovery_chunk(task, request_cursor, cursor_identity, limit)
         } else {
@@ -63,11 +67,12 @@ impl IndexerHostRuntime {
                     );
                     return IndexerDiscoveryAttempt::Unavailable;
                 };
-                if !deferred_cursor.is_empty() {
-                    descriptor = match extend_discovery_artifact_cursor(
+                if !deferred_cursor.is_empty() || pruned_excluded_count > 0 {
+                    descriptor = match update_discovery_artifact(
                         &result.task.root_path,
                         &descriptor,
                         &deferred_cursor,
+                        pruned_excluded_count,
                     ) {
                         Ok(descriptor) => descriptor,
                         Err(error) => {
@@ -75,8 +80,9 @@ impl IndexerHostRuntime {
                             return IndexerDiscoveryAttempt::Unavailable;
                         }
                     };
-                    merge_deferred_discovery_cursor(&mut result, deferred_cursor);
                 }
+                result.excluded_count = result.excluded_count.saturating_add(pruned_excluded_count);
+                merge_deferred_discovery_cursor(&mut result, deferred_cursor);
                 match self.writer.publish(
                     WorkspaceIndexPublicationRequest::new(
                         result.task.root_path.clone(),
@@ -125,22 +131,29 @@ impl IndexerHostRuntime {
 }
 
 fn partition_discovery_cursor(
+    root_path: &str,
     pending: Option<Vec<String>>,
 ) -> (
     Option<Vec<String>>,
     Vec<String>,
     Option<WorkspaceDiscoveryCursorIdentity>,
+    usize,
 ) {
     let Some(paths) = pending else {
-        return (None, Vec::new(), None);
+        return (None, Vec::new(), None, 0);
     };
     let identity = workspace_discovery_cursor_identity(&WorkspaceDiscoveryCursor {
         pending_directories: paths.clone(),
     });
     let mut request = Vec::new();
     let mut deferred = Vec::new();
+    let mut pruned_excluded_count = 0usize;
     let mut estimated_bytes = 0usize;
     for path in paths {
+        if should_exclude(Path::new(root_path), Path::new(&path)) {
+            pruned_excluded_count += 1;
+            continue;
+        }
         let path_bytes = path.len().saturating_mul(2).saturating_add(4);
         if !request.is_empty()
             && estimated_bytes.saturating_add(path_bytes) > DISCOVERY_CURSOR_REQUEST_BUDGET_BYTES
@@ -151,8 +164,8 @@ fn partition_discovery_cursor(
             request.push(path);
         }
     }
-    let identity = (!deferred.is_empty()).then_some(identity);
-    (Some(request), deferred, identity)
+    let identity = (!deferred.is_empty() || pruned_excluded_count > 0).then_some(identity);
+    (Some(request), deferred, identity, pruned_excluded_count)
 }
 
 fn merge_deferred_discovery_cursor(result: &mut IndexerDiscoveryResult, deferred: Vec<String>) {
@@ -165,28 +178,35 @@ fn merge_deferred_discovery_cursor(result: &mut IndexerDiscoveryResult, deferred
     result.has_more = true;
 }
 
-fn extend_discovery_artifact_cursor(
+fn update_discovery_artifact(
     root_path: &str,
     descriptor: &WorkspaceIndexPublicationArtifactDescriptor,
     deferred: &[String],
+    pruned_excluded_count: usize,
 ) -> Result<WorkspaceIndexPublicationArtifactDescriptor, String> {
     let mut artifact = read_workspace_publication_artifact(root_path, descriptor)?;
     let WorkspaceIndexPublicationArtifact::Discovery { prepared, .. } = &mut artifact else {
         return Err("Indexer discovery returned a non-discovery artifact".to_string());
     };
-    let mut pending = prepared
+    prepared.chunk.excluded_count = prepared
         .chunk
-        .cursor
-        .take()
-        .map(|cursor| cursor.pending_directories)
-        .unwrap_or_default();
-    pending.extend(deferred.iter().cloned());
-    prepared.chunk.cursor = Some(
-        crate::services::workspace_discovery_service::WorkspaceDiscoveryCursor {
-            pending_directories: pending,
-        },
-    );
-    prepared.chunk.has_more = true;
+        .excluded_count
+        .saturating_add(pruned_excluded_count);
+    if !deferred.is_empty() {
+        let mut pending = prepared
+            .chunk
+            .cursor
+            .take()
+            .map(|cursor| cursor.pending_directories)
+            .unwrap_or_default();
+        pending.extend(deferred.iter().cloned());
+        prepared.chunk.cursor = Some(
+            crate::services::workspace_discovery_service::WorkspaceDiscoveryCursor {
+                pending_directories: pending,
+            },
+        );
+        prepared.chunk.has_more = true;
+    }
     let replacement = write_workspace_publication_artifact(root_path, &artifact)?;
     remove_workspace_publication_artifact(descriptor);
     Ok(replacement)
@@ -206,13 +226,15 @@ mod tests {
         let paths = (0..20_000)
             .map(|index| format!(r"C:\workspace\module\src\Page{index:06}.ets"))
             .collect::<Vec<_>>();
-        let (request, deferred, identity) = partition_discovery_cursor(Some(paths.clone()));
+        let (request, deferred, identity, pruned_excluded_count) =
+            partition_discovery_cursor(r"C:\workspace", Some(paths.clone()));
         let request = request.unwrap();
         assert!(!request.is_empty());
         assert!(!deferred.is_empty());
         let estimated = request.iter().map(|path| path.len() * 2 + 4).sum::<usize>();
         assert!(estimated <= DISCOVERY_CURSOR_REQUEST_BUDGET_BYTES);
         assert_eq!(identity.unwrap().pending_count, paths.len());
+        assert_eq!(pruned_excluded_count, 0);
 
         let mut result = discovery_result(vec!["sidecar-pending".to_string()]);
         merge_deferred_discovery_cursor(&mut result, deferred.clone());
