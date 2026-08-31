@@ -78,7 +78,11 @@ pub fn discover_workspace_chunk(
 
         if path.is_dir() {
             for child in sorted_children(&path)? {
-                queue.push_back(child);
+                if should_exclude(root_path, &child) {
+                    excluded_count += 1;
+                } else {
+                    queue.push_back(child);
+                }
             }
             continue;
         }

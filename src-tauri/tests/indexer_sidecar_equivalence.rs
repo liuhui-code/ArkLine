@@ -98,11 +98,7 @@ fn discovery_does_not_defer_known_excludes_to_an_empty_follow_up_chunk() {
     let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
     let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
 
-    let attempt = runtime.discover_workspace_chunk(
-        task(&root_path, "discovery", 50),
-        None,
-        1,
-    );
+    let attempt = runtime.discover_workspace_chunk(task(&root_path, "discovery", 50), None, 1);
     let IndexerDiscoveryAttempt::Applied(result) = attempt else {
         panic!("packaged discovery should be available");
     };
