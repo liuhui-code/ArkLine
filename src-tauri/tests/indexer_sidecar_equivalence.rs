@@ -84,6 +84,37 @@ fn real_sidecar_matches_the_workspace_index_contract_fixture() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn discovery_does_not_defer_known_excludes_to_an_empty_follow_up_chunk() {
+    let root = std::env::temp_dir().join(format!(
+        "arkline-sidecar-excluded-frontier-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let module = root.join("module");
+    fs::create_dir_all(module.join("build")).unwrap();
+    fs::write(module.join("A.ets"), "struct A {}\n").unwrap();
+    fs::write(module.join("build").join("generated.ets"), "").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    let executable = Path::new(env!("CARGO_BIN_EXE_arkline-indexer"));
+    let runtime = IndexerHostRuntime::with_executable(executable.to_path_buf());
+
+    let attempt = runtime.discover_workspace_chunk(
+        task(&root_path, "discovery", 50),
+        None,
+        1,
+    );
+    let IndexerDiscoveryAttempt::Applied(result) = attempt else {
+        panic!("packaged discovery should be available");
+    };
+
+    assert_eq!(result.chunk_file_count, 1);
+    assert_eq!(result.excluded_count, 1);
+    assert!(!result.has_more);
+    assert!(result.pending_directories.is_none());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn task(root_path: &str, kind: &str, generation: u64) -> IndexerTaskKey {
     IndexerTaskKey {
         root_path: root_path.to_string(),
