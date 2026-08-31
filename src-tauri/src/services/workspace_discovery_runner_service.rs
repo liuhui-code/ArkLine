@@ -12,7 +12,7 @@ use crate::services::workspace_discovery_service::{
     WorkspaceDiscoveryCursor, WorkspaceDiscoveryCursorIdentity,
 };
 use crate::services::workspace_discovery_store_service::{
-    count_discovered_files_in_connection, load_discovery_state_in_connection,
+    count_discovered_files_for_generation_in_connection, load_discovery_state_in_connection,
     prune_discovered_files_except_generation_in_connection,
     replace_discovered_file_chunk_in_connection, update_discovery_state_in_connection,
     WorkspaceDiscoveryState,
@@ -128,8 +128,10 @@ pub(crate) fn publish_prepared_workspace_discovery_chunk(
             &prepared.root_path,
             ensure_workspace_index_schema,
             |transaction| {
+                let existing_state =
+                    load_discovery_state_in_connection(transaction, &prepared.root_path)?;
                 if let Some(chunk) = existing_outcome(
-                    load_discovery_state_in_connection(transaction, &prepared.root_path)?.as_ref(),
+                    existing_state.as_ref(),
                     &prepared.cursor,
                     prepared.cursor_identity.as_ref(),
                     prepared.generation,
@@ -150,8 +152,16 @@ pub(crate) fn publish_prepared_workspace_discovery_chunk(
                         prepared.generation,
                     )?;
                 }
-                let discovered_count =
-                    count_discovered_files_in_connection(transaction, &prepared.root_path)?;
+                let discovered_count = count_discovered_files_for_generation_in_connection(
+                    transaction,
+                    &prepared.root_path,
+                    prepared.generation,
+                )?;
+                let excluded_count = existing_state
+                    .filter(|state| state.generation == prepared.generation)
+                    .map(|state| state.excluded_count)
+                    .unwrap_or(0)
+                    .saturating_add(prepared.chunk.excluded_count);
                 update_discovery_state_in_connection(
                     transaction,
                     &WorkspaceDiscoveryState {
@@ -159,7 +169,7 @@ pub(crate) fn publish_prepared_workspace_discovery_chunk(
                         generation: prepared.generation,
                         status: discovery_state_status(&prepared.chunk).to_string(),
                         discovered_count,
-                        excluded_count: prepared.chunk.excluded_count,
+                        excluded_count,
                         cursor: prepared.chunk.cursor.clone(),
                         error: None,
                     },
@@ -172,7 +182,9 @@ pub(crate) fn publish_prepared_workspace_discovery_chunk(
                             &prepared.root_path,
                             prepared.generation,
                             reason,
-                            &prepared.chunk,
+                            discovered_count,
+                            excluded_count,
+                            prepared.chunk.has_more,
                         ),
                     )?;
                 }
@@ -259,22 +271,24 @@ fn discovery_task_status(
     root_path: &str,
     generation: i64,
     reason: &str,
-    chunk: &WorkspaceDiscoveryChunk,
+    discovered_count: usize,
+    excluded_count: usize,
+    has_more: bool,
 ) -> WorkspaceIndexTaskStatus {
     let now = current_time_millis();
-    let progress_total = if chunk.has_more {
-        chunk.files.len().saturating_add(1)
+    let progress_total = if has_more {
+        discovered_count.saturating_add(1)
     } else {
-        chunk.files.len()
+        discovered_count
     };
     WorkspaceIndexTaskStatus {
         task_id: format!("{generation}:discovery"),
         root_path: root_path.to_string(),
         kind: "discovery".to_string(),
-        status: discovery_status(chunk).to_string(),
+        status: if has_more { "partial" } else { "ready" }.to_string(),
         reason: reason.to_string(),
         generation: generation as u64,
-        progress_current: chunk.files.len(),
+        progress_current: discovered_count,
         progress_total,
         target_paths: Vec::new(),
         target_path_count: None,
@@ -285,18 +299,9 @@ fn discovery_task_status(
         symbol_count: None,
         message: Some(format!(
             "Discovered {} file(s), excluded {} entries",
-            chunk.files.len(),
-            chunk.excluded_count
+            discovered_count, excluded_count
         )),
         error: None,
-    }
-}
-
-fn discovery_status(chunk: &WorkspaceDiscoveryChunk) -> &'static str {
-    if chunk.has_more {
-        "partial"
-    } else {
-        "ready"
     }
 }
 

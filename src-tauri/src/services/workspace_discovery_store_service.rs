@@ -384,6 +384,23 @@ pub(crate) fn count_discovered_files_in_connection(
         .map_err(|error| error.to_string())
 }
 
+pub(crate) fn count_discovered_files_for_generation_in_connection(
+    connection: &Connection,
+    root_path: &str,
+    generation: i64,
+) -> Result<usize, String> {
+    connection
+        .query_row(
+            "select count(*)
+             from workspace_discovered_files
+             where root_path = ?1 and generation = ?2 and excluded = 0",
+            params![normalize_index_path(root_path), generation],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count as usize)
+        .map_err(|error| error.to_string())
+}
+
 fn normalize_index_path(path: &str) -> String {
     path.replace('/', "\\")
 }

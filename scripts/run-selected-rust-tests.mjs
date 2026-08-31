@@ -16,6 +16,7 @@ export function planSelectedRustTests(testPaths) {
   const integrationPaths = [...new Set(testPaths)]
     .filter((testPath) => testPath.startsWith("src-tauri/tests/"))
     .sort();
+  const integrationGroups = groupIntegrationPaths(integrationPaths);
   const targets = [];
 
   if (unitPaths.length > 0) {
@@ -27,17 +28,17 @@ export function planSelectedRustTests(testPaths) {
     });
   }
 
-  if (integrationPaths.length > 0) {
-    const wholeTargetSelected = integrationPaths.includes(
-      "src-tauri/tests/indexer_sidecar.rs",
+  for (const [name, targetPaths] of integrationGroups) {
+    const wholeTargetSelected = targetPaths.includes(
+      `src-tauri/tests/${name}.rs`,
     );
     targets.push({
       kind: "test",
-      name: "indexer_sidecar",
+      name,
       filters: wholeTargetSelected
         ? []
-        : integrationPaths.map(integrationModuleFilter).filter(Boolean),
-      testPaths: integrationPaths,
+        : targetPaths.map(integrationModuleFilter).filter(Boolean),
+      testPaths: targetPaths,
     });
   }
 
@@ -50,10 +51,26 @@ export function planSelectedRustTests(testPaths) {
       "--no-run",
       "--message-format=json-render-diagnostics",
       ...(unitPaths.length > 0 ? ["--lib"] : []),
-      ...(integrationPaths.length > 0 ? ["--test", "indexer_sidecar"] : []),
+      ...[...integrationGroups.keys()].flatMap((name) => ["--test", name]),
     ],
     targets,
   };
+}
+
+function groupIntegrationPaths(integrationPaths) {
+  const groups = new Map();
+  for (const testPath of integrationPaths) {
+    const stem = testPath
+      .replace(/^src-tauri\/tests\//u, "")
+      .replace(/\.rs$/u, "");
+    const targetName = stem.startsWith("indexer_sidecar_")
+      ? "indexer_sidecar"
+      : stem;
+    const paths = groups.get(targetName) ?? [];
+    paths.push(testPath);
+    groups.set(targetName, paths);
+  }
+  return groups;
 }
 
 export async function executeSelectedRustTests(plan, { compile, runBinary }) {

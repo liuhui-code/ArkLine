@@ -15,6 +15,7 @@ use crate::services::workspace_discovery_store_service::{
     load_discovered_files, load_discovery_cursor,
 };
 use crate::services::workspace_index_schema_service::migrate_workspace_index_schema;
+use crate::services::workspace_index_task_journal_service::load_recent_task_statuses;
 
 fn unique_temp_dir(name: &str) -> PathBuf {
     let suffix = SystemTime::now()
@@ -63,6 +64,59 @@ fn discovery_runner_resumes_and_marks_ready() {
     assert_eq!(stored_state_status(&root), "ready");
     assert_eq!(stored_discovered_count(&root), 2);
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_journal_reports_cumulative_progress_across_chunks() {
+    let root = unique_temp_dir("workspace-discovery-runner-cumulative-progress");
+    fs::create_dir_all(root.join("entry")).unwrap();
+    fs::create_dir_all(root.join("node_modules").join("ignored")).unwrap();
+    fs::write(root.join("A.ets"), "struct A {}\n").unwrap();
+    fs::write(root.join("entry").join("B.ets"), "struct B {}\n").unwrap();
+    fs::write(root.join("node_modules/ignored/index.js"), "").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+
+    let first =
+        run_workspace_discovery_chunk_with_journal(&root, None, 1, 12, "workspace-discovery")
+            .unwrap();
+    run_workspace_discovery_chunk_with_journal(&root, first.cursor, 10, 12, "workspace-discovery")
+        .unwrap();
+    let status = load_recent_task_statuses(&root_path, 10)
+        .unwrap()
+        .into_iter()
+        .find(|status| status.task_id == "12:discovery")
+        .unwrap();
+
+    assert_eq!(status.status, "ready");
+    assert_eq!(status.progress_current, 2);
+    assert_eq!(status.progress_total, 2);
+    assert_eq!(
+        status.message.as_deref(),
+        Some("Discovered 2 file(s), excluded 1 entries")
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn discovery_progress_does_not_count_files_from_an_older_generation() {
+    let root = unique_temp_dir("workspace-discovery-runner-generation-progress");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("A.ets"), "struct A {}\n").unwrap();
+    fs::write(root.join("B.ets"), "struct B {}\n").unwrap();
+    let root_path = root.to_string_lossy().to_string();
+    run_workspace_discovery_chunk(&root, None, 10, 11).unwrap();
+
+    run_workspace_discovery_chunk_with_journal(&root, None, 1, 12, "workspace-discovery").unwrap();
+    let status = load_recent_task_statuses(&root_path, 10)
+        .unwrap()
+        .into_iter()
+        .find(|status| status.task_id == "12:discovery")
+        .unwrap();
+
+    assert_eq!(status.status, "partial");
+    assert_eq!(status.progress_current, 1);
+    assert_eq!(status.progress_total, 2);
     fs::remove_dir_all(root).unwrap();
 }
 

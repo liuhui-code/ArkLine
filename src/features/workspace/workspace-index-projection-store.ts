@@ -8,6 +8,7 @@ import type { WorkspaceIndexRefreshResult } from "@/features/workspace/workspace
 import { repairActionFromPayload } from "@/features/workspace/workspace-index-repair-action-model";
 import {
   createWorkspaceIndexTaskReconciler,
+  isFinalTaskStatus,
   type WorkspaceIndexTaskReconciliation,
 } from "@/features/workspace/workspace-index-task-reconciliation";
 
@@ -407,7 +408,11 @@ function mergeTaskStatus(
   next: WorkspaceIndexTaskStatus,
 ) {
   const previous = statuses.find((status) => status.taskId === next.taskId);
-  const merged = preserveDeepRefreshProgress(previous, next);
+  const merged = previous
+    && isFinalTaskStatus(previous.status)
+    && !isFinalTaskStatus(next.status)
+    ? previous
+    : preserveDeepRefreshProgress(previous, next);
   const retained = statuses.filter((status) => status.taskId !== next.taskId);
   return [...retained, merged].sort((left, right) => left.generation - right.generation);
 }

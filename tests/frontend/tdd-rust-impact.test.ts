@@ -85,6 +85,20 @@ describe("TDD selected Rust runner", () => {
     });
   });
 
+  it("maps a standalone integration source to its own Cargo test target", () => {
+    const plan = planSelectedRustTests([
+      "src-tauri/tests/runtime_logging.rs",
+    ]);
+
+    expect(plan.targets).toEqual([{
+      kind: "test",
+      name: "runtime_logging",
+      filters: [],
+      testPaths: ["src-tauri/tests/runtime_logging.rs"],
+    }]);
+    expect(plan.cargoArgs).toContain("runtime_logging");
+  });
+
   it("compiles once and runs every selected module through the test executable", async () => {
     const plan = planSelectedRustTests([
       "src-tauri/src/services/build_environment_service_tests.rs",

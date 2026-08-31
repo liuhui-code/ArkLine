@@ -37,6 +37,7 @@ export function main() {
       "src-tauri/Cargo.toml",
       "--lib",
       "--test", "indexer_sidecar",
+      "--test", "runtime_logging",
       "--",
       "--test-threads=1",
     ],

@@ -98,6 +98,7 @@ describe("TDD governance", () => {
 
     expect(rustRunner).toContain('"--lib"');
     expect(rustRunner).toContain('"--test", "indexer_sidecar"');
+    expect(rustRunner).toContain('"--test", "runtime_logging"');
     expect(cargoManifest).toContain("autotests = false");
     expect(cargoManifest).toContain('name = "indexer_sidecar"');
     for (const moduleName of ["content_health", "equivalence", "health"]) {
