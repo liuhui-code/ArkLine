@@ -209,6 +209,90 @@ describe("useWorkspaceIndexWatchers", () => {
     expect(applyWorkspaceIndexState).toHaveBeenCalledWith(readyState);
   });
 
+  it("periodically reconciles authoritative task status when a terminal event is missed", async () => {
+    vi.useFakeTimers();
+    const rootPath = "/workspace";
+    const refreshWorkspaceIndexTaskStatuses = vi.fn(async () => undefined);
+    const teardown = vi.fn();
+    let onTaskStatus: ((status: WorkspaceIndexTaskStatus) => void) | null = null;
+    const { unmount } = renderHook(() => useWorkspaceIndexWatchers({
+      rootPath,
+      workspaceApi: {
+        watchWorkspaceIndexTaskStatuses: vi.fn(async (
+          _rootPath: string,
+          next: (status: WorkspaceIndexTaskStatus) => void,
+        ) => {
+          onTaskStatus = next;
+          return teardown;
+        }),
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult: vi.fn(),
+      refreshWorkspaceIndexTaskStatuses,
+      recordWorkspaceIndexTaskStatus: workspaceIndexProjectionStore.recordTaskStatus,
+      onStatusChange: vi.fn(),
+    }));
+
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(1);
+      act(() => {
+        onTaskStatus?.(indexTaskStatus({ kind: "discovery", status: "partial" }));
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
+
+      unmount();
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+    expect(teardown).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a slower reconciliation cadence while no index task is active", async () => {
+    vi.useFakeTimers();
+    const refreshWorkspaceIndexTaskStatuses = vi.fn(async () => undefined);
+    const { unmount } = renderHook(() => useWorkspaceIndexWatchers({
+      rootPath: "/workspace",
+      workspaceApi: {
+        watchWorkspaceIndexTaskStatuses: vi.fn(async () => vi.fn()),
+      } as unknown as WorkspaceApi,
+      applyWorkspaceIndexRefreshResult: vi.fn(),
+      refreshWorkspaceIndexTaskStatuses,
+      recordWorkspaceIndexTaskStatus: vi.fn(),
+      onStatusChange: vi.fn(),
+    }));
+
+    try {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(28_000);
+      });
+      expect(refreshWorkspaceIndexTaskStatuses).toHaveBeenCalledTimes(2);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
   it("reconciles task status and workspace state when task watcher registration fails", async () => {
     const rootPath = "/workspace";
     const readyState = indexRefreshResult(rootPath).state;

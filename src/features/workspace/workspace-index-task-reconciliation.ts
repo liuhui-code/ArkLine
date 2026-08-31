@@ -43,14 +43,32 @@ export function createWorkspaceIndexTaskReconciler() {
       appliedRequestSequences.set(rootPath, reconciliation.requestSequence);
       const reconciled = new Map(incoming.map((status) => [status.taskId, status]));
       for (const status of current) {
+        const snapshotStatus = reconciled.get(status.taskId);
+        if (
+          snapshotStatus
+          && isFinalTaskStatus(status.status)
+          && !isFinalTaskStatus(snapshotStatus.status)
+        ) {
+          reconciled.set(status.taskId, status);
+          continue;
+        }
         const statusRevision = revisions.get(revisionKey(rootPath, status.taskId)) ?? 0;
         if (statusRevision > reconciliation.eventRevision) {
-          reconciled.set(status.taskId, status);
+          reconciled.set(
+            status.taskId,
+            snapshotStatus && isFinalTaskStatus(snapshotStatus.status) && !isFinalTaskStatus(status.status)
+              ? snapshotStatus
+              : status,
+          );
         }
       }
       return [...reconciled.values()].sort((left, right) => left.generation - right.generation);
     },
   };
+}
+
+export function isFinalTaskStatus(status: string) {
+  return FINAL_TASK_STATUSES.has(status);
 }
 
 export function isLatestTaskGenerationForKind(
@@ -67,3 +85,12 @@ export function isLatestTaskGenerationForKind(
 function revisionKey(rootPath: string, taskId: string) {
   return `${rootPath}\u0000${taskId}`;
 }
+
+const FINAL_TASK_STATUSES = new Set([
+  "ready",
+  "stale",
+  "failed",
+  "cancelled",
+  "superseded",
+  "skipped",
+]);

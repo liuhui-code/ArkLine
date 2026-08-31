@@ -145,6 +145,98 @@ describe("workspace index projection store", () => {
     ]);
   });
 
+  it("keeps an authoritative terminal snapshot over a delayed non-terminal event", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+    const partial = taskStatus({
+      taskId: "7:discovery",
+      kind: "discovery",
+      reason: "workspace-discovery",
+      status: "partial",
+      generation: 7,
+      progressCurrent: 0,
+      progressTotal: 1,
+    });
+    const reconciliation = store.beginTaskStatusReconciliation("/workspace");
+
+    store.recordTaskStatus(partial);
+    store.replaceTaskStatuses("/workspace", [{
+      ...partial,
+      status: "ready",
+      progressCurrent: 833,
+      progressTotal: 833,
+    }], reconciliation);
+
+    expect(store.snapshot().taskStatuses).toEqual([
+      expect.objectContaining({
+        taskId: "7:discovery",
+        status: "ready",
+        progressCurrent: 833,
+      }),
+    ]);
+  });
+
+  it("does not regress a terminal task when a delayed live event arrives", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+    const ready = taskStatus({
+      taskId: "7:discovery",
+      kind: "discovery",
+      reason: "workspace-discovery",
+      status: "ready",
+      generation: 7,
+      progressCurrent: 833,
+      progressTotal: 833,
+    });
+    const reconciliation = store.beginTaskStatusReconciliation("/workspace");
+    store.replaceTaskStatuses("/workspace", [ready], reconciliation);
+
+    store.recordTaskStatus({
+      ...ready,
+      status: "partial",
+      progressCurrent: 0,
+      progressTotal: 1,
+    });
+
+    expect(store.snapshot().taskStatuses).toEqual([
+      expect.objectContaining({
+        taskId: "7:discovery",
+        status: "ready",
+        progressCurrent: 833,
+      }),
+    ]);
+  });
+
+  it("does not regress a terminal task when a later snapshot is non-terminal", () => {
+    const store = createWorkspaceIndexProjectionStore(1);
+    const ready = taskStatus({
+      taskId: "7:discovery",
+      kind: "discovery",
+      reason: "workspace-discovery",
+      status: "ready",
+      generation: 7,
+      progressCurrent: 833,
+      progressTotal: 833,
+    });
+    store.replaceTaskStatuses(
+      "/workspace",
+      [ready],
+      store.beginTaskStatusReconciliation("/workspace"),
+    );
+
+    store.replaceTaskStatuses(
+      "/workspace",
+      [{ ...ready, status: "partial", progressCurrent: 0, progressTotal: 1 }],
+      store.beginTaskStatusReconciliation("/workspace"),
+    );
+
+    expect(store.snapshot().taskStatuses).toEqual([
+      expect.objectContaining({
+        taskId: "7:discovery",
+        status: "ready",
+        progressCurrent: 833,
+      }),
+    ]);
+  });
+
   it("does not let an older snapshot response overwrite a newer snapshot response", () => {
     const store = createWorkspaceIndexProjectionStore(1);
     const olderRequest = store.beginTaskStatusReconciliation("/workspace");

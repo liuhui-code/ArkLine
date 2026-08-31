@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { WORKSPACE_INDEX_WATCH_INTERVAL_MS } from "@/components/layout/app-shell-constants";
 import { isTerminalProjectIndexTaskStatus } from "@/components/layout/index-diagnostics-controller-model";
 import { workspaceIndexProjectionStore } from "@/features/workspace/workspace-index-projection-store";
+import { isFinalTaskStatus } from "@/features/workspace/workspace-index-task-reconciliation";
 import type {
   WorkspaceApi,
   WorkspaceIndexEvent,
@@ -11,6 +12,8 @@ import type {
 import type { WorkspaceIndexState } from "@/features/workspace/workspace-index-store";
 
 const TASK_STATUS_WATCH_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000];
+const ACTIVE_TASK_STATUS_RECONCILIATION_MS = 2_000;
+const IDLE_TASK_STATUS_RECONCILIATION_MS = 30_000;
 
 export type UseWorkspaceIndexWatchersOptions = {
   rootPath: string | null;
@@ -184,7 +187,9 @@ export function useWorkspaceIndexWatchers({
     const watchedRootPath = rootPath;
     let teardownWatcher: (() => void) | null = null;
     let retryTimer: number | null = null;
+    let reconciliationTimer: number | null = null;
     let retryAttempt = 0;
+    let reconciliationInFlight = false;
 
     async function synchronizeWorkspaceIndexState() {
       if (
@@ -216,6 +221,7 @@ export function useWorkspaceIndexWatchers({
           }
 
           recordWorkspaceIndexTaskStatus(status);
+          scheduleTaskStatusReconciliation();
           if (isTerminalProjectIndexTaskStatus(status)) {
             void synchronizeWorkspaceIndexState();
           }
@@ -234,16 +240,8 @@ export function useWorkspaceIndexWatchers({
         }
       }
       if (disposed) return;
-      try {
-        await refreshWorkspaceIndexTaskStatuses(watchedRootPath);
-      } catch (error) {
-        if (!disposed) {
-          onStatusChange(`Workspace index status reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-      if (!disposed) {
-        await synchronizeWorkspaceIndexState();
-      }
+      await reconcileTaskStatusAndState();
+      scheduleTaskStatusReconciliation();
       if (!disposed && shouldRetry) {
         const delay = TASK_STATUS_WATCH_RETRY_DELAYS_MS[
           Math.min(retryAttempt, TASK_STATUS_WATCH_RETRY_DELAYS_MS.length - 1)
@@ -256,10 +254,52 @@ export function useWorkspaceIndexWatchers({
       }
     }
 
+    async function reconcileTaskStatusAndState() {
+      if (disposed || reconciliationInFlight) return;
+      reconciliationInFlight = true;
+      try {
+        try {
+          await refreshWorkspaceIndexTaskStatuses(watchedRootPath);
+        } catch (error) {
+          if (!disposed) {
+            onStatusChange(`Workspace index status reconciliation failed: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        if (!disposed) {
+          await synchronizeWorkspaceIndexState();
+        }
+      } finally {
+        reconciliationInFlight = false;
+      }
+    }
+
+    function scheduleTaskStatusReconciliation() {
+      if (disposed) return;
+      if (reconciliationTimer != null) {
+        window.clearTimeout(reconciliationTimer);
+      }
+      const projection = workspaceIndexProjectionStore.statusSnapshot();
+      const hasActiveTask = projection.rootPath === watchedRootPath
+        && projection.taskStatuses.some((status) => (
+          !isFinalTaskStatus(status.status)
+          || (status.kind === "discovery" && status.status === "partial")
+        ));
+      reconciliationTimer = window.setTimeout(() => {
+        reconciliationTimer = null;
+        void reconcileTaskStatusAndState().finally(scheduleTaskStatusReconciliation);
+      }, hasActiveTask
+        ? ACTIVE_TASK_STATUS_RECONCILIATION_MS
+        : IDLE_TASK_STATUS_RECONCILIATION_MS);
+    }
+
     void initializeTaskStatusWatcher();
+    scheduleTaskStatusReconciliation();
 
     return () => {
       disposed = true;
+      if (reconciliationTimer != null) {
+        window.clearTimeout(reconciliationTimer);
+      }
       if (retryTimer != null) {
         window.clearTimeout(retryTimer);
       }
