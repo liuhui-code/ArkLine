@@ -74,7 +74,7 @@
       "owner": "indexing",
       "behavior": "Opening a project schedules visible files, makes readiness progress observable, and eventually enables indexed navigation.",
       "sourcePatterns": ["src/components/layout/*index*", "src/components/layout/use-workspace-*", "src/features/workspace/workspace-index-*", "src-tauri/src/commands/workspace_index*", "src-tauri/src/services/workspace_index*", "src-tauri/src/indexer_*"],
-      "testPatterns": ["tests/frontend/*index*.test.*", "tests/frontend/use-workspace-*.test.*", "src-tauri/src/**/*index*_tests.rs", "src-tauri/src/services/workspace_index_writer_connection_pool_service.rs", "src-tauri/tests/indexer_*.rs", "tests/frontend/packaged-soak-*.test.ts"],
+      "testPatterns": ["tests/frontend/*index*.test.*", "tests/frontend/use-workspace-*.test.*", "tests/frontend/runtime-logging-contract.test.ts", "src-tauri/src/**/*index*_tests.rs", "src-tauri/src/services/workspace_index_writer_connection_pool_service.rs", "src-tauri/tests/indexer_*.rs", "src-tauri/tests/runtime_logging.rs", "tests/frontend/packaged-soak-*.test.ts"],
       "testLevels": ["small", "medium", "large", "product"]
     },
     {

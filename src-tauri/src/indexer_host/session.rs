@@ -11,6 +11,7 @@ use crate::indexer_sidecar::{
 };
 use crate::models::workspace_index_diagnostics::WorkspaceIndexWriterMetrics;
 use crate::models::workspace_index_publication::WorkspaceIndexPublicationProfile;
+use crate::runtime_logging;
 use crate::services::process_command_service::hidden_command;
 use crate::services::workspace_discovery_service::WorkspaceDiscoveryCursorIdentity;
 
@@ -425,8 +426,17 @@ fn spawn_stdout_reader(stdout: ChildStdout) -> Receiver<Result<String, String>> 
 
 fn drain_stderr(stderr: impl Read + Send + 'static) {
     std::thread::spawn(move || {
-        let mut stderr = BufReader::new(stderr);
-        let _ = std::io::copy(&mut stderr, &mut std::io::sink());
+        for line in BufReader::new(stderr).lines() {
+            match line {
+                Ok(line) => runtime_logging::log_indexer_stderr(&line),
+                Err(error) => {
+                    runtime_logging::log_indexer_stderr(&format!(
+                        "Failed to read indexer stderr: {error}"
+                    ));
+                    break;
+                }
+            }
+        }
     });
 }
 

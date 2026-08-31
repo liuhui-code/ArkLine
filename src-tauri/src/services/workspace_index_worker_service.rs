@@ -1,10 +1,6 @@
-use crate::indexer_host::{IndexerDiscoveryAttempt, IndexerHostRuntime};
-use crate::indexer_sidecar::IndexerTaskKey;
+use crate::indexer_host::IndexerHostRuntime;
 use crate::models::workspace::{WorkspaceIndexRefreshResult, WorkspaceIndexTaskStatus};
-use crate::services::workspace_discovery_runner_service::run_workspace_discovery_chunk;
-use crate::services::workspace_discovery_task_service::{
-    is_workspace_discovery_task_reason, workspace_discovery_task_cursor,
-};
+use crate::services::workspace_discovery_task_service::is_workspace_discovery_task_reason;
 use crate::services::workspace_index_cancellation_service::WorkspaceIndexCancellationToken;
 use crate::services::workspace_index_catalog_refresh_worker_service::refresh_catalog_deep_layer_chunk;
 use crate::services::workspace_index_changed_path_worker_service::{
@@ -19,9 +15,7 @@ use crate::services::workspace_index_continuation_task_service::{
 use crate::services::workspace_index_deep_sidecar_service::{
     update_background_deep_layer, WorkspaceDeepLayerUpdate,
 };
-use crate::services::workspace_index_discovery_result_service::{
-    discovery_task_result, discovery_task_result_from_counts,
-};
+use crate::services::workspace_index_discovery_worker_service::run_workspace_discovery_task;
 use crate::services::workspace_index_full_refresh_service::refresh_workspace_index_in_chunks;
 use crate::services::workspace_index_scheduler_service::{
     WorkspaceIndexTask, WorkspaceIndexTaskKind, WorkspaceIndexTaskPriority,
@@ -41,7 +35,6 @@ use crate::services::workspace_service::scan_workspace;
 use std::path::Path;
 pub const WORKSPACE_INDEX_CHANGED_PATH_CHUNK_SIZE: usize = 64;
 pub const WORKSPACE_INDEX_FULL_REFRESH_CHUNK_SIZE: usize = 1024;
-pub const WORKSPACE_DISCOVERY_CHUNK_SIZE: usize = 1024;
 #[allow(dead_code)]
 pub fn run_index_tasks<F>(
     index_runtime: &WorkspaceIndexRuntime,
@@ -192,48 +185,7 @@ fn run_index_task_inner<G: Fn() -> bool + Sync>(
     match task.kind.clone() {
         WorkspaceIndexTaskKind::ChangedPaths => {
             if is_workspace_discovery_task_reason(&task.reason) {
-                if token.is_cancelled() {
-                    return Ok(Some(superseded_task_result_from_task(task)));
-                }
-                let cursor = workspace_discovery_task_cursor(task);
-                if let Some(runtime) = indexer {
-                    match runtime.discover_workspace_chunk(
-                        IndexerTaskKey {
-                            root_path: task.root_path.clone(),
-                            kind: "discovery".to_string(),
-                            generation: task.generation,
-                            reason: task.reason.clone(),
-                        },
-                        cursor
-                            .as_ref()
-                            .map(|value| value.pending_directories.clone()),
-                        WORKSPACE_DISCOVERY_CHUNK_SIZE,
-                    ) {
-                        IndexerDiscoveryAttempt::Applied(result) => {
-                            return Ok(Some(discovery_task_result_from_counts(
-                                task,
-                                result.chunk_file_count,
-                                result.excluded_count,
-                                result.has_more,
-                                started_at,
-                            )));
-                        }
-                        IndexerDiscoveryAttempt::Cancelled => {
-                            return Ok(Some(superseded_task_result_from_task(task)));
-                        }
-                        IndexerDiscoveryAttempt::Unavailable => {}
-                    }
-                    if runtime.requires_process_isolation() {
-                        runtime.record_local_fallback();
-                    }
-                }
-                let chunk = run_workspace_discovery_chunk(
-                    Path::new(&task.root_path),
-                    cursor,
-                    WORKSPACE_DISCOVERY_CHUNK_SIZE,
-                    task.generation as i64,
-                )?;
-                return Ok(Some(discovery_task_result(task, &chunk, started_at)));
+                return run_workspace_discovery_task(task, token, started_at, indexer).map(Some);
             }
             if is_full_refresh_continuation(task) {
                 if token.is_cancelled() {

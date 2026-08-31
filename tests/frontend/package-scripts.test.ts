@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { rustTestEnvironment } from "../../scripts/test-rust.mjs";
@@ -32,7 +34,7 @@ describe("package scripts", () => {
     expect(scripts["test:frontend"]).toBe("vitest run");
     expect(scripts["test:frontend:gate"]).toBe("node scripts/run-frontend-gate.mjs --strict");
     expect(scripts["test:frontend:quality"]).toBe(
-      "vitest run tests/frontend/package-scripts.test.ts tests/frontend/run-quality-gate.test.ts tests/frontend/quality-gate-manifest.test.ts tests/frontend/indexing-roadmap-status.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/release-version.test.ts tests/frontend/release-candidate-manifest.test.ts tests/frontend/verify-release-candidate.test.ts tests/frontend/packaged-soak-foundation.test.ts tests/frontend/packaged-soak-report.test.ts tests/frontend/packaged-soak-webdriver.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts tests/frontend/tdd-capability-registry.test.ts tests/frontend/tdd-test-inventory.test.ts tests/frontend/tdd-test-impact.test.ts tests/frontend/tdd-rust-impact.test.ts tests/frontend/tdd-test-impact-reconciliation.test.ts tests/frontend/tdd-test-impact-history.test.ts tests/frontend/tdd-test-impact-calibration.test.ts tests/frontend/tdd-test-impact-promotion-review.test.ts tests/frontend/tdd-enforcement.test.ts tests/frontend/tdd-governance.test.ts",
+      "vitest run tests/frontend/package-scripts.test.ts tests/frontend/run-quality-gate.test.ts tests/frontend/quality-gate-manifest.test.ts tests/frontend/indexing-roadmap-status.test.ts tests/frontend/ci-workflow-gates.test.ts tests/frontend/release-version.test.ts tests/frontend/runtime-logging-contract.test.ts tests/frontend/release-candidate-manifest.test.ts tests/frontend/verify-release-candidate.test.ts tests/frontend/packaged-soak-foundation.test.ts tests/frontend/packaged-soak-report.test.ts tests/frontend/packaged-soak-webdriver.test.ts tests/frontend/readme-quality-gates.test.ts tests/frontend/check-line-count.test.mjs tests/frontend/app-crash-boundary.test.tsx tests/frontend/editor-crash-boundary.test.tsx tests/frontend/ui-latency-monitor.test.ts tests/frontend/tdd-capability-registry.test.ts tests/frontend/tdd-test-inventory.test.ts tests/frontend/tdd-test-impact.test.ts tests/frontend/tdd-rust-impact.test.ts tests/frontend/tdd-test-impact-reconciliation.test.ts tests/frontend/tdd-test-impact-history.test.ts tests/frontend/tdd-test-impact-calibration.test.ts tests/frontend/tdd-test-impact-promotion-review.test.ts tests/frontend/tdd-enforcement.test.ts tests/frontend/tdd-governance.test.ts",
     );
     expect(scripts["fixture:performance"]).toBe(
       "node scripts/generate-performance-fixture.mjs",
@@ -93,15 +95,28 @@ describe("package scripts", () => {
   });
 
   it("executes a staged Rust test binary with its arguments", () => {
-    const result = spawnSync(process.execPath, [
-      "scripts/run-rust-test-binary.mjs",
-      process.execPath,
-      "-e",
-      "process.stdout.write(process.argv[1])",
-      "runner-ok",
-    ], { encoding: "utf8" });
+    const fixtureDirectory = mkdtempSync(path.join(tmpdir(), "arkline-runner-probe-"));
+    try {
+      const executable = process.platform === "win32"
+        ? process.execPath
+        : path.join(fixtureDirectory, "probe.sh");
+      const executableArgs = process.platform === "win32"
+        ? ["-e", "process.stdout.write(process.argv[1])", "runner-ok"]
+        : ["runner-ok"];
+      if (process.platform !== "win32") {
+        writeFileSync(executable, "#!/bin/sh\nprintf '%s' \"$1\"\n", "utf8");
+        chmodSync(executable, 0o755);
+      }
+      const result = spawnSync(process.execPath, [
+        "scripts/run-rust-test-binary.mjs",
+        executable,
+        ...executableArgs,
+      ], { encoding: "utf8" });
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toBe("runner-ok");
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("runner-ok");
+    } finally {
+      rmSync(fixtureDirectory, { recursive: true, force: true });
+    }
   }, 45_000);
 });

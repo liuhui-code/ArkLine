@@ -48,6 +48,7 @@ mod platform;
 
 pub mod indexer_host;
 pub mod indexer_sidecar;
+pub mod runtime_logging;
 mod services;
 
 use std::sync::Arc;
@@ -61,9 +62,11 @@ pub fn run() {
         search_sessions.clone(),
     );
     tauri::Builder::default()
+        .plugin(runtime_logging::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            runtime_logging::log_app_started();
             platform::create_manual_windows(app)?;
             platform::apply_app_icon();
             if let Ok(resource_dir) = app.path().resource_dir() {

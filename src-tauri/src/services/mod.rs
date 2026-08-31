@@ -105,7 +105,7 @@ pub(crate) mod workspace_dependency_graph_store_service;
 mod workspace_dependency_graph_store_service_tests;
 #[cfg(test)]
 mod workspace_discovery_continuation_service_tests;
-pub(crate) mod workspace_discovery_runner_service;
+pub(crate) mod workspace_discovery_runner_service; pub(crate) mod workspace_index_discovery_worker_service;
 #[cfg(test)]
 mod workspace_discovery_runner_service_tests;
 pub(crate) mod workspace_discovery_schema_service;

@@ -58,6 +58,7 @@
     "tests/frontend/indexing-roadmap-status.test.ts",
     "tests/frontend/ci-workflow-gates.test.ts",
     "tests/frontend/release-version.test.ts",
+    "tests/frontend/runtime-logging-contract.test.ts",
     "tests/frontend/release-candidate-manifest.test.ts",
     "tests/frontend/verify-release-candidate.test.ts",
     "tests/frontend/packaged-soak-foundation.test.ts",
